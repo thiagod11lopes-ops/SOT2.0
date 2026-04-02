@@ -49,16 +49,13 @@ function normalizeCatalogState(parsed: Partial<CatalogItemsState> | null | undef
   };
 }
 
-function sortPtBr(list: string[]) {
-  return [...list].sort((a, b) => a.localeCompare(b, "pt-BR"));
-}
-
+/** Mantém a ordem de inclusão (cadastro); só evita duplicata ignorando maiúsculas. */
 function dedupeAdd(list: string[], item: string): string[] {
   const t = item.trim();
   if (!t) return list;
   const lower = t.toLowerCase();
   if (list.some((x) => x.toLowerCase() === lower)) return list;
-  return sortPtBr([...list, t]);
+  return [...list, t];
 }
 
 type CatalogItemsContextValue = {
