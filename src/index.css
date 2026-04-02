@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --background: 210 20% 96%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 214 25% 88%;
+  --muted: 214 22% 92%;
+  --muted-foreground: 215 16% 46%;
+  --primary: 204 58% 32%;
+  --primary-foreground: 210 40% 98%;
+  --ring: 204 58% 40%;
+}
+
+.dark {
+  --background: 222 35% 9%;
+  --foreground: 210 40% 98%;
+  --card: 222 35% 12%;
+  --card-foreground: 210 40% 98%;
+  --border: 217 21% 22%;
+  --muted: 217 23% 18%;
+  --muted-foreground: 215 20% 65%;
+  --primary: 194 60% 44%;
+  --primary-foreground: 222 47% 11%;
+  --ring: 194 60% 55%;
+}
+
+/* react-day-picker: dia selecionado usa as cores do sistema */
+.calendar-themed.rdp-root {
+  --rdp-accent-color: hsl(var(--primary));
+  --rdp-accent-background-color: hsl(var(--muted));
+  --rdp-today-color: hsl(var(--primary));
+  color: hsl(var(--foreground));
+}
+
+.calendar-themed.rdp-root .rdp-selected .rdp-day_button {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.calendar-themed.rdp-root .rdp-day:not(.rdp-selected) .rdp-day_button:hover:not(:disabled) {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.calendar-themed.rdp-root .rdp-caption_label {
+  color: hsl(var(--foreground));
+}
+
+.calendar-themed.rdp-root .rdp-weekday {
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  opacity: 1;
+  text-transform: capitalize;
+}
+
+* {
+  border-color: hsl(var(--border));
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: "Inter", "Segoe UI", Roboto, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Botão + dos campos de catálogo após tentativa de cadastro inválida */
+@keyframes catalog-plus-blink {
+  0%,
+  100% {
+    background-color: rgb(220 38 38);
+    color: white;
+    box-shadow: 0 0 0 2px rgb(248 113 113);
+  }
+  50% {
+    background-color: rgb(153 27 27);
+    color: white;
+    box-shadow: 0 0 0 3px rgb(252 165 165);
+  }
+}
+
+.catalog-plus-blink {
+  animation: catalog-plus-blink 0.9s ease-in-out infinite;
+}

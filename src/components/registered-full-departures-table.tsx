@@ -1,0 +1,128 @@
+import { Pencil, Trash2 } from "lucide-react";
+import { fullRowCells, type DepartureRecord } from "../types/departure";
+import { Button } from "./ui/button";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+
+interface Props {
+  rows: DepartureRecord[];
+  emptyLabel: string;
+  onRemove: (id: string) => void;
+  onEdit: (id: string) => void;
+}
+
+const COLS = 8;
+
+function FieldLine({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="break-words [word-break:break-word]">
+      <span className="text-[hsl(var(--muted-foreground))]">{label}</span> {value}
+    </p>
+  );
+}
+
+export function RegisteredFullDeparturesTable({ rows, emptyLabel, onRemove, onEdit }: Props) {
+  return (
+    <div className="max-h-[min(70vh,720px)] w-full max-w-full overflow-y-auto overflow-x-hidden rounded-lg border border-[hsl(var(--border))]">
+      <table className="w-full table-fixed border-collapse text-[10px] leading-snug sm:text-[11px]">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-[7%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">Tipo</TableHead>
+            <TableHead className="w-[13%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Pedido / saída
+            </TableHead>
+            <TableHead className="w-[17%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Setor, ramal e objetivo
+            </TableHead>
+            <TableHead className="w-[13%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Pass., resp., OM
+            </TableHead>
+            <TableHead className="w-[15%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Viaturas e motoristas
+            </TableHead>
+            <TableHead className="w-[15%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Hospital e KM
+            </TableHead>
+            <TableHead className="w-[14%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Cidade e bairro
+            </TableHead>
+            <TableHead className="w-[6%] p-1.5 text-right align-bottom text-[10px] sm:p-2 sm:text-xs">
+              Ações
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={COLS}
+                className="p-6 text-center text-slate-500 sm:p-8 sm:text-sm"
+              >
+                {emptyLabel}
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((row) => {
+              const c = fullRowCells(row);
+              return (
+                <TableRow key={row.id} className="align-top">
+                  <TableCell className="p-1.5 font-medium sm:p-2">{c.tipo}</TableCell>
+                  <TableCell className="p-1.5 font-mono sm:p-2">
+                    <FieldLine label="Ped.:" value={`${c.dataPedido} ${c.horaPedido}`.trim()} />
+                    <FieldLine label="Saí.:" value={`${c.dataSaida} ${c.horaSaida}`.trim()} />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Setor:" value={c.setor} />
+                    <FieldLine label="Ramal:" value={c.ramal} />
+                    <FieldLine label="Obj.:" value={c.objetivoSaida} />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Pass.:" value={c.numeroPassageiros} />
+                    <FieldLine label="Resp.:" value={c.responsavelPedido} />
+                    <FieldLine label="OM:" value={c.om} />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Viaturas:" value={c.viaturas} />
+                    <FieldLine label="Mot.:" value={c.motoristas} />
+                  </TableCell>
+                  <TableCell className="p-1.5 font-mono sm:p-2">
+                    <FieldLine label="Hosp.:" value={c.hospitalDestino} />
+                    <FieldLine label="KM s/c:" value={`${c.kmSaida} / ${c.kmChegada}`} />
+                    <FieldLine label="Cheg.:" value={c.chegada} />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Cid.:" value={c.cidade} />
+                    <FieldLine label="Bairro:" value={c.bairro} />
+                  </TableCell>
+                  <TableCell className="p-1 text-right sm:p-2">
+                    <div className="inline-flex items-center justify-end gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-slate-500 hover:text-[hsl(var(--primary))] sm:h-8 sm:w-8"
+                        aria-label="Editar no cadastro"
+                        onClick={() => onEdit(row.id)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-slate-500 hover:text-red-600 sm:h-8 sm:w-8"
+                        aria-label="Excluir registro"
+                        onClick={() => onRemove(row.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </table>
+    </div>
+  );
+}
