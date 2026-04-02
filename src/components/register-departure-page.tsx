@@ -2,7 +2,17 @@ import shp from "shpjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
+import {
+  CUSTOM_LOCATIONS_STORAGE_KEY,
+  emptyCustomLocations,
+  findCanonicalCity,
+  findCanonicalString,
+  mergeUniqueSorted,
+  normalizeCustomLocations,
+  type CustomLocationsState,
+} from "../lib/customLocationsStorage";
 import { getCurrentDatePtBr, normalizeDatePtBr } from "../lib/dateFormat";
+import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { normalize24hTime } from "../lib/timeInput";
 import { cn } from "../lib/utils";
 import type { DepartureRecord } from "../types/departure";
@@ -131,8 +141,28 @@ export function RegisterDeparturePage() {
   const [arrivalTime, setArrivalTime] = useState<string>("");
   const [city, setCity] = useState<string>("Rio de Janeiro");
   const [neighborhood, setNeighborhood] = useState<string>("");
-  const [neighborhoodsByCity, setNeighborhoodsByCity] = useState<Record<string, string[]>>({});
+  /** Bairros oficiais (IBGE) por cidade. */
+  const [ibgeNeighborhoodsByCity, setIbgeNeighborhoodsByCity] = useState<Record<string, string[]>>({});
+  const [customLocations, setCustomLocations] = useState<CustomLocationsState>(() => emptyCustomLocations());
+  const [customLocationsHydrated, setCustomLocationsHydrated] = useState(false);
   const [loadingNeighborhoods, setLoadingNeighborhoods] = useState<boolean>(true);
+  /** Duplo clique em Cidade/Bairro: modal para novo item. */
+  const [addLocationModal, setAddLocationModal] = useState<
+    null | { kind: "city" } | { kind: "bairro"; cityKey: string }
+  >(null);
+  const [addLocationDraft, setAddLocationDraft] = useState("");
+
+  useEffect(() => {
+    void idbGetJson<unknown>(CUSTOM_LOCATIONS_STORAGE_KEY).then((stored) => {
+      setCustomLocations(normalizeCustomLocations(stored));
+      setCustomLocationsHydrated(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!customLocationsHydrated) return;
+    void idbSetJson(CUSTOM_LOCATIONS_STORAGE_KEY, customLocations);
+  }, [customLocations, customLocationsHydrated]);
 
   useEffect(() => {
     let mounted = true;
@@ -160,13 +190,13 @@ export function RegisterDeparturePage() {
         }
 
         if (mounted) {
-          setNeighborhoodsByCity(normalized);
+          setIbgeNeighborhoodsByCity(normalized);
           setNeighborhood(normalized["Rio de Janeiro"]?.[0] ?? "");
           setLoadingNeighborhoods(false);
         }
       } catch {
         if (mounted) {
-          setNeighborhoodsByCity({});
+          setIbgeNeighborhoodsByCity({});
           setNeighborhood("");
           setLoadingNeighborhoods(false);
         }
@@ -221,7 +251,38 @@ export function RegisterDeparturePage() {
     clearPendingEditDeparture,
   ]);
 
-  const cityNeighborhoods = useMemo(() => neighborhoodsByCity[city] ?? [], [city, neighborhoodsByCity]);
+  const allCityNames = useMemo(() => {
+    const s = new Set<string>([...metroRioCities, ...customLocations.extraCities]);
+    for (const k of Object.keys(customLocations.extraNeighborhoodsByCity)) {
+      s.add(k);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [customLocations]);
+
+  const mergedNeighborhoodsByCity = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const c of allCityNames) {
+      const ibge = ibgeNeighborhoodsByCity[c] ?? [];
+      const extra = customLocations.extraNeighborhoodsByCity[c] ?? [];
+      result[c] = mergeUniqueSorted(ibge, extra);
+    }
+    return result;
+  }, [allCityNames, ibgeNeighborhoodsByCity, customLocations.extraNeighborhoodsByCity]);
+
+  const cityNeighborhoods = useMemo(
+    () => mergedNeighborhoodsByCity[city] ?? [],
+    [city, mergedNeighborhoodsByCity],
+  );
+
+  /** Permite edição de registro cujo bairro ainda não está na lista. */
+  const bairroSelectOptions = useMemo(() => {
+    const list = cityNeighborhoods;
+    const n = neighborhood.trim();
+    if (n && !list.some((x) => x.toLowerCase() === n.toLowerCase())) {
+      return [neighborhood, ...list];
+    }
+    return list;
+  }, [cityNeighborhoods, neighborhood]);
 
   /** Inclui valor atual se ainda não estiver no catálogo (edição de registros antigos). */
   const viaturaSelectOptions = useMemo(() => {
@@ -328,11 +389,74 @@ export function RegisterDeparturePage() {
     setActiveSubTab("Saídas Cadastradas");
   }
 
+  function openAddCityModal() {
+    setAddLocationModal({ kind: "city" });
+    setAddLocationDraft("");
+  }
+
+  function openAddBairroModal() {
+    if (!city.trim()) {
+      window.alert("Selecione ou cadastre uma cidade antes de adicionar um bairro.");
+      return;
+    }
+    setAddLocationModal({ kind: "bairro", cityKey: city });
+    setAddLocationDraft("");
+  }
+
+  function confirmAddLocation() {
+    const draft = addLocationDraft.trim();
+    if (!draft || !addLocationModal) {
+      setAddLocationModal(null);
+      setAddLocationDraft("");
+      return;
+    }
+
+    if (addLocationModal.kind === "city") {
+      const existing = findCanonicalCity(draft, allCityNames);
+      if (existing) {
+        setCity(existing);
+        setNeighborhood((mergedNeighborhoodsByCity[existing] ?? [])[0] ?? "");
+      } else {
+        const notInMetro = !metroRioCities.some((m) => m.toLowerCase() === draft.toLowerCase());
+        setCustomLocations((prev) => ({
+          extraCities: notInMetro ? mergeUniqueSorted(prev.extraCities, [draft]) : prev.extraCities,
+          extraNeighborhoodsByCity: {
+            ...prev.extraNeighborhoodsByCity,
+            [draft]: prev.extraNeighborhoodsByCity[draft] ?? [],
+          },
+        }));
+        setCity(draft);
+        setNeighborhood("");
+      }
+      setAddLocationModal(null);
+      setAddLocationDraft("");
+      return;
+    }
+
+    const cityKey = addLocationModal.cityKey;
+    const currentList = mergedNeighborhoodsByCity[cityKey] ?? [];
+    const existingNb = findCanonicalString(draft, currentList);
+    if (existingNb) {
+      setNeighborhood(existingNb);
+    } else {
+      setCustomLocations((prev) => ({
+        ...prev,
+        extraNeighborhoodsByCity: {
+          ...prev.extraNeighborhoodsByCity,
+          [cityKey]: mergeUniqueSorted(prev.extraNeighborhoodsByCity[cityKey] ?? [], [draft]),
+        },
+      }));
+      setNeighborhood(draft);
+    }
+    setAddLocationModal(null);
+    setAddLocationDraft("");
+  }
+
   const fillExampleDeparture = useCallback(() => {
     setEditingId(null);
     setCatalogSubmitAttempted(false);
     const hoje = getCurrentDatePtBr();
-    const bairrosRj = neighborhoodsByCity["Rio de Janeiro"];
+    const bairrosRj = mergedNeighborhoodsByCity["Rio de Janeiro"];
     addCatalogItem("setores", "SAMU Central");
     addCatalogItem("responsaveis", "Cap. Silva");
     addCatalogItem("oms", "1º BPM");
@@ -358,7 +482,7 @@ export function RegisterDeparturePage() {
     setArrivalTime("10:15");
     setCity("Rio de Janeiro");
     setNeighborhood(bairrosRj?.[0] ?? "");
-  }, [neighborhoodsByCity, addCatalogItem]);
+  }, [mergedNeighborhoodsByCity, addCatalogItem]);
 
   return (
     <div className="space-y-4">
@@ -654,17 +778,28 @@ export function RegisterDeparturePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Cidade</label>
+                <label className="text-sm font-medium" htmlFor="field-cidade">
+                  Cidade
+                </label>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Duplo clique no campo para cadastrar uma nova cidade (salvo neste navegador).
+                </p>
                 <select
+                  id="field-cidade"
                   value={city}
+                  title="Duplo clique para adicionar cidade"
                   onChange={(event) => {
                     const selectedCity = event.target.value;
                     setCity(selectedCity);
-                    setNeighborhood((neighborhoodsByCity[selectedCity] ?? [])[0] ?? "");
+                    setNeighborhood((mergedNeighborhoodsByCity[selectedCity] ?? [])[0] ?? "");
+                  }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    openAddCityModal();
                   }}
                   className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                 >
-                  {metroRioCities.map((metroCity) => (
+                  {allCityNames.map((metroCity) => (
                     <option key={metroCity} value={metroCity}>
                       {metroCity}
                     </option>
@@ -673,23 +808,35 @@ export function RegisterDeparturePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Bairro</label>
+                <label className="text-sm font-medium" htmlFor="field-bairro">
+                  Bairro
+                </label>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Duplo clique no campo para cadastrar um novo bairro na cidade selecionada (salvo neste
+                  navegador).
+                </p>
                 <select
+                  id="field-bairro"
                   value={neighborhood}
-                  disabled={loadingNeighborhoods || cityNeighborhoods.length === 0}
+                  disabled={loadingNeighborhoods}
+                  title="Duplo clique para adicionar bairro"
                   onChange={(event) => setNeighborhood(event.target.value)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    openAddBairroModal();
+                  }}
                   className="h-10 w-full rounded-md border bg-white px-3 text-sm disabled:bg-slate-100"
                 >
                   {loadingNeighborhoods ? (
                     <option>Carregando bairros oficiais...</option>
-                  ) : cityNeighborhoods.length > 0 ? (
-                    cityNeighborhoods.map((item) => (
+                  ) : bairroSelectOptions.length > 0 ? (
+                    bairroSelectOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
                     ))
                   ) : (
-                    <option>Nenhum bairro oficial encontrado</option>
+                    <option value="">Nenhum bairro — duplo clique para adicionar</option>
                   )}
                 </select>
               </div>
@@ -724,6 +871,68 @@ export function RegisterDeparturePage() {
           )}
         </CardContent>
       </Card>
+
+      {addLocationModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-location-dialog-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setAddLocationModal(null);
+              setAddLocationDraft("");
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-lg">
+            <h2
+              id="add-location-dialog-title"
+              className="text-base font-semibold text-[hsl(var(--foreground))]"
+            >
+              {addLocationModal.kind === "city" ? "Nova cidade" : "Novo bairro"}
+            </h2>
+            {addLocationModal.kind === "bairro" ? (
+              <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                Cidade: <strong>{addLocationModal.cityKey}</strong>
+              </p>
+            ) : null}
+            <input
+              type="text"
+              autoFocus
+              value={addLocationDraft}
+              onChange={(e) => setAddLocationDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  confirmAddLocation();
+                }
+                if (e.key === "Escape") {
+                  setAddLocationModal(null);
+                  setAddLocationDraft("");
+                }
+              }}
+              placeholder={addLocationModal.kind === "city" ? "Nome da cidade" : "Nome do bairro"}
+              className="mt-3 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))]"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAddLocationModal(null);
+                  setAddLocationDraft("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" variant="default" onClick={confirmAddLocation}>
+                Adicionar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
