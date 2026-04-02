@@ -10,7 +10,13 @@ import {
 } from "react";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
-export type CatalogCategory = "setores" | "responsaveis" | "oms" | "hospitais";
+export type CatalogCategory =
+  | "setores"
+  | "responsaveis"
+  | "oms"
+  | "hospitais"
+  | "motoristas"
+  | "viaturas";
 
 export type CatalogItemsState = Record<CatalogCategory, string[]>;
 
@@ -28,6 +34,8 @@ const emptyState: CatalogItemsState = {
   responsaveis: [],
   oms: [],
   hospitais: [],
+  motoristas: [],
+  viaturas: [],
 };
 
 function normalizeCatalogState(parsed: Partial<CatalogItemsState> | null | undefined): CatalogItemsState {
@@ -36,6 +44,8 @@ function normalizeCatalogState(parsed: Partial<CatalogItemsState> | null | undef
     responsaveis: Array.isArray(parsed?.responsaveis) ? parsed.responsaveis : [],
     oms: Array.isArray(parsed?.oms) ? parsed.oms : [],
     hospitais: Array.isArray(parsed?.hospitais) ? parsed.hospitais : [],
+    motoristas: Array.isArray(parsed?.motoristas) ? parsed.motoristas : [],
+    viaturas: Array.isArray(parsed?.viaturas) ? parsed.viaturas : [],
   };
 }
 

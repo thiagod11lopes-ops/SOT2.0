@@ -27,6 +27,8 @@ const categoryLabel: Record<CatalogCategory, string> = {
   responsaveis: "Responsável pelo Pedido",
   oms: "OM",
   hospitais: "Hospital de Destino",
+  motoristas: "Motorista",
+  viaturas: "Viatura",
 };
 
 export function CatalogItemsPanel() {

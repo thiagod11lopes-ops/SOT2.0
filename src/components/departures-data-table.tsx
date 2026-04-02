@@ -1,8 +1,9 @@
 import { Pencil, Trash2 } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
-import { normalize24hTime } from "../lib/timeInput";
+import { normalize24hTimeWithCaret } from "../lib/timeInput";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -16,6 +17,49 @@ import {
 
 const inputClass =
   "h-8 w-full min-w-[3.5rem] max-w-[6.5rem] rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-1.5 font-mono text-xs tabular-nums text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]";
+
+function ChegadaTimeInput({
+  value,
+  onApply,
+  className,
+}: {
+  value: string;
+  onApply: (next: string) => void;
+  className?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pendingCaret = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    const p = pendingCaret.current;
+    if (el && p !== null) {
+      const clamped = Math.min(Math.max(0, p), el.value.length);
+      el.setSelectionRange(clamped, clamped);
+    }
+    pendingCaret.current = null;
+  }, [value]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="HH:MM"
+      aria-label="Hora de chegada"
+      value={value}
+      onChange={(e) => {
+        const el = e.target;
+        const start = el.selectionStart ?? el.value.length;
+        const { value: v, caret } = normalize24hTimeWithCaret(el.value, start);
+        pendingCaret.current = caret;
+        onApply(v);
+      }}
+      className={className}
+    />
+  );
+}
 
 interface DeparturesDataTableProps {
   rows: DepartureRecord[];
@@ -117,18 +161,9 @@ export function DeparturesDataTable({
                 </TableCell>
                 <TableCell className={cn("whitespace-nowrap", onUpdateKmFields && "p-1.5 align-middle")}>
                   {onUpdateKmFields ? (
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      placeholder="HH:MM"
-                      aria-label="Hora de chegada"
+                    <ChegadaTimeInput
                       value={row.chegada}
-                      onChange={(e) =>
-                        onUpdateKmFields(row.id, {
-                          chegada: normalize24hTime(e.target.value),
-                        })
-                      }
+                      onApply={(next) => onUpdateKmFields(row.id, { chegada: next })}
                       className={cn(inputClass, "max-w-[5rem]")}
                     />
                   ) : (

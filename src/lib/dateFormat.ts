@@ -26,6 +26,33 @@ export function normalizeDatePtBr(value: string) {
   return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
 
+/** Posição do cursor após `digitsCount` dígitos em `formatted` (dd/mm/aaaa). */
+function caretAfterDigitCount(formatted: string, digitsCount: number): number {
+  if (digitsCount <= 0) return 0;
+  let n = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (/\d/.test(formatted[i])) {
+      n += 1;
+      if (n === digitsCount) return i + 1;
+    }
+  }
+  return formatted.length;
+}
+
+/**
+ * Normaliza data dd/mm/aaaa e calcula onde manter o cursor (evita salto para o fim em inputs controlados).
+ */
+export function normalizeDatePtBrWithCaret(rawInput: string, selectionStart: number): {
+  value: string;
+  caret: number;
+} {
+  const normalized = normalizeDatePtBr(rawInput);
+  const start = Math.min(Math.max(0, selectionStart), rawInput.length);
+  const digitsBefore = rawInput.slice(0, start).replace(/\D/g, "").length;
+  const caret = caretAfterDigitCount(normalized, digitsBefore);
+  return { value: normalized, caret: Math.min(caret, normalized.length) };
+}
+
 /** Converte yyyy-mm-dd (input type=date) para dd/mm/aaaa para comparar com o cadastro. */
 export function isoDateToPtBr(iso: string) {
   if (!iso || iso.length < 10) return "";

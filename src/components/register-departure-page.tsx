@@ -223,6 +223,25 @@ export function RegisterDeparturePage() {
 
   const cityNeighborhoods = useMemo(() => neighborhoodsByCity[city] ?? [], [city, neighborhoodsByCity]);
 
+  /** Inclui valor atual se ainda não estiver no catálogo (edição de registros antigos). */
+  const viaturaSelectOptions = useMemo(() => {
+    const list = [...catalogItems.viaturas];
+    const v = vehicles.trim();
+    if (v && !list.some((x) => x.toLowerCase() === v.toLowerCase())) {
+      list.unshift(vehicles);
+    }
+    return list;
+  }, [catalogItems.viaturas, vehicles]);
+
+  const motoristaSelectOptions = useMemo(() => {
+    const list = [...catalogItems.motoristas];
+    const m = drivers.trim();
+    if (m && !list.some((x) => x.toLowerCase() === m.toLowerCase())) {
+      list.unshift(drivers);
+    }
+    return list;
+  }, [catalogItems.motoristas, drivers]);
+
   const catalogBlockingLabels = useMemo(() => {
     const f: string[] = [];
     if (!isValueInCatalog(sector, catalogItems.setores)) f.push("Setor");
@@ -236,6 +255,14 @@ export function RegisterDeparturePage() {
     ) {
       f.push("Hospital de Destino");
     }
+    if (catalogItems.viaturas.length > 0) {
+      const v = vehicles.trim();
+      if (!v || !isValueInCatalog(v, catalogItems.viaturas)) f.push("Viaturas");
+    }
+    if (catalogItems.motoristas.length > 0) {
+      const m = drivers.trim();
+      if (!m || !isValueInCatalog(m, catalogItems.motoristas)) f.push("Motoristas");
+    }
     return f;
   }, [
     sector,
@@ -243,10 +270,14 @@ export function RegisterDeparturePage() {
     om,
     destinationHospital,
     departureType,
+    vehicles,
+    drivers,
     catalogItems.setores,
     catalogItems.responsaveis,
     catalogItems.oms,
     catalogItems.hospitais,
+    catalogItems.viaturas,
+    catalogItems.motoristas,
   ]);
 
   const canSubmitWithCatalog = catalogBlockingLabels.length === 0;
@@ -306,6 +337,8 @@ export function RegisterDeparturePage() {
     addCatalogItem("responsaveis", "Cap. Silva");
     addCatalogItem("oms", "1º BPM");
     addCatalogItem("hospitais", "Hospital Municipal Souza Aguiar");
+    addCatalogItem("viaturas", "AMB-01 / M-10234");
+    addCatalogItem("motoristas", "Sd Santos / Sd Oliveira");
     setDepartureType("Ambulância");
     setRequestDate(hoje);
     setRequestTime("08:30");
@@ -486,23 +519,79 @@ export function RegisterDeparturePage() {
               />
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Viaturas</label>
-                <input
-                  type="text"
-                  value={vehicles}
-                  onChange={(event) => setVehicles(event.target.value)}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                />
+                <label className="text-sm font-medium" htmlFor="field-viaturas">
+                  Viaturas
+                </label>
+                {catalogItems.viaturas.length > 0 ? (
+                  <select
+                    id="field-viaturas"
+                    value={vehicles}
+                    onChange={(event) => setVehicles(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Selecione uma viatura cadastrada…</option>
+                    {viaturaSelectOptions.map((v) => (
+                      <option key={v} value={v}>
+                        {!catalogItems.viaturas.some((x) => x.toLowerCase() === v.toLowerCase())
+                          ? `${v} (cadastre em Frota e Pessoal)`
+                          : v}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <>
+                    <input
+                      id="field-viaturas"
+                      type="text"
+                      value={vehicles}
+                      onChange={(event) => setVehicles(event.target.value)}
+                      placeholder="Ou cadastre em Frota e Pessoal → Cadastro de Viatura"
+                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Sem viaturas no catálogo: use o texto livre ou cadastre em{" "}
+                      <strong>Frota e Pessoal</strong>.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Motoristas</label>
-                <input
-                  type="text"
-                  value={drivers}
-                  onChange={(event) => setDrivers(event.target.value)}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                />
+                <label className="text-sm font-medium" htmlFor="field-motoristas">
+                  Motoristas
+                </label>
+                {catalogItems.motoristas.length > 0 ? (
+                  <select
+                    id="field-motoristas"
+                    value={drivers}
+                    onChange={(event) => setDrivers(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Selecione um motorista cadastrado…</option>
+                    {motoristaSelectOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {!catalogItems.motoristas.some((x) => x.toLowerCase() === m.toLowerCase())
+                          ? `${m} (cadastre em Frota e Pessoal)`
+                          : m}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <>
+                    <input
+                      id="field-motoristas"
+                      type="text"
+                      value={drivers}
+                      onChange={(event) => setDrivers(event.target.value)}
+                      placeholder="Ou cadastre em Frota e Pessoal → Cadastro de Motorista"
+                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Sem motoristas no catálogo: use o texto livre ou cadastre em{" "}
+                      <strong>Frota e Pessoal</strong>.
+                    </p>
+                  </>
+                )}
               </div>
 
               {departureType === "Ambulância" ? (
@@ -608,10 +697,11 @@ export function RegisterDeparturePage() {
               <div className="col-span-full mt-2 space-y-3 border-t border-slate-200 pt-4">
                 {catalogSubmitAttempted && !canSubmitWithCatalog ? (
                   <p className="text-sm text-red-800 dark:text-red-300/90" role="alert">
-                    Cadastro bloqueado: os campos{" "}
-                    <strong>{catalogBlockingLabels.join(", ")}</strong> contêm texto que ainda não está em{" "}
-                    <strong>Cadastrar Itens</strong>. Use o botão <strong>+</strong> vermelho (piscando) ao lado
-                    de cada um para incluir o valor no catálogo; em seguida salve novamente.
+                    Cadastro bloqueado: ajuste os campos{" "}
+                    <strong>{catalogBlockingLabels.join(", ")}</strong>. Para Setor, Responsável, OM e Hospital
+                    de Destino, inclua o valor em <strong>Cadastrar Itens</strong> (botão <strong>+</strong>{" "}
+                    vermelho). Para <strong>Viaturas</strong> e <strong>Motoristas</strong>, cadastre em{" "}
+                    <strong>Frota e Pessoal</strong> e selecione de novo.
                   </p>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-end gap-3">

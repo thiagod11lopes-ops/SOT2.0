@@ -1,8 +1,13 @@
 import { CalendarDays } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDepartures } from "../context/departures-context";
 import type { DepartureType } from "../types/departure";
-import { formatDateToPtBr, getCurrentDatePtBr, normalizeDatePtBr, parsePtBrToDate } from "../lib/dateFormat";
+import {
+  formatDateToPtBr,
+  getCurrentDatePtBr,
+  normalizeDatePtBrWithCaret,
+  parsePtBrToDate,
+} from "../lib/dateFormat";
 import { DeparturesDataTable } from "./departures-data-table";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -21,12 +26,24 @@ function isCompleteDatePtBr(value: string) {
 export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProps) {
   const { departures, removeDeparture, updateDepartureKmFields, beginEditDeparture } = useDepartures();
   const filterDateId = useId();
+  const filterDateInputRef = useRef<HTMLInputElement>(null);
+  const pendingFilterCaret = useRef<number | null>(null);
   const [filterDepartureDate, setFilterDepartureDate] = useState<string>(() => getCurrentDatePtBr());
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
     setFilterDepartureDate(getCurrentDatePtBr());
   }, [filterTipo]);
+
+  useLayoutEffect(() => {
+    const el = filterDateInputRef.current;
+    const p = pendingFilterCaret.current;
+    if (el && p !== null) {
+      const clamped = Math.min(Math.max(0, p), el.value.length);
+      el.setSelectionRange(clamped, clamped);
+    }
+    pendingFilterCaret.current = null;
+  }, [filterDepartureDate]);
 
   const selectedDate = useMemo(
     () => parsePtBrToDate(filterDepartureDate),
@@ -57,6 +74,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
           <div className="flex shrink-0 items-center gap-1.5">
             <input
+              ref={filterDateInputRef}
               id={filterDateId}
               type="text"
               inputMode="numeric"
@@ -64,7 +82,13 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
               placeholder="dd/mm/aaaa"
               aria-label="Filtrar por data de saída (dd/mm/aaaa)"
               value={filterDepartureDate}
-              onChange={(event) => setFilterDepartureDate(normalizeDatePtBr(event.target.value))}
+              onChange={(event) => {
+                const el = event.target;
+                const start = el.selectionStart ?? el.value.length;
+                const { value, caret } = normalizeDatePtBrWithCaret(el.value, start);
+                pendingFilterCaret.current = caret;
+                setFilterDepartureDate(value);
+              }}
               className="h-9 w-[min(100%,10.5rem)] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
             />
             <PopoverTrigger asChild>

@@ -4,6 +4,7 @@ import { Layout } from "./components/layout";
 import { DeparturesListPage } from "./components/departures-list-page";
 import { PlaceholderPage } from "./components/placeholder-page";
 import { SettingsPage } from "./components/settings-page";
+import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useDepartures } from "./context/departures-context";
 import { isSettingsTab } from "./lib/tabMatch";
@@ -42,6 +43,7 @@ function App() {
     if (activeTab === "Saídas de Ambulância")
       return <DeparturesListPage title="Saídas de Ambulância" filterTipo="Ambulância" />;
     if (isSettingsTab(activeTab)) return <SettingsPage />;
+    if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [activeTab]);
 
