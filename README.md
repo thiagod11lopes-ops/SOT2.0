@@ -31,6 +31,10 @@ npm run preview
 
 O estado do catálogo e das saídas é persistido em **IndexedDB** (não usa `localStorage`).
 
+## CI (GitHub Actions)
+
+Em cada push ou pull request para `main`/`master`, o workflow em `.github/workflows/ci.yml` executa `npm ci`, `npm run lint` e `npm run build`.
+
 ## Publicar no GitHub
 
 1. Crie um repositório vazio no GitHub (sem README/licença gerados pelo site, se quiser evitar conflito no primeiro push).
