@@ -35,6 +35,20 @@ O estado do catálogo e das saídas é persistido em **IndexedDB** (não usa `lo
 
 Em cada push ou pull request para `main`/`master`, o workflow em `.github/workflows/ci.yml` executa `npm ci`, `npm run lint` e `npm run build`.
 
+## Site público (GitHub Pages)
+
+Após o push para `main`, o workflow **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) publica o build em:
+
+**https://thiagod11lopes-ops.github.io/SOT2.0/**
+
+### Ativar no GitHub (primeira vez)
+
+1. Repositório → **Settings** → **Pages**
+2. Em **Build and deployment** → **Source**: escolha **GitHub Actions**
+3. Aguarde o workflow **Deploy GitHub Pages** terminar na aba **Actions**
+
+O `vite.config.ts` usa `base: "/SOT2.0/"` só em build de produção (nome do repositório). Se renomear o repo, ajuste esse valor e o domínio acima.
+
 ## Publicar no GitHub
 
 1. Crie um repositório vazio no GitHub (sem README/licença gerados pelo site, se quiser evitar conflito no primeiro push).
