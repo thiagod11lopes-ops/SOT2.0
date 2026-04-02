@@ -37,9 +37,13 @@ Em cada push ou pull request para `main`/`master`, o workflow em `.github/workfl
 
 ## Site público (GitHub Pages)
 
-Após o push para `main`, o workflow **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) publica o build em:
+Após o push para `main`, o workflow **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) faz o build e publica o conteúdo de `dist`.
 
-**https://thiagod11lopes-ops.github.io/SOT2.0/**
+### URL oficial do site
+
+Use sempre o link que o GitHub mostra em **Settings → Pages** (ex.: “Your site is live at …”). O caminho segue o **nome do repositório** (maiúsculas/minúsculas importam na URL).
+
+Se aparecer **404**: confira na aba **Actions** se o job **Deploy GitHub Pages** concluiu com sucesso (incluindo o job **deploy**). Execuções **Waiting for approval** no ambiente `github-pages` precisam ser aprovadas antes do site ficar no ar.
 
 ### Ativar no GitHub (primeira vez)
 
@@ -47,7 +51,7 @@ Após o push para `main`, o workflow **Deploy GitHub Pages** (`.github/workflows
 2. Em **Build and deployment** → **Source**: escolha **GitHub Actions**
 3. Aguarde o workflow **Deploy GitHub Pages** terminar na aba **Actions**
 
-O `vite.config.ts` usa `base: "/SOT2.0/"` só em build de produção (nome do repositório). Se renomear o repo, ajuste esse valor e o domínio acima.
+No CI, o build define `VITE_BASE_PATH=/<nome-do-repo>/` automaticamente. Em build local (`npm run build`), o fallback é `/SOT2.0/` se `VITE_BASE_PATH` não estiver definido. Se **renomear o repositório**, faça um novo push para o GitHub gerar o deploy com o path correto.
 
 ## Publicar no GitHub
 
