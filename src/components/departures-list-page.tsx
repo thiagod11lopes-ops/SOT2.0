@@ -292,7 +292,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
                     </select>
                     {catalogItems.motoristas.length === 0 ? (
                       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Cadastro de Motorista</strong>.
+                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Motorista</strong>.
                       </p>
                     ) : (
                       <Button
@@ -333,7 +333,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
                     </select>
                     {catalogItems.motoristas.length === 0 ? (
                       <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Cadastro de Motorista</strong>.
+                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Motorista</strong>.
                       </p>
                     ) : (
                       <Button
@@ -377,7 +377,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
                 {catalogItems.motoristas.length === 0 ? (
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
                     Nenhum motorista cadastrado. Cadastre em <strong>Frota e Pessoal</strong> →{" "}
-                    <strong>Cadastro de Motorista</strong>.
+                    <strong>Motorista</strong>.
                   </p>
                 ) : (
                   <Button

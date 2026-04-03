@@ -16,9 +16,25 @@ export type CatalogCategory =
   | "oms"
   | "hospitais"
   | "motoristas"
-  | "viaturas";
+  | "viaturasAdministrativas"
+  | "ambulancias";
 
 export type CatalogItemsState = Record<CatalogCategory, string[]>;
+
+/** Lista única para validação e selects (admin + ambulâncias), sem duplicar por maiúsculas. */
+export function mergeViaturasCatalog(items: CatalogItemsState): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of [...items.viaturasAdministrativas, ...items.ambulancias]) {
+    const t = x.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(x);
+  }
+  return out;
+}
 
 /** Valor vazio é aceito; caso contrário o texto deve existir no catálogo (comparação sem diferenciar maiúsculas). */
 export function isValueInCatalog(value: string, catalog: string[]): boolean {
@@ -35,17 +51,29 @@ const emptyState: CatalogItemsState = {
   oms: [],
   hospitais: [],
   motoristas: [],
-  viaturas: [],
+  viaturasAdministrativas: [],
+  ambulancias: [],
 };
 
-function normalizeCatalogState(parsed: Partial<CatalogItemsState> | null | undefined): CatalogItemsState {
+type StoredCatalog = Partial<CatalogItemsState> & { viaturas?: string[] };
+
+function normalizeCatalogState(parsed: StoredCatalog | null | undefined): CatalogItemsState {
+  let administrativas = Array.isArray(parsed?.viaturasAdministrativas)
+    ? parsed.viaturasAdministrativas
+    : [];
+  const ambulancias = Array.isArray(parsed?.ambulancias) ? parsed.ambulancias : [];
+  const legacyViaturas = Array.isArray(parsed?.viaturas) ? parsed.viaturas : [];
+  for (const row of legacyViaturas) {
+    administrativas = dedupeAdd(administrativas, row);
+  }
   return {
     setores: Array.isArray(parsed?.setores) ? parsed.setores : [],
     responsaveis: Array.isArray(parsed?.responsaveis) ? parsed.responsaveis : [],
     oms: Array.isArray(parsed?.oms) ? parsed.oms : [],
     hospitais: Array.isArray(parsed?.hospitais) ? parsed.hospitais : [],
     motoristas: Array.isArray(parsed?.motoristas) ? parsed.motoristas : [],
-    viaturas: Array.isArray(parsed?.viaturas) ? parsed.viaturas : [],
+    viaturasAdministrativas: administrativas,
+    ambulancias,
   };
 }
 
@@ -73,7 +101,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    void idbGetJson<Partial<CatalogItemsState>>(STORAGE_KEY).then((stored) => {
+    void idbGetJson<StoredCatalog>(STORAGE_KEY).then((stored) => {
       if (cancelled) return;
       setItems(normalizeCatalogState(stored));
       hydratedRef.current = true;

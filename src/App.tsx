@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { AvisosPage } from "./components/avisos-page";
 import { Dashboard } from "./components/dashboard";
+import { HomeNewsTicker } from "./components/home-news-ticker";
 import { Layout } from "./components/layout";
 import { DeparturesListPage } from "./components/departures-list-page";
 import { PlaceholderPage } from "./components/placeholder-page";
 import { SettingsPage } from "./components/settings-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
 import { isSettingsTab } from "./lib/tabMatch";
 
@@ -22,7 +25,7 @@ const tabs = [
 ];
 
 function App() {
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const { activeTab, setActiveTab } = useAppTab();
   const { editIntentVersion } = useDepartures();
   const lastEditIntentVersion = useRef(editIntentVersion);
 
@@ -44,13 +47,24 @@ function App() {
       return <DeparturesListPage title="Saídas de Ambulância" filterTipo="Ambulância" />;
     if (isSettingsTab(activeTab)) return <SettingsPage />;
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
+    if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [activeTab]);
 
+  const isHome = !activeTab;
+
   return (
-    <Layout tabs={tabs} activeTab={activeTab ?? ""} onTabChange={setActiveTab}>
-      {content}
-    </Layout>
+    <>
+      <Layout
+        tabs={tabs}
+        activeTab={activeTab ?? ""}
+        onTabChange={setActiveTab}
+        homeTickerActive={isHome}
+      >
+        {content}
+      </Layout>
+      {isHome ? <HomeNewsTicker /> : null}
+    </>
   );
 }
 

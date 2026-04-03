@@ -91,3 +91,18 @@ body {
 .catalog-plus-blink {
   animation: catalog-plus-blink 0.9s ease-in-out infinite;
 }
+
+/* Telão inferior da página inicial (texto em movimento) */
+@keyframes home-marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.home-marquee-track {
+  animation: home-marquee-scroll 55s linear infinite;
+  will-change: transform;
+}

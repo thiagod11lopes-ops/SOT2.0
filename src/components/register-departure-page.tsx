@@ -1,7 +1,14 @@
 import shp from "shpjs";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+import {
+  isValueInCatalog,
+  mergeViaturasCatalog,
+  useCatalogItems,
+} from "../context/catalog-items-context";
+import { useAppTab } from "../context/app-tab-context";
 import { useDepartures } from "../context/departures-context";
+import { useOficinaVisitas } from "../context/oficina-visits-context";
 import {
   CUSTOM_LOCATIONS_STORAGE_KEY,
   emptyCustomLocations,
@@ -54,6 +61,10 @@ const metroRioCities = [
 
 const IBGE_BAIRROS_URL =
   "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/Agregados_por_Setores_Censitarios/malha_com_atributos/bairros/shp/BR/BR_bairros_CD2022.zip";
+
+function mainListTabForDepartureTipo(tipo: string): "Saídas Administrativas" | "Saídas de Ambulância" {
+  return tipo === "Ambulância" ? "Saídas de Ambulância" : "Saídas Administrativas";
+}
 
 function getCurrentTime() {
   const now = new Date();
@@ -116,12 +127,16 @@ export function RegisterDeparturePage() {
     editIntentVersion,
     clearPendingEditDeparture,
   } = useDepartures();
+  const { setActiveTab: setMainAppTab } = useAppTab();
   const { items: catalogItems, addItem: addCatalogItem } = useCatalogItems();
+  const { estaNaOficina } = useOficinaVisitas();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const lastAppliedEditVersion = useRef(0);
+  /** Overlay enquanto o formulário aplica o registro vindo de “Editar saída” (não depende do IBGE). */
+  const [editHydrating, setEditHydrating] = useState(false);
   const [departureType, setDepartureType] = useState<string>("Administrativa");
   const [requestDate, setRequestDate] = useState<string>(getCurrentDatePtBr);
   const [requestTime, setRequestTime] = useState<string>(getCurrentTime);
@@ -191,7 +206,9 @@ export function RegisterDeparturePage() {
 
         if (mounted) {
           setIbgeNeighborhoodsByCity(normalized);
-          setNeighborhood(normalized["Rio de Janeiro"]?.[0] ?? "");
+          setNeighborhood((prev) =>
+            prev.trim() !== "" ? prev : normalized["Rio de Janeiro"]?.[0] ?? "",
+          );
           setLoadingNeighborhoods(false);
         }
       } catch {
@@ -208,48 +225,56 @@ export function RegisterDeparturePage() {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (editIntentVersion === 0) return;
+    if (editIntentVersion === lastAppliedEditVersion.current) return;
+    if (!pendingEditDepartureId) return;
+    setEditHydrating(true);
+  }, [editIntentVersion, pendingEditDepartureId]);
+
   useEffect(() => {
     if (editIntentVersion === 0) return;
     if (editIntentVersion === lastAppliedEditVersion.current) return;
     if (!pendingEditDepartureId) return;
-    if (loadingNeighborhoods) return;
+
     const record = departures.find((d) => d.id === pendingEditDepartureId);
     if (!record) {
       clearPendingEditDeparture();
+      setEditHydrating(false);
       return;
     }
-    applyDepartureRecordToForm(record, {
-      setDepartureType,
-      setRequestDate,
-      setRequestTime,
-      setDepartureDate,
-      setDepartureTime,
-      setSector,
-      setExtension,
-      setDepartureObjective,
-      setPassengerCount,
-      setRequestResponsible,
-      setOm,
-      setVehicles,
-      setDrivers,
-      setDestinationHospital,
-      setKmDeparture,
-      setKmArrival,
-      setArrivalTime,
-      setCity,
-      setNeighborhood,
+
+    const frame = requestAnimationFrame(() => {
+      applyDepartureRecordToForm(record, {
+        setDepartureType,
+        setRequestDate,
+        setRequestTime,
+        setDepartureDate,
+        setDepartureTime,
+        setSector,
+        setExtension,
+        setDepartureObjective,
+        setPassengerCount,
+        setRequestResponsible,
+        setOm,
+        setVehicles,
+        setDrivers,
+        setDestinationHospital,
+        setKmDeparture,
+        setKmArrival,
+        setArrivalTime,
+        setCity,
+        setNeighborhood,
+      });
+      setEditingId(record.id);
+      setActiveSubTab("Cadastrar Nova Saída");
+      lastAppliedEditVersion.current = editIntentVersion;
+      clearPendingEditDeparture();
+      setEditHydrating(false);
     });
-    setEditingId(record.id);
-    setActiveSubTab("Cadastrar Nova Saída");
-    lastAppliedEditVersion.current = editIntentVersion;
-    clearPendingEditDeparture();
-  }, [
-    editIntentVersion,
-    pendingEditDepartureId,
-    departures,
-    loadingNeighborhoods,
-    clearPendingEditDeparture,
-  ]);
+
+    return () => cancelAnimationFrame(frame);
+  }, [editIntentVersion, pendingEditDepartureId, departures, clearPendingEditDeparture]);
 
   const allCityNames = useMemo(() => {
     const s = new Set<string>([...metroRioCities, ...customLocations.extraCities]);
@@ -284,15 +309,81 @@ export function RegisterDeparturePage() {
     return list;
   }, [cityNeighborhoods, neighborhood]);
 
-  /** Inclui valor atual se ainda não estiver no catálogo (edição de registros antigos). */
-  const viaturaSelectOptions = useMemo(() => {
-    const list = [...catalogItems.viaturas];
-    const v = vehicles.trim();
-    if (v && !list.some((x) => x.toLowerCase() === v.toLowerCase())) {
-      list.unshift(vehicles);
+  const viaturasAdminDisponiveis = useMemo(
+    () => catalogItems.viaturasAdministrativas.filter((p) => !estaNaOficina(p)),
+    [catalogItems.viaturasAdministrativas, estaNaOficina],
+  );
+
+  const viaturasAmbDisponiveis = useMemo(
+    () => catalogItems.ambulancias.filter((p) => !estaNaOficina(p)),
+    [catalogItems.ambulancias, estaNaOficina],
+  );
+
+  const mergedViaturasCatalog = useMemo(
+    () =>
+      mergeViaturasCatalog({
+        ...catalogItems,
+        viaturasAdministrativas: viaturasAdminDisponiveis,
+        ambulancias: viaturasAmbDisponiveis,
+      }),
+    [catalogItems, viaturasAdminDisponiveis, viaturasAmbDisponiveis],
+  );
+
+  /** Evita a mesma placa em dois grupos do select (cadastro duplicado por engano). */
+  const ambulanciaOptionsForSelect = useMemo(() => {
+    const admin = new Set(
+      viaturasAdminDisponiveis.map((x) => x.trim().toLowerCase()).filter(Boolean),
+    );
+    return viaturasAmbDisponiveis.filter((x) => !admin.has(x.trim().toLowerCase()));
+  }, [viaturasAdminDisponiveis, viaturasAmbDisponiveis]);
+
+  /** Administrativa: todas disponíveis; Ambulância: só ambulâncias disponíveis (fora da oficina). */
+  const viaturasCatalogForCurrentTipo = useMemo(() => {
+    if (departureType === "Ambulância") return viaturasAmbDisponiveis;
+    return mergedViaturasCatalog;
+  }, [departureType, mergedViaturasCatalog, viaturasAmbDisponiveis]);
+
+  const viaturaSelectHasOptions =
+    departureType === "Ambulância"
+      ? viaturasAmbDisponiveis.length > 0
+      : mergedViaturasCatalog.length > 0;
+
+  const haViaturaIndisponivelPorOficina = useMemo(() => {
+    const visto = new Set<string>();
+    for (const p of [...catalogItems.viaturasAdministrativas, ...catalogItems.ambulancias]) {
+      const k = p.trim().toLowerCase();
+      if (!k || visto.has(k)) continue;
+      visto.add(k);
+      if (estaNaOficina(p)) return true;
     }
-    return list;
-  }, [catalogItems.viaturas, vehicles]);
+    return false;
+  }, [catalogItems.ambulancias, catalogItems.viaturasAdministrativas, estaNaOficina]);
+
+  /** Valor da saída ainda não cadastrado na lista aplicável ao tipo (ex.: edição antiga). */
+  const orphanViatura = useMemo(() => {
+    const v = vehicles.trim();
+    if (!v) return false;
+    return !isValueInCatalog(v, viaturasCatalogForCurrentTipo);
+  }, [vehicles, viaturasCatalogForCurrentTipo]);
+
+  /** Ao mudar para Ambulância com catálogo de ambulâncias, remove viatura que não seja ambulância. */
+  useEffect(() => {
+    if (departureType !== "Ambulância") return;
+    if (catalogItems.ambulancias.length === 0) return;
+    setVehicles((prev) => {
+      const v = prev.trim();
+      if (!v) return prev;
+      if (isValueInCatalog(v, catalogItems.ambulancias)) return prev;
+      return "";
+    });
+  }, [departureType, catalogItems.ambulancias]);
+
+  /** Viatura na oficina (entrada sem saída) não pode ser usada em nova saída. */
+  useEffect(() => {
+    const v = vehicles.trim();
+    if (!v) return;
+    if (estaNaOficina(v)) setVehicles("");
+  }, [vehicles, estaNaOficina]);
 
   const motoristaSelectOptions = useMemo(() => {
     const list = [...catalogItems.motoristas];
@@ -316,9 +407,12 @@ export function RegisterDeparturePage() {
     ) {
       f.push("Hospital de Destino");
     }
-    if (catalogItems.viaturas.length > 0) {
+    {
       const v = vehicles.trim();
-      if (!v || !isValueInCatalog(v, catalogItems.viaturas)) f.push("Viaturas");
+      if (v && estaNaOficina(v)) f.push("Viaturas");
+      else if (viaturasCatalogForCurrentTipo.length > 0) {
+        if (!v || !isValueInCatalog(v, viaturasCatalogForCurrentTipo)) f.push("Viaturas");
+      }
     }
     if (catalogItems.motoristas.length > 0) {
       const m = drivers.trim();
@@ -337,8 +431,9 @@ export function RegisterDeparturePage() {
     catalogItems.responsaveis,
     catalogItems.oms,
     catalogItems.hospitais,
-    catalogItems.viaturas,
+    viaturasCatalogForCurrentTipo,
     catalogItems.motoristas,
+    estaNaOficina,
   ]);
 
   const canSubmitWithCatalog = catalogBlockingLabels.length === 0;
@@ -386,7 +481,7 @@ export function RegisterDeparturePage() {
     } else {
       addDeparture(payload);
     }
-    setActiveSubTab("Saídas Cadastradas");
+    setMainAppTab(mainListTabForDepartureTipo(departureType));
   }
 
   function openAddCityModal() {
@@ -461,7 +556,7 @@ export function RegisterDeparturePage() {
     addCatalogItem("responsaveis", "Cap. Silva");
     addCatalogItem("oms", "1º BPM");
     addCatalogItem("hospitais", "Hospital Municipal Souza Aguiar");
-    addCatalogItem("viaturas", "AMB-01 / M-10234");
+    addCatalogItem("ambulancias", "AMB-01 / M-10234");
     addCatalogItem("motoristas", "Sd Santos / Sd Oliveira");
     setDepartureType("Ambulância");
     setRequestDate(hoje);
@@ -646,22 +741,63 @@ export function RegisterDeparturePage() {
                 <label className="text-sm font-medium" htmlFor="field-viaturas">
                   Viaturas
                 </label>
-                {catalogItems.viaturas.length > 0 ? (
-                  <select
-                    id="field-viaturas"
-                    value={vehicles}
-                    onChange={(event) => setVehicles(event.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                  >
-                    <option value="">Selecione uma viatura cadastrada…</option>
-                    {viaturaSelectOptions.map((v) => (
-                      <option key={v} value={v}>
-                        {!catalogItems.viaturas.some((x) => x.toLowerCase() === v.toLowerCase())
-                          ? `${v} (cadastre em Frota e Pessoal)`
-                          : v}
+                {viaturaSelectHasOptions ? (
+                  <>
+                    <select
+                      id="field-viaturas"
+                      value={vehicles}
+                      onChange={(event) => setVehicles(event.target.value)}
+                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    >
+                      <option value="">
+                        {departureType === "Ambulância"
+                          ? "Selecione uma ambulância cadastrada…"
+                          : "Selecione uma viatura cadastrada…"}
                       </option>
-                    ))}
-                  </select>
+                      {orphanViatura ? (
+                        <option value={vehicles}>
+                          {vehicles} (cadastre em Frota e Pessoal)
+                        </option>
+                      ) : null}
+                      {departureType === "Administrativa" ? (
+                        <>
+                          {viaturasAdminDisponiveis.length > 0 ? (
+                            <optgroup label="Viaturas administrativas">
+                              {viaturasAdminDisponiveis.map((v) => (
+                                <option key={`adm-${v}`} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                          {ambulanciaOptionsForSelect.length > 0 ? (
+                            <optgroup label="Ambulâncias">
+                              {ambulanciaOptionsForSelect.map((v) => (
+                                <option key={`amb-${v}`} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                        </>
+                      ) : (
+                        <optgroup label="Ambulâncias">
+                          {viaturasAmbDisponiveis.map((v) => (
+                            <option key={`amb-${v}`} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    {haViaturaIndisponivelPorOficina ? (
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Viaturas com entrada na oficina <strong>sem data de saída</strong> não aparecem aqui até
+                        serem liberadas em <strong>Frota e Pessoal</strong> → <strong>Viaturas</strong> →{" "}
+                        <strong>Manutenções</strong> → <strong>Oficina</strong>.
+                      </p>
+                    ) : null}
+                  </>
                 ) : (
                   <>
                     <input
@@ -669,12 +805,25 @@ export function RegisterDeparturePage() {
                       type="text"
                       value={vehicles}
                       onChange={(event) => setVehicles(event.target.value)}
-                      placeholder="Ou cadastre em Frota e Pessoal → Cadastro de Viatura"
+                      placeholder={
+                        departureType === "Ambulância"
+                          ? "Cadastre ambulâncias em Frota e Pessoal ou digite a placa"
+                          : "Ou cadastre em Frota e Pessoal → Viaturas"
+                      }
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     />
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      Sem viaturas no catálogo: use o texto livre ou cadastre em{" "}
-                      <strong>Frota e Pessoal</strong>.
+                      {departureType === "Ambulância" ? (
+                        <>
+                          Sem ambulâncias cadastradas: use o texto livre ou cadastre em{" "}
+                          <strong>Frota e Pessoal</strong> (lista de ambulâncias).
+                        </>
+                      ) : (
+                        <>
+                          Sem viaturas no catálogo: use o texto livre ou cadastre viaturas administrativas e
+                          ambulâncias em <strong>Frota e Pessoal</strong>.
+                        </>
+                      )}
                     </p>
                   </>
                 )}
@@ -707,7 +856,7 @@ export function RegisterDeparturePage() {
                       type="text"
                       value={drivers}
                       onChange={(event) => setDrivers(event.target.value)}
-                      placeholder="Ou cadastre em Frota e Pessoal → Cadastro de Motorista"
+                      placeholder="Ou cadastre em Frota e Pessoal → Motorista"
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     />
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
@@ -930,6 +1079,20 @@ export function RegisterDeparturePage() {
                 Adicionar
               </Button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editHydrating ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70 backdrop-blur-[2px]"
+          role="status"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-8 py-6 shadow-lg">
+            <Loader2 className="h-10 w-10 animate-spin text-[hsl(var(--primary))]" aria-hidden />
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Carregando dados da saída…</p>
           </div>
         </div>
       ) : null}
