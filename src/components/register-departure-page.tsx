@@ -1,6 +1,5 @@
-import shp from "shpjs";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CalendarDays, Loader2 } from "lucide-react";
 import {
   isValueInCatalog,
   mergeViaturasCatalog,
@@ -18,8 +17,9 @@ import {
   normalizeCustomLocations,
   type CustomLocationsState,
 } from "../lib/customLocationsStorage";
-import { getCurrentDatePtBr, normalizeDatePtBr } from "../lib/dateFormat";
+import { formatDateToPtBr, getCurrentDatePtBr, normalizeDatePtBr, parsePtBrToDate } from "../lib/dateFormat";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { cn } from "../lib/utils";
 import type { DepartureRecord } from "../types/departure";
@@ -28,7 +28,10 @@ import { CatalogComboField } from "./catalog-select";
 import { RegisteredFullDeparturesTable } from "./registered-full-departures-table";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
+import { Calendar } from "./ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { TabsList } from "./ui/tabs";
+import ibgeBairrosPorCidadeJson from "../data/bairrosPorCidade.json";
 
 const subTabs = [
   "Cadastrar Nova Saída",
@@ -59,8 +62,8 @@ const metroRioCities = [
   "Tanguá",
 ];
 
-const IBGE_BAIRROS_URL =
-  "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/Agregados_por_Setores_Censitarios/malha_com_atributos/bairros/shp/BR/BR_bairros_CD2022.zip";
+/** Bairros (IBGE CD2022 + suplemento municipal) — ver `scripts/generate-bairros-ibge.mjs`. */
+const IBGE_BAIRROS_POR_CIDADE = ibgeBairrosPorCidadeJson as Record<string, string[]>;
 
 function mainListTabForDepartureTipo(tipo: string): "Saídas Administrativas" | "Saídas de Ambulância" {
   return tipo === "Ambulância" ? "Saídas de Ambulância" : "Saídas Administrativas";
@@ -109,8 +112,8 @@ function applyDepartureRecordToForm(
   setters.setVehicles(r.viaturas);
   setters.setDrivers(r.motoristas);
   setters.setDestinationHospital(r.hospitalDestino);
-  setters.setKmDeparture(r.kmSaida);
-  setters.setKmArrival(r.kmChegada);
+  setters.setKmDeparture(formatKmThousandsPtBr(r.kmSaida));
+  setters.setKmArrival(formatKmThousandsPtBr(r.kmChegada));
   setters.setArrivalTime(r.chegada);
   setters.setCity(r.cidade);
   setters.setNeighborhood(r.bairro);
@@ -141,6 +144,8 @@ export function RegisterDeparturePage() {
   const [requestDate, setRequestDate] = useState<string>(getCurrentDatePtBr);
   const [requestTime, setRequestTime] = useState<string>(getCurrentTime);
   const [departureDate, setDepartureDate] = useState<string>("");
+  const [requestCalendarOpen, setRequestCalendarOpen] = useState(false);
+  const [departureCalendarOpen, setDepartureCalendarOpen] = useState(false);
   const [departureTime, setDepartureTime] = useState<string>("");
   const [sector, setSector] = useState<string>("");
   const [extension, setExtension] = useState<string>("");
@@ -155,12 +160,11 @@ export function RegisterDeparturePage() {
   const [kmArrival, setKmArrival] = useState<string>("");
   const [arrivalTime, setArrivalTime] = useState<string>("");
   const [city, setCity] = useState<string>("Rio de Janeiro");
-  const [neighborhood, setNeighborhood] = useState<string>("");
-  /** Bairros oficiais (IBGE) por cidade. */
-  const [ibgeNeighborhoodsByCity, setIbgeNeighborhoodsByCity] = useState<Record<string, string[]>>({});
+  const [neighborhood, setNeighborhood] = useState<string>(
+    () => IBGE_BAIRROS_POR_CIDADE["Rio de Janeiro"]?.[0] ?? "",
+  );
   const [customLocations, setCustomLocations] = useState<CustomLocationsState>(() => emptyCustomLocations());
   const [customLocationsHydrated, setCustomLocationsHydrated] = useState(false);
-  const [loadingNeighborhoods, setLoadingNeighborhoods] = useState<boolean>(true);
   /** Duplo clique em Cidade/Bairro: modal para novo item. */
   const [addLocationModal, setAddLocationModal] = useState<
     null | { kind: "city" } | { kind: "bairro"; cityKey: string }
@@ -178,52 +182,6 @@ export function RegisterDeparturePage() {
     if (!customLocationsHydrated) return;
     void idbSetJson(CUSTOM_LOCATIONS_STORAGE_KEY, customLocations);
   }, [customLocations, customLocationsHydrated]);
-
-  useEffect(() => {
-    let mounted = true;
-    async function loadOfficialNeighborhoods() {
-      try {
-        const response = await fetch(IBGE_BAIRROS_URL);
-        const zipArrayBuffer = await response.arrayBuffer();
-        const parsed = await shp(zipArrayBuffer);
-        const collection = Array.isArray(parsed) ? parsed[0] : parsed;
-        const cityMap: Record<string, Set<string>> = {};
-        for (const cityName of metroRioCities) cityMap[cityName] = new Set<string>();
-
-        for (const feature of collection.features) {
-          const cityName = feature.properties?.NM_MUN as string | undefined;
-          const neighborhoodName = feature.properties?.NM_BAIRRO as string | undefined;
-          if (!cityName || !neighborhoodName || !cityMap[cityName]) continue;
-          cityMap[cityName].add(neighborhoodName.trim());
-        }
-
-        const normalized: Record<string, string[]> = {};
-        for (const cityName of metroRioCities) {
-          normalized[cityName] = Array.from(cityMap[cityName]).sort((a, b) =>
-            a.localeCompare(b, "pt-BR"),
-          );
-        }
-
-        if (mounted) {
-          setIbgeNeighborhoodsByCity(normalized);
-          setNeighborhood((prev) =>
-            prev.trim() !== "" ? prev : normalized["Rio de Janeiro"]?.[0] ?? "",
-          );
-          setLoadingNeighborhoods(false);
-        }
-      } catch {
-        if (mounted) {
-          setIbgeNeighborhoodsByCity({});
-          setNeighborhood("");
-          setLoadingNeighborhoods(false);
-        }
-      }
-    }
-    loadOfficialNeighborhoods();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useLayoutEffect(() => {
     if (editIntentVersion === 0) return;
@@ -287,12 +245,12 @@ export function RegisterDeparturePage() {
   const mergedNeighborhoodsByCity = useMemo(() => {
     const result: Record<string, string[]> = {};
     for (const c of allCityNames) {
-      const ibge = ibgeNeighborhoodsByCity[c] ?? [];
+      const ibge = IBGE_BAIRROS_POR_CIDADE[c] ?? [];
       const extra = customLocations.extraNeighborhoodsByCity[c] ?? [];
       result[c] = mergeUniqueSorted(ibge, extra);
     }
     return result;
-  }, [allCityNames, ibgeNeighborhoodsByCity, customLocations.extraNeighborhoodsByCity]);
+  }, [allCityNames, customLocations.extraNeighborhoodsByCity]);
 
   const cityNeighborhoods = useMemo(
     () => mergedNeighborhoodsByCity[city] ?? [],
@@ -347,17 +305,6 @@ export function RegisterDeparturePage() {
     departureType === "Ambulância"
       ? viaturasAmbDisponiveis.length > 0
       : mergedViaturasCatalog.length > 0;
-
-  const haViaturaIndisponivelPorOficina = useMemo(() => {
-    const visto = new Set<string>();
-    for (const p of [...catalogItems.viaturasAdministrativas, ...catalogItems.ambulancias]) {
-      const k = p.trim().toLowerCase();
-      if (!k || visto.has(k)) continue;
-      visto.add(k);
-      if (estaNaOficina(p)) return true;
-    }
-    return false;
-  }, [catalogItems.ambulancias, catalogItems.viaturasAdministrativas, estaNaOficina]);
 
   /** Valor da saída ainda não cadastrado na lista aplicável ao tipo (ex.: edição antiga). */
   const orphanViatura = useMemo(() => {
@@ -572,8 +519,8 @@ export function RegisterDeparturePage() {
     setVehicles("AMB-01 / M-10234");
     setDrivers("Sd Santos / Sd Oliveira");
     setDestinationHospital("Hospital Municipal Souza Aguiar");
-    setKmDeparture("45230");
-    setKmArrival("45268");
+    setKmDeparture(formatKmThousandsPtBr("45230"));
+    setKmArrival(formatKmThousandsPtBr("45268"));
     setArrivalTime("10:15");
     setCity("Rio de Janeiro");
     setNeighborhood(bairrosRj?.[0] ?? "");
@@ -596,12 +543,6 @@ export function RegisterDeparturePage() {
                 {departures.length === 1
                   ? "1 saída cadastrada"
                   : `${departures.length} saídas cadastradas`}
-              </p>
-            ) : null}
-            {activeSubTab === "Cadastrar Nova Saída" && editingId ? (
-              <p className="text-xs font-normal text-[hsl(var(--muted-foreground))]">
-                Editando um registro existente — salve para atualizar ou use &quot;Preencher com exemplo&quot; para
-                novo cadastro.
               </p>
             ) : null}
           </div>
@@ -637,14 +578,41 @@ export function RegisterDeparturePage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Data do pedido</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="dd/mm/aaaa"
-                  value={requestDate}
-                  onChange={(event) => setRequestDate(normalizeDatePtBr(event.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={requestDate}
+                    onChange={(event) => setRequestDate(normalizeDatePtBr(event.target.value))}
+                    className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                  <Popover open={requestCalendarOpen} onOpenChange={setRequestCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        translate="no"
+                        className="h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
+                        aria-label="Abrir calendário — data do pedido"
+                      >
+                        <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="border-0 bg-transparent p-0 shadow-none">
+                      <Calendar
+                        mode="single"
+                        selected={parsePtBrToDate(requestDate)}
+                        defaultMonth={parsePtBrToDate(requestDate) ?? new Date()}
+                        onSelect={(d) => {
+                          setRequestDate(d ? formatDateToPtBr(d) : "");
+                          setRequestCalendarOpen(false);
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -652,7 +620,6 @@ export function RegisterDeparturePage() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="HH:MM"
                   value={requestTime}
                   onChange={(event) => setRequestTime(normalize24hTime(event.target.value))}
                   className="h-10 w-full rounded-md border bg-white px-3 text-sm"
@@ -661,14 +628,41 @@ export function RegisterDeparturePage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Data da Saída</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="dd/mm/aaaa"
-                  value={departureDate}
-                  onChange={(event) => setDepartureDate(normalizeDatePtBr(event.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={departureDate}
+                    onChange={(event) => setDepartureDate(normalizeDatePtBr(event.target.value))}
+                    className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                  <Popover open={departureCalendarOpen} onOpenChange={setDepartureCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        translate="no"
+                        className="h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
+                        aria-label="Abrir calendário — data da saída"
+                      >
+                        <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="border-0 bg-transparent p-0 shadow-none">
+                      <Calendar
+                        mode="single"
+                        selected={parsePtBrToDate(departureDate)}
+                        defaultMonth={parsePtBrToDate(departureDate) ?? new Date()}
+                        onSelect={(d) => {
+                          setDepartureDate(d ? formatDateToPtBr(d) : "");
+                          setDepartureCalendarOpen(false);
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -676,7 +670,6 @@ export function RegisterDeparturePage() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="HH:MM"
                   value={departureTime}
                   onChange={(event) => setDepartureTime(normalize24hTime(event.target.value))}
                   className="h-10 w-full rounded-md border bg-white px-3 text-sm"
@@ -690,7 +683,6 @@ export function RegisterDeparturePage() {
                 value={sector}
                 onChange={setSector}
                 options={catalogItems.setores}
-                placeholder="Digite ou escolha da lista"
                 showPlusAfterAttempt={catalogSubmitAttempted}
               />
 
@@ -722,7 +714,6 @@ export function RegisterDeparturePage() {
                 value={requestResponsible}
                 onChange={setRequestResponsible}
                 options={catalogItems.responsaveis}
-                placeholder="Digite ou escolha da lista"
                 showPlusAfterAttempt={catalogSubmitAttempted}
               />
 
@@ -733,7 +724,6 @@ export function RegisterDeparturePage() {
                 value={om}
                 onChange={setOm}
                 options={catalogItems.oms}
-                placeholder="Digite ou escolha da lista"
                 showPlusAfterAttempt={catalogSubmitAttempted}
               />
 
@@ -749,15 +739,9 @@ export function RegisterDeparturePage() {
                       onChange={(event) => setVehicles(event.target.value)}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     >
-                      <option value="">
-                        {departureType === "Ambulância"
-                          ? "Selecione uma ambulância cadastrada…"
-                          : "Selecione uma viatura cadastrada…"}
-                      </option>
+                      <option value="">—</option>
                       {orphanViatura ? (
-                        <option value={vehicles}>
-                          {vehicles} (cadastre em Frota e Pessoal)
-                        </option>
+                        <option value={vehicles}>{vehicles}</option>
                       ) : null}
                       {departureType === "Administrativa" ? (
                         <>
@@ -790,42 +774,15 @@ export function RegisterDeparturePage() {
                         </optgroup>
                       )}
                     </select>
-                    {haViaturaIndisponivelPorOficina ? (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        Viaturas com entrada na oficina <strong>sem data de saída</strong> não aparecem aqui até
-                        serem liberadas em <strong>Frota e Pessoal</strong> → <strong>Viaturas</strong> →{" "}
-                        <strong>Manutenções</strong> → <strong>Oficina</strong>.
-                      </p>
-                    ) : null}
                   </>
                 ) : (
-                  <>
-                    <input
-                      id="field-viaturas"
-                      type="text"
-                      value={vehicles}
-                      onChange={(event) => setVehicles(event.target.value)}
-                      placeholder={
-                        departureType === "Ambulância"
-                          ? "Cadastre ambulâncias em Frota e Pessoal ou digite a placa"
-                          : "Ou cadastre em Frota e Pessoal → Viaturas"
-                      }
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                    />
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {departureType === "Ambulância" ? (
-                        <>
-                          Sem ambulâncias cadastradas: use o texto livre ou cadastre em{" "}
-                          <strong>Frota e Pessoal</strong> (lista de ambulâncias).
-                        </>
-                      ) : (
-                        <>
-                          Sem viaturas no catálogo: use o texto livre ou cadastre viaturas administrativas e
-                          ambulâncias em <strong>Frota e Pessoal</strong>.
-                        </>
-                      )}
-                    </p>
-                  </>
+                  <input
+                    id="field-viaturas"
+                    type="text"
+                    value={vehicles}
+                    onChange={(event) => setVehicles(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  />
                 )}
               </div>
 
@@ -840,30 +797,21 @@ export function RegisterDeparturePage() {
                     onChange={(event) => setDrivers(event.target.value)}
                     className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                   >
-                    <option value="">Selecione um motorista cadastrado…</option>
+                    <option value="">—</option>
                     {motoristaSelectOptions.map((m) => (
                       <option key={m} value={m}>
-                        {!catalogItems.motoristas.some((x) => x.toLowerCase() === m.toLowerCase())
-                          ? `${m} (cadastre em Frota e Pessoal)`
-                          : m}
+                        {m}
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <>
-                    <input
-                      id="field-motoristas"
-                      type="text"
-                      value={drivers}
-                      onChange={(event) => setDrivers(event.target.value)}
-                      placeholder="Ou cadastre em Frota e Pessoal → Motorista"
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                    />
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      Sem motoristas no catálogo: use o texto livre ou cadastre em{" "}
-                      <strong>Frota e Pessoal</strong>.
-                    </p>
-                  </>
+                  <input
+                    id="field-motoristas"
+                    type="text"
+                    value={drivers}
+                    onChange={(event) => setDrivers(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  />
                 )}
               </div>
 
@@ -876,7 +824,6 @@ export function RegisterDeparturePage() {
                     value={destinationHospital}
                     onChange={setDestinationHospital}
                     options={catalogItems.hospitais}
-                    placeholder="Digite ou escolha da lista"
                     showPlusAfterAttempt={catalogSubmitAttempted}
                   />
 
@@ -886,7 +833,7 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={kmDeparture}
-                      onChange={(event) => setKmDeparture(event.target.value.replace(/\D/g, ""))}
+                      onChange={(event) => setKmDeparture(formatKmThousandsPtBr(event.target.value))}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     />
                   </div>
@@ -897,7 +844,7 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={kmArrival}
-                      onChange={(event) => setKmArrival(event.target.value.replace(/\D/g, ""))}
+                      onChange={(event) => setKmArrival(formatKmThousandsPtBr(event.target.value))}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     />
                   </div>
@@ -907,7 +854,6 @@ export function RegisterDeparturePage() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      placeholder="HH:MM"
                       value={arrivalTime}
                       onChange={(event) => setArrivalTime(normalize24hTime(event.target.value))}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
@@ -930,9 +876,6 @@ export function RegisterDeparturePage() {
                 <label className="text-sm font-medium" htmlFor="field-cidade">
                   Cidade
                 </label>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Duplo clique no campo para cadastrar uma nova cidade (salvo neste navegador).
-                </p>
                 <select
                   id="field-cidade"
                   value={city}
@@ -960,32 +903,25 @@ export function RegisterDeparturePage() {
                 <label className="text-sm font-medium" htmlFor="field-bairro">
                   Bairro
                 </label>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Duplo clique no campo para cadastrar um novo bairro na cidade selecionada (salvo neste
-                  navegador).
-                </p>
                 <select
                   id="field-bairro"
                   value={neighborhood}
-                  disabled={loadingNeighborhoods}
                   title="Duplo clique para adicionar bairro"
                   onChange={(event) => setNeighborhood(event.target.value)}
                   onDoubleClick={(e) => {
                     e.preventDefault();
                     openAddBairroModal();
                   }}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm disabled:bg-slate-100"
+                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                 >
-                  {loadingNeighborhoods ? (
-                    <option>Carregando bairros oficiais...</option>
-                  ) : bairroSelectOptions.length > 0 ? (
+                  {bairroSelectOptions.length > 0 ? (
                     bairroSelectOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
                     ))
                   ) : (
-                    <option value="">Nenhum bairro — duplo clique para adicionar</option>
+                    <option value="">—</option>
                   )}
                 </select>
               </div>

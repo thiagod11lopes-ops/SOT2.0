@@ -15,7 +15,7 @@ export function HomeNewsTicker() {
   const { placas: placasLimpeza } = useLimpezaPendente();
   const { mapaOficina } = useOficinaVisitas();
   const mapaOleo = useOilMaintenanceMap();
-  const { avisoPrincipal, fainasLinhas } = useAvisos();
+  const { avisoPrincipal, fainasLinhas, avisosGeraisLinhas } = useAvisos();
 
   const marqueeText = useMemo(() => {
     const segments = buildHomeTickerSegments({
@@ -26,6 +26,7 @@ export function HomeNewsTicker() {
       ambulancias: items.ambulancias,
       placasLimpeza,
       fainasLinhas,
+      avisosGeraisLinhas,
     });
     return joinTickerSegments(segments);
   }, [
@@ -36,6 +37,7 @@ export function HomeNewsTicker() {
     items.ambulancias,
     placasLimpeza,
     fainasLinhas,
+    avisosGeraisLinhas,
   ]);
 
   const showBreaking = Boolean(avisoPrincipal.trim());
@@ -46,11 +48,11 @@ export function HomeNewsTicker() {
   );
 
   return (
-    <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-[100] shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
-      <div className="pointer-events-auto border-t border-slate-600/80">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] w-full min-w-0 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
+      <div className="pointer-events-auto w-full min-w-0 border-t border-slate-600/80">
         <div
           className={cn(
-            "mx-auto flex max-w-[1600px] items-stretch",
+            "flex w-full min-w-0 items-stretch",
             showBreaking ? "min-h-[5rem]" : "min-h-[3rem]",
           )}
         >
@@ -90,19 +92,13 @@ export function HomeNewsTicker() {
             ) : null}
 
             <div className="flex min-h-[2.75rem] flex-1 items-center bg-gradient-to-b from-[#0f172a] via-[#0c1322] to-[#020617] sm:min-h-[2.75rem]">
-              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div className="home-marquee-viewport relative min-h-0 min-w-0 flex-1 overflow-hidden">
                 <div className="flex h-full min-h-[2.75rem] items-center overflow-hidden">
                   <div
                     className="home-marquee-track flex w-max max-w-none items-center"
                     style={{ animationDuration: `${marqueeDurationSec}s` }}
                   >
                     <span className="inline-block shrink-0 px-5 py-1.5 text-xs font-medium leading-snug text-slate-100 md:text-[13px]">
-                      {marqueeText}
-                    </span>
-                    <span
-                      className="inline-block shrink-0 px-5 py-1.5 text-xs font-medium leading-snug text-slate-100 md:text-[13px]"
-                      aria-hidden
-                    >
                       {marqueeText}
                     </span>
                   </div>

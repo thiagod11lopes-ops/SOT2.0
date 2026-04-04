@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-O servidor de desenvolvimento usa a porta **5174** (configurada em `vite.config.ts`).
+O servidor de desenvolvimento usa a porta **3000** por defeito (`vite.config.ts`; se estiver ocupada, o Vite escolhe outra — confira a linha **Local:** no terminal).
 
 ## Build de produção
 

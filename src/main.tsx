@@ -6,25 +6,39 @@ import { CatalogItemsProvider } from "./context/catalog-items-context";
 import { DeparturesProvider } from "./context/departures-context";
 import { AvisosProvider } from "./context/avisos-context";
 import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
+import { EscalaPaoProvider } from "./context/escala-pao-context";
+import { MotoristaPaoProvider } from "./context/motorista-pao-context";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
+import { RootErrorBoundary } from "./root-error-boundary";
 import "./index.css";
 import App from "./App.tsx";
 
-createRoot(document.getElementById("root")!).render(
+const rootEl = document.getElementById("root");
+if (!rootEl) {
+  throw new Error('Elemento #root não encontrado no index.html.');
+}
+
+createRoot(rootEl).render(
   <StrictMode>
-    <DeparturesProvider>
-      <AppTabProvider>
-        <BackupDeparturesLoader />
-        <CatalogItemsProvider>
-          <LimpezaPendenteProvider>
-            <OficinaVisitasProvider>
-              <AvisosProvider>
-                <App />
-              </AvisosProvider>
-            </OficinaVisitasProvider>
-          </LimpezaPendenteProvider>
-        </CatalogItemsProvider>
-      </AppTabProvider>
-    </DeparturesProvider>
+    <RootErrorBoundary>
+      <DeparturesProvider>
+        <AppTabProvider>
+          <BackupDeparturesLoader />
+          <CatalogItemsProvider>
+            <LimpezaPendenteProvider>
+              <OficinaVisitasProvider>
+                <AvisosProvider>
+                  <MotoristaPaoProvider>
+                    <EscalaPaoProvider>
+                      <App />
+                    </EscalaPaoProvider>
+                  </MotoristaPaoProvider>
+                </AvisosProvider>
+              </OficinaVisitasProvider>
+            </LimpezaPendenteProvider>
+          </CatalogItemsProvider>
+        </AppTabProvider>
+      </DeparturesProvider>
+    </RootErrorBoundary>
   </StrictMode>,
 );

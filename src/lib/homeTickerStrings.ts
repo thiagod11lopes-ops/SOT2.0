@@ -3,6 +3,11 @@ import {
   type StatusTrocaOleo,
 } from "./oilMaintenance";
 
+/** Placa com prefixo “Viatura” (telão e card de troca de óleo). */
+export function rotuloViaturaPlaca(placa: string): string {
+  return `Viatura ${placa.trim()}`;
+}
+
 /**
  * Mesma lógica do card “Próximas Trocas de Óleo” no dashboard (prazo 6 meses / km).
  */
@@ -18,4 +23,10 @@ export function fraseProximaTrocaOleo(st: StatusTrocaOleo): string {
     return `Faltam ${st.kmRestantes.toLocaleString("pt-BR")} km para troca de óleo`;
   }
   return "—";
+}
+
+/** Aviso de limpeza no telão e no painel: placa + frase fixa. */
+export function frasePendenciaLimpezaViatura(placa: string): string {
+  const p = placa.trim();
+  return `Viatura ${p} pendência de limpeza.`;
 }

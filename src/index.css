@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: do Tailwind alinhado ao Modo Escuro (data-appearance no <html>) */
+@custom-variant dark (&:where(html[data-appearance="dark"] *));
+
 :root {
   --background: 210 20% 96%;
   --foreground: 222 47% 11%;
@@ -11,19 +14,67 @@
   --primary: 204 58% 32%;
   --primary-foreground: 210 40% 98%;
   --ring: 204 58% 40%;
+  --input: 0 0% 100%;
+  --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.85);
 }
 
-.dark {
-  --background: 222 35% 9%;
-  --foreground: 210 40% 98%;
-  --card: 222 35% 12%;
-  --card-foreground: 210 40% 98%;
-  --border: 217 21% 22%;
-  --muted: 217 23% 18%;
-  --muted-foreground: 215 20% 65%;
-  --primary: 194 60% 44%;
-  --primary-foreground: 222 47% 11%;
-  --ring: 194 60% 55%;
+html[data-appearance="dark"] {
+  --background: 222 32% 7%;
+  --foreground: 210 36% 98%;
+  --card: 222 30% 10%;
+  --card-foreground: 210 36% 98%;
+  --border: 217 22% 17%;
+  --muted: 217 22% 14%;
+  --muted-foreground: 215 18% 72%;
+  --primary: 187 72% 52%;
+  --primary-foreground: 222 40% 8%;
+  --ring: 187 80% 58%;
+  --input: 222 28% 12%;
+  --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.9);
+}
+
+html[data-appearance="ultra-modern"] {
+  --background: 220 22% 97%;
+  --foreground: 224 64% 7%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 64% 7%;
+  --border: 220 16% 88%;
+  --muted: 220 16% 96%;
+  --muted-foreground: 220 10% 38%;
+  --primary: 201 90% 44%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 201 90% 48%;
+  --input: 0 0% 100%;
+  --header-shadow:
+    0 1px 0 0 hsl(var(--border) / 0.65),
+    0 18px 48px -24px hsl(220 45% 18% / 0.12);
+}
+
+html[data-appearance="ultra-modern"] body {
+  background: linear-gradient(
+    165deg,
+    hsl(220 28% 98.5%) 0%,
+    hsl(215 26% 96.5%) 42%,
+    hsl(210 24% 94%) 100%
+  );
+  background-attachment: fixed;
+  font-family:
+    "Plus Jakarta Sans",
+    "Inter",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.01em;
+}
+
+html[data-appearance="ultra-modern"] header {
+  box-shadow: var(--header-shadow);
+  border-color: hsl(var(--border) / 0.75);
+}
+
+html[data-appearance="dark"] body {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
 }
 
 /* react-day-picker: dia selecionado usa as cores do sistema */
@@ -92,17 +143,98 @@ body {
   animation: catalog-plus-blink 0.9s ease-in-out infinite;
 }
 
-/* Telão inferior da página inicial (texto em movimento) */
+/* Card Próxima Saída (home): últimos 10 min antes da hora, sem KM saída */
+@keyframes home-proxima-saida-blink {
+  0%,
+  100% {
+    background-color: rgb(255 237 213 / 0.45);
+  }
+  50% {
+    background-color: rgb(251 146 60 / 0.42);
+  }
+}
+
+.home-proxima-saida-blink {
+  animation: home-proxima-saida-blink 1.1s ease-in-out infinite;
+}
+
+/* Telão inferior: uma linha entra pela direita (100cqw), atravessa a faixa e sai por completo à esquerda
+   (−100% = largura do trilho). Ao repetir, volta a iniciar à direita. Requer .home-marquee-viewport (cqw). */
 @keyframes home-marquee-scroll {
   0% {
-    transform: translateX(0);
+    transform: translateX(100cqw);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translateX(-100%);
   }
+}
+
+.home-marquee-viewport {
+  container-type: inline-size;
 }
 
 .home-marquee-track {
   animation: home-marquee-scroll 55s linear infinite;
   will-change: transform;
+}
+
+html[data-appearance="ultra-modern"] .home-marquee-track {
+  animation-duration: 52s;
+}
+
+/* Alarme diário — página inicial (laranja) */
+@keyframes sot-alarm-orange-blink {
+  0%,
+  100% {
+    background-color: hsl(33 100% 94%);
+    border-color: hsl(32 90% 48%);
+    box-shadow: 0 0 0 1px hsl(32 85% 55% / 0.35);
+  }
+  50% {
+    background-color: hsl(28 100% 88%);
+    border-color: hsl(24 92% 42%);
+    box-shadow:
+      0 0 0 2px hsl(32 95% 52% / 0.45),
+      0 8px 28px -6px hsl(28 95% 45% / 0.35);
+  }
+}
+
+html[data-appearance="dark"] .sot-alarm-card-blink {
+  animation: sot-alarm-orange-blink-dark 1.1s ease-in-out infinite;
+}
+
+@keyframes sot-alarm-orange-blink-dark {
+  0%,
+  100% {
+    background-color: hsl(28 45% 14%);
+    border-color: hsl(32 70% 42%);
+    box-shadow: 0 0 0 1px hsl(32 60% 40% / 0.4);
+  }
+  50% {
+    background-color: hsl(28 50% 20%);
+    border-color: hsl(36 85% 48%);
+    box-shadow:
+      0 0 0 2px hsl(32 80% 45% / 0.5),
+      0 8px 28px -6px hsl(28 90% 40% / 0.25);
+  }
+}
+
+.sot-alarm-card-blink {
+  animation: sot-alarm-orange-blink 1.1s ease-in-out infinite;
+}
+
+/* Vista mobile das saídas (#/saidas/…) — tema escuro próprio; mesmos tokens HSL que o app satélite */
+.saidas-mobile-scope {
+  --background: 222 47% 6%;
+  --foreground: 210 40% 98%;
+  --card: 222 35% 11%;
+  --border: 217 22% 18%;
+  --muted: 217 22% 14%;
+  --muted-foreground: 215 18% 72%;
+  --primary: 187 85% 53%;
+  --primary-foreground: 222 47% 8%;
+  --ring: 187 90% 60%;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  color-scheme: dark;
 }

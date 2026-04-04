@@ -80,6 +80,14 @@ export function ptBrToIsoDate(value: string): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Adiciona dias a uma data dd/mm/aaaa completa; inválido devolve o valor original. */
+export function addDaysPtBr(value: string, delta: number): string {
+  const d = parsePtBrToDate(value.trim());
+  if (!d) return value;
+  d.setDate(d.getDate() + delta);
+  return formatDateToPtBr(d);
+}
+
 /** Interpreta yyyy-mm-dd como data local. */
 export function parseIsoDateToDate(value: string): Date | undefined {
   const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -87,6 +95,23 @@ export function parseIsoDateToDate(value: string): Date | undefined {
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (Number.isNaN(d.getTime())) return undefined;
   return d;
+}
+
+/**
+ * `dataSaida` no cadastro (dd/mm/aaaa ou yyyy-mm-dd) representa o mesmo dia civil que `hojePtBr` (dd/mm/aaaa).
+ */
+export function isDepartureDateSameLocalDay(dataSaida: string, hojePtBr: string): boolean {
+  const hoje = parsePtBrToDate(hojePtBr.trim());
+  if (!hoje) return false;
+  const raw = dataSaida?.trim() ?? "";
+  if (!raw) return false;
+  const d = parsePtBrToDate(raw) ?? parseIsoDateToDate(raw);
+  if (!d) return false;
+  return (
+    d.getFullYear() === hoje.getFullYear() &&
+    d.getMonth() === hoje.getMonth() &&
+    d.getDate() === hoje.getDate()
+  );
 }
 
 /**

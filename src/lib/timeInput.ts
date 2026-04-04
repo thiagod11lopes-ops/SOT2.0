@@ -6,6 +6,17 @@
  * - 3 dígitos: insere ":" após os dois primeiros (`12:3`);
  * - 4 dígitos: aplica limite 23:59 e zeros (`09:05`).
  */
+/** Interpreta HH:MM (24h) completo; inválido retorna `null`. */
+export function parseHhMm(value: string): { h: number; m: number } | null {
+  const t = value.trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (Number.isNaN(h) || Number.isNaN(min) || h > 23 || min > 59) return null;
+  return { h, m: min };
+}
+
 export function normalize24hTime(value: string) {
   let digits = value.replace(/\D/g, "").slice(0, 4);
   if (digits.length === 1 && digits[0] >= "3" && digits[0] <= "9") {

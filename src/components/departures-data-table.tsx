@@ -3,6 +3,8 @@ import { useLayoutEffect, useRef } from "react";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
+import { formatKmThousandsPtBr } from "../lib/kmInput";
+import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -17,6 +19,19 @@ import {
 
 const inputClass =
   "h-8 w-full min-w-[3.5rem] max-w-[6.5rem] rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-1.5 font-mono text-xs tabular-nums text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]";
+
+/** Mesma cor das abas ativas (`--primary`) para texto em negrito. */
+const inputClassBold =
+  "h-8 w-full min-w-[3.5rem] max-w-[6.5rem] rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-1.5 font-mono text-xs tabular-nums text-[hsl(var(--primary))] font-bold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]";
+
+/** KM saída, KM chegada e chegada preenchidos — linha tratada como finalizada (visual). */
+function saidaFinalizadaKmEChegada(r: DepartureRecord): boolean {
+  return (
+    r.kmSaida.trim().length > 0 &&
+    r.kmChegada.trim().length > 0 &&
+    r.chegada.trim().length > 0
+  );
+}
 
 function ChegadaTimeInput({
   value,
@@ -64,6 +79,8 @@ function ChegadaTimeInput({
 interface DeparturesDataTableProps {
   rows: DepartureRecord[];
   showTipoColumn?: boolean;
+  /** Negrito nos cabeçalhos e células (abas Saídas Administrativas / Ambulância). */
+  bodyFontBold?: boolean;
   emptyLabel: string;
   onRemove: (id: string) => void;
   /** Quando definido, KM saída, KM chegada e Chegada são editáveis inline. */
@@ -75,102 +92,132 @@ interface DeparturesDataTableProps {
 export function DeparturesDataTable({
   rows,
   showTipoColumn,
+  bodyFontBold,
   emptyLabel,
   onRemove,
   onUpdateKmFields,
   onEdit,
 }: DeparturesDataTableProps) {
   const colSpan = showTipoColumn ? 11 : 10;
+  const cell = (extra?: string) =>
+    cn(bodyFontBold && "font-bold text-[hsl(var(--primary))]", extra);
+  const head = (extra?: string) =>
+    cn(
+      bodyFontBold &&
+        "font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]",
+      extra,
+    );
+  const inputCls = bodyFontBold ? inputClassBold : inputClass;
 
   return (
+    <div
+      className={cn(
+        "overflow-x-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]",
+        departuresTableShadowClass,
+      )}
+    >
     <Table>
       <TableHeader>
         <TableRow>
-          {showTipoColumn ? <TableHead>Tipo</TableHead> : null}
-          <TableHead>Viatura</TableHead>
-          <TableHead>Motorista</TableHead>
-          <TableHead>Saída</TableHead>
-          <TableHead>Destino</TableHead>
-          <TableHead>OM</TableHead>
-          <TableHead>KM saída</TableHead>
-          <TableHead>KM chegada</TableHead>
-          <TableHead>Chegada</TableHead>
-          <TableHead>Setor</TableHead>
-          <TableHead className="min-w-[5.5rem] text-right">Ações</TableHead>
+          {showTipoColumn ? <TableHead className={head()}>Tipo</TableHead> : null}
+          <TableHead className={head()}>Viatura</TableHead>
+          <TableHead className={head()}>Motorista</TableHead>
+          <TableHead className={head()}>Saída</TableHead>
+          <TableHead className={head()}>Destino</TableHead>
+          <TableHead className={head()}>OM</TableHead>
+          <TableHead className={head()}>KM saída</TableHead>
+          <TableHead className={head()}>KM chegada</TableHead>
+          <TableHead className={head()}>Chegada</TableHead>
+          <TableHead className={head()}>Setor</TableHead>
+          <TableHead className={head("min-w-[5.5rem] text-right")}>Ações</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={colSpan} className="py-10 text-center text-slate-500">
+            <TableCell
+              colSpan={colSpan}
+              className={cn(
+                "py-10 text-center",
+                bodyFontBold ? "text-[hsl(var(--primary))]" : "text-slate-500",
+              )}
+            >
               {emptyLabel}
             </TableCell>
           </TableRow>
         ) : (
           rows.map((row) => {
             const lr = listRowFromRecord(row);
+            const finalizada = saidaFinalizadaKmEChegada(row);
             return (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                className={cn(
+                  finalizada &&
+                    "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
+                )}
+                title={finalizada ? "Saída finalizada — ainda editável" : undefined}
+              >
                 {showTipoColumn ? (
-                  <TableCell className="whitespace-nowrap text-sm font-medium">{lr.tipo}</TableCell>
+                  <TableCell className={cell("whitespace-nowrap text-sm")}>{lr.tipo}</TableCell>
                 ) : null}
-                <TableCell>{lr.viatura}</TableCell>
-                <TableCell>{lr.motorista}</TableCell>
-                <TableCell className="whitespace-nowrap">{lr.saida}</TableCell>
-                <TableCell className="max-w-[200px] truncate" title={lr.destino}>
+                <TableCell className={cell()}>{lr.viatura}</TableCell>
+                <TableCell className={cell()}>{lr.motorista}</TableCell>
+                <TableCell className={cell("whitespace-nowrap tabular-nums")}>{lr.saida}</TableCell>
+                <TableCell className={cell("max-w-[200px] truncate")} title={lr.destino}>
                   {lr.destino}
                 </TableCell>
-                <TableCell>{lr.om}</TableCell>
-                <TableCell className={cn(onUpdateKmFields && "p-1.5 align-middle")}>
+                <TableCell className={cell()}>{lr.om}</TableCell>
+                <TableCell className={cn(cell(), onUpdateKmFields && "p-1.5 align-middle")}>
                   {onUpdateKmFields ? (
                     <input
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
                       aria-label="KM saída"
-                      value={row.kmSaida}
+                      value={formatKmThousandsPtBr(row.kmSaida)}
                       onChange={(e) =>
                         onUpdateKmFields(row.id, {
-                          kmSaida: e.target.value.replace(/\D/g, ""),
+                          kmSaida: formatKmThousandsPtBr(e.target.value),
                         })
                       }
-                      className={inputClass}
+                      className={inputCls}
                     />
                   ) : (
                     lr.kmSaida
                   )}
                 </TableCell>
-                <TableCell className={cn(onUpdateKmFields && "p-1.5 align-middle")}>
+                <TableCell className={cn(cell(), onUpdateKmFields && "p-1.5 align-middle")}>
                   {onUpdateKmFields ? (
                     <input
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
                       aria-label="KM chegada"
-                      value={row.kmChegada}
+                      value={formatKmThousandsPtBr(row.kmChegada)}
                       onChange={(e) =>
                         onUpdateKmFields(row.id, {
-                          kmChegada: e.target.value.replace(/\D/g, ""),
+                          kmChegada: formatKmThousandsPtBr(e.target.value),
                         })
                       }
-                      className={inputClass}
+                      className={inputCls}
                     />
                   ) : (
                     lr.kmChegada
                   )}
                 </TableCell>
-                <TableCell className={cn("whitespace-nowrap", onUpdateKmFields && "p-1.5 align-middle")}>
+                <TableCell className={cn(cell("whitespace-nowrap"), onUpdateKmFields && "p-1.5 align-middle")}>
                   {onUpdateKmFields ? (
                     <ChegadaTimeInput
                       value={row.chegada}
                       onApply={(next) => onUpdateKmFields(row.id, { chegada: next })}
-                      className={cn(inputClass, "max-w-[5rem]")}
+                      className={cn(inputCls, "max-w-[5rem]")}
                     />
                   ) : (
                     lr.chegada
                   )}
                 </TableCell>
-                <TableCell>{lr.setor}</TableCell>
+                <TableCell className={cell()}>{lr.setor}</TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-0.5">
                     {onEdit ? (
@@ -203,5 +250,6 @@ export function DeparturesDataTable({
         )}
       </TableBody>
     </Table>
+    </div>
   );
 }

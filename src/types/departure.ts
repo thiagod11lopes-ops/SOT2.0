@@ -26,6 +26,50 @@ export interface DepartureRecord {
   bairro: string;
 }
 
+const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "createdAt">[] = [
+  "tipo",
+  "dataPedido",
+  "horaPedido",
+  "dataSaida",
+  "horaSaida",
+  "setor",
+  "ramal",
+  "objetivoSaida",
+  "numeroPassageiros",
+  "responsavelPedido",
+  "om",
+  "viaturas",
+  "motoristas",
+  "hospitalDestino",
+  "kmSaida",
+  "kmChegada",
+  "chegada",
+  "cidade",
+  "bairro",
+];
+
+/** Identifica registros com o mesmo conteúdo de cadastro (todos os campos do formulário, exceto id/data). */
+export function departureCadastroFingerprint(r: DepartureRecord): string {
+  const o: Record<string, string> = {};
+  for (const k of CAMPOS_CADASTRO_SAIDA) {
+    o[k] = String(r[k] ?? "").trim();
+  }
+  return JSON.stringify(o);
+}
+
+/** Mantém a primeira ocorrência de cada cadastro distinto (ordem de `rows` preservada). */
+export function dedupeDeparturesMesmoCadastro(rows: DepartureRecord[]): DepartureRecord[] {
+  const seen = new Set<string>();
+  const out: DepartureRecord[] = [];
+  for (const r of rows) {
+    const fp = departureCadastroFingerprint(r);
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    out.push(r);
+  }
+  return out;
+}
+
 /** Linha resumida para as abas Saídas Administrativas / Ambulância (tabela enxuta). Destino = só bairro. */
 export function listRowFromRecord(r: DepartureRecord) {
   const saida = r.horaSaida.trim() || "—";

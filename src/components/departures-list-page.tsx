@@ -9,7 +9,10 @@ import {
   normalizeDatePtBrWithCaret,
   parsePtBrToDate,
 } from "../lib/dateFormat";
+import { parseHhMm } from "../lib/timeInput";
+import { getDeparturesReportEmail, isPlausibleEmail } from "../lib/departuresReportEmail";
 import { downloadDeparturesListPdf } from "../lib/generateDeparturesPdf";
+import { openGmailComposeWithDeparturesPdf } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
 import { DeparturesDataTable } from "./departures-data-table";
 import { Button } from "./ui/button";
@@ -24,6 +27,13 @@ interface DeparturesListPageProps {
 
 function isCompleteDatePtBr(value: string) {
   return /^\d{2}\/\d{2}\/\d{4}$/.test(value);
+}
+
+/** Minutos desde meia-noite; horário inválido/vazio ordena por último. */
+function sortKeyHoraSaida(horaSaida: string): number {
+  const parsed = parseHhMm(horaSaida);
+  if (!parsed) return Number.POSITIVE_INFINITY;
+  return parsed.h * 60 + parsed.m;
 }
 
 export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProps) {
@@ -88,6 +98,12 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     if (isCompleteDatePtBr(filterDepartureDate)) {
       list = list.filter((d) => d.dataSaida === filterDepartureDate);
     }
+    list = [...list].sort((a, b) => {
+      const ka = sortKeyHoraSaida(a.horaSaida);
+      const kb = sortKeyHoraSaida(b.horaSaida);
+      if (ka !== kb) return ka - kb;
+      return a.id.localeCompare(b.id);
+    });
     return list;
   }, [departures, filterTipo, filterDepartureDate]);
 
@@ -126,8 +142,8 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     setAssinaturaConfirmadaMotorista2(t);
   }
 
-  function handleGerarPdf() {
-    downloadDeparturesListPdf({
+  const departuresPdfParams = useMemo(
+    () => ({
       listTitle: title,
       tipo: filterTipo,
       filterDate: filterDepartureDate,
@@ -137,110 +153,146 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
         motorista2: assinaturaConfirmadaMotorista2,
         assinanteDivisao: assinaturaConfirmadaNome,
       },
-    });
+    }),
+    [
+      title,
+      filterTipo,
+      filterDepartureDate,
+      rows,
+      assinaturaConfirmadaMotorista1,
+      assinaturaConfirmadaMotorista2,
+      assinaturaConfirmadaNome,
+    ],
+  );
+
+  function handleGerarPdf() {
+    downloadDeparturesListPdf(departuresPdfParams);
+  }
+
+  function handleEnviarPdf() {
+    const email = getDeparturesReportEmail().trim();
+    if (!email) {
+      window.alert("Cadastre o e-mail de destino em Configurações.");
+      return;
+    }
+    if (!isPlausibleEmail(email)) {
+      window.alert("O e-mail em Configurações não parece válido. Corrija e guarde antes de enviar.");
+      return;
+    }
+    try {
+      openGmailComposeWithDeparturesPdf(departuresPdfParams, email);
+    } catch {
+      window.alert("Não foi possível preparar o envio. Use Gerar PDF e envie manualmente pelo Gmail.");
+    }
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-5">
-        <CardTitle className="min-w-0 flex-1 leading-none">{title}</CardTitle>
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <input
-              ref={filterDateInputRef}
-              id={filterDateId}
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="dd/mm/aaaa"
-              aria-label="Filtrar por data de saída (dd/mm/aaaa)"
-              value={filterDepartureDate}
-              onChange={(event) => {
-                const el = event.target;
-                const start = el.selectionStart ?? el.value.length;
-                const { value, caret } = normalizeDatePtBrWithCaret(el.value, start);
-                pendingFilterCaret.current = caret;
-                setFilterDepartureDate(value);
-              }}
-              className="h-9 w-[min(100%,10.5rem)] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-            />
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                translate="no"
-                className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
-                aria-label="Abrir calendário"
-              >
-                <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
-              </Button>
-            </PopoverTrigger>
-          </div>
-          <PopoverContent align="end" className="border-0 bg-transparent p-0 shadow-none">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              defaultMonth={selectedDate ?? new Date()}
-              onSelect={(d) => {
-                setFilterDepartureDate(d ? formatDateToPtBr(d) : "");
-                setCalendarOpen(false);
-              }}
-            />
-          </PopoverContent>
-        </Popover>
-      </CardHeader>
-
-      <div
+    <Card className="shadow-[0_22px_56px_-14px_rgba(0,0,0,0.45),0_12px_32px_-10px_rgba(0,0,0,0.3)]">
+      <CardHeader
         className={cn(
-          "border-b border-[hsl(var(--border))] px-6 pb-3",
+          "flex flex-col gap-3 space-y-0 border-b border-[hsl(var(--border))] pb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
           actionsToolbarOpen && "pb-4",
         )}
       >
-        <div className="flex w-full flex-wrap items-center justify-end gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 rounded-lg"
-              aria-expanded={actionsToolbarOpen}
-              aria-label={actionsToolbarOpen ? "Ocultar ações" : "Mostrar ações (Imprimir, Assinar, Serviço)"}
-              onClick={() => setActionsToolbarOpen((o) => !o)}
-            >
-              {actionsToolbarOpen ? (
-                <ChevronDown className="h-4 w-4 text-[hsl(var(--foreground))]" />
-              ) : (
-                <ChevronRight className="h-4 w-4 text-[hsl(var(--foreground))]" />
-              )}
-            </Button>
-            <div
-              className="flex h-9 min-w-[7.5rem] items-center justify-center gap-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.25)] px-3 text-sm shadow-sm"
-              role="status"
-              aria-live="polite"
-              aria-label={
-                dayDepartureCount === null
-                  ? "Informe uma data de saída completa para ver a quantidade no dia"
-                  : `Saídas cadastradas no dia: ${dayDepartureCount}`
-              }
-            >
-              <span className="whitespace-nowrap text-[hsl(var(--muted-foreground))]">Número de Saídas</span>
-              <span className="min-w-[1.25rem] text-center font-mono font-semibold tabular-nums text-[hsl(var(--foreground))]">
-                {dayDepartureCount === null ? "—" : dayDepartureCount}
-              </span>
+        <CardTitle className="min-w-0 shrink text-[2rem] font-bold leading-tight text-[hsl(var(--primary))] [text-shadow:0_2px_4px_rgba(0,0,0,0.45),0_4px_14px_rgba(0,0,0,0.35)]">
+          {title}
+        </CardTitle>
+        <div className="flex min-w-0 w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <input
+                ref={filterDateInputRef}
+                id={filterDateId}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="dd/mm/aaaa"
+                aria-label="Filtrar por data de saída (dd/mm/aaaa)"
+                value={filterDepartureDate}
+                onChange={(event) => {
+                  const el = event.target;
+                  const start = el.selectionStart ?? el.value.length;
+                  const { value, caret } = normalizeDatePtBrWithCaret(el.value, start);
+                  pendingFilterCaret.current = caret;
+                  setFilterDepartureDate(value);
+                }}
+                className="h-9 w-[min(100%,10.5rem)] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-center font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  translate="no"
+                  className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
+                  aria-label="Abrir calendário"
+                >
+                  <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
+                </Button>
+              </PopoverTrigger>
             </div>
+            <PopoverContent align="end" className="border-0 bg-transparent p-0 shadow-none">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                defaultMonth={selectedDate ?? new Date()}
+                onSelect={(d) => {
+                  setFilterDepartureDate(d ? formatDateToPtBr(d) : "");
+                  setCalendarOpen(false);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0 rounded-lg"
+            aria-expanded={actionsToolbarOpen}
+            aria-label={actionsToolbarOpen ? "Ocultar ações" : "Mostrar ações (Imprimir, PDF, Enviar, Assinar, Serviço)"}
+            onClick={() => setActionsToolbarOpen((o) => !o)}
+          >
+            {actionsToolbarOpen ? (
+              <ChevronDown className="h-4 w-4 text-[hsl(var(--foreground))]" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-[hsl(var(--foreground))]" />
+            )}
+          </Button>
+          <div
+            className="flex h-9 min-w-[7.5rem] items-center justify-center gap-1.5 rounded-lg border border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)] px-3 text-sm font-medium shadow-sm"
+            role="status"
+            aria-live="polite"
+            aria-label={
+              dayDepartureCount === null
+                ? "Informe uma data de saída completa para ver a quantidade no dia"
+                : `Saídas cadastradas no dia: ${dayDepartureCount}`
+            }
+          >
+            <span className="whitespace-nowrap text-[hsl(var(--primary))]">Número de Saídas</span>
+            <span className="min-w-[1.25rem] text-center font-mono font-semibold tabular-nums text-[hsl(var(--primary))]">
+              {dayDepartureCount === null ? "—" : dayDepartureCount}
+            </span>
           </div>
           {actionsToolbarOpen ? (
-            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
-              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => window.print()}>
+            <>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="shrink-0"
+                onClick={() => window.print()}
+              >
                 Imprimir
               </Button>
-              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={handleGerarPdf}>
+              <Button type="button" variant="default" size="sm" className="shrink-0" onClick={handleGerarPdf}>
                 Gerar PDF
+              </Button>
+              <Button type="button" variant="default" size="sm" className="shrink-0" onClick={handleEnviarPdf}>
+                Enviar
               </Button>
               <Button
                 type="button"
-                variant={signPanelOpen ? "default" : "outline"}
+                variant="default"
                 size="sm"
                 className="shrink-0"
                 aria-pressed={signPanelOpen}
@@ -248,17 +300,18 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
               >
                 Assinar
               </Button>
-              <Button type="button" variant="outline" size="sm" className="shrink-0">
+              <Button type="button" variant="default" size="sm" className="shrink-0">
                 Serviço
               </Button>
-            </div>
+            </>
           ) : null}
         </div>
-      </div>
+      </CardHeader>
 
       <CardContent className="pt-4">
         <DeparturesDataTable
           rows={rows}
+          bodyFontBold
           emptyLabel={emptyMessage}
           onRemove={removeDeparture}
           onUpdateKmFields={updateDepartureKmFields}

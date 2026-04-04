@@ -7,7 +7,11 @@ import {
   type TrocaOleoRegistro,
 } from "./oilMaintenance";
 import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "./oficinaVisits";
-import { fraseProximaTrocaOleo } from "./homeTickerStrings";
+import {
+  frasePendenciaLimpezaViatura,
+  fraseProximaTrocaOleo,
+  rotuloViaturaPlaca,
+} from "./homeTickerStrings";
 
 const SEP = "   •   ";
 
@@ -19,9 +23,10 @@ export type BuildTickerInput = {
   ambulancias: string[];
   placasLimpeza: string[];
   fainasLinhas: string[];
+  avisosGeraisLinhas: string[];
 };
 
-/** Monta os textos do telão em ordem: oficina, óleo, limpeza, fainas. */
+/** Monta os textos do telão em ordem: oficina, óleo, limpeza, fainas; avisos gerais sem prefixo. */
 export function buildHomeTickerSegments(input: BuildTickerInput): string[] {
   const out: string[] = [];
 
@@ -39,16 +44,21 @@ export function buildHomeTickerSegments(input: BuildTickerInput): string[] {
     if (!alertaProximaTrocaOleo(st)) continue;
     const fr = fraseProximaTrocaOleo(st);
     if (fr === "—") continue;
-    out.push(`${placa} — ${fr}`);
+    out.push(`${rotuloViaturaPlaca(placa)} — ${fr}`);
   }
 
   for (const placa of input.placasLimpeza) {
-    out.push(`LIMPEZA · Viatura ${placa} — pendência de limpeza`);
+    out.push(frasePendenciaLimpezaViatura(placa));
   }
 
   for (const linha of input.fainasLinhas) {
     const t = linha.trim();
     if (t) out.push(`FAINAS · ${t}`);
+  }
+
+  for (const linha of input.avisosGeraisLinhas) {
+    const t = linha.trim();
+    if (t) out.push(t);
   }
 
   return out;

@@ -1,5 +1,8 @@
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCatalogItems } from "../context/catalog-items-context";
+import { useMotoristaPao } from "../context/motorista-pao-context";
 import { useDepartures } from "../context/departures-context";
+import { getDeparturesReportEmail, setDeparturesReportEmail } from "../lib/departuresReportEmail";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
@@ -39,11 +42,14 @@ function filterDeparturesForSave(
 }
 
 export function SettingsPage() {
+  const { items: catalogItems } = useCatalogItems();
+  const { nome: motoristaPao, setNome: setMotoristaPao } = useMotoristaPao();
   const { departures, mergeDeparturesFromBackup, clearAllDepartures } = useDepartures();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savePeriodMode, setSavePeriodMode] = useState<SavePeriodMode>("full");
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
+  const [reportEmailDest, setReportEmailDest] = useState(() => getDeparturesReportEmail());
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -238,6 +244,64 @@ export function SettingsPage() {
             Saídas administrativas: <strong>{administrativas.length}</strong> · Ambulâncias:{" "}
             <strong>{ambulancias.length}</strong> · Total geral: <strong>{departures.length}</strong>
           </p>
+        </section>
+
+        <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Motorista do pão (cabeçalho)</h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Se definir a <strong>Escala do Pão</strong> (clique no cartão com o ícone de padaria no canto superior
+            direito), o cabeçalho mostra o <strong>próximo integrante</strong> a partir de{" "}
+            <strong>amanhã</strong>, com a <strong>data</strong> desse dia à direita. Saltam-se sábados, domingos e dias
+            marcados como Feriado, RD, Lic Pag, Recesso ou Licença até haver um nome atribuído. Se não houver ninguém
+            previsto à frente na escala, usa-se o nome abaixo. Os integrantes da escala definem-se no modal{" "}
+            <strong>Escala do Pão</strong>; aqui pode indicar um nome à mão para o cabeçalho ou escolher da lista de{" "}
+            <strong>Motorista</strong> em <strong>Frota e Pessoal</strong>.
+          </p>
+          <div className="flex max-w-xl flex-col gap-2">
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="motorista-pao-nome">
+              Motorista
+            </label>
+            <input
+              id="motorista-pao-nome"
+              type="text"
+              list="motoristas-pao-datalist"
+              autoComplete="off"
+              placeholder="Nome do motorista"
+              value={motoristaPao}
+              onChange={(e) => setMotoristaPao(e.target.value)}
+              className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+            />
+            <datalist id="motoristas-pao-datalist">
+              {catalogItems.motoristas.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+        </section>
+
+        <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">E-mail do relatório PDF</h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Endereço usado pelo botão <strong>Enviar</strong>: abre o <strong>Gmail na Web</strong> (conta já iniciada no
+            navegador) com este destinatário e o assunto <strong>Saídas</strong>. O PDF é descarregado em seguida — o
+            Gmail <strong>não permite</strong> anexar ficheiros automaticamente por ligação; anexe o ficheiro descarregado
+            (ícone de clip ou arrastar para a janela de novo e-mail).
+          </p>
+          <div className="flex max-w-xl flex-col gap-2">
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="report-email-dest">
+              E-mail de destino
+            </label>
+            <input
+              id="report-email-dest"
+              type="email"
+              autoComplete="email"
+              placeholder="exemplo@instituicao.pt"
+              value={reportEmailDest}
+              onChange={(e) => setReportEmailDest(e.target.value)}
+              onBlur={() => setDeparturesReportEmail(reportEmailDest)}
+              className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+            />
+          </div>
         </section>
 
         <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">

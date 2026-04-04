@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import type { DepartureRecord } from "../types/departure";
 
 export type DepartureKmFieldsPatch = Partial<
@@ -35,15 +36,6 @@ type DeparturesContextValue = {
 
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
 const DEPARTURES_STORAGE_KEY = "sot-departures-v1";
-
-function normalizeDepartureRows(value: unknown): DepartureRecord[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((row): row is DepartureRecord => {
-    if (!row || typeof row !== "object") return false;
-    const r = row as Record<string, unknown>;
-    return typeof r.id === "string" && !!r.id && (r.tipo === "Administrativa" || r.tipo === "Ambulância");
-  });
-}
 
 export function DeparturesProvider({ children }: { children: ReactNode }) {
   const [departures, setDepartures] = useState<DepartureRecord[]>([]);

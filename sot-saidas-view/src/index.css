@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --background: 222 47% 6%;
+  --foreground: 210 40% 98%;
+  --card: 222 35% 11%;
+  --border: 217 22% 18%;
+  --muted: 217 22% 14%;
+  --muted-foreground: 215 18% 72%;
+  --primary: 187 85% 53%;
+  --primary-foreground: 222 47% 8%;
+  --ring: 187 90% 60%;
+  --danger: 0 72% 51%;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Scroll suave em listas longas (iOS) */
+.overscroll-contain {
+  overscroll-behavior-y: contain;
+}
