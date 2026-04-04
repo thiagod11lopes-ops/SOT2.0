@@ -56,7 +56,7 @@ export function HomeNewsTicker() {
             showBreaking ? "min-h-[5rem]" : "min-h-[3rem]",
           )}
         >
-          {/* Frame à esquerda — brasão (public/brasao.ico); metade do tamanho sem aviso principal */}
+          {/* Frame à esquerda — ícone em public/ (BASE_URL para GitHub Pages) */}
           <div
             className={cn(
               "flex shrink-0 flex-col items-center justify-center border-r border-[hsl(var(--border))]/60 bg-[hsl(var(--primary))] shadow-[inset_0_1px_0_hsla(0,0%,100%,0.14)]",
@@ -66,8 +66,9 @@ export function HomeNewsTicker() {
             )}
           >
             <img
-              src="/brasao.ico"
-              alt="Brasão"
+              src={`${import.meta.env.BASE_URL}favicon.svg`}
+              alt=""
+              aria-hidden
               className={cn(
                 "max-h-full max-w-full object-contain",
                 showBreaking

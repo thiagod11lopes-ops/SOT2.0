@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Implementar no Firebase Console → Firestore → Regras → Publicar.
+// Autenticação anónima deve estar ativa (Authentication → Sign-in method → Anonymous).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /departures/{departureId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

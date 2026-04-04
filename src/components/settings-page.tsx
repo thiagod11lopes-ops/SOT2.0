@@ -44,7 +44,7 @@ function filterDeparturesForSave(
 export function SettingsPage() {
   const { items: catalogItems } = useCatalogItems();
   const { nome: motoristaPao, setNome: setMotoristaPao } = useMotoristaPao();
-  const { departures, mergeDeparturesFromBackup, clearAllDepartures } = useDepartures();
+  const { departures, mergeDeparturesFromBackup, clearAllDepartures, cloudDeparturesSync } = useDepartures();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savePeriodMode, setSavePeriodMode] = useState<SavePeriodMode>("full");
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
@@ -164,6 +164,33 @@ export function SettingsPage() {
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
           Exportação e importação de saídas (administrativas e ambulância) e limpeza geral do cadastro.
         </p>
+        {cloudDeparturesSync.enabled ? (
+          <div
+            className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-3 py-2 text-sm"
+            role="status"
+          >
+            <p className="font-semibold text-[hsl(var(--foreground))]">Nuvem (Firebase) — saídas</p>
+            {cloudDeparturesSync.status === "connecting" ? (
+              <p className="text-[hsl(var(--muted-foreground))]">A ligar e a sincronizar…</p>
+            ) : null}
+            {cloudDeparturesSync.status === "live" ? (
+              <p className="text-[hsl(var(--muted-foreground))]">
+                Sincronização ativa: alterações partilhadas entre dispositivos que usam esta mesma app com as mesmas
+                chaves Firebase.
+              </p>
+            ) : null}
+            {cloudDeparturesSync.status === "error" ? (
+              <p className="font-medium text-red-600 dark:text-red-400">
+                {cloudDeparturesSync.message ?? "Erro ao sincronizar. Verifique rede, regras Firestore e login anónimo."}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Saídas guardadas só neste navegador (IndexedDB). Para dados partilhados em remoto, configure as variáveis
+            Firebase no build (ver <code className="rounded bg-[hsl(var(--muted))]/50 px-1">.env.example</code>).
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-8">
         <section className="space-y-3">

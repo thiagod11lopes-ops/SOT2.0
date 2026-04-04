@@ -9,6 +9,15 @@ import {
   type ReactNode,
 } from "react";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import {
+  batchUpsertDepartures,
+  deleteAllDepartureDocuments,
+  deleteDepartureDocument,
+  subscribeDepartures,
+  upsertDepartureRecord,
+} from "../lib/firebase/departuresFirestore";
+import { isFirebaseConfigured } from "../lib/firebase/config";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import type { DepartureRecord } from "../types/departure";
 
@@ -16,22 +25,25 @@ export type DepartureKmFieldsPatch = Partial<
   Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada">
 >;
 
+export type CloudDeparturesSyncState = {
+  enabled: boolean;
+  status: "idle" | "connecting" | "live" | "error";
+  message?: string;
+};
+
 type DeparturesContextValue = {
   departures: DepartureRecord[];
   addDeparture: (data: Omit<DepartureRecord, "id" | "createdAt">) => void;
-  /** Mescla registros importados do backup SOT (ignora ids já presentes). */
   mergeDeparturesFromBackup: (rows: DepartureRecord[]) => void;
-  /** Remove todas as saídas (administrativas e ambulância). */
   clearAllDepartures: () => void;
   updateDeparture: (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => void;
   removeDeparture: (id: string) => void;
   updateDepartureKmFields: (id: string, patch: DepartureKmFieldsPatch) => void;
-  /** Id da saída a abrir no formulário (Cadastrar Nova Saída). */
   pendingEditDepartureId: string | null;
-  /** Incrementado a cada pedido de edição — para hidratar o formulário uma vez (Strict Mode). */
   editIntentVersion: number;
   beginEditDeparture: (id: string) => void;
   clearPendingEditDeparture: () => void;
+  cloudDeparturesSync: CloudDeparturesSyncState;
 };
 
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
@@ -42,6 +54,12 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   const hydratedRef = useRef(false);
   const [pendingEditDepartureId, setPendingEditDepartureId] = useState<string | null>(null);
   const [editIntentVersion, setEditIntentVersion] = useState(0);
+  const [cloudDeparturesSync, setCloudDeparturesSync] = useState<CloudDeparturesSyncState>(() => ({
+    enabled: isFirebaseConfigured(),
+    status: isFirebaseConfigured() ? "connecting" : "idle",
+  }));
+
+  const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +74,53 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!useCloud) {
+      setCloudDeparturesSync({ enabled: false, status: "idle" });
+      return;
+    }
+
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setCloudDeparturesSync({ enabled: true, status: "connecting" });
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeDepartures(
+          (rows) => {
+            if (cancelled) return;
+            setDepartures(rows);
+            hydratedRef.current = true;
+            void idbSetJson(DEPARTURES_STORAGE_KEY, rows);
+            setCloudDeparturesSync({ enabled: true, status: "live" });
+          },
+          (err) => {
+            console.error("[SOT] Firestore saídas:", err);
+            setCloudDeparturesSync({
+              enabled: true,
+              status: "error",
+              message: err.message || "Erro ao sincronizar com a nuvem.",
+            });
+          },
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth:", e);
+        setCloudDeparturesSync({
+          enabled: true,
+          status: "error",
+          message: e instanceof Error ? e.message : "Falha na autenticação Firebase.",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud]);
+
+  useEffect(() => {
     if (!hydratedRef.current) return;
     void idbSetJson(DEPARTURES_STORAGE_KEY, departures);
   }, [departures]);
@@ -66,48 +131,117 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
+    if (useCloud) {
+      void upsertDepartureRecord(row).catch((e) => {
+        console.error(e);
+        window.alert("Não foi possível gravar a saída na nuvem. Verifique a ligação e as regras do Firestore.");
+      });
+      return;
+    }
     setDepartures((prev) => [row, ...prev]);
-  }, []);
+  }, [useCloud]);
 
-  const mergeDeparturesFromBackup = useCallback((rows: DepartureRecord[]) => {
-    if (rows.length === 0) return;
-    setDepartures((prev) => {
-      const existing = new Set(prev.map((d) => d.id));
-      const incoming = rows.filter((r) => r.id && !existing.has(r.id));
-      if (incoming.length === 0) return prev;
-      const sorted = [...incoming].sort((a, b) => b.createdAt - a.createdAt);
-      return [...sorted, ...prev];
-    });
-  }, []);
+  const mergeDeparturesFromBackup = useCallback(
+    (rows: DepartureRecord[]) => {
+      if (rows.length === 0) return;
+      setDepartures((prev) => {
+        const existing = new Set(prev.map((d) => d.id));
+        const incoming = rows.filter((r) => r.id && !existing.has(r.id));
+        if (incoming.length === 0) return prev;
+        if (useCloud) {
+          void batchUpsertDepartures(incoming).catch((e) => {
+            console.error(e);
+            window.alert("Não foi possível importar as saídas para a nuvem.");
+          });
+          return prev;
+        }
+        const sorted = [...incoming].sort((a, b) => b.createdAt - a.createdAt);
+        return [...sorted, ...prev];
+      });
+    },
+    [useCloud],
+  );
 
   const clearAllDepartures = useCallback(() => {
+    if (useCloud) {
+      void deleteAllDepartureDocuments().catch((e) => {
+        console.error(e);
+        window.alert("Não foi possível limpar as saídas na nuvem.");
+      });
+      return;
+    }
     setDepartures([]);
-  }, []);
+  }, [useCloud]);
 
-  const updateDeparture = useCallback((id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => {
-    setDepartures((prev) =>
-      prev.map((d) =>
-        d.id === id
-          ? {
-              ...d,
-              ...data,
-              id: d.id,
-              createdAt: d.createdAt,
-            }
-          : d,
-      ),
-    );
-  }, []);
+  const updateDeparture = useCallback(
+    (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => {
+      if (useCloud) {
+        setDepartures((prev) => {
+          const d = prev.find((x) => x.id === id);
+          if (!d) return prev;
+          const next: DepartureRecord = {
+            ...d,
+            ...data,
+            id: d.id,
+            createdAt: d.createdAt,
+          };
+          void upsertDepartureRecord(next).catch((e) => {
+            console.error(e);
+            window.alert("Não foi possível atualizar a saída na nuvem.");
+          });
+          return prev;
+        });
+        return;
+      }
+      setDepartures((prev) =>
+        prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                ...data,
+                id: d.id,
+                createdAt: d.createdAt,
+              }
+            : d,
+        ),
+      );
+    },
+    [useCloud],
+  );
 
-  const removeDeparture = useCallback((id: string) => {
-    setDepartures((prev) => prev.filter((d) => d.id !== id));
-  }, []);
+  const removeDeparture = useCallback(
+    (id: string) => {
+      if (useCloud) {
+        void deleteDepartureDocument(id).catch((e) => {
+          console.error(e);
+          window.alert("Não foi possível remover a saída na nuvem.");
+        });
+        return;
+      }
+      setDepartures((prev) => prev.filter((d) => d.id !== id));
+    },
+    [useCloud],
+  );
 
-  const updateDepartureKmFields = useCallback((id: string, patch: DepartureKmFieldsPatch) => {
-    setDepartures((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, ...patch } : d)),
-    );
-  }, []);
+  const updateDepartureKmFields = useCallback(
+    (id: string, patch: DepartureKmFieldsPatch) => {
+      if (useCloud) {
+        setDepartures((prev) => {
+          const d = prev.find((x) => x.id === id);
+          if (!d) return prev;
+          const next = { ...d, ...patch };
+          void upsertDepartureRecord(next).catch((e) => {
+            console.error(e);
+            window.alert("Não foi possível gravar os KM na nuvem.");
+          });
+          return prev;
+        });
+        return;
+      }
+      setDepartures((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    },
+    [useCloud],
+  );
 
   const beginEditDeparture = useCallback((id: string) => {
     setPendingEditDepartureId(id);
@@ -131,6 +265,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       editIntentVersion,
       beginEditDeparture,
       clearPendingEditDeparture,
+      cloudDeparturesSync,
     }),
     [
       departures,
@@ -144,6 +279,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       editIntentVersion,
       beginEditDeparture,
       clearPendingEditDeparture,
+      cloudDeparturesSync,
     ],
   );
 
