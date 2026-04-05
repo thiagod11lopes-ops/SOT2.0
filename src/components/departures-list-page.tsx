@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import type { DepartureType } from "../types/departure";
 import {
@@ -10,7 +11,7 @@ import {
   parsePtBrToDate,
 } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
-import { getDeparturesReportEmail, isPlausibleEmail } from "../lib/departuresReportEmail";
+import { isPlausibleEmail } from "../lib/departuresReportEmail";
 import { downloadDeparturesListPdf } from "../lib/generateDeparturesPdf";
 import { openGmailComposeWithDeparturesPdf } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
@@ -39,6 +40,7 @@ function sortKeyHoraSaida(horaSaida: string): number {
 export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProps) {
   const { departures, removeDeparture, updateDepartureKmFields, beginEditDeparture } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
+  const { email: reportEmailDest } = useDeparturesReportEmail();
   const filterDateId = useId();
   const assinaturaSelectId = useId();
   const assinaturaMotorista1SelectId = useId();
@@ -170,7 +172,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   }
 
   function handleEnviarPdf() {
-    const email = getDeparturesReportEmail().trim();
+    const email = reportEmailDest.trim();
     if (!email) {
       window.alert("Cadastre o e-mail de destino em Configurações.");
       return;

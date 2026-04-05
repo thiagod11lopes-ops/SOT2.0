@@ -191,8 +191,6 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
                 record={r}
                 onPatchKm={(patch) => updateDepartureKmFields(r.id, patch)}
                 updateDeparture={updateDeparture}
-                enableKmDoubleClickWizard={tipo === "Administrativa"}
-                enableAmbulanciaWizard={tipo === "Ambulância"}
               />
             </li>
           ))

@@ -2,10 +2,15 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   type EscalaPaoStored,
   getEscalaPaoStored,
@@ -17,6 +22,26 @@ import {
   getIntegrantesPaoStored,
   setIntegrantesPaoStored,
 } from "../lib/integrantesPaoStorage";
+
+function normalizeEscalaPaoBundle(raw: unknown): { escala: EscalaPaoStored; integrantes: string[] } {
+  if (!raw || typeof raw !== "object") {
+    return { escala: {}, integrantes: [] };
+  }
+  const o = raw as Record<string, unknown>;
+  const escalaRaw = o.escala;
+  const escala: EscalaPaoStored =
+    escalaRaw && typeof escalaRaw === "object" && !Array.isArray(escalaRaw)
+      ? { ...(escalaRaw as EscalaPaoStored) }
+      : {};
+  const integrantes = Array.isArray(o.integrantes)
+    ? dedupeIntegrantesOrder(o.integrantes.filter((x): x is string => typeof x === "string"))
+    : [];
+  return { escala, integrantes };
+}
+
+function isEscalaBundleEmpty(e: EscalaPaoStored, integrantes: string[]): boolean {
+  return Object.keys(e).length === 0 && integrantes.length === 0;
+}
 
 type EscalaPaoContextValue = {
   escala: EscalaPaoStored;
@@ -36,6 +61,62 @@ const EscalaPaoContext = createContext<EscalaPaoContextValue | null>(null);
 export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   const [escala, setEscala] = useState<EscalaPaoStored>(() => getEscalaPaoStored());
   const [integrantes, setIntegrantesState] = useState<string[]>(() => getIntegrantesPaoStored());
+  const applyingRemoteRef = useRef(false);
+  const hydratedRef = useRef(true);
+  const useCloud = isFirebaseConfigured();
+
+  useEffect(() => {
+    if (!useCloud) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.escalaPaoBundle,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const e = getEscalaPaoStored();
+                const i = getIntegrantesPaoStored();
+                if (!isEscalaBundleEmpty(e, i)) {
+                  await setSotStateDoc(SOT_STATE_DOC.escalaPaoBundle, { escala: e, integrantes: i });
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const { escala: nextE, integrantes: nextI } = normalizeEscalaPaoBundle(payload);
+              setEscala(nextE);
+              setIntegrantesState(nextI);
+              setEscalaPaoStored(nextE);
+              setIntegrantesPaoStored(nextI);
+              hydratedRef.current = true;
+            })();
+          },
+          (err) => console.error("[SOT] Firestore escala pão:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (escala pão):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || !useCloud) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    void setSotStateDoc(SOT_STATE_DOC.escalaPaoBundle, { escala, integrantes }).catch((e) => {
+      console.error("[SOT] Gravar escala pão na nuvem:", e);
+    });
+  }, [escala, integrantes, useCloud]);
 
   const setIntegrantes = useCallback((next: string[]) => {
     const cleaned = dedupeIntegrantesOrder(next);

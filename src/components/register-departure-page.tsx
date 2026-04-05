@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { CalendarDays, Loader2 } from "lucide-react";
 import {
   isValueInCatalog,
@@ -165,6 +168,8 @@ export function RegisterDeparturePage() {
   );
   const [customLocations, setCustomLocations] = useState<CustomLocationsState>(() => emptyCustomLocations());
   const [customLocationsHydrated, setCustomLocationsHydrated] = useState(false);
+  const customLocationsRemoteRef = useRef(false);
+  const useCloudLocations = isFirebaseConfigured();
   /** Duplo clique em Cidade/Bairro: modal para novo item. */
   const [addLocationModal, setAddLocationModal] = useState<
     null | { kind: "city" } | { kind: "bairro"; cityKey: string }
@@ -182,6 +187,57 @@ export function RegisterDeparturePage() {
     if (!customLocationsHydrated) return;
     void idbSetJson(CUSTOM_LOCATIONS_STORAGE_KEY, customLocations);
   }, [customLocations, customLocationsHydrated]);
+
+  useEffect(() => {
+    if (!customLocationsHydrated || !useCloudLocations) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.customLocations,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const raw = await idbGetJson<unknown>(CUSTOM_LOCATIONS_STORAGE_KEY);
+                const n = normalizeCustomLocations(raw);
+                if (
+                  n.extraCities.length > 0 ||
+                  Object.keys(n.extraNeighborhoodsByCity).length > 0
+                ) {
+                  await setSotStateDoc(SOT_STATE_DOC.customLocations, n);
+                }
+                return;
+              }
+              customLocationsRemoteRef.current = true;
+              setCustomLocations(normalizeCustomLocations(payload));
+            })();
+          },
+          (err) => console.error("[SOT] Firestore cidades/bairros extras:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (cidades extras):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [customLocationsHydrated, useCloudLocations]);
+
+  useEffect(() => {
+    if (!customLocationsHydrated || !useCloudLocations) return;
+    if (customLocationsRemoteRef.current) {
+      customLocationsRemoteRef.current = false;
+      return;
+    }
+    void setSotStateDoc(SOT_STATE_DOC.customLocations, customLocations).catch((e) => {
+      console.error("[SOT] Gravar cidades/bairros extras na nuvem:", e);
+    });
+  }, [customLocations, customLocationsHydrated, useCloudLocations]);
 
   useLayoutEffect(() => {
     if (editIntentVersion === 0) return;

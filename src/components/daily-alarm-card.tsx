@@ -1,11 +1,8 @@
 import { Bell } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AlarmeDiarioItem } from "../context/avisos-context";
-import {
-  dismissAlarmForToday,
-  isDismissedTodayForAlarm,
-  localDateKey,
-} from "../lib/dailyAlarmDismiss";
+import { useAlarmDismiss } from "../context/alarm-dismiss-context";
+import { localDateKey } from "../lib/dailyAlarmDismiss";
 import { parseHhMm } from "../lib/timeInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { cn } from "../lib/utils";
@@ -19,6 +16,7 @@ function msUntilNextMidnight(): number {
 
 /** Card na página inicial: após o horário do alarme, pisca em laranja até marcar o checkbox para ocultar o dia. */
 export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
+  const { isDismissedTodayForAlarm, dismissAlarmForToday } = useAlarmDismiss();
   const [now, setNow] = useState(() => new Date());
   const [dismissedToday, setDismissedToday] = useState(() =>
     isDismissedTodayForAlarm(alarm.id),
@@ -31,7 +29,7 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
     };
     const id = window.setInterval(tick, 5_000);
     return () => window.clearInterval(id);
-  }, [alarm.id]);
+  }, [alarm.id, isDismissedTodayForAlarm]);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -44,7 +42,7 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
     }
     armMidnight();
     return () => clearTimeout(timeoutId);
-  }, [alarm.id]);
+  }, [alarm.id, isDismissedTodayForAlarm]);
 
   const alarmParsed = useMemo(() => parseHhMm(alarm.hora), [alarm.hora]);
 
@@ -61,7 +59,7 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
   const handleOcultarHoje = useCallback(() => {
     dismissAlarmForToday(alarm.id);
     setDismissedToday(true);
-  }, [alarm.id]);
+  }, [alarm.id, dismissAlarmForToday]);
 
   if (!alarm.ativo || !alarm.nome.trim() || !alarmParsed) return null;
   if (dismissedToday) return null;

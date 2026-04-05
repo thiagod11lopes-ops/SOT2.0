@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { useId, useMemo, useState, type HTMLAttributes } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
-import { AmbulanciaSequenceModal } from "./ambulancia-sequence-modal";
-import { KmSequenceModal, type KmWizardStep } from "./km-sequence-modal";
 
 function Field({
   label,
@@ -41,227 +40,93 @@ function Field({
   );
 }
 
-type AmbDraft = {
-  viaturas: string;
-  motoristas: string;
-  horaSaida: string;
-  bairro: string;
-  kmSaida: string;
-  kmChegada: string;
-  chegada: string;
-};
+/**
+ * Apenas `<select>` (sem input de texto): escolha entre itens do catálogo Frota e Pessoal.
+ * Se o registo tiver valor que já não está no catálogo, mostra uma opção extra só para esse valor.
+ */
+function FleetSelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const selectId = useId();
+  const orphan = useMemo(() => {
+    if (!value.trim()) return null;
+    if (options.some((o) => o === value)) return null;
+    return value;
+  }, [value, options]);
 
-function draftFromRecord(r: DepartureRecord): AmbDraft {
-  return {
-    viaturas: r.viaturas,
-    motoristas: r.motoristas,
-    horaSaida: r.horaSaida,
-    bairro: r.bairro,
-    kmSaida: formatKmThousandsPtBr(r.kmSaida),
-    kmChegada: formatKmThousandsPtBr(r.kmChegada),
-    chegada: r.chegada,
-  };
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]" htmlFor={selectId}>
+        {label}
+      </label>
+      <select
+        id={selectId}
+        value={options.some((o) => o === value) || value === "" || orphan === value ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete="off"
+        className="min-h-[2.75rem] w-full cursor-pointer rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+      >
+        <option value="">— Selecionar —</option>
+        {orphan ? (
+          <option value={orphan}>
+            {orphan} (fora do catálogo)
+          </option>
+        ) : null}
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+      {options.length === 0 ? (
+        <span className="text-[0.65rem] text-[hsl(var(--muted-foreground))]">
+          Cadastre itens em <strong>Frota e Pessoal</strong> no SOT (ambiente completo).
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export function DepartureCard({
   record,
   onPatchKm,
   updateDeparture,
-  enableKmDoubleClickWizard = false,
-  enableAmbulanciaWizard = false,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
   updateDeparture?: (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => void;
-  enableKmDoubleClickWizard?: boolean;
-  enableAmbulanciaWizard?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [wizardStep, setWizardStep] = useState<0 | KmWizardStep>(0);
-  const [draftKmSaida, setDraftKmSaida] = useState(() => formatKmThousandsPtBr(record.kmSaida));
-  const [draftKmChegada, setDraftKmChegada] = useState(() => formatKmThousandsPtBr(record.kmChegada));
-  const [draftChegada, setDraftChegada] = useState(record.chegada);
-  const [ambStep, setAmbStep] = useState(0);
-  const [ambDraft, setAmbDraft] = useState<AmbDraft>(() => draftFromRecord(record));
-  const lastTouchRef = useRef(0);
   const row = listRowFromRecord(record);
+  const { items: catalogItems } = useCatalogItems();
+  const viaturasFrota = useMemo(() => mergeViaturasCatalog(catalogItems), [catalogItems]);
+  const motoristasFrota = catalogItems.motoristas;
+
+  const isAmbulancia = record.tipo === "Ambulância";
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
   const chegadaPreenchido = record.chegada.trim().length > 0;
   const saidaFinalizada = kmSaidaPreenchido && kmChegadaPreenchido && chegadaPreenchido;
 
-  useEffect(() => {
-    setDraftKmSaida(formatKmThousandsPtBr(record.kmSaida));
-    setDraftKmChegada(formatKmThousandsPtBr(record.kmChegada));
-    setDraftChegada(record.chegada);
-  }, [record.kmSaida, record.kmChegada, record.chegada]);
-
-  useEffect(() => {
-    if (ambStep === 0) setAmbDraft(draftFromRecord(record));
-  }, [record, ambStep]);
-
-  useEffect(() => {
-    if (wizardStep === 0 && ambStep === 0) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [wizardStep, ambStep]);
-
   function commitChegada(raw: string) {
     onPatchKm({ chegada: normalize24hTime(raw) });
   }
 
-  function openKmWizard() {
-    if (!enableKmDoubleClickWizard) return;
-    setDraftKmSaida(formatKmThousandsPtBr(record.kmSaida));
-    setDraftKmChegada(formatKmThousandsPtBr(record.kmChegada));
-    setDraftChegada(record.chegada);
-    setWizardStep(1);
-  }
-
-  function openAmbWizard() {
-    if (!enableAmbulanciaWizard || !updateDeparture) return;
-    setAmbDraft(draftFromRecord(record));
-    setAmbStep(1);
-  }
-
-  function handleCardDoubleClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (enableKmDoubleClickWizard) openKmWizard();
-    else if (enableAmbulanciaWizard) openAmbWizard();
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (!enableKmDoubleClickWizard && !enableAmbulanciaWizard) return;
-    const now = Date.now();
-    if (now - lastTouchRef.current < 400) {
-      e.preventDefault();
-      if (enableKmDoubleClickWizard) openKmWizard();
-      else if (enableAmbulanciaWizard) openAmbWizard();
-      lastTouchRef.current = 0;
-    } else {
-      lastTouchRef.current = now;
-    }
-  }
-
-  function handleAdminWizardOk() {
-    if (wizardStep === 1) {
-      onPatchKm({ kmSaida: draftKmSaida.trim() });
-      setWizardStep(2);
-      return;
-    }
-    if (wizardStep === 2) {
-      onPatchKm({ kmChegada: draftKmChegada.trim() });
-      setWizardStep(3);
-      return;
-    }
-    onPatchKm({ chegada: draftChegada.trim() });
-    setWizardStep(0);
-  }
-
-  function handleAdminWizardCancel() {
-    setWizardStep(0);
-  }
-
-  function applyAmbPatch(partial: Partial<AmbDraft>) {
+  function applyAmbPatch(partial: Partial<DepartureRecord>) {
     if (!updateDeparture) return;
     updateDeparture(record.id, {
       ...record,
       ...partial,
     });
-  }
-
-  function handleAmbWizardOk() {
-    if (!updateDeparture) return;
-    const d = ambDraft;
-    if (ambStep === 7) {
-      updateDeparture(record.id, { ...record, chegada: d.chegada.trim() });
-      setAmbStep(0);
-      return;
-    }
-    switch (ambStep) {
-      case 1:
-        updateDeparture(record.id, { ...record, viaturas: d.viaturas.trim() });
-        break;
-      case 2:
-        updateDeparture(record.id, { ...record, motoristas: d.motoristas.trim() });
-        break;
-      case 3:
-        updateDeparture(record.id, { ...record, horaSaida: d.horaSaida.trim() });
-        break;
-      case 4:
-        updateDeparture(record.id, { ...record, bairro: d.bairro.trim() });
-        break;
-      case 5:
-        updateDeparture(record.id, { ...record, kmSaida: d.kmSaida.trim() });
-        break;
-      case 6:
-        updateDeparture(record.id, { ...record, kmChegada: d.kmChegada.trim() });
-        break;
-      default:
-        break;
-    }
-    setAmbStep((s) => s + 1);
-  }
-
-  function handleAmbWizardCancel() {
-    setAmbStep(0);
-  }
-
-  function setAmbWizardValue(v: string) {
-    switch (ambStep) {
-      case 1:
-        setAmbDraft((x) => ({ ...x, viaturas: v }));
-        break;
-      case 2:
-        setAmbDraft((x) => ({ ...x, motoristas: v }));
-        break;
-      case 3:
-        setAmbDraft((x) => ({ ...x, horaSaida: normalize24hTime(v) }));
-        break;
-      case 4:
-        setAmbDraft((x) => ({ ...x, bairro: v }));
-        break;
-      case 5:
-        setAmbDraft((x) => ({ ...x, kmSaida: formatKmThousandsPtBr(v) }));
-        break;
-      case 6:
-        setAmbDraft((x) => ({ ...x, kmChegada: formatKmThousandsPtBr(v) }));
-        break;
-      case 7:
-        setAmbDraft((x) => ({ ...x, chegada: normalize24hTime(v) }));
-        break;
-      default:
-        break;
-    }
-  }
-
-  const ambWizardValue =
-    ambStep === 1
-      ? ambDraft.viaturas
-      : ambStep === 2
-        ? ambDraft.motoristas
-        : ambStep === 3
-          ? ambDraft.horaSaida
-          : ambStep === 4
-            ? ambDraft.bairro
-            : ambStep === 5
-              ? ambDraft.kmSaida
-              : ambStep === 6
-                ? ambDraft.kmChegada
-                : ambDraft.chegada;
-
-  const adminWizardValue =
-    wizardStep === 1 ? draftKmSaida : wizardStep === 2 ? draftKmChegada : draftChegada;
-
-  function setAdminWizardValue(v: string) {
-    if (wizardStep === 1) setDraftKmSaida(formatKmThousandsPtBr(v));
-    else if (wizardStep === 2) setDraftKmChegada(formatKmThousandsPtBr(v));
-    else setDraftChegada(normalize24hTime(v));
   }
 
   return (
@@ -277,9 +142,7 @@ export function DepartureCard({
           aria-label={saidaFinalizada ? "Saída finalizada" : "Saída iniciada"}
           className={cn(
             "w-full border-b border-black/10 py-1.5 text-center text-[0.65rem] font-bold uppercase tracking-[0.14em] text-white",
-            saidaFinalizada
-              ? "bg-[hsl(217_75%_42%)]"
-              : "bg-[hsl(152_65%_32%)]",
+            saidaFinalizada ? "bg-[hsl(217_75%_42%)]" : "bg-[hsl(152_65%_32%)]",
           )}
         >
           {saidaFinalizada ? "Finalizada" : "Iniciada"}
@@ -289,8 +152,6 @@ export function DepartureCard({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        onDoubleClick={handleCardDoubleClick}
-        onTouchEnd={handleTouchEnd}
         style={{ touchAction: "manipulation" }}
         className="flex min-h-[4.5rem] w-full items-stretch gap-3 p-4 text-left active:bg-[hsl(var(--muted))]/20"
       >
@@ -304,16 +165,6 @@ export function DepartureCard({
             <span className="text-[hsl(var(--muted-foreground))]">Dest. </span>
             <span className="font-medium text-[hsl(var(--foreground))]">{row.destino}</span>
           </p>
-          {enableKmDoubleClickWizard ? (
-            <p className="text-[0.65rem] text-[hsl(var(--muted-foreground))]">
-              Duplo clique ou duplo toque: KM saída → KM chegada → chegada
-            </p>
-          ) : null}
-          {enableAmbulanciaWizard ? (
-            <p className="text-[0.65rem] text-[hsl(var(--muted-foreground))]">
-              Duplo clique ou duplo toque: Viatura → Motorista → Saída → Destino → KM saída → KM chegada → Chegada
-            </p>
-          ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end justify-between gap-1">
           <span className="rounded-lg bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.65rem] font-bold text-[hsl(var(--foreground))]">
@@ -327,14 +178,24 @@ export function DepartureCard({
         </div>
       </button>
 
-      {open && enableAmbulanciaWizard && updateDeparture ? (
+      {open && isAmbulancia && updateDeparture ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
           <p className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
             Edição rápida (mesma ordem)
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Viatura" value={record.viaturas} onChange={(v) => applyAmbPatch({ viaturas: v })} />
-            <Field label="Motorista" value={record.motoristas} onChange={(v) => applyAmbPatch({ motoristas: v })} />
+            <FleetSelectField
+              label="Viatura"
+              value={record.viaturas}
+              onChange={(v) => applyAmbPatch({ viaturas: v })}
+              options={viaturasFrota}
+            />
+            <FleetSelectField
+              label="Motorista"
+              value={record.motoristas}
+              onChange={(v) => applyAmbPatch({ motoristas: v })}
+              options={motoristasFrota}
+            />
             <Field
               label="Saída (hora)"
               value={record.horaSaida}
@@ -368,7 +229,7 @@ export function DepartureCard({
         </div>
       ) : null}
 
-      {open && !enableAmbulanciaWizard ? (
+      {open && !isAmbulancia ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -412,26 +273,6 @@ export function DepartureCard({
             />
           </div>
         </div>
-      ) : null}
-
-      {wizardStep !== 0 ? (
-        <KmSequenceModal
-          step={wizardStep as KmWizardStep}
-          value={adminWizardValue}
-          onChangeValue={setAdminWizardValue}
-          onOk={handleAdminWizardOk}
-          onCancel={handleAdminWizardCancel}
-        />
-      ) : null}
-
-      {ambStep !== 0 ? (
-        <AmbulanciaSequenceModal
-          step={ambStep}
-          value={ambWizardValue}
-          onChangeValue={setAmbWizardValue}
-          onOk={handleAmbWizardOk}
-          onCancel={handleAmbWizardCancel}
-        />
       ) : null}
     </article>
   );

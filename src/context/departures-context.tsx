@@ -106,10 +106,16 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         );
       } catch (e) {
         console.error("[SOT] Firebase auth:", e);
+        const code = typeof e === "object" && e !== null && "code" in e ? String((e as { code: string }).code) : "";
+        const base = e instanceof Error ? e.message : "Falha na autenticação Firebase.";
+        const hint =
+          code === "auth/unauthorized-domain"
+            ? " No Firebase: Authentication → Configurações → Domínios autorizados → Adicionar domínio → coloque o host do site (ex.: thiagod11lopes-ops.github.io, sem https)."
+            : "";
         setCloudDeparturesSync({
           enabled: true,
           status: "error",
-          message: e instanceof Error ? e.message : "Falha na autenticação Firebase.",
+          message: base + hint,
         });
       }
     })();

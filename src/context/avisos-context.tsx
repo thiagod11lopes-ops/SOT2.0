@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -11,7 +12,10 @@ import {
   avisoGeralExpiradoParaRemocaoAutomatica,
   avisoGeralVisivelNoDia,
 } from "../lib/avisoGeralSchedule";
-import { clearDismissForAlarm } from "../lib/dailyAlarmDismiss";
+import { useAlarmDismiss } from "./alarm-dismiss-context";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { AvisoGeralItem } from "../types/aviso-geral";
 import { parseHhMm } from "../lib/timeInput";
@@ -156,12 +160,24 @@ function normalizeStored(raw: unknown): AvisosPersistedState {
   };
 }
 
+function isAvisosEmpty(s: AvisosPersistedState): boolean {
+  return (
+    !s.avisoPrincipal.trim() &&
+    !s.fainasTexto.trim() &&
+    s.avisosGeraisItens.length === 0 &&
+    s.alarmesDiarios.length === 0
+  );
+}
+
 export function AvisosProvider({ children }: { children: ReactNode }) {
+  const { clearDismissForAlarm } = useAlarmDismiss();
   const [avisoPrincipal, setAvisoPrincipalState] = useState("");
   const [fainasTexto, setFainasTextoState] = useState("");
   const [avisosGeraisItens, setAvisosGeraisItensState] = useState<AvisoGeralItem[]>([]);
   const [alarmesDiarios, setAlarmesDiariosState] = useState<AlarmeDiarioItem[]>([]);
   const [persistReady, setPersistReady] = useState(false);
+  const applyingRemoteRef = useRef(false);
+  const useCloud = isFirebaseConfigured();
   /** Atualiza o filtro por data ao mudar o dia (relógio). */
   const [agendaDiaTick, setAgendaDiaTick] = useState(0);
 
@@ -192,6 +208,65 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     };
     void idbSetJson(AVISOS_STORAGE_KEY, payload);
   }, [persistReady, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
+
+  useEffect(() => {
+    if (!persistReady || !useCloud) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.avisos,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const raw = await idbGetJson<unknown>(AVISOS_STORAGE_KEY);
+                const n = normalizeStored(raw);
+                if (!isAvisosEmpty(n)) {
+                  await setSotStateDoc(SOT_STATE_DOC.avisos, n);
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const n = normalizeStored(payload);
+              setAvisoPrincipalState(n.avisoPrincipal);
+              setFainasTextoState(n.fainasTexto);
+              setAvisosGeraisItensState(n.avisosGeraisItens);
+              setAlarmesDiariosState(n.alarmesDiarios);
+              void idbSetJson(AVISOS_STORAGE_KEY, n);
+            })();
+          },
+          (err) => console.error("[SOT] Firestore avisos:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (avisos):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [persistReady, useCloud]);
+
+  useEffect(() => {
+    if (!persistReady || !useCloud) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    const payload: AvisosPersistedState = {
+      avisoPrincipal,
+      fainasTexto,
+      avisosGeraisItens,
+      alarmesDiarios,
+    };
+    void setSotStateDoc(SOT_STATE_DOC.avisos, payload).catch((e) => {
+      console.error("[SOT] Gravar avisos na nuvem:", e);
+    });
+  }, [persistReady, useCloud, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
 
   /** Remove avisos com data final já ultrapassada (inclui após meia-noite). */
   useEffect(() => {
@@ -242,13 +317,13 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         clearDismissForAlarm(id);
       }
     },
-    [],
+    [clearDismissForAlarm],
   );
 
   const removeAlarmeDiario = useCallback((id: string) => {
     clearDismissForAlarm(id);
     setAlarmesDiariosState((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  }, [clearDismissForAlarm]);
 
   const fainasLinhas = useMemo(
     () =>

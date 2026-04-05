@@ -8,6 +8,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   normalizarMapaOficinaCarregado,
   OFICINA_STORAGE_KEY,
@@ -26,9 +29,15 @@ type OficinaVisitasContextValue = {
 
 const OficinaVisitasContext = createContext<OficinaVisitasContextValue | null>(null);
 
+function isMapaOficinaEmpty(m: MapaOficinaPorViatura): boolean {
+  return Object.keys(m).length === 0;
+}
+
 export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   const [mapaOficina, setMapaOficina] = useState<MapaOficinaPorViatura>({});
   const hidratado = useRef(false);
+  const applyingRemoteRef = useRef(false);
+  const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
     let cancel = false;
@@ -43,9 +52,60 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!useCloud) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.oficina,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const local = await idbGetJson<unknown>(OFICINA_STORAGE_KEY);
+                const normalized = normalizarMapaOficinaCarregado(local);
+                if (!isMapaOficinaEmpty(normalized)) {
+                  await setSotStateDoc(SOT_STATE_DOC.oficina, normalized);
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const next = normalizarMapaOficinaCarregado(payload);
+              setMapaOficina(next);
+              hidratado.current = true;
+              void idbSetJson(OFICINA_STORAGE_KEY, next);
+            })();
+          },
+          (err) => console.error("[SOT] Firestore oficina:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (oficina):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud]);
+
+  useEffect(() => {
     if (!hidratado.current) return;
     void idbSetJson(OFICINA_STORAGE_KEY, mapaOficina);
   }, [mapaOficina]);
+
+  useEffect(() => {
+    if (!hidratado.current || !useCloud) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    void setSotStateDoc(SOT_STATE_DOC.oficina, mapaOficina).catch((e) => {
+      console.error("[SOT] Gravar oficina na nuvem:", e);
+    });
+  }, [mapaOficina, useCloud]);
 
   const setVisitasParaPlaca = useCallback((placa: string, visitas: RegistroOficina[]) => {
     setMapaOficina((prev) => ({ ...prev, [placa]: visitas }));

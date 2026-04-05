@@ -8,6 +8,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
 export type CatalogCategory =
@@ -86,6 +89,18 @@ function dedupeAdd(list: string[], item: string): string[] {
   return [...list, t];
 }
 
+function isCatalogEmpty(s: CatalogItemsState): boolean {
+  return (
+    s.setores.length === 0 &&
+    s.responsaveis.length === 0 &&
+    s.oms.length === 0 &&
+    s.hospitais.length === 0 &&
+    s.motoristas.length === 0 &&
+    s.viaturasAdministrativas.length === 0 &&
+    s.ambulancias.length === 0
+  );
+}
+
 type CatalogItemsContextValue = {
   items: CatalogItemsState;
   /** Retorna `true` se o item foi incluído (novo); `false` se vazio ou duplicado. */
@@ -98,6 +113,8 @@ const CatalogItemsContext = createContext<CatalogItemsContextValue | null>(null)
 export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CatalogItemsState>({ ...emptyState });
   const hydratedRef = useRef(false);
+  const applyingRemoteRef = useRef(false);
+  const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
     let cancelled = false;
@@ -112,9 +129,60 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!useCloud) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.catalog,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const local = await idbGetJson<StoredCatalog>(STORAGE_KEY);
+                const normalized = normalizeCatalogState(local);
+                if (!isCatalogEmpty(normalized)) {
+                  await setSotStateDoc(SOT_STATE_DOC.catalog, normalized);
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const next = normalizeCatalogState(payload as StoredCatalog);
+              setItems(next);
+              hydratedRef.current = true;
+              void idbSetJson(STORAGE_KEY, next);
+            })();
+          },
+          (err) => console.error("[SOT] Firestore catálogo:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (catálogo):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud]);
+
+  useEffect(() => {
     if (!hydratedRef.current) return;
     void idbSetJson(STORAGE_KEY, items);
   }, [items]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || !useCloud) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    void setSotStateDoc(SOT_STATE_DOC.catalog, items).catch((e) => {
+      console.error("[SOT] Gravar catálogo na nuvem:", e);
+    });
+  }, [items, useCloud]);
 
   const addItem = useCallback((category: CatalogCategory, value: string): boolean => {
     const t = value.trim();

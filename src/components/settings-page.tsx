@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { useDepartures } from "../context/departures-context";
-import { getDeparturesReportEmail, setDeparturesReportEmail } from "../lib/departuresReportEmail";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
@@ -45,11 +45,15 @@ export function SettingsPage() {
   const { items: catalogItems } = useCatalogItems();
   const { nome: motoristaPao, setNome: setMotoristaPao } = useMotoristaPao();
   const { departures, mergeDeparturesFromBackup, clearAllDepartures, cloudDeparturesSync } = useDepartures();
+  const { email: reportEmailStored, setEmail: setReportEmailStored } = useDeparturesReportEmail();
+  const [reportEmailDest, setReportEmailDest] = useState(reportEmailStored);
+  useEffect(() => {
+    setReportEmailDest(reportEmailStored);
+  }, [reportEmailStored]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savePeriodMode, setSavePeriodMode] = useState<SavePeriodMode>("full");
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
-  const [reportEmailDest, setReportEmailDest] = useState(() => getDeparturesReportEmail());
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -169,14 +173,15 @@ export function SettingsPage() {
             className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-3 py-2 text-sm"
             role="status"
           >
-            <p className="font-semibold text-[hsl(var(--foreground))]">Nuvem (Firebase) — saídas</p>
+            <p className="font-semibold text-[hsl(var(--foreground))]">Nuvem (Firebase)</p>
             {cloudDeparturesSync.status === "connecting" ? (
-              <p className="text-[hsl(var(--muted-foreground))]">A ligar e a sincronizar…</p>
+              <p className="text-[hsl(var(--muted-foreground))]">A ligar e a sincronizar saídas…</p>
             ) : null}
             {cloudDeparturesSync.status === "live" ? (
               <p className="text-[hsl(var(--muted-foreground))]">
-                Sincronização ativa: alterações partilhadas entre dispositivos que usam esta mesma app com as mesmas
-                chaves Firebase.
+                Sincronização ativa: saídas e restantes dados da app (catálogo, avisos, oficina, limpeza, manutenções,
+                escala do pão, cidades extras no formulário, etc.) são gravados no Firestore e partilhados entre
+                dispositivos com as mesmas chaves Firebase.
               </p>
             ) : null}
             {cloudDeparturesSync.status === "error" ? (
@@ -187,10 +192,26 @@ export function SettingsPage() {
           </div>
         ) : (
           <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            Saídas guardadas só neste navegador (IndexedDB). Para dados partilhados em remoto, configure as variáveis
-            Firebase no build (ver <code className="rounded bg-[hsl(var(--muted))]/50 px-1">.env.example</code>).
+            Dados guardados só neste navegador (IndexedDB). Para sincronizar saídas e o restante estado da app na nuvem,
+            configure as variáveis Firebase no build (ver{" "}
+            <code className="rounded bg-[hsl(var(--muted))]/50 px-1">.env.example</code>).
           </p>
         )}
+        <p className="text-[0.7rem] leading-snug text-[hsl(var(--muted-foreground))]">
+          <span className="font-semibold text-[hsl(var(--foreground))]">Diagnóstico:</span>{" "}
+          <code className="rounded bg-[hsl(var(--muted))]/40 px-1">VITE_FIREBASE_PROJECT_ID</code> neste site ={" "}
+          {import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() ? (
+            <span className="font-mono text-[hsl(var(--foreground))]">
+              {import.meta.env.VITE_FIREBASE_PROJECT_ID}
+            </span>
+          ) : (
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              vazio — o site foi gerado sem Firebase; nada é gravado no Firestore. No GitHub: Configurações → Segredos e
+              variáveis → Ações → crie os segredos <code className="font-mono">VITE_FIREBASE_*</code> e execute de novo o
+              fluxo de implantação (ou envie um novo commit à ramo principal).
+            </span>
+          )}
+        </p>
       </CardHeader>
       <CardContent className="space-y-8">
         <section className="space-y-3">
@@ -325,7 +346,7 @@ export function SettingsPage() {
               placeholder="exemplo@instituicao.pt"
               value={reportEmailDest}
               onChange={(e) => setReportEmailDest(e.target.value)}
-              onBlur={() => setDeparturesReportEmail(reportEmailDest)}
+              onBlur={() => setReportEmailStored(reportEmailDest)}
               className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
             />
           </div>

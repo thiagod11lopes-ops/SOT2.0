@@ -2,10 +2,15 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { getMotoristaPaoStored, setMotoristaPaoStored } from "../lib/motoristaPaoStorage";
 
 type MotoristaPaoContextValue = {
@@ -16,8 +21,67 @@ type MotoristaPaoContextValue = {
 
 const MotoristaPaoContext = createContext<MotoristaPaoContextValue | null>(null);
 
+function normalizeMotoristaPaoDoc(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const o = raw as Record<string, unknown>;
+  return typeof o.nome === "string" ? o.nome : "";
+}
+
 export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
   const [nome, setNomeState] = useState(() => getMotoristaPaoStored());
+  const applyingRemoteRef = useRef(false);
+  const hydratedRef = useRef(true);
+  const useCloud = isFirebaseConfigured();
+
+  useEffect(() => {
+    if (!useCloud) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.motoristaPao,
+          (payload) => {
+            if (cancelled) return;
+            void (async () => {
+              if (payload === null) {
+                const local = getMotoristaPaoStored().trim();
+                if (local) {
+                  await setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome: local });
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const n = normalizeMotoristaPaoDoc(payload);
+              setNomeState(n);
+              setMotoristaPaoStored(n);
+              hydratedRef.current = true;
+            })();
+          },
+          (err) => console.error("[SOT] Firestore motorista pão:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (motorista pão):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || !useCloud) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+    void setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome }).catch((e) => {
+      console.error("[SOT] Gravar motorista pão na nuvem:", e);
+    });
+  }, [nome, useCloud]);
 
   const setNome = useCallback((value: string) => {
     setNomeState(value);
