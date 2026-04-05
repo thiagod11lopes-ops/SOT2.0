@@ -12,6 +12,7 @@ import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
 import { useIdleReturnToPrincipal } from "./hooks/useIdleReturnToPrincipal";
+import { useOilMaintenanceMap } from "./hooks/useOilMaintenanceMap";
 import { isSettingsTab } from "./lib/tabMatch";
 
 function useLocationHash() {
@@ -39,6 +40,8 @@ const tabs = [
 function App() {
   const hash = useLocationHash();
   const { activeTab, setActiveTab } = useAppTab();
+  /** Um único listener Firestore `oilMaintenance` para Dashboard + faixa inferior (evita leituras duplicadas). */
+  const mapaOleo = useOilMaintenanceMap();
   useIdleReturnToPrincipal();
   const { editIntentVersion } = useDepartures();
   const lastEditIntentVersion = useRef(editIntentVersion);
@@ -52,7 +55,7 @@ function App() {
   }, [editIntentVersion, setActiveTab, hash]);
 
   const content = useMemo(() => {
-    if (!activeTab) return <Dashboard />;
+    if (!activeTab) return <Dashboard mapaOleo={mapaOleo} />;
     if (activeTab === "Cadastrar Saída") return <RegisterDeparturePage />;
     if (activeTab === "Saídas Administrativas")
       return (
@@ -64,7 +67,7 @@ function App() {
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
-  }, [activeTab]);
+  }, [activeTab, mapaOleo]);
 
   if (hash.startsWith("#/saidas")) {
     return <SaidasMobileApp />;
@@ -82,7 +85,7 @@ function App() {
       >
         {content}
       </Layout>
-      {isHome ? <HomeNewsTicker /> : null}
+      {isHome ? <HomeNewsTicker mapaOleo={mapaOleo} /> : null}
     </>
   );
 }

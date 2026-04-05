@@ -1,6 +1,6 @@
 import { useRef, type ChangeEvent } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Ambulance, ArrowLeft, Building2, Upload } from "lucide-react";
+import { Ambulance, Building2, Upload } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
@@ -36,32 +36,20 @@ export function SaidasLayout() {
     reader.readAsText(f);
   }
 
-  function voltarAoSot() {
-    window.location.hash = "";
-  }
-
   return (
     <div className="flex min-h-dvh flex-col bg-[hsl(var(--background))]">
       <header
         className="sticky top-0 z-20 border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
       >
-        <div className="mx-auto flex max-w-lg items-center justify-between gap-1.5 min-[400px]:gap-2">
-          <button
-            type="button"
-            onClick={voltarAoSot}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] active:scale-[0.98]"
-            aria-label="Voltar ao sistema principal"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="min-w-0 flex-1 text-center">
+        <div className="relative mx-auto flex max-w-lg items-center justify-center gap-1.5 min-[400px]:gap-2">
+          <div className="min-w-0 max-w-[calc(100%-8rem)] px-1 text-center sm:max-w-[calc(100%-9rem)]">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
               SOT
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">Saídas</h1>
           </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[400px]:gap-2">
+          <div className="absolute right-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1.5 min-[400px]:gap-2">
             <SaidasHeaderEscalaPao />
             <button
               type="button"

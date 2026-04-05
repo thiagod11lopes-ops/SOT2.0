@@ -4,7 +4,6 @@ import {
   ClockAlert,
   Droplets,
   Route,
-  Smartphone,
   Sparkles,
   Wrench,
 } from "lucide-react";
@@ -14,7 +13,6 @@ import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
-import { useOilMaintenanceMap } from "../hooks/useOilMaintenanceMap";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import {
@@ -22,6 +20,7 @@ import {
   fraseProximaTrocaOleo,
   rotuloViaturaPlaca,
 } from "../lib/homeTickerStrings";
+import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import {
   alertaProximaTrocaOleo,
@@ -190,7 +189,7 @@ function formatDataHojeLongaPtBr() {
   return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-export function Dashboard() {
+export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
   const { placas: placasPendenciaLimpeza } = useLimpezaPendente();
@@ -204,7 +203,6 @@ export function Dashboard() {
     [alarmesDiarios],
   );
   const { mapaOficina } = useOficinaVisitas();
-  const mapaOleo = useOilMaintenanceMap();
   const placasCatalogo = useMemo(
     () => viaturasCatalogoUnicas(items.viaturasAdministrativas, items.ambulancias),
     [items.viaturasAdministrativas, items.ambulancias],
@@ -248,13 +246,6 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <a
-        href="#/saidas/administrativas"
-        className="flex min-h-[3rem] items-center justify-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-3 text-sm font-semibold text-[hsl(var(--primary))] shadow-sm transition hover:bg-[hsl(var(--muted))]/50 min-[480px]:justify-start"
-      >
-        <Smartphone className="h-5 w-5 shrink-0" aria-hidden />
-        <span>Vista mobile das saídas (mesmos dados deste navegador)</span>
-      </a>
       <section className="space-y-4">
         {alarmesNaHome.map((a) => (
           <DailyAlarmCard key={a.id} alarm={a} />

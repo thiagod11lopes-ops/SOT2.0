@@ -1,5 +1,7 @@
-import { useId, useMemo, useState, type HTMLAttributes } from "react";
+import { useId, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "../components/ui/button";
+import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
@@ -8,6 +10,7 @@ import { normalize24hTime } from "../lib/timeInput";
 import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
+import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 
 function Field({
   label,
@@ -125,6 +128,9 @@ export function DepartureCard({
   allowMobileEdit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
+  const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
+  const rubricaTitleId = useId();
   const row = listRowFromRecord(record);
   const { items: catalogItems } = useCatalogItems();
   const { estaNaOficina } = useOficinaVisitas();
@@ -158,6 +164,36 @@ export function DepartureCard({
       ...partial,
     });
   }
+
+  function commitRubrica() {
+    if (!updateDeparture) return;
+    const { id: _id, createdAt: _c, ...rest } = record;
+    const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
+    updateDeparture(record.id, { ...rest, rubrica: drawn });
+    setRubricaModalOpen(false);
+  }
+
+  const mostrarRubricar =
+    chegadaPreenchido && allowMobileEdit && Boolean(updateDeparture);
+
+  const blocoRubricar = mostrarRubricar ? (
+    <div className="flex flex-col gap-2 border-t border-dashed border-[hsl(var(--border))]/80 pt-3">
+      <Button
+        type="button"
+        variant="secondary"
+        className="min-h-12 w-full rounded-xl text-base font-semibold"
+        onClick={() => setRubricaModalOpen(true)}
+      >
+        Rubricar
+      </Button>
+      {(record.rubrica ?? "").trim().length > 0 ? (
+        <p className="text-center text-[0.7rem] text-[hsl(var(--muted-foreground))]">
+          Rubrica registada — aparece no PDF (Gerar PDF / Enviar / Assinar).
+          {isRubricaImageDataUrl(record.rubrica) ? " (desenho)" : null}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <article
@@ -277,6 +313,7 @@ export function DepartureCard({
               disabled={!allowMobileEdit}
             />
           </div>
+          {blocoRubricar}
         </div>
       ) : null}
 
@@ -330,6 +367,57 @@ export function DepartureCard({
               mono
               disabled={!allowMobileEdit}
             />
+          </div>
+          {blocoRubricar}
+        </div>
+      ) : null}
+
+      {rubricaModalOpen ? (
+        <div
+          className="pointer-events-auto fixed inset-0 z-[200] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={rubricaTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRubricaModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id={rubricaTitleId} className="mb-3 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Rubrica
+            </h2>
+            <p className="mb-2 text-sm text-[hsl(var(--muted-foreground))]">
+              Desenhe a rubrica com o dedo ou o rato — sem teclado. Aparece na coluna Rubrica do PDF (aba Saídas).
+            </p>
+            <RubricaSignaturePad
+              key={record.id}
+              ref={rubricaPadRef}
+              initialDataUrl={isRubricaImageDataUrl(record.rubrica) ? record.rubrica : null}
+            />
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 rounded-xl"
+                onClick={() => rubricaPadRef.current?.clearPad()}
+              >
+                Limpar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 rounded-xl"
+                onClick={() => setRubricaModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubrica}>
+                OK
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

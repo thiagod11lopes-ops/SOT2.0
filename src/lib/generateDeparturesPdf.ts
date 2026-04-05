@@ -1,10 +1,9 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
+import { isRubricaImageDataUrl } from "./rubricaDrawing";
 import { listRowFromRecord, type DepartureRecord, type DepartureType } from "../types/departure";
 
 export interface DeparturesPdfSignatures {
-  motorista1: string | null;
-  motorista2: string | null;
   /** Nome do assinante (Divisão de Transporte). */
   assinanteDivisao: string | null;
 }
@@ -13,7 +12,7 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 
 /** Soma das larguras das colunas da tabela (mm) — usada para centrar a tabela na página. */
 const TABLE_TOTAL_WIDTH_MM =
-  26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28;
+  26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28 + 30;
 
 /** Margem extra de cada lado da linha relativamente à largura máxima do nome (mm). */
 const SIGNATURE_LINE_PAD_MM = 2.8;
@@ -93,9 +92,14 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
   doc.text(`Data: ${dateLabel}`, centerX, y, { align: "center" });
   y += 9;
 
-  const head = [["Viatura", "Motorista", "Saída", "Destino", "OM", "KM saída", "KM chegada", "Chegada", "Setor"]];
+  const head = [
+    ["Viatura", "Motorista", "Saída", "Destino", "OM", "KM saída", "KM chegada", "Chegada", "Setor", "Rubrica"],
+  ];
   const body: string[][] = params.rows.map((r) => {
     const lr = listRowFromRecord(r);
+    const rawRubrica = (r.rubrica ?? "").trim();
+    const rubricaCol =
+      rawRubrica.length === 0 ? "—" : isRubricaImageDataUrl(rawRubrica) ? " " : rawRubrica;
     return [
       lr.viatura,
       lr.motorista,
@@ -106,16 +110,29 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
       lr.kmChegada,
       lr.chegada,
       lr.setor,
+      rubricaCol,
     ];
   });
-  const tableBody = body.length > 0 ? body : [["—", "—", "—", "—", "—", "—", "—", "—", "Nenhum registro"]];
+  const tableBody =
+    body.length > 0 ? body : [["—", "—", "—", "—", "—", "—", "—", "—", "—", "Nenhum registro"]];
 
   autoTable(doc, {
     startY: y,
     head,
     body: tableBody,
-    styles: { fontSize: 7, cellPadding: 1.2, overflow: "linebreak", valign: "top" },
-    headStyles: { fillColor: [230, 230, 235], textColor: [20, 20, 20], fontStyle: "bold" },
+    styles: {
+      fontSize: 7,
+      cellPadding: { top: 1.35, bottom: 1.35, left: 1.2, right: 1.2 },
+      overflow: "linebreak",
+      valign: "middle",
+    },
+    headStyles: {
+      fillColor: [230, 230, 235],
+      textColor: [20, 20, 20],
+      fontStyle: "bold",
+      valign: "middle",
+    },
+    bodyStyles: { valign: "middle" },
     margin: { left: margin + tableSideOffset, right: margin + tableSideOffset },
     tableWidth: TABLE_TOTAL_WIDTH_MM,
     columnStyles: {
@@ -128,6 +145,38 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
       6: { cellWidth: 18 },
       7: { cellWidth: 16 },
       8: { cellWidth: 28 },
+      9: { cellWidth: 30 },
+    },
+    didParseCell: (data) => {
+      if (data.section !== "body" || data.column.index !== 9) return;
+      const row = params.rows[data.row.index];
+      if (!row) return;
+      const raw = (row.rubrica ?? "").trim();
+      if (isRubricaImageDataUrl(raw)) {
+        data.cell.text = [];
+        data.cell.styles.minCellHeight = 20;
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section !== "body" || data.column.index !== 9) return;
+      const row = params.rows[data.row.index];
+      if (!row) return;
+      const raw = (row.rubrica ?? "").trim();
+      if (!isRubricaImageDataUrl(raw)) return;
+      /** Área útil da célula; a rubrica usa 64% da área (≈ 20% menor que os 80% anteriores) e fica centrada. */
+      const pad = 0.25;
+      const innerW = Math.max(0.5, data.cell.width - pad * 2);
+      const innerH = Math.max(0.5, data.cell.height - pad * 2);
+      const scale = 0.8 * 0.8;
+      const iw = innerW * scale;
+      const ih = innerH * scale;
+      const ix = data.cell.x + pad + (innerW - iw) / 2;
+      const iy = data.cell.y + pad + (innerH - ih) / 2;
+      try {
+        data.doc.addImage(raw, "PNG", ix, iy, iw, ih);
+      } catch {
+        /* ignore */
+      }
     },
   });
 
@@ -139,28 +188,11 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
     y = margin;
   }
 
-  const { motorista1, motorista2, assinanteDivisao } = params.signatures;
-  const hasAny = Boolean(motorista1 || motorista2 || assinanteDivisao);
+  const { assinanteDivisao } = params.signatures;
+  const hasAny = Boolean(assinanteDivisao);
 
-  /** Largura do grupo de assinaturas (motoristas em par, ou bloco único), centrada na página. */
+  /** Largura do bloco de assinatura (Divisão de Transporte), centrada na página. */
   const signGroupW = Math.min(usableW, 168);
-
-  if (params.tipo === "Ambulância" && (motorista1 || motorista2)) {
-    const gap = 8;
-    const pairLeft = margin + (usableW - signGroupW) / 2;
-    const half = (signGroupW - gap) / 2;
-    const leftX = pairLeft;
-    const rightX = pairLeft + half + gap;
-    const startY = y;
-    let bottom = startY;
-    if (motorista1) {
-      bottom = Math.max(bottom, drawSignatureBlock(doc, leftX, startY, half, motorista1, "Motorista 1"));
-    }
-    if (motorista2) {
-      bottom = Math.max(bottom, drawSignatureBlock(doc, rightX, startY, half, motorista2, "Motorista 2"));
-    }
-    y = bottom + 4;
-  }
 
   if (assinanteDivisao) {
     if (y > pageH - 40) {

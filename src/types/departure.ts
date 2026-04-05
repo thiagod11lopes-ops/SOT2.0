@@ -24,6 +24,8 @@ export interface DepartureRecord {
   chegada: string;
   cidade: string;
   bairro: string;
+  /** Texto manual (ex.: rubrica) — preenchido no mobile; incluído no PDF das saídas. */
+  rubrica: string;
 }
 
 const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "createdAt">[] = [
@@ -46,6 +48,7 @@ const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "cre
   "chegada",
   "cidade",
   "bairro",
+  "rubrica",
 ];
 
 /** Identifica registros com o mesmo conteúdo de cadastro (todos os campos do formulário, exceto id/data). */
@@ -74,6 +77,12 @@ export function dedupeDeparturesMesmoCadastro(rows: DepartureRecord[]): Departur
 export function listRowFromRecord(r: DepartureRecord) {
   const saida = r.horaSaida.trim() || "—";
   const destino = r.bairro.trim() || "—";
+  const rawRubrica = String((r as DepartureRecord).rubrica ?? "").trim();
+  let rubricaLabel = "—";
+  if (rawRubrica) {
+    // Evita mostrar data URL enorme — rubrica desenhada é marcada com ✓
+    rubricaLabel = /^data:image\//i.test(rawRubrica) ? "✓" : rawRubrica;
+  }
   return {
     tipo: r.tipo,
     viatura: r.viaturas.trim() || "—",
@@ -86,6 +95,7 @@ export function listRowFromRecord(r: DepartureRecord) {
     chegada: r.chegada.trim() || "—",
     setor: r.setor.trim() || "—",
     dataSaida: r.dataSaida,
+    rubrica: rubricaLabel,
   };
 }
 
@@ -116,5 +126,11 @@ export function fullRowCells(r: DepartureRecord) {
     chegada: cell(r.chegada),
     cidade: cell(r.cidade),
     bairro: cell(r.bairro),
+    rubrica: (() => {
+      const t = String(r.rubrica ?? "").trim();
+      if (!t) return "—";
+      if (/^data:image\//i.test(t)) return "✓";
+      return cell(t);
+    })(),
   };
 }

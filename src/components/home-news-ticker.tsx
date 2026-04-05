@@ -4,17 +4,16 @@ import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
-import { useOilMaintenanceMap } from "../hooks/useOilMaintenanceMap";
+import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
 import { buildHomeTickerSegments, joinTickerSegments } from "../lib/buildHomeTickerSegments";
 import { cn } from "../lib/utils";
 
 /** Faixa fixa inferior na página inicial: aviso opcional + telão estilo TV. */
-export function HomeNewsTicker() {
+export function HomeNewsTicker({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { departures } = useDepartures();
   const { items } = useCatalogItems();
   const { placas: placasLimpeza } = useLimpezaPendente();
   const { mapaOficina } = useOficinaVisitas();
-  const mapaOleo = useOilMaintenanceMap();
   const { avisoPrincipal, fainasLinhas, avisosGeraisLinhas } = useAvisos();
 
   const marqueeText = useMemo(() => {
@@ -56,7 +55,7 @@ export function HomeNewsTicker() {
             showBreaking ? "min-h-[5rem]" : "min-h-[3rem]",
           )}
         >
-          {/* Frame à esquerda — ícone em public/ (BASE_URL para GitHub Pages) */}
+          {/* Frame à esquerda — brasão em public/brasao.ico (BASE_URL para GitHub Pages) */}
           <div
             className={cn(
               "flex shrink-0 flex-col items-center justify-center border-r border-[hsl(var(--border))]/60 bg-[hsl(var(--primary))] shadow-[inset_0_1px_0_hsla(0,0%,100%,0.14)]",
@@ -66,7 +65,7 @@ export function HomeNewsTicker() {
             )}
           >
             <img
-              src={`${import.meta.env.BASE_URL}favicon.svg`}
+              src={`${import.meta.env.BASE_URL}brasao.ico`}
               alt=""
               aria-hidden
               className={cn(

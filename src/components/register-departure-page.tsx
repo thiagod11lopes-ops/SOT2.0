@@ -468,6 +468,7 @@ export function RegisterDeparturePage() {
       chegada: arrivalTime,
       cidade: city,
       bairro: neighborhood,
+      rubrica: "",
     };
   }
 

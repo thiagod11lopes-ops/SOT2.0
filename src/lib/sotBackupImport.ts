@@ -77,6 +77,7 @@ export function mapBackupRowToDepartureRecord(raw: Record<string, unknown>): Dep
     chegada: str(raw.chegada),
     cidade,
     bairro,
+    rubrica: str(raw.rubrica),
   };
 }
 

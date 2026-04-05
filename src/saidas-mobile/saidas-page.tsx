@@ -50,6 +50,7 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
     chegada: "",
     cidade: "",
     bairro: "",
+    rubrica: "",
   };
 }
 

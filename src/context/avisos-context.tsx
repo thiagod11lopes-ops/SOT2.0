@@ -263,9 +263,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisItens,
       alarmesDiarios,
     };
-    void setSotStateDoc(SOT_STATE_DOC.avisos, payload).catch((e) => {
-      console.error("[SOT] Gravar avisos na nuvem:", e);
-    });
+    const t = window.setTimeout(() => {
+      void setSotStateDoc(SOT_STATE_DOC.avisos, payload).catch((e) => {
+        console.error("[SOT] Gravar avisos na nuvem:", e);
+      });
+    }, 900);
+    return () => window.clearTimeout(t);
   }, [persistReady, useCloud, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
 
   /** Remove avisos com data final já ultrapassada (inclui após meia-noite). */

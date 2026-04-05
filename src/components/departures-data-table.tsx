@@ -6,6 +6,7 @@ import { listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
+import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
@@ -98,7 +99,7 @@ export function DeparturesDataTable({
   onUpdateKmFields,
   onEdit,
 }: DeparturesDataTableProps) {
-  const colSpan = showTipoColumn ? 11 : 10;
+  const colSpan = showTipoColumn ? 12 : 11;
   const cell = (extra?: string) =>
     cn(bodyFontBold && "font-bold text-[hsl(var(--primary))]", extra);
   const head = (extra?: string) =>
@@ -129,6 +130,7 @@ export function DeparturesDataTable({
           <TableHead className={head()}>KM chegada</TableHead>
           <TableHead className={head()}>Chegada</TableHead>
           <TableHead className={head()}>Setor</TableHead>
+          <TableHead className={head("max-w-[10rem]")}>Rubrica</TableHead>
           <TableHead className={head("min-w-[5.5rem] text-right")}>Ações</TableHead>
         </TableRow>
       </TableHeader>
@@ -218,6 +220,20 @@ export function DeparturesDataTable({
                   )}
                 </TableCell>
                 <TableCell className={cell()}>{lr.setor}</TableCell>
+                <TableCell
+                  className={cell("max-w-[140px] text-xs")}
+                  title={isRubricaImageDataUrl(row.rubrica) ? "Rubrica (desenho)" : lr.rubrica !== "—" ? lr.rubrica : undefined}
+                >
+                  {isRubricaImageDataUrl(row.rubrica) ? (
+                    <img
+                      src={row.rubrica}
+                      alt=""
+                      className="h-9 max-w-[5.5rem] object-contain object-left"
+                    />
+                  ) : (
+                    <span className="truncate">{lr.rubrica}</span>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-0.5">
                     {onEdit ? (

@@ -43,8 +43,6 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   const { email: reportEmailDest } = useDeparturesReportEmail();
   const filterDateId = useId();
   const assinaturaSelectId = useId();
-  const assinaturaMotorista1SelectId = useId();
-  const assinaturaMotorista2SelectId = useId();
   const filterDateInputRef = useRef<HTMLInputElement>(null);
   const pendingFilterCaret = useRef<number | null>(null);
   const [filterDepartureDate, setFilterDepartureDate] = useState<string>(() => getCurrentDatePtBr());
@@ -56,24 +54,12 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   const [selectedMotoristaAssinatura, setSelectedMotoristaAssinatura] = useState("");
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
-  const isAmbulancia = filterTipo === "Ambulância";
-
-  // Ambulância: dois campos adicionais acima do campo de assinatura que já existe.
-  const [selectedMotorista1, setSelectedMotorista1] = useState("");
-  const [selectedMotorista2, setSelectedMotorista2] = useState("");
-  const [assinaturaConfirmadaMotorista1, setAssinaturaConfirmadaMotorista1] = useState<string | null>(null);
-  const [assinaturaConfirmadaMotorista2, setAssinaturaConfirmadaMotorista2] = useState<string | null>(null);
-
   useEffect(() => {
     setFilterDepartureDate(getCurrentDatePtBr());
     setActionsToolbarOpen(false);
     setSignPanelOpen(false);
     setSelectedMotoristaAssinatura("");
     setAssinaturaConfirmadaNome(null);
-    setSelectedMotorista1("");
-    setSelectedMotorista2("");
-    setAssinaturaConfirmadaMotorista1(null);
-    setAssinaturaConfirmadaMotorista2(null);
   }, [filterTipo]);
 
   useEffect(() => {
@@ -132,18 +118,6 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     setAssinaturaConfirmadaNome(t);
   }
 
-  function handleConfirmarMotorista1() {
-    const t = selectedMotorista1.trim();
-    if (!t) return;
-    setAssinaturaConfirmadaMotorista1(t);
-  }
-
-  function handleConfirmarMotorista2() {
-    const t = selectedMotorista2.trim();
-    if (!t) return;
-    setAssinaturaConfirmadaMotorista2(t);
-  }
-
   const departuresPdfParams = useMemo(
     () => ({
       listTitle: title,
@@ -151,20 +125,10 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
       filterDate: filterDepartureDate,
       rows,
       signatures: {
-        motorista1: assinaturaConfirmadaMotorista1,
-        motorista2: assinaturaConfirmadaMotorista2,
         assinanteDivisao: assinaturaConfirmadaNome,
       },
     }),
-    [
-      title,
-      filterTipo,
-      filterDepartureDate,
-      rows,
-      assinaturaConfirmadaMotorista1,
-      assinaturaConfirmadaMotorista2,
-      assinaturaConfirmadaNome,
-    ],
+    [title, filterTipo, filterDepartureDate, rows, assinaturaConfirmadaNome],
   );
 
   function handleGerarPdf() {
@@ -321,92 +285,6 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
         />
         {signPanelOpen ? (
           <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col gap-6">
-            {isAmbulancia ? (
-              <div className="grid grid-cols-2 gap-4 text-center">
-                {!assinaturaConfirmadaMotorista1 ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <label
-                      htmlFor={assinaturaMotorista1SelectId}
-                      className="text-sm font-medium text-[hsl(var(--foreground))]"
-                    >
-                      Motorista1
-                    </label>
-                    <select
-                      id={assinaturaMotorista1SelectId}
-                      value={selectedMotorista1}
-                      onChange={(e) => setSelectedMotorista1(e.target.value)}
-                      disabled={catalogItems.motoristas.length === 0}
-                      className="h-10 w-full max-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--muted))]"
-                    >
-                      <option value="">Selecione o motorista…</option>
-                      {catalogItems.motoristas.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                    {catalogItems.motoristas.length === 0 ? (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Motorista</strong>.
-                      </p>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="default"
-                        size="sm"
-                        className="min-w-[4rem]"
-                        disabled={!selectedMotorista1.trim()}
-                        onClick={handleConfirmarMotorista1}
-                      >
-                        OK
-                      </Button>
-                    )}
-                  </div>
-                ) : null}
-
-                {!assinaturaConfirmadaMotorista2 ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <label
-                      htmlFor={assinaturaMotorista2SelectId}
-                      className="text-sm font-medium text-[hsl(var(--foreground))]"
-                    >
-                      Motorista 2
-                    </label>
-                    <select
-                      id={assinaturaMotorista2SelectId}
-                      value={selectedMotorista2}
-                      onChange={(e) => setSelectedMotorista2(e.target.value)}
-                      disabled={catalogItems.motoristas.length === 0}
-                      className="h-10 w-full max-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--muted))]"
-                    >
-                      <option value="">Selecione o motorista…</option>
-                      {catalogItems.motoristas.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                    {catalogItems.motoristas.length === 0 ? (
-                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                        Cadastre em <strong>Frota e Pessoal</strong> → <strong>Motorista</strong>.
-                      </p>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="default"
-                        size="sm"
-                        className="min-w-[4rem]"
-                        disabled={!selectedMotorista2.trim()}
-                        onClick={handleConfirmarMotorista2}
-                      >
-                        OK
-                      </Button>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
             {!assinaturaConfirmadaNome ? (
               <div className="flex w-full flex-col items-center gap-3 text-center">
                 <label
@@ -446,60 +324,6 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
                     OK
                   </Button>
                 )}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {isAmbulancia && (assinaturaConfirmadaMotorista1 || assinaturaConfirmadaMotorista2) ? (
-          <div className="mx-auto mt-8 grid w-full max-w-2xl grid-cols-2 gap-x-12 gap-y-8 text-center print:break-inside-avoid">
-            {assinaturaConfirmadaMotorista1 ? (
-              <div className="flex flex-col items-center gap-0">
-                <div className="flex w-full max-w-[16rem] flex-col items-stretch gap-0">
-                  <div className="min-h-[3rem] w-full border-0 border-b-2 border-[hsl(var(--foreground))] bg-transparent" />
-                  <span className="sr-only">Área para assinatura manuscrita</span>
-                </div>
-                <p className="mt-4 text-base font-semibold text-[hsl(var(--foreground))]">
-                  {assinaturaConfirmadaMotorista1}
-                </p>
-                <p className="mt-1 text-sm font-medium text-[hsl(var(--muted-foreground))]">Motorista1</p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3 text-[hsl(var(--muted-foreground))]"
-                  onClick={() => {
-                    setAssinaturaConfirmadaMotorista1(null);
-                    setSelectedMotorista1("");
-                  }}
-                >
-                  Alterar Motorista1
-                </Button>
-              </div>
-            ) : null}
-
-            {assinaturaConfirmadaMotorista2 ? (
-              <div className="flex flex-col items-center gap-0">
-                <div className="flex w-full max-w-[16rem] flex-col items-stretch gap-0">
-                  <div className="min-h-[3rem] w-full border-0 border-b-2 border-[hsl(var(--foreground))] bg-transparent" />
-                  <span className="sr-only">Área para assinatura manuscrita</span>
-                </div>
-                <p className="mt-4 text-base font-semibold text-[hsl(var(--foreground))]">
-                  {assinaturaConfirmadaMotorista2}
-                </p>
-                <p className="mt-1 text-sm font-medium text-[hsl(var(--muted-foreground))]">Motorista 2</p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3 text-[hsl(var(--muted-foreground))]"
-                  onClick={() => {
-                    setAssinaturaConfirmadaMotorista2(null);
-                    setSelectedMotorista2("");
-                  }}
-                >
-                  Alterar Motorista 2
-                </Button>
               </div>
             ) : null}
           </div>
