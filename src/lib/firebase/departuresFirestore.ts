@@ -13,6 +13,7 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from "firebase/firestore";
+import { ensureFirebaseAuth } from "./auth";
 import { getFirebaseApp } from "./config";
 import { normalizeDepartureRows } from "../normalizeDepartures";
 import type { DepartureRecord } from "../../types/departure";
@@ -87,34 +88,50 @@ export function subscribeDepartures(
   onData: (rows: DepartureRecord[]) => void,
   onError: (err: Error) => void,
 ): Unsubscribe {
-  const db = getFirestore(getFirebaseApp());
-  const q = query(collection(db, COLLECTION));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const raw: DepartureRecord[] = [];
-      snap.forEach((d) => {
-        const row = docToDeparture(d);
-        if (row) raw.push(row);
-      });
-      raw.sort((a, b) => b.createdAt - a.createdAt);
-      onData(normalizeDepartureRows(raw));
-    },
-    (err) => onError(err instanceof Error ? err : new Error(String(err))),
-  );
+  let unsub: Unsubscribe | undefined;
+  let cancelled = false;
+  void ensureFirebaseAuth()
+    .then(() => {
+      if (cancelled) return;
+      const db = getFirestore(getFirebaseApp());
+      const q = query(collection(db, COLLECTION));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const raw: DepartureRecord[] = [];
+          snap.forEach((d) => {
+            const row = docToDeparture(d);
+            if (row) raw.push(row);
+          });
+          raw.sort((a, b) => b.createdAt - a.createdAt);
+          onData(normalizeDepartureRows(raw));
+        },
+        (err) => onError(err instanceof Error ? err : new Error(String(err))),
+      );
+    })
+    .catch((err) => {
+      if (!cancelled) onError(err instanceof Error ? err : new Error(String(err)));
+    });
+  return () => {
+    cancelled = true;
+    unsub?.();
+  };
 }
 
 export async function upsertDepartureRecord(r: DepartureRecord): Promise<void> {
+  await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
   await setDoc(doc(db, COLLECTION, r.id), departureToDoc(r));
 }
 
 export async function deleteDepartureDocument(id: string): Promise<void> {
+  await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
   await deleteDoc(doc(db, COLLECTION, id));
 }
 
 export async function deleteAllDepartureDocuments(): Promise<void> {
+  await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
   const snap = await getDocs(collection(db, COLLECTION));
   const refs = snap.docs.map((d) => d.ref);
@@ -129,6 +146,7 @@ export async function deleteAllDepartureDocuments(): Promise<void> {
 
 export async function batchUpsertDepartures(rows: DepartureRecord[]): Promise<void> {
   if (rows.length === 0) return;
+  await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
   for (let i = 0; i < rows.length; i += BATCH_MAX) {
     const batch = writeBatch(db);
