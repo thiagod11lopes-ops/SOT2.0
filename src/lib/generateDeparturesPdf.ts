@@ -14,6 +14,25 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const TABLE_TOTAL_WIDTH_MM =
   26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28 + 30;
 
+/** No PDF, rubrica de saída cancelada (texto) — antecede o nome; evita duplicar se já existir no registo. */
+const PDF_RUBRICA_CANCEL_PREFIX = "Cancelado por: ";
+
+function rubricaJaTemPrefixoCancelado(text: string): boolean {
+  return /^\s*cancelado\s+por\s*:/i.test(text.trim());
+}
+
+/** Conteúdo textual da coluna Rubrica na tabela do PDF (não inclui desenho; imagem usa célula vazia + didDrawCell). */
+function rubricaColunaPdf(r: DepartureRecord): string {
+  const raw = (r.rubrica ?? "").trim();
+  if (raw.length === 0) return "—";
+  if (isRubricaImageDataUrl(raw)) return " ";
+  let t = raw;
+  if (r.cancelada === true && !rubricaJaTemPrefixoCancelado(t)) {
+    t = PDF_RUBRICA_CANCEL_PREFIX + t;
+  }
+  return t;
+}
+
 /** Margem extra de cada lado da linha relativamente à largura máxima do nome (mm). */
 const SIGNATURE_LINE_PAD_MM = 2.8;
 
@@ -95,26 +114,52 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
   const head = [
     ["Viatura", "Motorista", "Saída", "Destino", "OM", "KM saída", "KM chegada", "Chegada", "Setor", "Rubrica"],
   ];
-  const body: string[][] = params.rows.map((r) => {
-    const lr = listRowFromRecord(r);
-    const rawRubrica = (r.rubrica ?? "").trim();
-    const rubricaCol =
-      rawRubrica.length === 0 ? "—" : isRubricaImageDataUrl(rawRubrica) ? " " : rawRubrica;
-    return [
-      lr.viatura,
-      lr.motorista,
-      lr.saida,
-      lr.destino,
-      lr.om,
-      lr.kmSaida,
-      lr.kmChegada,
-      lr.chegada,
-      lr.setor,
-      rubricaCol,
-    ];
-  });
-  const tableBody =
-    body.length > 0 ? body : [["—", "—", "—", "—", "—", "—", "—", "—", "—", "Nenhum registro"]];
+
+  /** Índice da linha da tabela → índice em `params.rows`, ou `occ` para linha de ocorrências. */
+  const rowMap: Array<number | "occ"> = [];
+  const tableBody: (
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [{ content: string; colSpan: number; styles: Record<string, unknown> }]
+  )[] = [];
+
+  if (params.rows.length === 0) {
+    tableBody.push(["—", "—", "—", "—", "—", "—", "—", "—", "—", "Nenhum registro"]);
+  } else {
+    for (let i = 0; i < params.rows.length; i++) {
+      const r = params.rows[i];
+      const lr = listRowFromRecord(r);
+      const rubricaCol = rubricaColunaPdf(r);
+      tableBody.push([
+        lr.viatura,
+        lr.motorista,
+        lr.saida,
+        lr.destino,
+        lr.om,
+        lr.kmSaida,
+        lr.kmChegada,
+        lr.chegada,
+        lr.setor,
+        rubricaCol,
+      ]);
+      rowMap.push(i);
+      const occ = (r.ocorrencias ?? "").trim();
+      if (occ) {
+        tableBody.push([
+          {
+            content: `Ocorrências: ${occ}`,
+            colSpan: 10,
+            styles: {
+              fontSize: 6.2,
+              fontStyle: "italic",
+              textColor: [55, 55, 55],
+              cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: 2 },
+            },
+          },
+        ]);
+        rowMap.push("occ");
+      }
+    }
+  }
 
   autoTable(doc, {
     startY: y,
@@ -149,7 +194,9 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
     },
     didParseCell: (data) => {
       if (data.section !== "body" || data.column.index !== 9) return;
-      const row = params.rows[data.row.index];
+      const m = rowMap[data.row.index];
+      if (m === "occ" || m === undefined) return;
+      const row = params.rows[m];
       if (!row) return;
       const raw = (row.rubrica ?? "").trim();
       if (isRubricaImageDataUrl(raw)) {
@@ -159,7 +206,9 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
     },
     didDrawCell: (data) => {
       if (data.section !== "body" || data.column.index !== 9) return;
-      const row = params.rows[data.row.index];
+      const m = rowMap[data.row.index];
+      if (m === "occ" || m === undefined) return;
+      const row = params.rows[m];
       if (!row) return;
       const raw = (row.rubrica ?? "").trim();
       if (!isRubricaImageDataUrl(raw)) return;

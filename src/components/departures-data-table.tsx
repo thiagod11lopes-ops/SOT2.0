@@ -1,6 +1,6 @@
-import { Pencil, Trash2 } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
-import type { DepartureKmFieldsPatch } from "../context/departures-context";
+import { ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDepartures, type DepartureKmFieldsPatch } from "../context/departures-context";
 import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
@@ -8,6 +8,8 @@ import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { cn } from "../lib/utils";
+import { DepartureDetailModal } from "./departure-detail-modal";
+import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -83,7 +85,8 @@ interface DeparturesDataTableProps {
   /** Negrito nos cabeçalhos e células (abas Saídas Administrativas / Ambulância). */
   bodyFontBold?: boolean;
   emptyLabel: string;
-  onRemove: (id: string) => void;
+  /** Abre o fluxo (modal) de excluir vs cancelar — não apaga diretamente. */
+  onTrashClick: (id: string) => void;
   /** Quando definido, KM saída, KM chegada e Chegada são editáveis inline. */
   onUpdateKmFields?: (id: string, patch: DepartureKmFieldsPatch) => void;
   /** Abre Cadastrar Nova Saída com os dados do registro. */
@@ -95,10 +98,28 @@ export function DeparturesDataTable({
   showTipoColumn,
   bodyFontBold,
   emptyLabel,
-  onRemove,
+  onTrashClick,
   onUpdateKmFields,
   onEdit,
 }: DeparturesDataTableProps) {
+  const { updateDeparture } = useDepartures();
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [ocorrenciasModalId, setOcorrenciasModalId] = useState<string | null>(null);
+  const detailRecord = useMemo(
+    () => (detailId ? rows.find((r) => r.id === detailId) ?? null : null),
+    [rows, detailId],
+  );
+  const ocorrenciasModalRecord = useMemo(
+    () => (ocorrenciasModalId ? rows.find((r) => r.id === ocorrenciasModalId) ?? null : null),
+    [rows, ocorrenciasModalId],
+  );
+
+  function handleSalvarOcorrencias(id: string, texto: string) {
+    const d = rows.find((r) => r.id === id);
+    if (!d) return;
+    const { id: _id, createdAt: _c, ...rest } = d;
+    updateDeparture(id, { ...rest, ocorrencias: texto });
+  }
   const colSpan = showTipoColumn ? 12 : 11;
   const cell = (extra?: string) =>
     cn(bodyFontBold && "font-bold text-[hsl(var(--primary))]", extra);
@@ -111,6 +132,22 @@ export function DeparturesDataTable({
   const inputCls = bodyFontBold ? inputClassBold : inputClass;
 
   return (
+    <>
+      <DepartureDetailModal
+        open={detailId !== null && detailRecord !== null}
+        onOpenChange={(o) => {
+          if (!o) setDetailId(null);
+        }}
+        record={detailRecord}
+      />
+      <DepartureOcorrenciasModal
+        open={ocorrenciasModalId !== null && ocorrenciasModalRecord !== null}
+        onOpenChange={(o) => {
+          if (!o) setOcorrenciasModalId(null);
+        }}
+        record={ocorrenciasModalRecord}
+        onSave={handleSalvarOcorrencias}
+      />
     <div
       className={cn(
         "overflow-x-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]",
@@ -131,7 +168,7 @@ export function DeparturesDataTable({
           <TableHead className={head()}>Chegada</TableHead>
           <TableHead className={head()}>Setor</TableHead>
           <TableHead className={head("max-w-[10rem]")}>Rubrica</TableHead>
-          <TableHead className={head("min-w-[5.5rem] text-right")}>Ações</TableHead>
+          <TableHead className={head("min-w-[8.5rem] text-right")}>Ações</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -151,14 +188,24 @@ export function DeparturesDataTable({
           rows.map((row) => {
             const lr = listRowFromRecord(row);
             const finalizada = saidaFinalizadaKmEChegada(row);
+            const cancelada = row.cancelada === true;
+            const kmEditavel = Boolean(onUpdateKmFields) && !cancelada;
             return (
               <TableRow
                 key={row.id}
                 className={cn(
-                  finalizada &&
+                  cancelada && "bg-red-950/[0.08] opacity-50",
+                  !cancelada &&
+                    finalizada &&
                     "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
                 )}
-                title={finalizada ? "Saída finalizada — ainda editável" : undefined}
+                title={
+                  cancelada
+                    ? "Saída cancelada"
+                    : finalizada
+                      ? "Saída finalizada — ainda editável"
+                      : undefined
+                }
               >
                 {showTipoColumn ? (
                   <TableCell className={cell("whitespace-nowrap text-sm")}>{lr.tipo}</TableCell>
@@ -170,8 +217,8 @@ export function DeparturesDataTable({
                   {lr.destino}
                 </TableCell>
                 <TableCell className={cell()}>{lr.om}</TableCell>
-                <TableCell className={cn(cell(), onUpdateKmFields && "p-1.5 align-middle")}>
-                  {onUpdateKmFields ? (
+                <TableCell className={cn(cell(), kmEditavel && "p-1.5 align-middle")}>
+                  {kmEditavel ? (
                     <input
                       type="text"
                       inputMode="numeric"
@@ -179,7 +226,7 @@ export function DeparturesDataTable({
                       aria-label="KM saída"
                       value={formatKmThousandsPtBr(row.kmSaida)}
                       onChange={(e) =>
-                        onUpdateKmFields(row.id, {
+                        onUpdateKmFields!(row.id, {
                           kmSaida: formatKmThousandsPtBr(e.target.value),
                         })
                       }
@@ -189,8 +236,8 @@ export function DeparturesDataTable({
                     lr.kmSaida
                   )}
                 </TableCell>
-                <TableCell className={cn(cell(), onUpdateKmFields && "p-1.5 align-middle")}>
-                  {onUpdateKmFields ? (
+                <TableCell className={cn(cell(), kmEditavel && "p-1.5 align-middle")}>
+                  {kmEditavel ? (
                     <input
                       type="text"
                       inputMode="numeric"
@@ -198,7 +245,7 @@ export function DeparturesDataTable({
                       aria-label="KM chegada"
                       value={formatKmThousandsPtBr(row.kmChegada)}
                       onChange={(e) =>
-                        onUpdateKmFields(row.id, {
+                        onUpdateKmFields!(row.id, {
                           kmChegada: formatKmThousandsPtBr(e.target.value),
                         })
                       }
@@ -208,11 +255,11 @@ export function DeparturesDataTable({
                     lr.kmChegada
                   )}
                 </TableCell>
-                <TableCell className={cn(cell("whitespace-nowrap"), onUpdateKmFields && "p-1.5 align-middle")}>
-                  {onUpdateKmFields ? (
+                <TableCell className={cn(cell("whitespace-nowrap"), kmEditavel && "p-1.5 align-middle")}>
+                  {kmEditavel ? (
                     <ChegadaTimeInput
                       value={row.chegada}
-                      onApply={(next) => onUpdateKmFields(row.id, { chegada: next })}
+                      onApply={(next) => onUpdateKmFields!(row.id, { chegada: next })}
                       className={cn(inputCls, "max-w-[5rem]")}
                     />
                   ) : (
@@ -224,18 +271,59 @@ export function DeparturesDataTable({
                   className={cell("max-w-[140px] text-xs")}
                   title={isRubricaImageDataUrl(row.rubrica) ? "Rubrica (desenho)" : lr.rubrica !== "—" ? lr.rubrica : undefined}
                 >
-                  {isRubricaImageDataUrl(row.rubrica) ? (
-                    <img
-                      src={row.rubrica}
-                      alt=""
-                      className="h-9 max-w-[5.5rem] object-contain object-left"
-                    />
-                  ) : (
-                    <span className="truncate">{lr.rubrica}</span>
-                  )}
+                  <div className="relative flex min-h-[3rem] items-center overflow-hidden">
+                    {isRubricaImageDataUrl(row.rubrica) ? (
+                      <img
+                        src={row.rubrica}
+                        alt=""
+                        className={cn(
+                          "h-9 max-w-[5.5rem] object-contain object-left",
+                          cancelada && "opacity-45",
+                        )}
+                      />
+                    ) : (
+                      <span className={cn("line-clamp-3 break-words", cancelada && "text-[hsl(var(--foreground))]/85")}>
+                        {lr.rubrica}
+                      </span>
+                    )}
+                    {cancelada ? (
+                      <span
+                        className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                        aria-hidden
+                      >
+                        <span className="-rotate-[35deg] select-none whitespace-nowrap text-[0.65rem] font-black uppercase tracking-[0.22em] text-red-600 drop-shadow-[0_1px_0_rgba(255,255,255,0.85)]">
+                          CANCELADA
+                        </span>
+                      </span>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]"
+                      aria-label="Ver dados completos da saída"
+                      onClick={() => setDetailId(row.id)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]",
+                        row.ocorrencias?.trim() && "text-[hsl(var(--primary))]/90",
+                      )}
+                      aria-label="Ocorrências"
+                      title="Ocorrências"
+                      onClick={() => setOcorrenciasModalId(row.id)}
+                    >
+                      <ClipboardList className="h-4 w-4" />
+                    </Button>
                     {onEdit ? (
                       <Button
                         type="button"
@@ -253,8 +341,8 @@ export function DeparturesDataTable({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-slate-500 hover:text-red-600"
-                      aria-label="Excluir registro"
-                      onClick={() => onRemove(row.id)}
+                      aria-label="Excluir ou cancelar saída"
+                      onClick={() => onTrashClick(row.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -267,5 +355,6 @@ export function DeparturesDataTable({
       </TableBody>
     </Table>
     </div>
+    </>
   );
 }

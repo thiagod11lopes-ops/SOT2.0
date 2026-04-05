@@ -28,6 +28,7 @@ import { cn } from "../lib/utils";
 import type { DepartureRecord } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
 import { CatalogComboField } from "./catalog-select";
+import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
 import { RegisteredFullDeparturesTable } from "./registered-full-departures-table";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -140,6 +141,11 @@ export function RegisterDeparturePage() {
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
+  const deleteModalRecord = useMemo(
+    () => (deleteModalId ? departures.find((d) => d.id === deleteModalId) ?? null : null),
+    [departures, deleteModalId],
+  );
   const lastAppliedEditVersion = useRef(0);
   /** Overlay enquanto o formulário aplica o registro vindo de “Editar saída” (não depende do IBGE). */
   const [editHydrating, setEditHydrating] = useState(false);
@@ -448,7 +454,7 @@ export function RegisterDeparturePage() {
   }, [canSubmitWithCatalog]);
 
   function buildDeparturePayload(): Omit<DepartureRecord, "id" | "createdAt"> {
-    return {
+    const base: Omit<DepartureRecord, "id" | "createdAt"> = {
       tipo: departureType as DepartureRecord["tipo"],
       dataPedido: requestDate,
       horaPedido: requestTime,
@@ -469,7 +475,32 @@ export function RegisterDeparturePage() {
       cidade: city,
       bairro: neighborhood,
       rubrica: "",
+      cancelada: false,
+      ocorrencias: "",
     };
+    if (editingId) {
+      const prev = departures.find((d) => d.id === editingId);
+      if (prev) {
+        return {
+          ...base,
+          rubrica: prev.rubrica,
+          cancelada: prev.cancelada,
+          ocorrencias: prev.ocorrencias,
+        };
+      }
+    }
+    return base;
+  }
+
+  function handleConfirmarCancelamentoCadastro(id: string, nome: string) {
+    const d = departures.find((x) => x.id === id);
+    if (!d) return;
+    const { id: _i, createdAt: _c, ...rest } = d;
+    updateDeparture(id, {
+      ...rest,
+      cancelada: true,
+      rubrica: nome.trim(),
+    });
   }
 
   function handleCadastrarSaida() {
@@ -611,12 +642,23 @@ export function RegisterDeparturePage() {
         </CardHeader>
         <CardContent>
           {activeSubTab === "Saídas Cadastradas" ? (
-            <RegisteredFullDeparturesTable
-              rows={departures}
-              emptyLabel="Nenhuma saída cadastrada ainda. Use Cadastrar Nova Saída para incluir."
-              onRemove={removeDeparture}
-              onEdit={beginEditDeparture}
-            />
+            <>
+              <DepartureDeleteOrCancelModal
+                open={deleteModalId !== null && deleteModalRecord !== null}
+                onOpenChange={(o) => {
+                  if (!o) setDeleteModalId(null);
+                }}
+                record={deleteModalRecord}
+                onExcluirDefinitivo={removeDeparture}
+                onConfirmarCancelamento={handleConfirmarCancelamentoCadastro}
+              />
+              <RegisteredFullDeparturesTable
+                rows={departures}
+                emptyLabel="Nenhuma saída cadastrada ainda. Use Cadastrar Nova Saída para incluir."
+                onTrashClick={(id) => setDeleteModalId(id)}
+                onEdit={beginEditDeparture}
+              />
+            </>
           ) : activeSubTab === "Cadastrar Itens" ? (
             <CatalogItemsPanel />
           ) : activeSubTab === "Cadastrar Nova Saída" ? (

@@ -11,5 +11,11 @@ export function normalizeDepartureRows(value: unknown): DepartureRecord[] {
     .map((row) => ({
       ...row,
       rubrica: typeof row.rubrica === "string" ? row.rubrica : "",
+      cancelada: typeof (row as { cancelada?: unknown }).cancelada === "boolean"
+        ? (row as { cancelada: boolean }).cancelada
+        : false,
+      ocorrencias: typeof (row as { ocorrencias?: unknown }).ocorrencias === "string"
+        ? (row as { ocorrencias: string }).ocorrencias
+        : "",
     }));
 }

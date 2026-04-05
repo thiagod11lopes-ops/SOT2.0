@@ -15,6 +15,7 @@ import { isPlausibleEmail } from "../lib/departuresReportEmail";
 import { downloadDeparturesListPdf } from "../lib/generateDeparturesPdf";
 import { openGmailComposeWithDeparturesPdf } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
+import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
 import { DeparturesDataTable } from "./departures-data-table";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -38,7 +39,8 @@ function sortKeyHoraSaida(horaSaida: string): number {
 }
 
 export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProps) {
-  const { departures, removeDeparture, updateDepartureKmFields, beginEditDeparture } = useDepartures();
+  const { departures, removeDeparture, updateDeparture, updateDepartureKmFields, beginEditDeparture } =
+    useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { email: reportEmailDest } = useDeparturesReportEmail();
   const filterDateId = useId();
@@ -54,6 +56,11 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   const [selectedMotoristaAssinatura, setSelectedMotoristaAssinatura] = useState("");
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
+  const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
+  const deleteModalRecord = useMemo(
+    () => (deleteModalId ? departures.find((d) => d.id === deleteModalId) ?? null : null),
+    [departures, deleteModalId],
+  );
   useEffect(() => {
     setFilterDepartureDate(getCurrentDatePtBr());
     setActionsToolbarOpen(false);
@@ -111,6 +118,17 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     }
     return "Nenhum registro encontrado.";
   }, [departures, filterTipo, filterDepartureDate, rows.length]);
+
+  function handleConfirmarCancelamentoLista(id: string, nome: string) {
+    const d = departures.find((x) => x.id === id);
+    if (!d) return;
+    const { id: _id, createdAt: _c, ...rest } = d;
+    updateDeparture(id, {
+      ...rest,
+      cancelada: true,
+      rubrica: nome.trim(),
+    });
+  }
 
   function handleConfirmarAssinatura() {
     const t = selectedMotoristaAssinatura.trim();
@@ -275,11 +293,20 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
       </CardHeader>
 
       <CardContent className="pt-4">
+        <DepartureDeleteOrCancelModal
+          open={deleteModalId !== null && deleteModalRecord !== null}
+          onOpenChange={(o) => {
+            if (!o) setDeleteModalId(null);
+          }}
+          record={deleteModalRecord}
+          onExcluirDefinitivo={removeDeparture}
+          onConfirmarCancelamento={handleConfirmarCancelamentoLista}
+        />
         <DeparturesDataTable
           rows={rows}
           bodyFontBold
           emptyLabel={emptyMessage}
-          onRemove={removeDeparture}
+          onTrashClick={(id) => setDeleteModalId(id)}
           onUpdateKmFields={updateDepartureKmFields}
           onEdit={beginEditDeparture}
         />

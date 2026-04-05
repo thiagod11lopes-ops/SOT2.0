@@ -43,6 +43,8 @@ function departureToDoc(r: DepartureRecord): Record<string, unknown> {
     cidade: r.cidade,
     bairro: r.bairro,
     rubrica: r.rubrica,
+    cancelada: r.cancelada === true,
+    ocorrencias: r.ocorrencias ?? "",
     createdAt: r.createdAt,
   };
 }
@@ -83,6 +85,8 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
     cidade: String(data.cidade ?? ""),
     bairro: String(data.bairro ?? ""),
     rubrica: String(data.rubrica ?? ""),
+    cancelada: data.cancelada === true,
+    ocorrencias: String(data.ocorrencias ?? ""),
   };
 }
 

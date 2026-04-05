@@ -1,12 +1,13 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { fullRowCells, type DepartureRecord } from "../types/departure";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 interface Props {
   rows: DepartureRecord[];
   emptyLabel: string;
-  onRemove: (id: string) => void;
+  onTrashClick: (id: string) => void;
   onEdit: (id: string) => void;
 }
 
@@ -20,7 +21,7 @@ function FieldLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function RegisteredFullDeparturesTable({ rows, emptyLabel, onRemove, onEdit }: Props) {
+export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, onEdit }: Props) {
   return (
     <div className="max-h-[min(70vh,720px)] w-full max-w-full overflow-y-auto overflow-x-hidden rounded-lg border border-[hsl(var(--border))]">
       <table className="w-full table-fixed border-collapse text-[10px] leading-snug sm:text-[11px]">
@@ -63,8 +64,13 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onRemove, onEd
           ) : (
             rows.map((row) => {
               const c = fullRowCells(row);
+              const cancelada = row.cancelada === true;
               return (
-                <TableRow key={row.id} className="align-top">
+                <TableRow
+                  key={row.id}
+                  className={cn("align-top", cancelada && "bg-red-950/[0.08] opacity-50")}
+                  title={cancelada ? "Saída cancelada" : undefined}
+                >
                   <TableCell className="p-1.5 font-medium sm:p-2">{c.tipo}</TableCell>
                   <TableCell className="p-1.5 font-mono sm:p-2">
                     <FieldLine label="Ped.:" value={`${c.dataPedido} ${c.horaPedido}`.trim()} />
@@ -92,6 +98,22 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onRemove, onEd
                   <TableCell className="p-1.5 sm:p-2">
                     <FieldLine label="Cid.:" value={c.cidade} />
                     <FieldLine label="Bairro:" value={c.bairro} />
+                    {cancelada ? (
+                      <div className="relative mt-1.5 min-h-[2.75rem] overflow-hidden rounded border border-red-600/25 bg-[hsl(var(--muted))]/10 px-1 py-1">
+                        <p className="break-words [word-break:break-word]">
+                          <span className="text-[hsl(var(--muted-foreground))]">Rubrica: </span>
+                          <span className="opacity-80">{c.rubrica}</span>
+                        </p>
+                        <span
+                          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                          aria-hidden
+                        >
+                          <span className="-rotate-[35deg] select-none whitespace-nowrap text-[0.6rem] font-black uppercase tracking-[0.2em] text-red-600 drop-shadow-[0_1px_0_rgba(255,255,255,0.85)] sm:text-[0.65rem]">
+                            CANCELADA
+                          </span>
+                        </span>
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="p-1 text-right sm:p-2">
                     <div className="inline-flex items-center justify-end gap-0.5">
@@ -111,7 +133,7 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onRemove, onEd
                         size="icon"
                         className="h-7 w-7 text-slate-500 hover:text-red-600 sm:h-8 sm:w-8"
                         aria-label="Excluir registro"
-                        onClick={() => onRemove(row.id)}
+                        onClick={() => onTrashClick(row.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                       </Button>

@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState, type HTMLAttributes } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
+import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
@@ -129,6 +130,7 @@ export function DepartureCard({
 }) {
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
+  const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
   const row = listRowFromRecord(record);
@@ -146,6 +148,8 @@ export function DepartureCard({
   const motoristasFrota = catalogItems.motoristas;
 
   const isAmbulancia = record.tipo === "Ambulância";
+  const cancelada = record.cancelada === true;
+  const editavel = allowMobileEdit && !cancelada;
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -153,12 +157,12 @@ export function DepartureCard({
   const saidaFinalizada = kmSaidaPreenchido && kmChegadaPreenchido && chegadaPreenchido;
 
   function commitChegada(raw: string) {
-    if (!allowMobileEdit) return;
+    if (!editavel) return;
     onPatchKm({ chegada: normalize24hTime(raw) });
   }
 
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
-    if (!allowMobileEdit || !updateDeparture) return;
+    if (!editavel || !updateDeparture) return;
     updateDeparture(record.id, {
       ...record,
       ...partial,
@@ -173,37 +177,54 @@ export function DepartureCard({
     setRubricaModalOpen(false);
   }
 
-  const mostrarRubricar =
-    chegadaPreenchido && allowMobileEdit && Boolean(updateDeparture);
+  function handleSalvarOcorrencias(_id: string, texto: string) {
+    if (!updateDeparture) return;
+    const { id: _i, createdAt: _c, ...rest } = record;
+    updateDeparture(record.id, { ...rest, ocorrencias: texto });
+  }
 
-  const blocoRubricar = mostrarRubricar ? (
-    <div className="flex flex-col gap-2 border-t border-dashed border-[hsl(var(--border))]/80 pt-3">
-      <Button
-        type="button"
-        variant="secondary"
-        className="min-h-12 w-full rounded-xl text-base font-semibold"
-        onClick={() => setRubricaModalOpen(true)}
-      >
-        Rubricar
-      </Button>
-      {(record.rubrica ?? "").trim().length > 0 ? (
-        <p className="text-center text-[0.7rem] text-[hsl(var(--muted-foreground))]">
-          Rubrica registada — aparece no PDF (Gerar PDF / Enviar / Assinar).
-          {isRubricaImageDataUrl(record.rubrica) ? " (desenho)" : null}
-        </p>
-      ) : null}
-    </div>
-  ) : null;
+  /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
+  const mostrarRubricar =
+    chegadaPreenchido && Boolean(updateDeparture) && !cancelada;
 
   return (
     <article
       className={cn(
         "overflow-hidden rounded-2xl border border-[hsl(var(--border))]/90 bg-gradient-to-br from-[hsl(var(--card))] to-[hsl(var(--card))]/70 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.5)] transition",
+        cancelada && "opacity-50",
         open && !isSelectedForExcluir && "ring-1 ring-[hsl(var(--primary))]/35",
         isSelectedForExcluir && "ring-2 ring-[hsl(var(--primary))]/70",
       )}
     >
-      {kmSaidaPreenchido ? (
+      {cancelada ? (
+        <div
+          role="status"
+          aria-label="Saída cancelada — rubrica"
+          className="relative w-full overflow-hidden border-b border-red-600/25 bg-[hsl(var(--muted))]/15 px-3 py-2.5"
+        >
+          <p className="text-[0.6rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            Rubrica
+          </p>
+          <div className="relative mt-1 flex min-h-[3.25rem] items-center justify-center overflow-hidden rounded-md border border-[hsl(var(--border))]/50 bg-[hsl(var(--background))]/40 px-2 py-2">
+            {isRubricaImageDataUrl(record.rubrica) ? (
+              <img
+                src={record.rubrica}
+                alt=""
+                className="max-h-10 w-full object-contain opacity-45"
+              />
+            ) : (
+              <p className="w-full break-words text-center text-xs leading-snug text-[hsl(var(--foreground))]/90">
+                {(record.rubrica ?? "").trim() || "—"}
+              </p>
+            )}
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+              <span className="-rotate-[35deg] select-none whitespace-nowrap text-[0.72rem] font-black uppercase tracking-[0.2em] text-red-600 drop-shadow-[0_1px_0_rgba(255,255,255,0.9)]">
+                CANCELADA
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : kmSaidaPreenchido ? (
         <div
           role="status"
           aria-label={saidaFinalizada ? "Saída finalizada" : "Saída iniciada"}
@@ -251,13 +272,16 @@ export function DepartureCard({
 
       {open && isAmbulancia && (updateDeparture || !allowMobileEdit) ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+          {cancelada ? (
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">Esta saída foi cancelada.</p>
+          ) : null}
           {!allowMobileEdit ? (
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               Apenas saídas do dia de hoje podem ser editadas neste separador.
             </p>
           ) : null}
           <p className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-            {allowMobileEdit ? "Edição rápida (mesma ordem)" : "Dados (só leitura)"}
+            {editavel ? "Edição rápida (mesma ordem)" : "Dados (só leitura)"}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FleetSelectField
@@ -265,20 +289,20 @@ export function DepartureCard({
               value={record.viaturas}
               onChange={(v) => applyAmbPatch({ viaturas: v })}
               options={viaturasOpcoes}
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <FleetSelectField
               label="Motorista"
               value={record.motoristas}
               onChange={(v) => applyAmbPatch({ motoristas: v })}
               options={motoristasFrota}
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="Destino"
               value={record.bairro}
               onChange={(v) => applyAmbPatch({ bairro: v })}
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="Hora da saída"
@@ -286,7 +310,7 @@ export function DepartureCard({
               onChange={(v) => applyAmbPatch({ horaSaida: normalize24hTime(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="KM saída"
@@ -294,7 +318,7 @@ export function DepartureCard({
               onChange={(v) => applyAmbPatch({ kmSaida: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="KM chegada"
@@ -302,7 +326,7 @@ export function DepartureCard({
               onChange={(v) => applyAmbPatch({ kmChegada: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="Hora da chegada"
@@ -310,15 +334,62 @@ export function DepartureCard({
               onChange={(v) => applyAmbPatch({ chegada: normalize24hTime(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
+            {updateDeparture ? (
+              <div className="col-span-1 sm:col-span-2 flex flex-col gap-2 pt-0.5">
+                <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        "h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 p-0 text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55",
+                        record.ocorrencias?.trim() && "border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]",
+                      )}
+                      aria-label="Ocorrências"
+                      title="Ocorrências"
+                      onClick={() => setOcorrenciasModalOpen(true)}
+                    >
+                      <ClipboardList className="h-5 w-5" />
+                    </Button>
+                    <span className="text-[0.75rem] font-medium text-[hsl(var(--foreground))]">
+                      {record.ocorrencias?.trim() ? "Ocorrências registadas" : "Ocorrências"}
+                    </span>
+                  </div>
+                  {mostrarRubricar ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex h-11 min-h-11 shrink-0 items-center gap-2 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55"
+                        aria-label="Rubricar"
+                        title="Rubricar"
+                        onClick={() => setRubricaModalOpen(true)}
+                      >
+                        <Signature className="h-5 w-5 shrink-0 text-[hsl(var(--primary))]" aria-hidden />
+                        <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Rubricar</span>
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                {mostrarRubricar && (record.rubrica ?? "").trim().length > 0 ? (
+                  <p className="text-[0.7rem] leading-snug text-[hsl(var(--muted-foreground))]">
+                    Rubrica registada — aparece no PDF (Gerar PDF / Enviar / Assinar).
+                    {isRubricaImageDataUrl(record.rubrica) ? " (desenho)" : null}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          {blocoRubricar}
         </div>
       ) : null}
 
       {open && !isAmbulancia ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+          {cancelada ? (
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">Esta saída foi cancelada.</p>
+          ) : null}
           {!allowMobileEdit ? (
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               Apenas saídas do dia de hoje podem ser editadas neste separador.
@@ -349,7 +420,7 @@ export function DepartureCard({
               onChange={(v) => onPatchKm({ kmSaida: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="KM chegada"
@@ -357,7 +428,7 @@ export function DepartureCard({
               onChange={(v) => onPatchKm({ kmChegada: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
             <Field
               label="Hora da chegada"
@@ -365,11 +436,64 @@ export function DepartureCard({
               onChange={(v) => commitChegada(v)}
               inputMode="numeric"
               mono
-              disabled={!allowMobileEdit}
+              disabled={!editavel}
             />
+            {updateDeparture ? (
+              <div className="col-span-1 sm:col-span-3 flex flex-col gap-2 pt-0.5">
+                <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        "h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 p-0 text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55",
+                        record.ocorrencias?.trim() && "border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))]",
+                      )}
+                      aria-label="Ocorrências"
+                      title="Ocorrências"
+                      onClick={() => setOcorrenciasModalOpen(true)}
+                    >
+                      <ClipboardList className="h-5 w-5" />
+                    </Button>
+                    <span className="text-[0.75rem] font-medium text-[hsl(var(--foreground))]">
+                      {record.ocorrencias?.trim() ? "Ocorrências registadas" : "Ocorrências"}
+                    </span>
+                  </div>
+                  {mostrarRubricar ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex h-11 min-h-11 shrink-0 items-center gap-2 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55"
+                        aria-label="Rubricar"
+                        title="Rubricar"
+                        onClick={() => setRubricaModalOpen(true)}
+                      >
+                        <Signature className="h-5 w-5 shrink-0 text-[hsl(var(--primary))]" aria-hidden />
+                        <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Rubricar</span>
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                {mostrarRubricar && (record.rubrica ?? "").trim().length > 0 ? (
+                  <p className="text-[0.7rem] leading-snug text-[hsl(var(--muted-foreground))]">
+                    Rubrica registada — aparece no PDF (Gerar PDF / Enviar / Assinar).
+                    {isRubricaImageDataUrl(record.rubrica) ? " (desenho)" : null}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          {blocoRubricar}
         </div>
+      ) : null}
+
+      {updateDeparture ? (
+        <DepartureOcorrenciasModal
+          open={ocorrenciasModalOpen}
+          onOpenChange={setOcorrenciasModalOpen}
+          record={record}
+          onSave={handleSalvarOcorrencias}
+        />
       ) : null}
 
       {rubricaModalOpen ? (

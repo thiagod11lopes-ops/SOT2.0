@@ -26,6 +26,10 @@ export interface DepartureRecord {
   bairro: string;
   /** Texto manual (ex.: rubrica) — preenchido no mobile; incluído no PDF das saídas. */
   rubrica: string;
+  /** Saída cancelada: permanece na lista, visual opaco/tarja; rubrica costuma guardar o nome do responsável. */
+  cancelada: boolean;
+  /** Notas de ocorrência (texto livre); exibido abaixo da linha no PDF. */
+  ocorrencias: string;
 }
 
 const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "createdAt">[] = [
@@ -49,6 +53,8 @@ const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "cre
   "cidade",
   "bairro",
   "rubrica",
+  "cancelada",
+  "ocorrencias",
 ];
 
 /** Identifica registros com o mesmo conteúdo de cadastro (todos os campos do formulário, exceto id/data). */
@@ -132,5 +138,6 @@ export function fullRowCells(r: DepartureRecord) {
       if (/^data:image\//i.test(t)) return "✓";
       return cell(t);
     })(),
+    ocorrencias: cell(r.ocorrencias ?? ""),
   };
 }

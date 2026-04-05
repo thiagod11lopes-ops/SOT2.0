@@ -234,7 +234,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       if (useCloud) {
         setDepartures((prev) => {
           const d = prev.find((x) => x.id === id);
-          if (!d) return prev;
+          if (!d || d.cancelada) return prev;
           const next = { ...d, ...patch };
           void upsertDepartureRecord(next).catch((e) => {
             console.error(e);
@@ -244,7 +244,9 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         });
         return;
       }
-      setDepartures((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+      setDepartures((prev) =>
+        prev.map((d) => (d.id === id && !d.cancelada ? { ...d, ...patch } : d)),
+      );
     },
     [useCloud],
   );

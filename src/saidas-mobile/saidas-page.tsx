@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import type { DepartureRecord, DepartureType } from "../types/departure";
+import { DepartureDeleteOrCancelModal } from "../components/departure-delete-or-cancel-modal";
 import { addDaysPtBr, getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import { DepartureCard } from "./departure-card";
@@ -51,12 +52,19 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
     cidade: "",
     bairro: "",
     rubrica: "",
+    cancelada: false,
+    ocorrencias: "",
   };
 }
 
 export function SaidasPage({ tipo }: { tipo: DepartureType }) {
   const { departures, updateDepartureKmFields, updateDeparture, addDeparture, removeDeparture } =
     useDepartures();
+  const [excluirModalId, setExcluirModalId] = useState<string | null>(null);
+  const excluirModalRecord = useMemo(
+    () => (excluirModalId ? departures.find((d) => d.id === excluirModalId) ?? null : null),
+    [departures, excluirModalId],
+  );
   const [filterDate, setFilterDate] = useState(() => getCurrentDatePtBr());
   /** Ambulância: saída marcada ao tocar no cartão; só essa pode ser excluída pelo botão. */
   const [selectedAmbulanciaId, setSelectedAmbulanciaId] = useState<string | null>(null);
@@ -102,18 +110,22 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
     addDeparture(newAmbulanciaPayload(filterDate));
   }
 
-  function handleExcluirSaidaAmbulanciaSelecionada() {
+  function handleAbrirModalExcluirAmbulancia() {
     if (!selectedAmbulanciaId) return;
     const target = rows.find((r) => r.id === selectedAmbulanciaId);
     if (!target || target.dataSaida !== hoje) return;
-    if (
-      !window.confirm(
-        "Excluir esta saída de ambulância? Esta ação não pode ser desfeita.",
-      )
-    ) {
-      return;
-    }
-    removeDeparture(target.id);
+    setExcluirModalId(target.id);
+  }
+
+  function handleConfirmarCancelamentoMobile(id: string, nome: string) {
+    const d = departures.find((x) => x.id === id);
+    if (!d) return;
+    const { id: _i, createdAt: _c, ...rest } = d;
+    updateDeparture(id, {
+      ...rest,
+      cancelada: true,
+      rubrica: nome.trim(),
+    });
     setSelectedAmbulanciaId(null);
   }
 
@@ -125,6 +137,18 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <DepartureDeleteOrCancelModal
+        open={excluirModalId !== null && excluirModalRecord !== null}
+        onOpenChange={(o) => {
+          if (!o) setExcluirModalId(null);
+        }}
+        record={excluirModalRecord}
+        onExcluirDefinitivo={(id) => {
+          removeDeparture(id);
+          setSelectedAmbulanciaId(null);
+        }}
+        onConfirmarCancelamento={handleConfirmarCancelamentoMobile}
+      />
       <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--foreground))]">{titles[tipo]}</h2>
 
       <div className="rounded-2xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--card))]/50 p-3 shadow-inner">
@@ -203,7 +227,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             type="button"
             disabled={!podeExcluirAmbulancia}
             className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-red-600/35 bg-red-600/10 px-2 text-xs font-semibold text-red-700 shadow-sm active:scale-[0.99] active:bg-red-600/20 dark:text-red-400 sm:gap-2 sm:px-3 sm:text-sm disabled:pointer-events-none disabled:opacity-40"
-            onClick={handleExcluirSaidaAmbulanciaSelecionada}
+            onClick={handleAbrirModalExcluirAmbulancia}
             title={
               podeExcluirAmbulancia
                 ? undefined
@@ -251,7 +275,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
                     if (!editavelMobile) return;
                     updateDepartureKmFields(r.id, patch);
                   }}
-                  updateDeparture={editavelMobile ? updateDeparture : undefined}
+                  updateDeparture={updateDeparture}
                   isSelectedForExcluir={tipo === "Ambulância" && selectedAmbulanciaId === r.id}
                   onSelectForExcluir={
                     tipo === "Ambulância" && editavelMobile

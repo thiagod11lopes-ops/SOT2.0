@@ -44,6 +44,9 @@ export function normalizeImportedDeparture(raw: Record<string, unknown>): Depart
     chegada: str(raw.chegada),
     cidade: str(raw.cidade),
     bairro: str(raw.bairro),
+    rubrica: str(raw.rubrica),
+    cancelada: raw.cancelada === true,
+    ocorrencias: str(raw.ocorrencias),
   };
 }
 
