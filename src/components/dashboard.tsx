@@ -227,21 +227,24 @@ export function Dashboard() {
     return () => window.clearInterval(id);
   }, []);
   /** Mesmo instante para Próxima Saída, atraso e alerta de piscar (minuto alinhado ao relógio da home). */
-  const agoraDashboard = useMemo(() => new Date(), [departures, relogio]);
+  const agoraDashboard = useMemo(() => {
+    void relogio;
+    return new Date();
+  }, [relogio]);
   const proximas = useMemo(() => {
     const hoje = getCurrentDatePtBr();
     return proximaSaidaHoje(departures, hoje, agoraDashboard);
-  }, [departures, relogio, agoraDashboard]);
+  }, [departures, agoraDashboard]);
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
     return saidasEmAndamentoHoje(departures, hoje);
-  }, [departures, relogio]);
+  }, [departures]);
 
   const comAtraso = useMemo(() => {
     const hoje = getCurrentDatePtBr();
     return saidasComAtrasoHoje(departures, hoje, agoraDashboard);
-  }, [departures, relogio, agoraDashboard]);
+  }, [departures, agoraDashboard]);
 
   return (
     <div className="space-y-6">

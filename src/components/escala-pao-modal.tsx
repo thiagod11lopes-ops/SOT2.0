@@ -97,7 +97,10 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
     setDiaInicioDistribuicao((d) => Math.min(Math.max(1, d), daysInMonth));
   }, [year, monthIndex, daysInMonth]);
 
-  const hojeKey = useMemo(() => formatDateKeyLocal(new Date()), [open]);
+  const hojeKey = useMemo(() => {
+    void open;
+    return formatDateKeyLocal(new Date());
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

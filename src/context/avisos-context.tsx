@@ -335,6 +335,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   );
 
   const avisosGeraisLinhas = useMemo(() => {
+    void agendaDiaTick;
     const hoje = new Date();
     return avisosGeraisItens
       .filter((it) => avisoGeralVisivelNoDia(it, hoje))

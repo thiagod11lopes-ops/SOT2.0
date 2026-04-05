@@ -38,21 +38,18 @@ const tabs = [
 
 function App() {
   const hash = useLocationHash();
-  if (hash.startsWith("#/saidas")) {
-    return <SaidasMobileApp />;
-  }
-
   const { activeTab, setActiveTab } = useAppTab();
   useIdleReturnToPrincipal();
   const { editIntentVersion } = useDepartures();
   const lastEditIntentVersion = useRef(editIntentVersion);
 
   useEffect(() => {
+    if (hash.startsWith("#/saidas")) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
       setActiveTab("Cadastrar Saída");
     }
-  }, [editIntentVersion]);
+  }, [editIntentVersion, setActiveTab, hash]);
 
   const content = useMemo(() => {
     if (!activeTab) return <Dashboard />;
@@ -68,6 +65,10 @@ function App() {
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [activeTab]);
+
+  if (hash.startsWith("#/saidas")) {
+    return <SaidasMobileApp />;
+  }
 
   const isHome = !activeTab;
 

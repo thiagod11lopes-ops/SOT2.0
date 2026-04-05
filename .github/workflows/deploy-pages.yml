@@ -1,3 +1,5 @@
+# Se o deploy ficar em espera: Settings → Environments → github-pages → desative «Required reviewers»
+# ou aprove em Actions → execução → Review deployments.
 name: Deploy GitHub Pages
 
 on:
@@ -27,7 +29,7 @@ jobs:
           node-version: "20"
           cache: npm
 
-      # Falha cedo se os segredos não existirem ou estiverem vazios (evita publicar site sem Firebase).
+      # Aviso se faltar Firebase — o build continua (app funciona só com dados locais no browser).
       - name: Verificar segredos Firebase (repositório)
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
@@ -41,12 +43,11 @@ jobs:
           for n in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID; do
             v="${!n}"
             if [ -z "$v" ]; then
-              echo "::error::Segredo vazio ou ausente: $n — crie em Configurações → Segredos e variáveis → Ações → Segredos do repositório (não só ambiente)."
+              echo "::warning::Segredo ausente: $n — Settings → Secrets and variables → Actions. O site publica-se sem nuvem."
               ok=0
             fi
           done
-          if [ "$ok" -eq 0 ]; then exit 1; fi
-          echo "OK: os 6 segredos VITE_FIREBASE_* estão definidos para este build."
+          if [ "$ok" -eq 1 ]; then echo "OK: os 6 segredos VITE_FIREBASE_* estão definidos."; fi
 
       - name: Install and build
         env:
