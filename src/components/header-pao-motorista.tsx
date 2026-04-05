@@ -20,7 +20,7 @@ export function HeaderPaoMotorista() {
     const prox = getProximoIntegranteEscalaAposHoje(escala, hoje);
     const fallback = nome.trim();
     if (prox) {
-      const dataRotulo = format(prox.data, "dd/MM/yyyy", { locale: ptBR });
+      const dataRotulo = format(prox.data, "dd/MM/yy", { locale: ptBR });
       return {
         linhaNome: prox.nome,
         dataRotulo,

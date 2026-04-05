@@ -5,6 +5,7 @@ import { useDepartures } from "../context/departures-context";
 import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import { cn } from "../lib/utils";
+import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
 
 export function SaidasLayout() {
   const { mergeDeparturesFromBackup } = useDepartures();
@@ -45,7 +46,7 @@ export function SaidasLayout() {
         className="sticky top-0 z-20 border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
       >
-        <div className="mx-auto flex max-w-lg items-center justify-between gap-2">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-1.5 min-[400px]:gap-2">
           <button
             type="button"
             onClick={voltarAoSot}
@@ -60,14 +61,17 @@ export function SaidasLayout() {
             </p>
             <h1 className="truncate text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">Saídas</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center gap-2 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 text-sm font-medium text-[hsl(var(--foreground))] transition active:scale-[0.98] min-[400px]:px-3"
-          >
-            <Upload className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-            <span className="hidden min-[400px]:inline">Importar</span>
-          </button>
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[400px]:gap-2">
+            <SaidasHeaderEscalaPao />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
+              aria-label="Importar saídas (JSON)"
+            >
+              <Upload className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
+            </button>
+          </div>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFile} />
         </div>
       </header>
