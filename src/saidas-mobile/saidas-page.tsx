@@ -180,12 +180,6 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             Hoje
           </button>
         </div>
-        {isCompleteDatePtBr(filterDate) && filterDate !== hoje ? (
-          <p className="mt-3 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            Neste separador só é possível alterar saídas do dia de hoje ({hoje}). Use o SOT completo para
-            editar outros dias.
-          </p>
-        ) : null}
       </div>
 
       {tipo === "Ambulância" ? (
