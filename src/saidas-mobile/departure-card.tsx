@@ -15,12 +15,14 @@ function Field({
   onChange,
   inputMode,
   mono,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   mono?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1">
@@ -32,9 +34,11 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         inputMode={inputMode}
         autoComplete="off"
+        disabled={disabled}
         className={cn(
           "min-h-[2.75rem] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
           mono && "font-mono tabular-nums",
+          disabled && "cursor-not-allowed opacity-70",
         )}
       />
     </label>
@@ -50,11 +54,13 @@ function FleetSelectField({
   value,
   onChange,
   options,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
+  disabled?: boolean;
 }) {
   const selectId = useId();
   const orphan = useMemo(() => {
@@ -73,7 +79,11 @@ function FleetSelectField({
         value={options.some((o) => o === value) || value === "" || orphan === value ? value : ""}
         onChange={(e) => onChange(e.target.value)}
         autoComplete="off"
-        className="min-h-[2.75rem] w-full cursor-pointer rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+        disabled={disabled}
+        className={cn(
+          "min-h-[2.75rem] w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
+          disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer",
+        )}
       >
         <option value="">— Selecionar —</option>
         {orphan ? (
@@ -100,10 +110,19 @@ export function DepartureCard({
   record,
   onPatchKm,
   updateDeparture,
+  isSelectedForExcluir,
+  onSelectForExcluir,
+  allowMobileEdit = true,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
   updateDeparture?: (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => void;
+  /** Ambulância: destaque da saída escolhida para poder usar «Excluir Saída». */
+  isSelectedForExcluir?: boolean;
+  /** Ambulância: chamado ao tocar no cabeçalho do cartão (junto com expandir). */
+  onSelectForExcluir?: () => void;
+  /** No separador mobile, só o dia atual pode ser alterado; outros dias são só leitura. */
+  allowMobileEdit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const row = listRowFromRecord(record);
@@ -128,11 +147,12 @@ export function DepartureCard({
   const saidaFinalizada = kmSaidaPreenchido && kmChegadaPreenchido && chegadaPreenchido;
 
   function commitChegada(raw: string) {
+    if (!allowMobileEdit) return;
     onPatchKm({ chegada: normalize24hTime(raw) });
   }
 
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
-    if (!updateDeparture) return;
+    if (!allowMobileEdit || !updateDeparture) return;
     updateDeparture(record.id, {
       ...record,
       ...partial,
@@ -143,7 +163,8 @@ export function DepartureCard({
     <article
       className={cn(
         "overflow-hidden rounded-2xl border border-[hsl(var(--border))]/90 bg-gradient-to-br from-[hsl(var(--card))] to-[hsl(var(--card))]/70 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.5)] transition",
-        open && "ring-1 ring-[hsl(var(--primary))]/35",
+        open && !isSelectedForExcluir && "ring-1 ring-[hsl(var(--primary))]/35",
+        isSelectedForExcluir && "ring-2 ring-[hsl(var(--primary))]/70",
       )}
     >
       {kmSaidaPreenchido ? (
@@ -161,8 +182,12 @@ export function DepartureCard({
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          onSelectForExcluir?.();
+          setOpen((v) => !v);
+        }}
         style={{ touchAction: "manipulation" }}
+        aria-pressed={isSelectedForExcluir === true ? true : undefined}
         className="flex min-h-[4.5rem] w-full items-stretch gap-3 p-4 text-left active:bg-[hsl(var(--muted))]/20"
       >
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -188,10 +213,15 @@ export function DepartureCard({
         </div>
       </button>
 
-      {open && isAmbulancia && updateDeparture ? (
+      {open && isAmbulancia && (updateDeparture || !allowMobileEdit) ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+          {!allowMobileEdit ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Apenas saídas do dia de hoje podem ser editadas neste separador.
+            </p>
+          ) : null}
           <p className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-            Edição rápida (mesma ordem)
+            {allowMobileEdit ? "Edição rápida (mesma ordem)" : "Dados (só leitura)"}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FleetSelectField
@@ -199,27 +229,36 @@ export function DepartureCard({
               value={record.viaturas}
               onChange={(v) => applyAmbPatch({ viaturas: v })}
               options={viaturasOpcoes}
+              disabled={!allowMobileEdit}
             />
             <FleetSelectField
               label="Motorista"
               value={record.motoristas}
               onChange={(v) => applyAmbPatch({ motoristas: v })}
               options={motoristasFrota}
+              disabled={!allowMobileEdit}
             />
             <Field
-              label="Saída (hora)"
+              label="Destino"
+              value={record.bairro}
+              onChange={(v) => applyAmbPatch({ bairro: v })}
+              disabled={!allowMobileEdit}
+            />
+            <Field
+              label="Hora da saída"
               value={record.horaSaida}
               onChange={(v) => applyAmbPatch({ horaSaida: normalize24hTime(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
-            <Field label="Destino (bairro)" value={record.bairro} onChange={(v) => applyAmbPatch({ bairro: v })} />
             <Field
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
               onChange={(v) => applyAmbPatch({ kmSaida: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
             <Field
               label="KM chegada"
@@ -227,13 +266,15 @@ export function DepartureCard({
               onChange={(v) => applyAmbPatch({ kmChegada: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
             <Field
-              label="Chegada (hora)"
+              label="Hora da chegada"
               value={record.chegada}
               onChange={(v) => applyAmbPatch({ chegada: normalize24hTime(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
           </div>
         </div>
@@ -241,6 +282,11 @@ export function DepartureCard({
 
       {open && !isAmbulancia ? (
         <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+          {!allowMobileEdit ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Apenas saídas do dia de hoje podem ser editadas neste separador.
+            </p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <p className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
@@ -266,6 +312,7 @@ export function DepartureCard({
               onChange={(v) => onPatchKm({ kmSaida: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
             <Field
               label="KM chegada"
@@ -273,13 +320,15 @@ export function DepartureCard({
               onChange={(v) => onPatchKm({ kmChegada: formatKmThousandsPtBr(v) })}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
             <Field
-              label="Chegada (hora)"
+              label="Hora da chegada"
               value={record.chegada}
               onChange={(v) => commitChegada(v)}
               inputMode="numeric"
               mono
+              disabled={!allowMobileEdit}
             />
           </div>
         </div>
