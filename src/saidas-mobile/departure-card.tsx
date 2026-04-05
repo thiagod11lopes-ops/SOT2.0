@@ -1,6 +1,7 @@
 import { useId, useMemo, useState, type HTMLAttributes } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
+import { useOficinaVisitas } from "../context/oficina-visits-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
@@ -107,7 +108,16 @@ export function DepartureCard({
   const [open, setOpen] = useState(false);
   const row = listRowFromRecord(record);
   const { items: catalogItems } = useCatalogItems();
-  const viaturasFrota = useMemo(() => mergeViaturasCatalog(catalogItems), [catalogItems]);
+  const { estaNaOficina } = useOficinaVisitas();
+  /** Ambulância: só placas de «Ambulâncias» em Frota e Pessoal e fora da oficina (igual ao cadastro principal). */
+  const viaturasAmbDisponiveis = useMemo(
+    () => catalogItems.ambulancias.filter((p) => !estaNaOficina(p)),
+    [catalogItems.ambulancias, estaNaOficina],
+  );
+  const viaturasOpcoes = useMemo(() => {
+    if (record.tipo !== "Ambulância") return mergeViaturasCatalog(catalogItems);
+    return viaturasAmbDisponiveis;
+  }, [record.tipo, catalogItems, viaturasAmbDisponiveis]);
   const motoristasFrota = catalogItems.motoristas;
 
   const isAmbulancia = record.tipo === "Ambulância";
@@ -188,7 +198,7 @@ export function DepartureCard({
               label="Viatura"
               value={record.viaturas}
               onChange={(v) => applyAmbPatch({ viaturas: v })}
-              options={viaturasFrota}
+              options={viaturasOpcoes}
             />
             <FleetSelectField
               label="Motorista"
