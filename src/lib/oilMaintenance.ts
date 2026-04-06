@@ -20,6 +20,38 @@ export type TrocaOleoRegistro = {
   ultimaTrocaData: string;
 };
 
+/** União por placa: valor local prevalece se a chave existe em `local`. */
+export function mergeMapaTrocaOleo(
+  local: Record<string, TrocaOleoRegistro>,
+  remote: Record<string, TrocaOleoRegistro>,
+): Record<string, TrocaOleoRegistro> {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const out: Record<string, TrocaOleoRegistro> = {};
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(local, k)) {
+      out[k] = local[k];
+    } else {
+      out[k] = remote[k];
+    }
+  }
+  return out;
+}
+
+export function mapaTrocaOleoIgual(
+  a: Record<string, TrocaOleoRegistro>,
+  b: Record<string, TrocaOleoRegistro>,
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const ra = a[k];
+    const rb = b[k];
+    if (ra === undefined && rb === undefined) continue;
+    if (ra === undefined || rb === undefined) return false;
+    if (ra.ultimaTrocaKm !== rb.ultimaTrocaKm || ra.ultimaTrocaData !== rb.ultimaTrocaData) return false;
+  }
+  return true;
+}
+
 export function parseKmCampo(value: string): number | null {
   const digits = value.replace(/\D/g, "");
   if (!digits) return null;

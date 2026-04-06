@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
-import { OIL_MAINTENANCE_STORAGE_KEY, type TrocaOleoRegistro } from "../lib/oilMaintenance";
+import {
+  mapaTrocaOleoIgual,
+  mergeMapaTrocaOleo,
+  OIL_MAINTENANCE_STORAGE_KEY,
+  type TrocaOleoRegistro,
+} from "../lib/oilMaintenance";
 
 type MapaOleo = Record<string, TrocaOleoRegistro>;
 
@@ -18,6 +23,8 @@ function isMapaOleoEmpty(m: MapaOleo): boolean {
 /** Lê o mapa de trocas de óleo (somente leitura; painel Manutenções continua sendo a fonte de escrita). */
 export function useOilMaintenanceMap() {
   const [mapa, setMapa] = useState<MapaOleo>({});
+  const mapaRef = useRef(mapa);
+  mapaRef.current = mapa;
 
   useEffect(() => {
     let cancel = false;
@@ -47,13 +54,34 @@ export function useOilMaintenanceMap() {
                 const local = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
                 const normalized = normalizeMapaOleo(local);
                 if (!isMapaOleoEmpty(normalized)) {
-                  await setSotStateDoc(SOT_STATE_DOC.oilMaintenance, normalized);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized);
                 }
                 return;
               }
-              const next = normalizeMapaOleo(payload);
-              setMapa(next);
-              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, next);
+              const incoming = normalizeMapaOleo(payload);
+              const prev = mapaRef.current;
+
+              if (isMapaOleoEmpty(incoming) && !isMapaOleoEmpty(prev)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, prev).catch((e) => {
+                    console.error("[SOT] Enviar mapa óleo (hook, nuvem vazia):", e);
+                  });
+                });
+                return;
+              }
+
+              const merged = mergeMapaTrocaOleo(prev, incoming);
+
+              if (!mapaTrocaOleoIgual(merged, incoming)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, merged).catch((e) => {
+                    console.error("[SOT] Reconciliar mapa óleo (hook):", e);
+                  });
+                });
+              }
+
+              setMapa(merged);
+              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore óleo (mapa):", err),

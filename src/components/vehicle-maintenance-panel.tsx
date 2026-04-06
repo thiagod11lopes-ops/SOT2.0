@@ -5,11 +5,13 @@ import { useOficinaVisitas } from "../context/oficina-visits-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { RegistroOficina } from "../lib/oficinaVisits";
 import {
   maiorKmChegadaPorViatura,
+  mapaTrocaOleoIgual,
+  mergeMapaTrocaOleo,
   OIL_MAINTENANCE_STORAGE_KEY,
   statusTrocaOleo,
   viaturasCatalogoUnicas,
@@ -37,6 +39,8 @@ function isMapaOleoEmpty(m: MapaOleo): boolean {
   return Object.keys(m).length === 0;
 }
 
+const SUPPRESS_REMOTE_MS = 5000;
+
 export function VehicleMaintenancePanel() {
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
@@ -46,7 +50,14 @@ export function VehicleMaintenancePanel() {
   const [trocaOleoPlaca, setTrocaOleoPlaca] = useState<string | null>(null);
   const hidratado = useRef(false);
   const applyingRemoteRef = useRef(false);
+  const suppressRemoteUntilRef = useRef(0);
+  const mapaRef = useRef<MapaOleo>({});
+  mapaRef.current = mapa;
   const useCloud = isFirebaseConfigured();
+
+  const bumpLocalOleoMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -77,15 +88,39 @@ export function VehicleMaintenancePanel() {
                 const local = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
                 const normalized = normalizeMapaOleo(local);
                 if (!isMapaOleoEmpty(normalized)) {
-                  await setSotStateDoc(SOT_STATE_DOC.oilMaintenance, normalized);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized);
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) {
+                return;
+              }
+              const incoming = normalizeMapaOleo(payload);
+              const prev = mapaRef.current;
+
+              if (isMapaOleoEmpty(incoming) && !isMapaOleoEmpty(prev)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, prev).catch((e) => {
+                    console.error("[SOT] Enviar troca de óleo local (nuvem vazia):", e);
+                  });
+                });
+                return;
+              }
+
               applyingRemoteRef.current = true;
-              const next = normalizeMapaOleo(payload);
-              setMapa(next);
+              const merged = mergeMapaTrocaOleo(prev, incoming);
+
+              if (!mapaTrocaOleoIgual(merged, incoming)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, merged).catch((e) => {
+                    console.error("[SOT] Reconciliar troca de óleo com a nuvem:", e);
+                  });
+                });
+              }
+
+              setMapa(merged);
               hidratado.current = true;
-              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, next);
+              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore troca de óleo:", err),
@@ -102,8 +137,24 @@ export function VehicleMaintenancePanel() {
 
   useEffect(() => {
     if (!hidratado.current) return;
-    void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapa);
+    void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapa, { maxAttempts: 6 });
   }, [mapa]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!hidratado.current) return;
+      void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapaRef.current, { maxAttempts: 6 });
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hidratado.current || !useCloud) return;
@@ -111,9 +162,12 @@ export function VehicleMaintenancePanel() {
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDoc(SOT_STATE_DOC.oilMaintenance, mapa).catch((e) => {
-      console.error("[SOT] Gravar troca de óleo na nuvem:", e);
-    });
+    const t = window.setTimeout(() => {
+      void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, mapa).catch((e) => {
+        console.error("[SOT] Gravar troca de óleo na nuvem:", e);
+      });
+    }, 120);
+    return () => window.clearTimeout(t);
   }, [mapa, useCloud]);
 
   const atualizarVisitasOficina = useCallback(
@@ -229,6 +283,7 @@ export function VehicleMaintenancePanel() {
         kmSugerido={kmSugeridoTrocaOleo}
         onConfirm={(km, dataIso) => {
           if (!trocaOleoPlaca) return;
+          bumpLocalOleoMutation();
           setMapa((prev) => ({
             ...prev,
             [trocaOleoPlaca]: { ultimaTrocaKm: km, ultimaTrocaData: dataIso },

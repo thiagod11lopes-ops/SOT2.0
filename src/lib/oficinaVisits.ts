@@ -42,6 +42,31 @@ export function normalizarMapaOficinaCarregado(raw: unknown): MapaOficinaPorViat
   return out;
 }
 
+/** União por placa: visitas locais prevalecem se a chave existe em `local`. */
+export function mergeMapaOficina(
+  local: MapaOficinaPorViatura,
+  remote: MapaOficinaPorViatura,
+): MapaOficinaPorViatura {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const out: MapaOficinaPorViatura = {};
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(local, k)) {
+      out[k] = local[k];
+    } else {
+      out[k] = remote[k];
+    }
+  }
+  return out;
+}
+
+export function mapaOficinaIgual(a: MapaOficinaPorViatura, b: MapaOficinaPorViatura): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (JSON.stringify(a[k] ?? []) !== JSON.stringify(b[k] ?? [])) return false;
+  }
+  return true;
+}
+
 /** Há entrada sem saída → viatura considerada na oficina. */
 export function viaturaEstaNaOficina(visitas: RegistroOficina[] | undefined): boolean {
   if (!visitas?.length) return false;

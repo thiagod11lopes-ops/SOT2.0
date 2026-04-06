@@ -15,7 +15,7 @@ import {
 import { useAlarmDismiss } from "./alarm-dismiss-context";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { AvisoGeralItem } from "../types/aviso-geral";
 import { parseHhMm } from "../lib/timeInput";
@@ -169,6 +169,49 @@ function isAvisosEmpty(s: AvisosPersistedState): boolean {
   );
 }
 
+/** Lista local como base; entradas só no remoto são acrescentadas (novo dispositivo). Remoções locais mantêm-se. */
+function mergeAvisoGeralItemsPorId(local: AvisoGeralItem[], remote: AvisoGeralItem[]): AvisoGeralItem[] {
+  const localIds = new Set(local.map((x) => x.id));
+  const out = [...local];
+  for (const r of remote) {
+    if (!localIds.has(r.id)) out.push(r);
+  }
+  return out;
+}
+
+function mergeAlarmesPorId(local: AlarmeDiarioItem[], remote: AlarmeDiarioItem[]): AlarmeDiarioItem[] {
+  const localIds = new Set(local.map((x) => x.id));
+  const out = [...local];
+  for (const r of remote) {
+    if (!localIds.has(r.id)) out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Funde estado local com snapshot remoto: textos usam local se não estiverem vazios (evita apagar texto por snapshot
+ * atrasado); caso contrário usa o remoto (ex.: primeira sincronização com IDB vazio).
+ */
+function mergeAvisosPersistedState(local: AvisosPersistedState, remote: AvisosPersistedState): AvisosPersistedState {
+  return {
+    avisoPrincipal: local.avisoPrincipal.trim() !== "" ? local.avisoPrincipal : remote.avisoPrincipal,
+    fainasTexto: local.fainasTexto.trim() !== "" ? local.fainasTexto : remote.fainasTexto,
+    avisosGeraisItens: mergeAvisoGeralItemsPorId(local.avisosGeraisItens, remote.avisosGeraisItens),
+    alarmesDiarios: mergeAlarmesPorId(local.alarmesDiarios, remote.alarmesDiarios),
+  };
+}
+
+function avisosPersistedEquivalent(a: AvisosPersistedState, b: AvisosPersistedState): boolean {
+  return (
+    a.avisoPrincipal === b.avisoPrincipal &&
+    a.fainasTexto === b.fainasTexto &&
+    JSON.stringify(a.avisosGeraisItens) === JSON.stringify(b.avisosGeraisItens) &&
+    JSON.stringify(a.alarmesDiarios) === JSON.stringify(b.alarmesDiarios)
+  );
+}
+
+const SUPPRESS_REMOTE_MS = 5000;
+
 export function AvisosProvider({ children }: { children: ReactNode }) {
   const { clearDismissForAlarm } = useAlarmDismiss();
   const [avisoPrincipal, setAvisoPrincipalState] = useState("");
@@ -177,9 +220,22 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const [alarmesDiarios, setAlarmesDiariosState] = useState<AlarmeDiarioItem[]>([]);
   const [persistReady, setPersistReady] = useState(false);
   const applyingRemoteRef = useRef(false);
+  const suppressRemoteUntilRef = useRef(0);
+  const stateRef = useRef<AvisosPersistedState>(defaultState);
   const useCloud = isFirebaseConfigured();
   /** Atualiza o filtro por data ao mudar o dia (relógio). */
   const [agendaDiaTick, setAgendaDiaTick] = useState(0);
+
+  stateRef.current = {
+    avisoPrincipal,
+    fainasTexto,
+    avisosGeraisItens,
+    alarmesDiarios,
+  };
+
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setAgendaDiaTick((n) => n + 1), 60_000);
@@ -206,8 +262,24 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisItens,
       alarmesDiarios,
     };
-    void idbSetJson(AVISOS_STORAGE_KEY, payload);
+    void idbSetJson(AVISOS_STORAGE_KEY, payload, { maxAttempts: 6 });
   }, [persistReady, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!persistReady) return;
+      void idbSetJson(AVISOS_STORAGE_KEY, stateRef.current, { maxAttempts: 6 });
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [persistReady]);
 
   useEffect(() => {
     if (!persistReady || !useCloud) return;
@@ -226,17 +298,41 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
                 const raw = await idbGetJson<unknown>(AVISOS_STORAGE_KEY);
                 const n = normalizeStored(raw);
                 if (!isAvisosEmpty(n)) {
-                  await setSotStateDoc(SOT_STATE_DOC.avisos, n);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.avisos, n);
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) {
+                return;
+              }
+              const incoming = normalizeStored(payload);
+              const prev = stateRef.current;
+
+              if (isAvisosEmpty(incoming) && !isAvisosEmpty(prev)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, prev).catch((e) => {
+                    console.error("[SOT] Enviar avisos locais (nuvem vazia):", e);
+                  });
+                });
+                return;
+              }
+
               applyingRemoteRef.current = true;
-              const n = normalizeStored(payload);
-              setAvisoPrincipalState(n.avisoPrincipal);
-              setFainasTextoState(n.fainasTexto);
-              setAvisosGeraisItensState(n.avisosGeraisItens);
-              setAlarmesDiariosState(n.alarmesDiarios);
-              void idbSetJson(AVISOS_STORAGE_KEY, n);
+              const merged = mergeAvisosPersistedState(prev, incoming);
+
+              if (!avisosPersistedEquivalent(merged, incoming)) {
+                queueMicrotask(() => {
+                  void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, merged).catch((e) => {
+                    console.error("[SOT] Reconciliar avisos com a nuvem:", e);
+                  });
+                });
+              }
+
+              setAvisoPrincipalState(merged.avisoPrincipal);
+              setFainasTextoState(merged.fainasTexto);
+              setAvisosGeraisItensState(merged.avisosGeraisItens);
+              setAlarmesDiariosState(merged.alarmesDiarios);
+              void idbSetJson(AVISOS_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore avisos:", err),
@@ -264,7 +360,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       alarmesDiarios,
     };
     const t = window.setTimeout(() => {
-      void setSotStateDoc(SOT_STATE_DOC.avisos, payload).catch((e) => {
+      void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, payload).catch((e) => {
         console.error("[SOT] Gravar avisos na nuvem:", e);
       });
     }, 900);
@@ -277,37 +373,53 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     setAvisosGeraisItensState((prev) => {
       const hoje = new Date();
       const next = prev.filter((it) => !avisoGeralExpiradoParaRemocaoAutomatica(it, hoje));
-      return next.length === prev.length ? prev : next;
+      if (next.length === prev.length) return prev;
+      queueMicrotask(() => bumpLocalMutation());
+      return next;
     });
-  }, [persistReady, agendaDiaTick, avisosGeraisItens]);
+  }, [persistReady, agendaDiaTick, avisosGeraisItens, bumpLocalMutation]);
 
-  const setAvisoPrincipal = useCallback((v: string) => {
-    setAvisoPrincipalState(v);
-  }, []);
+  const setAvisoPrincipal = useCallback(
+    (v: string) => {
+      bumpLocalMutation();
+      setAvisoPrincipalState(v);
+    },
+    [bumpLocalMutation],
+  );
 
-  const setFainasTexto = useCallback((v: string) => {
-    setFainasTextoState(v);
-  }, []);
+  const setFainasTexto = useCallback(
+    (v: string) => {
+      bumpLocalMutation();
+      setFainasTextoState(v);
+    },
+    [bumpLocalMutation],
+  );
 
   const setAvisosGeraisItens = useCallback(
     (v: AvisoGeralItem[] | ((prev: AvisoGeralItem[]) => AvisoGeralItem[])) => {
+      bumpLocalMutation();
       setAvisosGeraisItensState(v);
     },
-    [],
+    [bumpLocalMutation],
   );
 
-  const addAlarmeDiario = useCallback((nome: string, hora: string) => {
-    const n = nome.trim();
-    if (!n || parseHhMm(hora) === null) return;
-    setAlarmesDiariosState((prev) => [
-      ...prev,
-      { id: newId(), nome: n, hora, ativo: true },
-    ]);
-  }, []);
+  const addAlarmeDiario = useCallback(
+    (nome: string, hora: string) => {
+      const n = nome.trim();
+      if (!n || parseHhMm(hora) === null) return;
+      bumpLocalMutation();
+      setAlarmesDiariosState((prev) => [
+        ...prev,
+        { id: newId(), nome: n, hora, ativo: true },
+      ]);
+    },
+    [bumpLocalMutation],
+  );
 
   const updateAlarmeDiario = useCallback(
     (id: string, patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo">>) => {
       if (patch.hora !== undefined && parseHhMm(patch.hora) === null) return;
+      bumpLocalMutation();
       setAlarmesDiariosState((prev) =>
         prev.map((a) => {
           if (a.id !== id) return a;
@@ -320,13 +432,17 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         clearDismissForAlarm(id);
       }
     },
-    [clearDismissForAlarm],
+    [bumpLocalMutation, clearDismissForAlarm],
   );
 
-  const removeAlarmeDiario = useCallback((id: string) => {
-    clearDismissForAlarm(id);
-    setAlarmesDiariosState((prev) => prev.filter((a) => a.id !== id));
-  }, [clearDismissForAlarm]);
+  const removeAlarmeDiario = useCallback(
+    (id: string) => {
+      bumpLocalMutation();
+      clearDismissForAlarm(id);
+      setAlarmesDiariosState((prev) => prev.filter((a) => a.id !== id));
+    },
+    [bumpLocalMutation, clearDismissForAlarm],
+  );
 
   const fainasLinhas = useMemo(
     () =>
