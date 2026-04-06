@@ -101,9 +101,8 @@ function isCatalogEmpty(s: CatalogItemsState): boolean {
   );
 }
 
-function serializeCatalog(s: CatalogItemsState): string {
-  return JSON.stringify(s);
-}
+/** Ignorar snapshots do Firestore logo após add/remove local (evita repor itens com dados antigos do servidor). */
+const SUPPRESS_REMOTE_MS = 450;
 
 /** União por categoria (ordem: `a` primeiro, depois `b`), sem duplicar ignorando maiúsculas. */
 function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): CatalogItemsState {
@@ -148,7 +147,12 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const initialIdbLoadDoneRef = useRef(false);
   const hydratedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
+  const suppressRemoteUntilRef = useRef(0);
   const useCloud = isFirebaseConfigured();
+
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,18 +189,21 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) {
+                return;
+              }
               applyingRemoteRef.current = true;
               const incoming = normalizeCatalogState(payload as StoredCatalog);
               setItems((prev) => {
-                const merged = mergeCatalogStates(prev, incoming);
-                queueMicrotask(() => {
-                  if (serializeCatalog(merged) !== serializeCatalog(incoming)) {
-                    void setSotStateDoc(SOT_STATE_DOC.catalog, merged).catch((e) => {
-                      console.error("[SOT] Sincronizar catálogo unificado na nuvem:", e);
+                if (isCatalogEmpty(incoming) && !isCatalogEmpty(prev)) {
+                  queueMicrotask(() => {
+                    void setSotStateDoc(SOT_STATE_DOC.catalog, prev).catch((e) => {
+                      console.error("[SOT] Enviar catálogo local (nuvem vazia):", e);
                     });
-                  }
-                });
-                return merged;
+                  });
+                  return prev;
+                }
+                return incoming;
               });
               hydratedRef.current = true;
             })();
@@ -228,29 +235,37 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       void setSotStateDoc(SOT_STATE_DOC.catalog, items).catch((e) => {
         console.error("[SOT] Gravar catálogo na nuvem:", e);
       });
-    }, 400);
+    }, 120);
     return () => window.clearTimeout(t);
   }, [items, useCloud]);
 
-  const addItem = useCallback((category: CatalogCategory, value: string): boolean => {
-    const t = value.trim();
-    if (!t) return false;
-    let added = false;
-    setItems((prev) => {
-      const next = dedupeAdd(prev[category], value);
-      if (next === prev[category]) return prev;
-      added = true;
-      return { ...prev, [category]: next };
-    });
-    return added;
-  }, []);
+  const addItem = useCallback(
+    (category: CatalogCategory, value: string): boolean => {
+      const t = value.trim();
+      if (!t) return false;
+      let added = false;
+      setItems((prev) => {
+        const next = dedupeAdd(prev[category], value);
+        if (next === prev[category]) return prev;
+        added = true;
+        return { ...prev, [category]: next };
+      });
+      if (added) bumpLocalMutation();
+      return added;
+    },
+    [bumpLocalMutation],
+  );
 
-  const removeItem = useCallback((category: CatalogCategory, value: string) => {
-    setItems((prev) => ({
-      ...prev,
-      [category]: prev[category].filter((x) => x !== value),
-    }));
-  }, []);
+  const removeItem = useCallback(
+    (category: CatalogCategory, value: string) => {
+      bumpLocalMutation();
+      setItems((prev) => ({
+        ...prev,
+        [category]: prev[category].filter((x) => x !== value),
+      }));
+    },
+    [bumpLocalMutation],
+  );
 
   const value = useMemo(
     () => ({ items, addItem, removeItem }),
