@@ -22,10 +22,18 @@ export default defineConfig([
     rules: {
       // Válido em fluxos (edição, hidratação IndexedDB); o plugin acusa falsos positivos comuns.
       'react-hooks/set-state-in-effect': 'off',
+      // Sincronizar refs com estado no render é usado de forma intencional (snapshots Firebase/merge).
+      'react-hooks/refs': 'off',
     },
   },
   {
     files: ['src/context/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    files: ['src/saidas-mobile/saidas-mobile-filter-date-context.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

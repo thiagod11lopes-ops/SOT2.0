@@ -191,51 +191,6 @@ function normalizeStored(raw: unknown): AvisosPersistedDoc {
   };
 }
 
-function isAvisosEmpty(s: AvisosPersistedDoc): boolean {
-  return (
-    !s.avisoPrincipal.trim() &&
-    !s.fainasTexto.trim() &&
-    s.avisosGeraisItens.length === 0 &&
-    s.alarmesDiarios.length === 0 &&
-    s.deletedAlarmIds.length === 0
-  );
-}
-
-/** Lista local como base; entradas só no remoto são acrescentadas (novo dispositivo). Remoções locais mantêm-se. */
-function mergeAvisoGeralItemsPorId(local: AvisoGeralItem[], remote: AvisoGeralItem[]): AvisoGeralItem[] {
-  const localIds = new Set(local.map((x) => x.id));
-  const out = [...local];
-  for (const r of remote) {
-    if (!localIds.has(r.id)) out.push(r);
-  }
-  return out;
-}
-
-/**
- * Mesmo id: campos locais prevalecem.
- * Entradas só no remoto são acrescentadas exceto `idsExcluidos` (alarme apagado aqui — não recolocar fantasma do snapshot).
- */
-function mergeAlarmesPorId(
-  local: AlarmeDiarioItem[],
-  remote: AlarmeDiarioItem[],
-  idsExcluidos: ReadonlySet<string>,
-): AlarmeDiarioItem[] {
-  const remoteById = new Map(remote.map((x) => [x.id, x]));
-  const localIds = new Set(local.map((x) => x.id));
-  const out: AlarmeDiarioItem[] = [];
-  for (const l of local) {
-    if (idsExcluidos.has(l.id)) continue;
-    const r = remoteById.get(l.id);
-    out.push(r ? { ...r, ...l } : l);
-  }
-  for (const r of remote) {
-    if (!localIds.has(r.id) && !idsExcluidos.has(r.id)) {
-      out.push(r);
-    }
-  }
-  return out;
-}
-
 /**
  * Funde estado local com snapshot remoto: textos usam local se não estiverem vazios (evita apagar texto por snapshot
  * atrasado); caso contrário usa o remoto (ex.: primeira sincronização com IDB vazio).

@@ -460,7 +460,8 @@ export function DetalheServicoSheet() {
         setUndoStack((u) => [...u, cloneSheet(prev)]);
         const rowId = prev.rows[index]!;
         const rows = prev.rows.filter((_, i) => i !== index);
-        const { [rowId]: _removed, ...cells } = prev.cells;
+        const { [rowId]: removed, ...cells } = prev.cells;
+        void removed;
         return { rows, cells };
       });
       closeMenu();
@@ -534,7 +535,8 @@ export function DetalheServicoSheet() {
         if (!raw || raw.rows.length === 0) return b;
         const rowId = raw.rows[index]!;
         const rows = raw.rows.filter((_, i) => i !== index);
-        const { [rowId]: _removed, ...cells } = raw.cells;
+        const { [rowId]: removed, ...cells } = raw.cells;
+        void removed;
         const n = { rows, cells };
         return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
       });

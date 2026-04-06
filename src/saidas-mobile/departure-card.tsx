@@ -171,16 +171,20 @@ export function DepartureCard({
 
   function commitRubrica() {
     if (!updateDeparture) return;
-    const { id: _id, createdAt: _c, ...rest } = record;
+    const { id, createdAt, ...rest } = record;
+    void id;
+    void createdAt;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
     updateDeparture(record.id, { ...rest, rubrica: drawn });
     setRubricaModalOpen(false);
   }
 
-  function handleSalvarOcorrencias(_id: string, texto: string) {
+  function handleSalvarOcorrencias(departureId: string, texto: string) {
     if (!updateDeparture) return;
-    const { id: _i, createdAt: _c, ...rest } = record;
-    updateDeparture(record.id, { ...rest, ocorrencias: texto });
+    const { id, createdAt, ...rest } = record;
+    void id;
+    void createdAt;
+    updateDeparture(departureId, { ...rest, ocorrencias: texto });
   }
 
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */

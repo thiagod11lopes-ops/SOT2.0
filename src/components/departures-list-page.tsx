@@ -122,11 +122,13 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     return "Nenhum registro encontrado.";
   }, [departures, filterTipo, filterDepartureDate, rows.length]);
 
-  function handleConfirmarCancelamentoLista(id: string, nome: string) {
-    const d = departures.find((x) => x.id === id);
+  function handleConfirmarCancelamentoLista(departureId: string, nome: string) {
+    const d = departures.find((x) => x.id === departureId);
     if (!d) return;
-    const { id: _id, createdAt: _c, ...rest } = d;
-    updateDeparture(id, {
+    const { id, createdAt, ...rest } = d;
+    void id;
+    void createdAt;
+    updateDeparture(departureId, {
       ...rest,
       cancelada: true,
       rubrica: nome.trim(),

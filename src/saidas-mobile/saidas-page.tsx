@@ -118,11 +118,13 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
     setExcluirModalId(target.id);
   }
 
-  function handleConfirmarCancelamentoMobile(id: string, nome: string) {
-    const d = departures.find((x) => x.id === id);
+  function handleConfirmarCancelamentoMobile(departureId: string, nome: string) {
+    const d = departures.find((x) => x.id === departureId);
     if (!d) return;
-    const { id: _i, createdAt: _c, ...rest } = d;
-    updateDeparture(id, {
+    const { id, createdAt, ...rest } = d;
+    void id;
+    void createdAt;
+    updateDeparture(departureId, {
       ...rest,
       cancelada: true,
       rubrica: nome.trim(),
