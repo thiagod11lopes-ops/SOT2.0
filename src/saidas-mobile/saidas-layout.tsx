@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Ambulance, Building2, Upload } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
@@ -6,9 +6,14 @@ import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import { cn } from "../lib/utils";
 import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
+import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico-modal";
+import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
+import { SteeringWheelIcon } from "./steering-wheel-icon";
 
 export function SaidasLayout() {
   const { mergeDeparturesFromBackup } = useDepartures();
+  const { filterDatePtBr } = useSaidasMobileFilterDate();
+  const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
@@ -38,12 +43,28 @@ export function SaidasLayout() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-[hsl(var(--background))]">
+      <SaidasMobileDetalheServicoModal
+        open={detalheServicoOpen}
+        onOpenChange={setDetalheServicoOpen}
+        filterDatePtBr={filterDatePtBr}
+      />
       <header
         className="sticky top-0 z-20 border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
       >
         <div className="relative mx-auto flex max-w-lg items-center justify-center gap-1.5 min-[400px]:gap-2">
-          <div className="min-w-0 max-w-[calc(100%-8rem)] px-1 text-center sm:max-w-[calc(100%-9rem)]">
+          <div className="absolute left-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center">
+            <button
+              type="button"
+              onClick={() => setDetalheServicoOpen(true)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
+              aria-label="Detalhe de Serviço — serviço e rotina no dia do filtro"
+              title="Detalhe de Serviço"
+            >
+              <SteeringWheelIcon className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" />
+            </button>
+          </div>
+          <div className="min-w-0 max-w-[calc(100%-11rem)] px-1 text-center sm:max-w-[calc(100%-12rem)]">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
               SOT
             </p>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import type { DepartureRecord, DepartureType } from "../types/departure";
@@ -65,7 +66,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
     () => (excluirModalId ? departures.find((d) => d.id === excluirModalId) ?? null : null),
     [departures, excluirModalId],
   );
-  const [filterDate, setFilterDate] = useState(() => getCurrentDatePtBr());
+  const { filterDatePtBr: filterDate, setFilterDatePtBr: setFilterDate } = useSaidasMobileFilterDate();
   /** Ambulância: saída marcada ao tocar no cartão; só essa pode ser excluída pelo botão. */
   const [selectedAmbulanciaId, setSelectedAmbulanciaId] = useState<string | null>(null);
 
