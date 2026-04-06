@@ -101,6 +101,10 @@ function isCatalogEmpty(s: CatalogItemsState): boolean {
   );
 }
 
+function serializeCatalog(s: CatalogItemsState): string {
+  return JSON.stringify(s);
+}
+
 /** União por categoria (ordem: `a` primeiro, depois `b`), sem duplicar ignorando maiúsculas. */
 function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): CatalogItemsState {
   const keys: CatalogCategory[] = [
@@ -182,10 +186,19 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 return;
               }
               applyingRemoteRef.current = true;
-              const next = normalizeCatalogState(payload as StoredCatalog);
-              setItems(next);
+              const incoming = normalizeCatalogState(payload as StoredCatalog);
+              setItems((prev) => {
+                const merged = mergeCatalogStates(prev, incoming);
+                queueMicrotask(() => {
+                  if (serializeCatalog(merged) !== serializeCatalog(incoming)) {
+                    void setSotStateDoc(SOT_STATE_DOC.catalog, merged).catch((e) => {
+                      console.error("[SOT] Sincronizar catálogo unificado na nuvem:", e);
+                    });
+                  }
+                });
+                return merged;
+              });
               hydratedRef.current = true;
-              void idbSetJson(STORAGE_KEY, next);
             })();
           },
           (err) => console.error("[SOT] Firestore catálogo:", err),
@@ -211,9 +224,12 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDoc(SOT_STATE_DOC.catalog, items).catch((e) => {
-      console.error("[SOT] Gravar catálogo na nuvem:", e);
-    });
+    const t = window.setTimeout(() => {
+      void setSotStateDoc(SOT_STATE_DOC.catalog, items).catch((e) => {
+        console.error("[SOT] Gravar catálogo na nuvem:", e);
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
   }, [items, useCloud]);
 
   const addItem = useCallback((category: CatalogCategory, value: string): boolean => {
