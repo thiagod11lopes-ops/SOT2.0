@@ -86,6 +86,17 @@ export function adicionarMesesIso(dataIso: string, meses: number): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Inverso de {@link adicionarMesesIso} — útil ao editar a data limite (troca por tempo) no modal. */
+export function subtrairMesesIso(dataIso: string, meses: number): string {
+  const base = parseIsoDateToDate(dataIso);
+  if (!base) return dataIso;
+  const out = new Date(base.getFullYear(), base.getMonth() - meses, base.getDate());
+  const y = out.getFullYear();
+  const m = String(out.getMonth() + 1).padStart(2, "0");
+  const d = String(out.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function inicioDoDia(data: Date): Date {
   return new Date(data.getFullYear(), data.getMonth(), data.getDate());
 }

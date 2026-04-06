@@ -1,7 +1,14 @@
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
-import { getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
-import { parseKmCampo } from "../lib/oilMaintenance";
+import { useCallback, useEffect, useState } from "react";
+import { getCurrentDatePtBr, isoDateToPtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
+import {
+  adicionarMesesIso,
+  OLEO_KM_INTERVALO,
+  OLEO_MESES_INTERVALO,
+  parseKmCampo,
+  subtrairMesesIso,
+  type TrocaOleoRegistro,
+} from "../lib/oilMaintenance";
 import { Button } from "./ui/button";
 
 /** Só dígitos; formata com ponto a cada mil (ex.: 45230 → 45.230). */
@@ -20,24 +27,75 @@ type TrocaOleoModalProps = {
   placa: string | null;
   /** KM sugerido (ex.: maior KM chegada nas saídas), pode ser null. */
   kmSugerido: number | null;
+  /** Registo atual desta placa no mapa (se existir). */
+  registroAtual: TrocaOleoRegistro | undefined;
   onConfirm: (km: number, dataIso: string) => void;
   onClose: () => void;
 };
 
-export function TrocaOleoModal({ placa, kmSugerido, onConfirm, onClose }: TrocaOleoModalProps) {
+export function TrocaOleoModal({
+  placa,
+  kmSugerido,
+  registroAtual,
+  onConfirm,
+  onClose,
+}: TrocaOleoModalProps) {
   const open = placa !== null;
-  const [kmTexto, setKmTexto] = useState("");
-  const [dataPtBr, setDataPtBr] = useState("");
+  const [ultimaKmTexto, setUltimaKmTexto] = useState("");
+  const [ultimaDataPtBr, setUltimaDataPtBr] = useState("");
+  const [proximaKmTexto, setProximaKmTexto] = useState("");
+  const [tempoLimitePtBr, setTempoLimitePtBr] = useState("");
+
+  const recalcFromUltimaKmEData = useCallback((kmStr: string, dataStr: string) => {
+    const km = parseKmCampo(kmStr);
+    const iso = ptBrToIsoDate(dataStr.trim());
+    if (km === null || km < 0 || !iso) {
+      setProximaKmTexto("");
+      setTempoLimitePtBr("");
+      return;
+    }
+    setProximaKmTexto(formatKmComSeparadorMilhar(String(km + OLEO_KM_INTERVALO)));
+    setTempoLimitePtBr(isoDateToPtBr(adicionarMesesIso(iso, OLEO_MESES_INTERVALO)));
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
-    setKmTexto(
-      kmSugerido !== null && kmSugerido !== undefined
-        ? formatKmComSeparadorMilhar(String(kmSugerido))
-        : "",
-    );
-    setDataPtBr(getCurrentDatePtBr());
-  }, [open, placa, kmSugerido]);
+    if (!open || !placa) return;
+
+    if (registroAtual) {
+      const uk = registroAtual.ultimaTrocaKm;
+      const di = registroAtual.ultimaTrocaData;
+      const ultimaKmF = formatKmComSeparadorMilhar(String(uk));
+      const ultimaD = isoDateToPtBr(di);
+      setUltimaKmTexto(ultimaKmF);
+      setUltimaDataPtBr(ultimaD);
+      setProximaKmTexto(formatKmComSeparadorMilhar(String(uk + OLEO_KM_INTERVALO)));
+      setTempoLimitePtBr(isoDateToPtBr(adicionarMesesIso(di, OLEO_MESES_INTERVALO)));
+      return;
+    }
+
+    const dataIni = getCurrentDatePtBr();
+    const dataIso = ptBrToIsoDate(dataIni);
+    setUltimaDataPtBr(dataIni);
+    if (kmSugerido !== null && kmSugerido !== undefined) {
+      const uk = kmSugerido;
+      setUltimaKmTexto(formatKmComSeparadorMilhar(String(uk)));
+      if (dataIso) {
+        setProximaKmTexto(formatKmComSeparadorMilhar(String(uk + OLEO_KM_INTERVALO)));
+        setTempoLimitePtBr(isoDateToPtBr(adicionarMesesIso(dataIso, OLEO_MESES_INTERVALO)));
+      } else {
+        setProximaKmTexto("");
+        setTempoLimitePtBr("");
+      }
+    } else {
+      setUltimaKmTexto("");
+      setProximaKmTexto("");
+      if (dataIso) {
+        setTempoLimitePtBr(isoDateToPtBr(adicionarMesesIso(dataIso, OLEO_MESES_INTERVALO)));
+      } else {
+        setTempoLimitePtBr("");
+      }
+    }
+  }, [open, placa, registroAtual, kmSugerido]);
 
   useEffect(() => {
     if (!open) return;
@@ -50,15 +108,53 @@ export function TrocaOleoModal({ placa, kmSugerido, onConfirm, onClose }: TrocaO
 
   if (!open || !placa) return null;
 
+  const onChangeUltimaKm = (raw: string) => {
+    const f = formatKmComSeparadorMilhar(raw);
+    setUltimaKmTexto(f);
+    recalcFromUltimaKmEData(f, ultimaDataPtBr);
+  };
+
+  const onChangeUltimaData = (raw: string) => {
+    const n = normalizeDatePtBr(raw);
+    setUltimaDataPtBr(n);
+    recalcFromUltimaKmEData(ultimaKmTexto, n);
+  };
+
+  const onChangeProximaKm = (raw: string) => {
+    const f = formatKmComSeparadorMilhar(raw);
+    setProximaKmTexto(f);
+    const proxima = parseKmCampo(f);
+    if (proxima === null || proxima < OLEO_KM_INTERVALO) return;
+    const ultima = proxima - OLEO_KM_INTERVALO;
+    setUltimaKmTexto(formatKmComSeparadorMilhar(String(ultima)));
+    const iso = ptBrToIsoDate(ultimaDataPtBr.trim());
+    if (iso) {
+      setTempoLimitePtBr(isoDateToPtBr(adicionarMesesIso(iso, OLEO_MESES_INTERVALO)));
+    }
+  };
+
+  const onChangeTempoLimite = (raw: string) => {
+    const n = normalizeDatePtBr(raw);
+    setTempoLimitePtBr(n);
+    const tempoIso = ptBrToIsoDate(n.trim());
+    if (!tempoIso) return;
+    const ultimaIso = subtrairMesesIso(tempoIso, OLEO_MESES_INTERVALO);
+    setUltimaDataPtBr(isoDateToPtBr(ultimaIso));
+    const km = parseKmCampo(ultimaKmTexto);
+    if (km !== null && km >= 0) {
+      setProximaKmTexto(formatKmComSeparadorMilhar(String(km + OLEO_KM_INTERVALO)));
+    }
+  };
+
   function handleConfirmar() {
-    const km = parseKmCampo(kmTexto);
+    const km = parseKmCampo(ultimaKmTexto);
     if (km === null || km < 0) {
-      window.alert("Informe uma quilometragem válida (número inteiro).");
+      window.alert("Informe uma quilometragem válida na última troca (número inteiro).");
       return;
     }
-    const dataIso = ptBrToIsoDate(dataPtBr);
+    const dataIso = ptBrToIsoDate(ultimaDataPtBr.trim());
     if (!dataIso) {
-      window.alert("Informe a data completa da troca (dd/mm/aaaa).");
+      window.alert("Informe a data completa da última troca (dd/mm/aaaa).");
       return;
     }
     onConfirm(km, dataIso);
@@ -83,44 +179,89 @@ export function TrocaOleoModal({ placa, kmSugerido, onConfirm, onClose }: TrocaO
           Troca de óleo — {placa}
         </h2>
         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-          Informe a quilometragem do odômetro e a data em que a troca foi realizada.
+          Ajuste a <strong>última troca</strong> (km e data) ou edite <strong>próxima troca</strong> /{" "}
+          <strong>troca por tempo</strong> — os campos são recalculados entre si (regra: +10.000 km e +6 meses após a
+          última troca).
         </p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-4">
+          <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+              Última troca
+            </p>
+            <div className="mt-2 space-y-2">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-km-ultima">
+                  Quilometragem (odômetro)
+                </label>
+                <input
+                  id="troca-oleo-km-ultima"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={ultimaKmTexto}
+                  onChange={(e) => onChangeUltimaKm(e.target.value)}
+                  placeholder="Ex.: 45.230"
+                  className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm tabular-nums text-[hsl(var(--foreground))]"
+                />
+                {kmSugerido !== null ? (
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                    Sugestão pelo maior KM chegada nas saídas: {kmSugerido.toLocaleString("pt-BR")} km.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-data-ultima">
+                  Data da última troca
+                </label>
+                <input
+                  id="troca-oleo-data-ultima"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="dd/mm/aaaa"
+                  value={ultimaDataPtBr}
+                  onChange={(e) => onChangeUltimaData(e.target.value)}
+                  className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm tabular-nums text-[hsl(var(--foreground))]"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-1">
-            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-km">
-              Quilometragem da troca
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-km-proxima">
+              Próxima troca (km)
             </label>
             <input
-              id="troca-oleo-km"
+              id="troca-oleo-km-proxima"
               type="text"
               inputMode="numeric"
               autoComplete="off"
-              value={kmTexto}
-              onChange={(e) => setKmTexto(formatKmComSeparadorMilhar(e.target.value))}
-              placeholder="Ex.: 45.230"
+              value={proximaKmTexto}
+              onChange={(e) => onChangeProximaKm(e.target.value)}
+              placeholder="Última + 10.000 km"
               className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm tabular-nums text-[hsl(var(--foreground))]"
             />
-            {kmSugerido !== null ? (
-              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
-                Sugestão pelo maior KM chegada nas saídas: {kmSugerido.toLocaleString("pt-BR")} km (editável).
-              </p>
-            ) : null}
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]">Equivalente a última troca + 10.000 km.</p>
           </div>
+
           <div className="space-y-1">
-            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-data">
-              Data da troca
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="troca-oleo-tempo">
+              Troca por tempo (data limite)
             </label>
             <input
-              id="troca-oleo-data"
+              id="troca-oleo-tempo"
               type="text"
               inputMode="numeric"
               autoComplete="off"
               placeholder="dd/mm/aaaa"
-              value={dataPtBr}
-              onChange={(e) => setDataPtBr(normalizeDatePtBr(e.target.value))}
+              value={tempoLimitePtBr}
+              onChange={(e) => onChangeTempoLimite(e.target.value)}
               className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm tabular-nums text-[hsl(var(--foreground))]"
             />
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
+              Equivalente a data da última troca + 6 meses.
+            </p>
           </div>
         </div>
 

@@ -281,6 +281,7 @@ export function VehicleMaintenancePanel() {
       <TrocaOleoModal
         placa={trocaOleoPlaca}
         kmSugerido={kmSugeridoTrocaOleo}
+        registroAtual={trocaOleoPlaca ? mapa[trocaOleoPlaca] : undefined}
         onConfirm={(km, dataIso) => {
           if (!trocaOleoPlaca) return;
           bumpLocalOleoMutation();
