@@ -14,7 +14,10 @@ function msUntilNextMidnight(): number {
   return Math.max(0, next.getTime() - now.getTime());
 }
 
-/** Card na página inicial: após o horário do alarme, pisca em laranja até marcar o checkbox para ocultar o dia. */
+/**
+ * Card na página inicial: só deve ser montado a partir do horário configurado (o dashboard filtra);
+ * depois de disparar, pisca em laranja até marcar o checkbox para ocultar o dia.
+ */
 export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
   const { isDismissedTodayForAlarm, dismissAlarmForToday } = useAlarmDismiss();
   const [now, setNow] = useState(() => new Date());
@@ -62,6 +65,7 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
   }, [alarm.id, dismissAlarmForToday]);
 
   if (!alarm.ativo || !alarm.nome.trim() || !alarmParsed) return null;
+  if (!alarmJaDisparouHoje) return null;
   if (dismissedToday) return null;
 
   return (

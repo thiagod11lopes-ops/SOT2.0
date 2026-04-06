@@ -40,6 +40,13 @@ function minutosRelogioLocal(agora: Date): number {
   return agora.getHours() * 60 + agora.getMinutes();
 }
 
+/** True quando o relógio local já chegou ou passou do horário do alarme (HH:MM) neste dia. */
+function alarmeJaDisparouNesteDia(agora: Date, horaAlarme: string): boolean {
+  const parsed = parseHhMm(horaAlarme);
+  if (!parsed) return false;
+  return minutosRelogioLocal(agora) >= parsed.h * 60 + parsed.m;
+}
+
 /** KM saída, KM chegada e hora de chegada preenchidos → saída tratada como finalizada (fora do card). */
 function saidaFinalizadaKmEChegada(r: DepartureRecord): boolean {
   return (
@@ -195,13 +202,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const { placas: placasPendenciaLimpeza } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
 
-  const alarmesNaHome = useMemo(
-    () =>
-      alarmesDiarios.filter(
-        (a) => a.ativo && a.nome.trim().length > 0 && parseHhMm(a.hora) !== null,
-      ),
-    [alarmesDiarios],
-  );
   const { mapaOficina } = useOficinaVisitas();
   const placasCatalogo = useMemo(
     () => viaturasCatalogoUnicas(items.viaturasAdministrativas, items.ambulancias),
@@ -218,17 +218,30 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       .sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
   }, [placasCatalogo, departures, mapaOleo]);
   const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
-  /** Atualiza o “próximo” slot quando o relógio avança (ex.: passou de 12:59 para 13:00). */
+  /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
   useEffect(() => {
-    const id = window.setInterval(() => setRelogio((n) => n + 1), 60_000);
+    const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  /** Mesmo instante para Próxima Saída, atraso e alerta de piscar (minuto alinhado ao relógio da home). */
+  /** Mesmo instante para Próxima Saída, atraso, alarmes e alerta de piscar. */
   const agoraDashboard = useMemo(() => {
     void relogio;
     return new Date();
   }, [relogio]);
+
+  /** Só mostra alarmes ativos na home a partir do horário configurado (não antes). */
+  const alarmesNaHome = useMemo(
+    () =>
+      alarmesDiarios.filter(
+        (a) =>
+          a.ativo &&
+          a.nome.trim().length > 0 &&
+          parseHhMm(a.hora) !== null &&
+          alarmeJaDisparouNesteDia(agoraDashboard, a.hora),
+      ),
+    [alarmesDiarios, agoraDashboard],
+  );
   const proximas = useMemo(() => {
     const hoje = getCurrentDatePtBr();
     return proximaSaidaHoje(departures, hoje, agoraDashboard);
