@@ -240,34 +240,9 @@ function mergeAlarmesPorId(
  * Funde estado local com snapshot remoto: textos usam local se não estiverem vazios (evita apagar texto por snapshot
  * atrasado); caso contrário usa o remoto (ex.: primeira sincronização com IDB vazio).
  */
-function mergeAvisosPersistedState(
-  local: AvisosPersistedDoc,
-  remote: AvisosPersistedDoc,
-): AvisosPersistedDoc {
-  const deletedSet = new Set<string>([...local.deletedAlarmIds, ...remote.deletedAlarmIds]);
-  return {
-    avisoPrincipal: local.avisoPrincipal.trim() !== "" ? local.avisoPrincipal : remote.avisoPrincipal,
-    fainasTexto: local.fainasTexto.trim() !== "" ? local.fainasTexto : remote.fainasTexto,
-    avisosGeraisItens: mergeAvisoGeralItemsPorId(local.avisosGeraisItens, remote.avisosGeraisItens),
-    alarmesDiarios: mergeAlarmesPorId(
-      local.alarmesDiarios,
-      remote.alarmesDiarios,
-      deletedSet,
-    ),
-    deletedAlarmIds: [...deletedSet],
-  };
-}
-
-function avisosPersistedEquivalent(a: AvisosPersistedDoc, b: AvisosPersistedDoc): boolean {
-  const aDeleted = [...a.deletedAlarmIds].sort();
-  const bDeleted = [...b.deletedAlarmIds].sort();
-  return (
-    a.avisoPrincipal === b.avisoPrincipal &&
-    a.fainasTexto === b.fainasTexto &&
-    JSON.stringify(a.avisosGeraisItens) === JSON.stringify(b.avisosGeraisItens) &&
-    JSON.stringify(a.alarmesDiarios) === JSON.stringify(b.alarmesDiarios) &&
-    JSON.stringify(aDeleted) === JSON.stringify(bDeleted)
-  );
+function normalizeFromCloudPayload(payload: unknown | null): AvisosPersistedDoc {
+  if (payload === null) return { ...defaultDoc };
+  return normalizeStored(payload);
 }
 
 const SUPPRESS_REMOTE_MS = 5000;
@@ -367,47 +342,18 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           (payload) => {
             if (cancelled) return;
             void (async () => {
-              if (payload === null) {
-                const raw = await idbGetJson<unknown>(AVISOS_STORAGE_KEY);
-                const n = normalizeStored(raw);
-                if (!isAvisosEmpty(n)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.avisos, n);
-                }
-                return;
-              }
               if (Date.now() < suppressRemoteUntilRef.current) {
                 return;
               }
-              const incoming = normalizeStored(payload);
-              const prev = stateRef.current;
-
-              if (isAvisosEmpty(incoming) && !isAvisosEmpty(prev)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, prev).catch((e) => {
-                    console.error("[SOT] Enviar avisos locais (nuvem vazia):", e);
-                  });
-                });
-                return;
-              }
-
+              const incoming = normalizeFromCloudPayload(payload);
               applyingRemoteRef.current = true;
-              const merged = mergeAvisosPersistedState(prev, incoming);
-              deletedAlarmIdsRef.current = new Set(merged.deletedAlarmIds);
-              stateRef.current = merged;
-
-              if (!avisosPersistedEquivalent(merged, incoming)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, merged).catch((e) => {
-                    console.error("[SOT] Reconciliar avisos com a nuvem:", e);
-                  });
-                });
-              }
-
-              setAvisoPrincipalState(merged.avisoPrincipal);
-              setFainasTextoState(merged.fainasTexto);
-              setAvisosGeraisItensState(merged.avisosGeraisItens);
-              setAlarmesDiariosState(merged.alarmesDiarios);
-              void idbSetJson(AVISOS_STORAGE_KEY, merged, { maxAttempts: 6 });
+              deletedAlarmIdsRef.current = new Set(incoming.deletedAlarmIds);
+              stateRef.current = incoming;
+              setAvisoPrincipalState(incoming.avisoPrincipal);
+              setFainasTextoState(incoming.fainasTexto);
+              setAvisosGeraisItensState(incoming.avisosGeraisItens);
+              setAlarmesDiariosState(incoming.alarmesDiarios);
+              void idbSetJson(AVISOS_STORAGE_KEY, incoming, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore avisos:", err),
