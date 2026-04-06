@@ -45,6 +45,53 @@ const defaultState: AvisosPersistedState = {
   alarmesDiarios: [],
 };
 
+/** IDs de alarmes apagados neste dispositivo — evita que snapshots atrasados ou outro cliente os recoloquem no merge. */
+const ALARM_TOMBSTONE_STORAGE_KEY = "sot-avisos-alarmes-excluidos-v1";
+
+function loadAlarmTombstonesFromStorage(): Set<string> {
+  try {
+    if (typeof localStorage === "undefined") return new Set();
+    const raw = localStorage.getItem(ALARM_TOMBSTONE_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string" && x.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveAlarmTombstonesToStorage(ids: Set<string>) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (ids.size === 0) {
+      localStorage.removeItem(ALARM_TOMBSTONE_STORAGE_KEY);
+    } else {
+      localStorage.setItem(ALARM_TOMBSTONE_STORAGE_KEY, JSON.stringify([...ids]));
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/**
+ * Remove id do tombstone quando remoto e local já não têm esse alarme (exclusão consolidada).
+ * Exige ambos sem o id para não limpar com snapshot remoto vazio transitório.
+ */
+function pruneAlarmTombstones(
+  tombstones: Set<string>,
+  remoteAlarmes: AlarmeDiarioItem[],
+  localAlarmes: AlarmeDiarioItem[],
+) {
+  const remoteIds = new Set(remoteAlarmes.map((a) => a.id));
+  const localIds = new Set(localAlarmes.map((a) => a.id));
+  for (const id of [...tombstones]) {
+    if (!remoteIds.has(id) && !localIds.has(id)) {
+      tombstones.delete(id);
+    }
+  }
+}
+
 type AvisosContextValue = AvisosPersistedState & {
   setAvisoPrincipal: (v: string) => void;
   setFainasTexto: (v: string) => void;
@@ -179,17 +226,27 @@ function mergeAvisoGeralItemsPorId(local: AvisoGeralItem[], remote: AvisoGeralIt
   return out;
 }
 
-/** Mesmo id: campos do estado local prevalecem sobre o snapshot (evita horário/nome antigos do servidor). */
-function mergeAlarmesPorId(local: AlarmeDiarioItem[], remote: AlarmeDiarioItem[]): AlarmeDiarioItem[] {
+/**
+ * Mesmo id: campos locais prevalecem.
+ * Entradas só no remoto são acrescentadas exceto `idsExcluidos` (alarme apagado aqui — não recolocar fantasma do snapshot).
+ */
+function mergeAlarmesPorId(
+  local: AlarmeDiarioItem[],
+  remote: AlarmeDiarioItem[],
+  idsExcluidos: ReadonlySet<string>,
+): AlarmeDiarioItem[] {
   const remoteById = new Map(remote.map((x) => [x.id, x]));
   const localIds = new Set(local.map((x) => x.id));
   const out: AlarmeDiarioItem[] = [];
   for (const l of local) {
+    if (idsExcluidos.has(l.id)) continue;
     const r = remoteById.get(l.id);
     out.push(r ? { ...r, ...l } : l);
   }
   for (const r of remote) {
-    if (!localIds.has(r.id)) out.push(r);
+    if (!localIds.has(r.id) && !idsExcluidos.has(r.id)) {
+      out.push(r);
+    }
   }
   return out;
 }
@@ -198,12 +255,20 @@ function mergeAlarmesPorId(local: AlarmeDiarioItem[], remote: AlarmeDiarioItem[]
  * Funde estado local com snapshot remoto: textos usam local se não estiverem vazios (evita apagar texto por snapshot
  * atrasado); caso contrário usa o remoto (ex.: primeira sincronização com IDB vazio).
  */
-function mergeAvisosPersistedState(local: AvisosPersistedState, remote: AvisosPersistedState): AvisosPersistedState {
+function mergeAvisosPersistedState(
+  local: AvisosPersistedState,
+  remote: AvisosPersistedState,
+  alarmesExcluidosLocalmente: ReadonlySet<string>,
+): AvisosPersistedState {
   return {
     avisoPrincipal: local.avisoPrincipal.trim() !== "" ? local.avisoPrincipal : remote.avisoPrincipal,
     fainasTexto: local.fainasTexto.trim() !== "" ? local.fainasTexto : remote.fainasTexto,
     avisosGeraisItens: mergeAvisoGeralItemsPorId(local.avisosGeraisItens, remote.avisosGeraisItens),
-    alarmesDiarios: mergeAlarmesPorId(local.alarmesDiarios, remote.alarmesDiarios),
+    alarmesDiarios: mergeAlarmesPorId(
+      local.alarmesDiarios,
+      remote.alarmesDiarios,
+      alarmesExcluidosLocalmente,
+    ),
   };
 }
 
@@ -228,6 +293,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
   const stateRef = useRef<AvisosPersistedState>(defaultState);
+  const deletedAlarmIdsRef = useRef<Set<string>>(loadAlarmTombstonesFromStorage());
   const useCloud = isFirebaseConfigured();
   /** Atualiza o filtro por data ao mudar o dia (relógio). */
   const [agendaDiaTick, setAgendaDiaTick] = useState(0);
@@ -314,6 +380,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               }
               const incoming = normalizeStored(payload);
               const prev = stateRef.current;
+              pruneAlarmTombstones(deletedAlarmIdsRef.current, incoming.alarmesDiarios, prev.alarmesDiarios);
+              saveAlarmTombstonesToStorage(deletedAlarmIdsRef.current);
 
               if (isAvisosEmpty(incoming) && !isAvisosEmpty(prev)) {
                 queueMicrotask(() => {
@@ -325,7 +393,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               }
 
               applyingRemoteRef.current = true;
-              const merged = mergeAvisosPersistedState(prev, incoming);
+              const merged = mergeAvisosPersistedState(prev, incoming, deletedAlarmIdsRef.current);
               stateRef.current = merged;
 
               if (!avisosPersistedEquivalent(merged, incoming)) {
@@ -452,6 +520,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       clearDismissForAlarm(id);
       setAlarmesDiariosState((prev) => {
         const next = prev.filter((a) => a.id !== id);
+        deletedAlarmIdsRef.current.add(id);
+        saveAlarmTombstonesToStorage(deletedAlarmIdsRef.current);
         stateRef.current = { ...stateRef.current, alarmesDiarios: next };
         return next;
       });
