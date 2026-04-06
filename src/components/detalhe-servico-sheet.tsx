@@ -1,6 +1,12 @@
-import { Lock, Unlock } from "lucide-react";
+import { FileDown, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useCatalogItems } from "../context/catalog-items-context";
+import {
+  downloadDetalheServicoMotoristaPdf,
+  type DetalheServicoRodapeAssinatura,
+} from "../lib/generateDetalheServicoMotoristaPdf";
+import { Button } from "./ui/button";
 
 function monthInputValue(d: Date): string {
   const y = d.getFullYear();
@@ -52,6 +58,140 @@ function dateKey(year: number, monthIndex: number, day: number): string {
 }
 
 const KEY_MOTORISTA = "motorista";
+
+type SheetSnapshot = {
+  rows: string[];
+  cells: Record<string, Record<string, string>>;
+};
+
+function cloneSheet(s: SheetSnapshot): SheetSnapshot {
+  return { rows: [...s.rows], cells: structuredClone(s.cells) };
+}
+
+const DETALHE_SHEET_STORAGE_PREFIX = "sot-detalhe-servico-sheet-v1";
+
+function sheetStorageKey(monthKey: string): string {
+  return `${DETALHE_SHEET_STORAGE_PREFIX}:${monthKey}`;
+}
+
+function loadSheetFromStorage(monthKey: string): SheetSnapshot | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(sheetStorageKey(monthKey));
+    if (!raw) return null;
+    const p = JSON.parse(raw) as unknown;
+    if (!p || typeof p !== "object") return null;
+    const o = p as { rows?: unknown; cells?: unknown };
+    if (!Array.isArray(o.rows)) return null;
+    const cells =
+      o.cells && typeof o.cells === "object" && o.cells !== null
+        ? (o.cells as Record<string, Record<string, string>>)
+        : {};
+    return { rows: o.rows as string[], cells };
+  } catch {
+    return null;
+  }
+}
+
+function saveSheetToStorage(monthKey: string, snapshot: SheetSnapshot): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(sheetStorageKey(monthKey), JSON.stringify(snapshot));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+const RODAPE_STORAGE_PREFIX = "sot-detalhe-servico-rodape-v1";
+
+function rodapeStorageKey(monthKey: string): string {
+  return `${RODAPE_STORAGE_PREFIX}:${monthKey}`;
+}
+
+function emptyRodapeAssinatura(): DetalheServicoRodapeAssinatura {
+  return { nome: "", postoGraduacao: "", funcao: "" };
+}
+
+function loadRodapeFromStorage(monthKey: string): DetalheServicoRodapeAssinatura {
+  if (typeof localStorage === "undefined") return emptyRodapeAssinatura();
+  try {
+    const raw = localStorage.getItem(rodapeStorageKey(monthKey));
+    if (!raw) return emptyRodapeAssinatura();
+    const p = JSON.parse(raw) as unknown;
+    if (!p || typeof p !== "object") return emptyRodapeAssinatura();
+    const o = p as Record<string, unknown>;
+    return {
+      nome: typeof o.nome === "string" ? o.nome : "",
+      postoGraduacao: typeof o.postoGraduacao === "string" ? o.postoGraduacao : "",
+      funcao: typeof o.funcao === "string" ? o.funcao : "",
+    };
+  } catch {
+    return emptyRodapeAssinatura();
+  }
+}
+
+function saveRodapeToStorage(monthKey: string, r: DetalheServicoRodapeAssinatura): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(rodapeStorageKey(monthKey), JSON.stringify(r));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/** Mês civil anterior ao indicado por `YYYY-MM`. */
+function getPreviousMonthKey(monthYear: string): string {
+  const { year, monthIndex } = parseMonthInput(monthYear);
+  const d = new Date(year, monthIndex - 1, 1);
+  return monthInputValue(d);
+}
+
+function formatMonthYearTitlePt(monthKey: string): string {
+  const { year, monthIndex } = parseMonthInput(monthKey);
+  const s = new Date(year, monthIndex, 1).toLocaleDateString("pt-PT", {
+    month: "long",
+    year: "numeric",
+  });
+  return s.charAt(0).toLocaleUpperCase("pt-PT") + s.slice(1);
+}
+
+/** True se a célula tiver «S» ou «RO» (mesma regra da grelha principal). */
+function cellContainsWorkToken(raw: string): boolean {
+  const tokens = raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean);
+  return tokens.some((t) => t === "S" || t === "RO");
+}
+
+function normalizeLoadedSheet(loaded: SheetSnapshot | null): SheetSnapshot {
+  if (!loaded || !Array.isArray(loaded.rows)) {
+    return { rows: [newRowId()], cells: {} };
+  }
+  if (loaded.rows.length === 0) {
+    return { rows: [newRowId()], cells: {} };
+  }
+  return { rows: loaded.rows, cells: loaded.cells ?? {} };
+}
+
+/** Números dos dias em que esta linha não tem «S» nem «RO» (ordem cronológica). */
+function listDiasSemMarcacaoSingleRow(
+  snapshot: SheetSnapshot,
+  rowId: string,
+  prevYear: number,
+  prevMonthIndex: number,
+  prevDays: DayMeta[],
+): number[] {
+  const out: number[] = [];
+  for (const { day } of prevDays) {
+    const dk = dateKey(prevYear, prevMonthIndex, day);
+    const raw = snapshot.cells[rowId]?.[dk] ?? "";
+    if (!cellContainsWorkToken(raw)) out.push(day);
+  }
+  return out;
+}
+
 const KEY_CARGA_HORARIA = "cargaHoraria";
 const KEY_NUM_SERVICOS = "numServicos";
 const KEY_NUM_ROTINAS = "numRotinas";
@@ -65,6 +205,16 @@ const COLUNAS_EXTRAS_EDICAO = [
 /** Contagem automática de carga horária quando o motorista contém RM1: cada S nos dias = 24h, cada RO = 8h. */
 function isMotoristaRM1(motorista: string): boolean {
   return motorista.toUpperCase().includes("RM1");
+}
+
+/** Opções do select: catálogo da aba Motoristas + valor atual se ainda não estiver na lista. */
+function buildMotoristaSelectOptions(catalog: string[], current: string): string[] {
+  const list = [...catalog];
+  const m = current.trim();
+  if (m && !list.some((x) => x.toLowerCase() === m.toLowerCase())) {
+    list.unshift(m);
+  }
+  return list;
 }
 
 /** Conta tokens «S» e «RO» nas células dos dias (mês atual); horas = 24×S + 8×RO. */
@@ -101,18 +251,11 @@ function parseHorasCargaTexto(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-type SheetSnapshot = {
-  rows: string[];
-  cells: Record<string, Record<string, string>>;
-};
-
-function cloneSheet(s: SheetSnapshot): SheetSnapshot {
-  return { rows: [...s.rows], cells: structuredClone(s.cells) };
-}
-
 type RowContextMenu =
   | { x: number; y: number; kind: "row"; rowIndex: number }
-  | { x: number; y: number; kind: "empty" };
+  | { x: number; y: number; kind: "empty" }
+  | { x: number; y: number; kind: "dias-nao-row"; rowIndex: number }
+  | { x: number; y: number; kind: "dias-nao-empty" };
 
 /** Identificador de coluna para fundo cinza manual (mesmo tom dos fins de semana: neutral-200). */
 type ColumnContextMenu = { x: number; y: number; columnKey: string };
@@ -127,11 +270,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function DetalheServicoSheet() {
+  const { items: catalogItems } = useCatalogItems();
   const [monthYear, setMonthYear] = useState(() => monthInputValue(new Date()));
-  const [sheet, setSheet] = useState<SheetSnapshot>(() => ({
-    rows: [newRowId()],
-    cells: {},
-  }));
+  const [rodapeAssinatura, setRodapeAssinatura] = useState<DetalheServicoRodapeAssinatura>(() =>
+    loadRodapeFromStorage(monthInputValue(new Date())),
+  );
+  const rodapeAssinaturaRef = useRef(rodapeAssinatura);
+  rodapeAssinaturaRef.current = rodapeAssinatura;
+  const [sheet, setSheet] = useState<SheetSnapshot>(() =>
+    normalizeLoadedSheet(loadSheetFromStorage(monthInputValue(new Date()))),
+  );
   const [, setUndoStack] = useState<SheetSnapshot[]>([]);
   const [menu, setMenu] = useState<RowContextMenu | null>(null);
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
@@ -144,9 +292,75 @@ export function DetalheServicoSheet() {
   tableEditableRef.current = tableEditable;
   const cellEditBeforeRef = useRef<SheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
+  const monthYearRef = useRef(monthYear);
+  monthYearRef.current = monthYear;
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
+
+  const prevMonthKey = useMemo(() => getPreviousMonthKey(monthYear), [monthYear]);
+  const prevMonthKeyRef = useRef(prevMonthKey);
+  prevMonthKeyRef.current = prevMonthKey;
+  const prevMonthParsed = useMemo(() => parseMonthInput(prevMonthKey), [prevMonthKey]);
+  const prevDays = useMemo(
+    () => buildMonthDays(prevMonthParsed.year, prevMonthParsed.monthIndex),
+    [prevMonthParsed],
+  );
+
+  const [prevMonthSheet, setPrevMonthSheet] = useState<SheetSnapshot | null>(null);
+
+  useEffect(() => {
+    const raw = loadSheetFromStorage(prevMonthKey);
+    if (!raw) {
+      setPrevMonthSheet(null);
+      return;
+    }
+    if (raw.rows.length === 0) {
+      setPrevMonthSheet({ rows: [], cells: raw.cells ?? {} });
+      return;
+    }
+    setPrevMonthSheet({ rows: [...raw.rows], cells: structuredClone(raw.cells) });
+  }, [prevMonthKey]);
+
+  const handleMonthYearChange = useCallback((next: string) => {
+    if (next !== monthYear) {
+      saveSheetToStorage(monthYear, sheetRef.current);
+      saveRodapeToStorage(monthYear, rodapeAssinatura);
+    }
+    setMonthYear(next);
+  }, [monthYear, rodapeAssinatura]);
+
+  const handleGerarPdfDetalheServico = useCallback(() => {
+    const rodape = rodapeAssinaturaRef.current;
+    saveRodapeToStorage(monthYear, rodape);
+    downloadDetalheServicoMotoristaPdf({
+      monthYear,
+      sheet,
+      tableEditable,
+      prevMonthSheet,
+      columnGray,
+      rodapeAssinatura: {
+        nome: rodape.nome,
+        postoGraduacao: rodape.postoGraduacao,
+        funcao: rodape.funcao,
+      },
+    });
+  }, [monthYear, sheet, tableEditable, prevMonthSheet, columnGray]);
+
+  useEffect(() => {
+    setSheet(normalizeLoadedSheet(loadSheetFromStorage(monthYear)));
+    setRodapeAssinatura(loadRodapeFromStorage(monthYear));
+    setUndoStack([]);
+    setColumnGray({});
+  }, [monthYear]);
+
+  useEffect(() => {
+    saveRodapeToStorage(monthYearRef.current, rodapeAssinatura);
+  }, [rodapeAssinatura]);
+
+  useEffect(() => {
+    saveSheetToStorage(monthYearRef.current, sheet);
+  }, [sheet]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeColumnMenu = useCallback(() => setColumnMenu(null), []);
@@ -224,6 +438,70 @@ export function DetalheServicoSheet() {
     closeMenu();
   }, [closeMenu, clearCellEditSnapshot]);
 
+  const addFirstRowDiasNao = useCallback(() => {
+    const id = newRowId();
+    const next = { rows: [id], cells: { [id]: {} } };
+    saveSheetToStorage(prevMonthKeyRef.current, next);
+    setPrevMonthSheet(next);
+    closeMenu();
+  }, [closeMenu]);
+
+  const addRowAboveDiasNao = useCallback(
+    (index: number) => {
+      const id = newRowId();
+      setPrevMonthSheet((prev) => {
+        if (!prev || prev.rows.length === 0) {
+          const n = { rows: [id], cells: { [id]: {} } };
+          saveSheetToStorage(prevMonthKeyRef.current, n);
+          return n;
+        }
+        const rows = [...prev.rows];
+        rows.splice(index, 0, id);
+        const n = { rows, cells: { ...prev.cells, [id]: {} } };
+        saveSheetToStorage(prevMonthKeyRef.current, n);
+        return n;
+      });
+      closeMenu();
+    },
+    [closeMenu],
+  );
+
+  const addRowBelowDiasNao = useCallback(
+    (index: number) => {
+      const id = newRowId();
+      setPrevMonthSheet((prev) => {
+        if (!prev || prev.rows.length === 0) {
+          const n = { rows: [id], cells: { [id]: {} } };
+          saveSheetToStorage(prevMonthKeyRef.current, n);
+          return n;
+        }
+        const rows = [...prev.rows];
+        rows.splice(index + 1, 0, id);
+        const n = { rows, cells: { ...prev.cells, [id]: {} } };
+        saveSheetToStorage(prevMonthKeyRef.current, n);
+        return n;
+      });
+      closeMenu();
+    },
+    [closeMenu],
+  );
+
+  const deleteRowDiasNao = useCallback(
+    (index: number) => {
+      setPrevMonthSheet((prev) => {
+        if (!prev || prev.rows.length === 0) return prev;
+        const rowId = prev.rows[index]!;
+        const rows = prev.rows.filter((_, i) => i !== index);
+        const { [rowId]: _removed, ...cells } = prev.cells;
+        const n = { rows, cells };
+        saveSheetToStorage(prevMonthKeyRef.current, n);
+        return n;
+      });
+      closeMenu();
+    },
+    [closeMenu],
+  );
+
   const undo = useCallback(() => {
     clearCellEditSnapshot();
     setUndoStack((stack) => {
@@ -263,16 +541,19 @@ export function DetalheServicoSheet() {
     requestAnimationFrame(() => {
       const root = tableInputsRootRef.current;
       if (!root) return;
-      const el = root.querySelector<HTMLInputElement>(
-        `input[data-det-sheet-row="${rowIndex}"][data-det-sheet-col="${colIndex}"]`,
+      const el = root.querySelector<HTMLElement>(
+        `[data-det-sheet-row="${rowIndex}"][data-det-sheet-col="${colIndex}"]`,
       );
       el?.focus();
     });
   }, []);
 
   const onSheetCellKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number, colIndex: number) => {
+    (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>, rowIndex: number, colIndex: number) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.currentTarget instanceof HTMLSelectElement) {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") return;
+      }
       const maxCol = tableEditableRef.current ? days.length + 3 : days.length;
       const maxRow = sheetRef.current.rows.length - 1;
       let nextR = rowIndex;
@@ -355,6 +636,18 @@ export function DetalheServicoSheet() {
     setMenu({ x: e.clientX, y: e.clientY, kind: "empty" });
   }
 
+  function openDiasNaoRowMenu(e: React.MouseEvent, rowIndex: number) {
+    e.preventDefault();
+    setColumnMenu(null);
+    setMenu({ x: e.clientX, y: e.clientY, kind: "dias-nao-row", rowIndex });
+  }
+
+  function openDiasNaoEmptyMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    setColumnMenu(null);
+    setMenu({ x: e.clientX, y: e.clientY, kind: "dias-nao-empty" });
+  }
+
   function openColumnMenu(e: React.MouseEvent, columnKey: string) {
     e.preventDefault();
     e.stopPropagation();
@@ -390,21 +683,50 @@ export function DetalheServicoSheet() {
 
   const { rows, cells } = sheet;
 
+  /** Catálogo Motoristas + nomes já existentes na grelha (evita select vazio antes do IDB/sync). */
+  const motoristasCatalogEGrilha = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const n of catalogItems.motoristas) {
+      const t = n.trim();
+      if (!t) continue;
+      const k = t.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(n);
+    }
+    for (const rid of sheet.rows) {
+      const v = (sheet.cells[rid]?.[KEY_MOTORISTA] ?? "").trim();
+      if (!v) continue;
+      const k = v.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(v);
+    }
+    out.sort((a, b) => a.localeCompare(b, "pt-PT"));
+    return out;
+  }, [catalogItems.motoristas, sheet.rows, sheet.cells]);
+
   return (
     <div className="w-full min-w-0 space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium" htmlFor="detalhe-servico-mes-ano">
-            Mês e ano
-          </label>
-          <input
-            id="detalhe-servico-mes-ano"
-            type="month"
-            value={monthYear}
-            onChange={(e) => setMonthYear(e.target.value)}
-            className="h-10 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          />
-        </div>
+      <div className="flex flex-wrap items-end justify-end gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          onClick={handleGerarPdfDetalheServico}
+        >
+          <FileDown className="h-4 w-4" aria-hidden />
+          Gerar PDF
+        </Button>
+        <input
+          id="detalhe-servico-mes-ano"
+          type="month"
+          value={monthYear}
+          onChange={(e) => handleMonthYearChange(e.target.value)}
+          aria-label="Mês e ano"
+          className="h-10 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        />
       </div>
 
       <div className="w-full min-w-0 pb-1">
@@ -513,7 +835,15 @@ export function DetalheServicoSheet() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((rowId, rowIndex) => (
+                  rows.map((rowId, rowIndex) => {
+                    const motoristaVal = cells[rowId]?.[KEY_MOTORISTA] ?? "";
+                    const motoristaOpts = buildMotoristaSelectOptions(
+                      motoristasCatalogEGrilha,
+                      motoristaVal,
+                    );
+                    const useMotoristaSelect =
+                      tableEditable && motoristaOpts.length > 0;
+                    return (
                     <tr key={rowId} onContextMenu={(e) => openRowMenu(e, rowIndex)}>
                       <td
                         className={`sticky left-0 z-[1] min-w-[6rem] max-w-[14rem] border border-[hsl(var(--border))] px-[0.35em] py-[0.15em] align-middle shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)] ${
@@ -526,21 +856,43 @@ export function DetalheServicoSheet() {
                               : "bg-white"
                         }`}
                       >
-                        <input
-                          type="text"
-                          name={`motorista-${rowId}`}
-                          autoComplete="off"
-                          placeholder="—"
-                          readOnly={!tableEditable}
-                          className={`${inputClass} ${!tableEditable ? inputLockedClass : ""}`}
-                          data-det-sheet-row={rowIndex}
-                          data-det-sheet-col={0}
-                          value={cells[rowId]?.[KEY_MOTORISTA] ?? ""}
-                          onChange={(e) => setCellValue(rowId, KEY_MOTORISTA, e.target.value)}
-                          onFocus={onCellFocus}
-                          onBlur={(e) => onCellBlur(rowId, KEY_MOTORISTA, e.target.value)}
-                          onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
-                        />
+                        {useMotoristaSelect ? (
+                          <select
+                            name={`motorista-${rowId}`}
+                            aria-label="Motorista"
+                            className={`${inputClass} max-w-full cursor-pointer`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={0}
+                            value={motoristaVal}
+                            onChange={(e) => setCellValue(rowId, KEY_MOTORISTA, e.target.value)}
+                            onFocus={onCellFocus}
+                            onBlur={(e) => onCellBlur(rowId, KEY_MOTORISTA, e.target.value)}
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
+                          >
+                            <option value="">—</option>
+                            {motoristaOpts.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            name={`motorista-${rowId}`}
+                            autoComplete="off"
+                            placeholder="—"
+                            readOnly={!tableEditable}
+                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""}`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={0}
+                            value={motoristaVal}
+                            onChange={(e) => setCellValue(rowId, KEY_MOTORISTA, e.target.value)}
+                            onFocus={onCellFocus}
+                            onBlur={(e) => onCellBlur(rowId, KEY_MOTORISTA, e.target.value)}
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
+                          />
+                        )}
                       </td>
                       {days.map(({ day, isWeekend }, dayColIndex) => {
                         const dk = dateKey(year, monthIndex, day);
@@ -661,10 +1013,166 @@ export function DetalheServicoSheet() {
                           );
                         })}
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full min-w-0 space-y-2 pb-1">
+        <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">
+          Dias não trabalhados do mês de {formatMonthYearTitlePt(prevMonthKey)}
+        </h3>
+        <div className="h-fit w-full max-w-none border border-neutral-300/90 bg-white p-[0.75em] shadow-[0_2px_12px_rgba(0,0,0,0.1)] sm:p-[1em]">
+          {!prevMonthSheet ? (
+            <p
+              className="cursor-default text-sm text-[hsl(var(--muted-foreground))]"
+              role="status"
+              onContextMenu={openDiasNaoEmptyMenu}
+            >
+              Não há dados guardados para esse mês. Selecione o mês anterior no seletor acima, preencha a
+              grelha e volte ao mês atual — os dados ficam gravados neste dispositivo. Botão direito para
+              adicionar linha.
+            </p>
+          ) : (
+            <div className="w-full min-w-0 overflow-x-auto">
+              <table className="table-auto w-max max-w-none border-collapse text-left text-[11px] leading-tight sm:text-xs">
+                <caption className="sr-only">
+                  Dias não trabalhados: cada linha corresponde a uma linha da grelha do mês anterior; cada
+                  coluna mostra o número de um dia sem «S» nem «RO» nessa linha.
+                </caption>
+                <tbody>
+                  {prevMonthSheet.rows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={2}
+                        className="cursor-default border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.06)] px-[0.5em] py-[0.35em] text-center text-[hsl(var(--muted-foreground))]"
+                        onContextMenu={openDiasNaoEmptyMenu}
+                      >
+                        Sem linhas — botão direito para adicionar
+                      </td>
+                    </tr>
+                  ) : (
+                    prevMonthSheet.rows.map((rowId, rowIndex) => {
+                      const motoristaNome = prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "";
+                      const diasSoNumeros = listDiasSemMarcacaoSingleRow(
+                        prevMonthSheet,
+                        rowId,
+                        prevMonthParsed.year,
+                        prevMonthParsed.monthIndex,
+                        prevDays,
+                      );
+                      return (
+                        <tr key={rowId} onContextMenu={(e) => openDiasNaoRowMenu(e, rowIndex)}>
+                          <th
+                            scope="row"
+                            className="sticky left-0 z-[1] w-auto max-w-[14rem] border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.15em] text-left align-middle font-normal shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]"
+                          >
+                            <span
+                              className="block max-w-[14rem] truncate whitespace-nowrap"
+                              title={motoristaNome || undefined}
+                            >
+                              {motoristaNome.trim() ? motoristaNome : "—"}
+                            </span>
+                          </th>
+                          {diasSoNumeros.length === 0 ? (
+                            <td className="w-auto whitespace-nowrap border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.15em] text-[hsl(var(--muted-foreground))]">
+                              —
+                            </td>
+                          ) : (
+                            diasSoNumeros.map((dayNum) => {
+                              const date = new Date(
+                                prevMonthParsed.year,
+                                prevMonthParsed.monthIndex,
+                                dayNum,
+                              );
+                              const titleDia = date.toLocaleDateString("pt-PT", {
+                                weekday: "long",
+                                day: "numeric",
+                                month: "long",
+                              });
+                              return (
+                                <td
+                                  key={`${rowId}-${dayNum}`}
+                                  className="w-auto whitespace-nowrap border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.15em] text-center align-middle tabular-nums font-semibold text-[hsl(var(--foreground))]"
+                                  title={titleDia}
+                                >
+                                  {dayNum}
+                                </td>
+                              );
+                            })
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="mt-4 flex w-full flex-col items-center border-t border-[hsl(var(--border))]/60 pt-3">
+            <div className="w-full max-w-[22rem] space-y-2.5">
+              <div>
+                <label
+                  htmlFor="detalhe-rodape-nome"
+                  className="mb-0.5 block text-center text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                >
+                  Nome
+                </label>
+                <input
+                  id="detalhe-rodape-nome"
+                  type="text"
+                  name="detalhe-rodape-nome"
+                  autoComplete="off"
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  value={rodapeAssinatura.nome}
+                  onChange={(e) =>
+                    setRodapeAssinatura((p) => ({ ...p, nome: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="detalhe-rodape-posto"
+                  className="mb-0.5 block text-center text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                >
+                  Posto/Graduação
+                </label>
+                <input
+                  id="detalhe-rodape-posto"
+                  type="text"
+                  name="detalhe-rodape-posto"
+                  autoComplete="off"
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  value={rodapeAssinatura.postoGraduacao}
+                  onChange={(e) =>
+                    setRodapeAssinatura((p) => ({ ...p, postoGraduacao: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="detalhe-rodape-funcao"
+                  className="mb-0.5 block text-center text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                >
+                  Função
+                </label>
+                <input
+                  id="detalhe-rodape-funcao"
+                  type="text"
+                  name="detalhe-rodape-funcao"
+                  autoComplete="off"
+                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  value={rodapeAssinatura.funcao}
+                  onChange={(e) =>
+                    setRodapeAssinatura((p) => ({ ...p, funcao: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -688,6 +1196,42 @@ export function DetalheServicoSheet() {
               >
                 Adicionar linha
               </button>
+            ) : menu.kind === "dias-nao-empty" ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full px-3 py-2 text-left hover:bg-[hsl(var(--muted))]"
+                onClick={() => addFirstRowDiasNao()}
+              >
+                Adicionar linha
+              </button>
+            ) : menu.kind === "dias-nao-row" ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-2 text-left hover:bg-[hsl(var(--muted))]"
+                  onClick={() => addRowAboveDiasNao(menu.rowIndex)}
+                >
+                  Adicionar linha acima
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-2 text-left hover:bg-[hsl(var(--muted))]"
+                  onClick={() => addRowBelowDiasNao(menu.rowIndex)}
+                >
+                  Adicionar linha abaixo
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-2 text-left text-red-700 hover:bg-red-50"
+                  onClick={() => deleteRowDiasNao(menu.rowIndex)}
+                >
+                  Excluir linha
+                </button>
+              </>
             ) : (
               <>
                 <button
