@@ -11,24 +11,31 @@ import {
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
-const LS_KEY = "sot_departures_report_email";
+const IDB_KEY = "sot_departures_report_email";
+const LEGACY_LS_KEY = "sot_departures_report_email";
 
-function readLocal(): string {
+async function loadEmailFromIdb(): Promise<string> {
+  const v = await idbGetJson<unknown>(IDB_KEY);
+  if (typeof v === "string") return v.trim();
   try {
-    const v = localStorage.getItem(LS_KEY);
-    return typeof v === "string" ? v : "";
-  } catch {
-    return "";
-  }
-}
-
-function writeLocal(value: string) {
-  try {
-    localStorage.setItem(LS_KEY, value.trim());
+    if (typeof localStorage === "undefined") return "";
+    const ls = localStorage.getItem(LEGACY_LS_KEY);
+    if (typeof ls === "string" && ls.trim()) {
+      const t = ls.trim();
+      await idbSetJson(IDB_KEY, t);
+      localStorage.removeItem(LEGACY_LS_KEY);
+      return t;
+    }
   } catch {
     /* ignore */
   }
+  return "";
+}
+
+async function saveEmailToIdb(value: string): Promise<void> {
+  await idbSetJson(IDB_KEY, value.trim());
 }
 
 function normalizePayload(raw: unknown): string {
@@ -45,13 +52,21 @@ type Value = {
 const Ctx = createContext<Value | null>(null);
 
 export function DeparturesReportEmailProvider({ children }: { children: ReactNode }) {
-  const [email, setEmailState] = useState(() => readLocal());
+  const [email, setEmailState] = useState("");
+  const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
-    if (!useCloud) return;
+    void loadEmailFromIdb().then((e) => {
+      setEmailState(e);
+      setIdbReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!useCloud || !idbReady) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
     void (async () => {
@@ -64,7 +79,7 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = readLocal().trim();
+                const local = (await loadEmailFromIdb()).trim();
                 if (local) {
                   await setSotStateDoc(SOT_STATE_DOC.departuresReportEmail, { email: local });
                 }
@@ -73,7 +88,7 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
               applyingRemoteRef.current = true;
               const next = normalizePayload(payload);
               setEmailState(next);
-              writeLocal(next);
+              void saveEmailToIdb(next);
               hydratedRef.current = true;
             })();
           },
@@ -87,10 +102,15 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud]);
+  }, [useCloud, idbReady]);
 
   useEffect(() => {
-    if (!hydratedRef.current || !useCloud) return;
+    if (!idbReady) return;
+    void saveEmailToIdb(email);
+  }, [email, idbReady]);
+
+  useEffect(() => {
+    if (!idbReady || !hydratedRef.current || !useCloud) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
@@ -98,12 +118,11 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
     void setSotStateDoc(SOT_STATE_DOC.departuresReportEmail, { email: email.trim() }).catch((e) => {
       console.error("[SOT] Gravar email relatório na nuvem:", e);
     });
-  }, [email, useCloud]);
+  }, [email, useCloud, idbReady]);
 
   const setEmail = useCallback((value: string) => {
     const t = value.trim();
     setEmailState(t);
-    writeLocal(t);
   }, []);
 
   const value = useMemo(() => ({ email, setEmail }), [email, setEmail]);

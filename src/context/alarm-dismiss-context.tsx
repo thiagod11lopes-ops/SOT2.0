@@ -12,26 +12,34 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { localDateKey, normalizeAlarmDismissMap } from "../lib/dailyAlarmDismiss";
+import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
-const LS_KEY = "sot-alarm-dismiss-v2";
+const IDB_KEY = "sot-alarm-dismiss-v2";
+const LEGACY_LS_KEY = "sot-alarm-dismiss-v2";
 
-function readLocalMap(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return {};
-    const p = JSON.parse(raw) as unknown;
-    return normalizeAlarmDismissMap(p);
-  } catch {
-    return {};
+async function loadDismissMapFromIdb(): Promise<Record<string, string>> {
+  const v = await idbGetJson<unknown>(IDB_KEY);
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return normalizeAlarmDismissMap(v);
   }
-}
-
-function writeLocalMap(map: Record<string, string>) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(map));
+    if (typeof localStorage === "undefined") return {};
+    const raw = localStorage.getItem(LEGACY_LS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as unknown;
+      const m = normalizeAlarmDismissMap(p);
+      await idbSetJson(IDB_KEY, m);
+      localStorage.removeItem(LEGACY_LS_KEY);
+      return m;
+    }
   } catch {
     /* ignore */
   }
+  return {};
+}
+
+async function saveDismissMapToIdb(map: Record<string, string>): Promise<void> {
+  await idbSetJson(IDB_KEY, map);
 }
 
 function isMapEmpty(m: Record<string, string>): boolean {
@@ -47,10 +55,18 @@ type AlarmDismissContextValue = {
 const AlarmDismissContext = createContext<AlarmDismissContextValue | null>(null);
 
 export function AlarmDismissProvider({ children }: { children: ReactNode }) {
-  const [map, setMap] = useState<Record<string, string>>(() => readLocalMap());
+  const [map, setMap] = useState<Record<string, string>>({});
+  const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const useCloud = isFirebaseConfigured();
+
+  useEffect(() => {
+    void loadDismissMapFromIdb().then((m) => {
+      setMap(m);
+      setIdbReady(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (!useCloud) return;
@@ -66,7 +82,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = readLocalMap();
+                const local = await loadDismissMapFromIdb();
                 if (!isMapEmpty(local)) {
                   await setSotStateDoc(SOT_STATE_DOC.alarmDismiss, local);
                 }
@@ -75,7 +91,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
               applyingRemoteRef.current = true;
               const next = normalizeAlarmDismissMap(payload);
               setMap(next);
-              writeLocalMap(next);
+              void saveDismissMapToIdb(next);
               hydratedRef.current = true;
             })();
           },
@@ -92,7 +108,12 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   }, [useCloud]);
 
   useEffect(() => {
-    if (!hydratedRef.current || !useCloud) return;
+    if (!idbReady) return;
+    void saveDismissMapToIdb(map);
+  }, [map, idbReady]);
+
+  useEffect(() => {
+    if (!idbReady || !hydratedRef.current || !useCloud) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
@@ -100,7 +121,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
     void setSotStateDoc(SOT_STATE_DOC.alarmDismiss, map).catch((e) => {
       console.error("[SOT] Gravar dismiss alarmes na nuvem:", e);
     });
-  }, [map, useCloud]);
+  }, [map, useCloud, idbReady]);
 
   const isDismissedTodayForAlarm = useCallback(
     (alarmId: string) => map[alarmId] === localDateKey(new Date()),
@@ -111,7 +132,6 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
     const day = localDateKey(new Date());
     setMap((prev) => {
       const next = { ...prev, [alarmId]: day };
-      writeLocalMap(next);
       return next;
     });
   }, []);
@@ -121,7 +141,6 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
       if (prev[alarmId] === undefined) return prev;
       const next = { ...prev };
       delete next[alarmId];
-      writeLocalMap(next);
       return next;
     });
   }, []);

@@ -1,4 +1,7 @@
-const STORAGE_KEY = "sot-escala-pao-integrantes-v1";
+import { idbGetJson, idbSetJson } from "./indexedDb";
+
+const IDB_KEY = "sot-escala-pao-integrantes-v1";
+const LEGACY_LS_KEY = "sot-escala-pao-integrantes-v1";
 
 /** Preserva ordem; ignora vazios e duplicados (comparação sem distinção de maiúsculas). */
 export function dedupeIntegrantesOrder(list: string[]): string[] {
@@ -15,9 +18,10 @@ export function dedupeIntegrantesOrder(list: string[]): string[] {
   return out;
 }
 
-export function getIntegrantesPaoStored(): string[] {
+function readLegacyLocalStorage(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(LEGACY_LS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -27,11 +31,29 @@ export function getIntegrantesPaoStored(): string[] {
   }
 }
 
-export function setIntegrantesPaoStored(list: string[]): void {
+function clearLegacyLocalStorage(): void {
   try {
-    const next = dedupeIntegrantesOrder(list);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.removeItem(LEGACY_LS_KEY);
   } catch {
     /* ignore */
   }
+}
+
+export async function loadIntegrantesPaoFromIdb(): Promise<string[]> {
+  const v = await idbGetJson<unknown>(IDB_KEY);
+  if (Array.isArray(v)) {
+    return dedupeIntegrantesOrder(v.filter((x): x is string => typeof x === "string"));
+  }
+  const leg = readLegacyLocalStorage();
+  if (leg.length > 0) {
+    await idbSetJson(IDB_KEY, leg);
+    clearLegacyLocalStorage();
+    return leg;
+  }
+  return [];
+}
+
+export async function saveIntegrantesPaoToIdb(list: string[]): Promise<void> {
+  const next = dedupeIntegrantesOrder(list);
+  await idbSetJson(IDB_KEY, next);
 }

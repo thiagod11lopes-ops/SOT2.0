@@ -1,4 +1,5 @@
 import { addDays, addMonths, eachDayOfInterval, endOfMonth, startOfMonth } from "date-fns";
+import { idbGetJson, idbSetJson } from "./indexedDb";
 
 /** Meses de calendário cobertos pela distribuição (mês inicial + seguintes). */
 export const MESES_DISTRIBUICAO_INTEGRANTES = 12;
@@ -35,7 +36,8 @@ export function parseDateKeyLocal(key: string): Date | null {
   return dt;
 }
 
-const STORAGE_KEY = "sot-escala-pao-v2";
+const IDB_KEY = "sot-escala-pao-v2";
+const LEGACY_LS_KEY = "sot-escala-pao-v2";
 
 /** Mapa data local `YYYY-MM-DD` → nome do motorista. */
 export type EscalaPaoStored = Record<string, string>;
@@ -169,24 +171,41 @@ function normalizeEscala(raw: unknown): EscalaPaoStored {
   return out;
 }
 
-export function getEscalaPaoStored(): EscalaPaoStored {
+function readLegacyEscalaFromLocalStorage(): EscalaPaoStored {
   try {
-    const v2 = localStorage.getItem(STORAGE_KEY);
-    if (v2) {
-      return normalizeEscala(JSON.parse(v2));
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-export function setEscalaPaoStored(escala: EscalaPaoStored): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(escala));
+    if (typeof localStorage === "undefined") return {};
+    const v2 = localStorage.getItem(LEGACY_LS_KEY);
+    if (v2) return normalizeEscala(JSON.parse(v2));
   } catch {
     /* ignore */
   }
+  return {};
+}
+
+function clearLegacyEscalaLocalStorage(): void {
+  try {
+    localStorage.removeItem(LEGACY_LS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loadEscalaPaoFromIdb(): Promise<EscalaPaoStored> {
+  const raw = await idbGetJson<unknown>(IDB_KEY);
+  if (raw && typeof raw === "object") {
+    return normalizeEscala(raw);
+  }
+  const leg = readLegacyEscalaFromLocalStorage();
+  if (Object.keys(leg).length > 0) {
+    await idbSetJson(IDB_KEY, leg);
+    clearLegacyEscalaLocalStorage();
+    return leg;
+  }
+  return {};
+}
+
+export async function saveEscalaPaoToIdb(escala: EscalaPaoStored): Promise<void> {
+  await idbSetJson(IDB_KEY, escala);
 }
 
 /**

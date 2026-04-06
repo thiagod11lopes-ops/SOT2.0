@@ -101,6 +101,34 @@ function isCatalogEmpty(s: CatalogItemsState): boolean {
   );
 }
 
+/** União por categoria (ordem: `a` primeiro, depois `b`), sem duplicar ignorando maiúsculas. */
+function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): CatalogItemsState {
+  const keys: CatalogCategory[] = [
+    "setores",
+    "responsaveis",
+    "oms",
+    "hospitais",
+    "motoristas",
+    "viaturasAdministrativas",
+    "ambulancias",
+  ];
+  const out: CatalogItemsState = { ...emptyState };
+  for (const cat of keys) {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const x of [...a[cat], ...b[cat]]) {
+      const t = x.trim();
+      if (!t) continue;
+      const k = t.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      list.push(x);
+    }
+    out[cat] = list;
+  }
+  return out;
+}
+
 type CatalogItemsContextValue = {
   items: CatalogItemsState;
   /** Retorna `true` se o item foi incluído (novo); `false` se vazio ou duplicado. */
@@ -112,6 +140,8 @@ const CatalogItemsContext = createContext<CatalogItemsContextValue | null>(null)
 
 export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CatalogItemsState>({ ...emptyState });
+  /** `true` após a 1.ª leitura do IndexedDB (evita gravar estado vazio antes do merge). */
+  const initialIdbLoadDoneRef = useRef(false);
   const hydratedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
   const useCloud = isFirebaseConfigured();
@@ -120,7 +150,9 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void idbGetJson<StoredCatalog>(STORAGE_KEY).then((stored) => {
       if (cancelled) return;
-      setItems(normalizeCatalogState(stored));
+      const fromDb = normalizeCatalogState(stored);
+      setItems((prev) => mergeCatalogStates(fromDb, prev));
+      initialIdbLoadDoneRef.current = true;
       hydratedRef.current = true;
     });
     return () => {
@@ -169,7 +201,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   }, [useCloud]);
 
   useEffect(() => {
-    if (!hydratedRef.current) return;
+    if (!initialIdbLoadDoneRef.current && isCatalogEmpty(items)) return;
     void idbSetJson(STORAGE_KEY, items);
   }, [items]);
 

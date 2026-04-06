@@ -11,7 +11,7 @@ import {
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { getMotoristaPaoStored, setMotoristaPaoStored } from "../lib/motoristaPaoStorage";
+import { loadMotoristaPaoFromIdb, saveMotoristaPaoToIdb } from "../lib/motoristaPaoStorage";
 
 type MotoristaPaoContextValue = {
   /** Nome exibido no cabeçalho (motorista que leva o pão). */
@@ -28,13 +28,21 @@ function normalizeMotoristaPaoDoc(raw: unknown): string {
 }
 
 export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
-  const [nome, setNomeState] = useState(() => getMotoristaPaoStored());
+  const [nome, setNomeState] = useState("");
+  const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
-    if (!useCloud) return;
+    void loadMotoristaPaoFromIdb().then((n) => {
+      setNomeState(n);
+      setIdbReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!useCloud || !idbReady) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
     void (async () => {
@@ -47,7 +55,7 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = getMotoristaPaoStored().trim();
+                const local = (await loadMotoristaPaoFromIdb()).trim();
                 if (local) {
                   await setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome: local });
                 }
@@ -56,7 +64,7 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
               applyingRemoteRef.current = true;
               const n = normalizeMotoristaPaoDoc(payload);
               setNomeState(n);
-              setMotoristaPaoStored(n);
+              void saveMotoristaPaoToIdb(n);
               hydratedRef.current = true;
             })();
           },
@@ -70,10 +78,15 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud]);
+  }, [useCloud, idbReady]);
 
   useEffect(() => {
-    if (!hydratedRef.current || !useCloud) return;
+    if (!idbReady) return;
+    void saveMotoristaPaoToIdb(nome);
+  }, [nome, idbReady]);
+
+  useEffect(() => {
+    if (!idbReady || !hydratedRef.current || !useCloud) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
@@ -81,11 +94,10 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
     void setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome }).catch((e) => {
       console.error("[SOT] Gravar motorista pão na nuvem:", e);
     });
-  }, [nome, useCloud]);
+  }, [nome, useCloud, idbReady]);
 
   const setNome = useCallback((value: string) => {
     setNomeState(value);
-    setMotoristaPaoStored(value);
   }, []);
 
   const value = useMemo(() => ({ nome, setNome }), [nome, setNome]);

@@ -16,6 +16,7 @@ import { downloadDeparturesListPdf } from "../lib/generateDeparturesPdf";
 import { openGmailComposeWithDeparturesPdf } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
+import { DetalheServicoServicoModal } from "./detalhe-servico-servico-modal";
 import { DeparturesDataTable } from "./departures-data-table";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -57,6 +58,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
+  const [servicoModalOpen, setServicoModalOpen] = useState(false);
   const deleteModalRecord = useMemo(
     () => (deleteModalId ? departures.find((d) => d.id === deleteModalId) ?? null : null),
     [departures, deleteModalId],
@@ -67,6 +69,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     setSignPanelOpen(false);
     setSelectedMotoristaAssinatura("");
     setAssinaturaConfirmadaNome(null);
+    setServicoModalOpen(false);
   }, [filterTipo]);
 
   useEffect(() => {
@@ -284,9 +287,17 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
               >
                 Assinar
               </Button>
-              <Button type="button" variant="default" size="sm" className="shrink-0">
-                Serviço
-              </Button>
+              {filterTipo === "Administrativa" ? (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setServicoModalOpen(true)}
+                >
+                  Serviço
+                </Button>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -302,6 +313,13 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
           onExcluirDefinitivo={removeDeparture}
           onConfirmarCancelamento={handleConfirmarCancelamentoLista}
         />
+        {filterTipo === "Administrativa" ? (
+          <DetalheServicoServicoModal
+            open={servicoModalOpen}
+            onOpenChange={setServicoModalOpen}
+            filterDatePtBr={filterDepartureDate}
+          />
+        ) : null}
         <DeparturesDataTable
           rows={rows}
           bodyFontBold

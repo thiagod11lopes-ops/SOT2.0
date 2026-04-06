@@ -23,6 +23,8 @@ export const SOT_STATE_DOC = {
   appearance: "appearance",
   departuresReportEmail: "departuresReportEmail",
   alarmDismiss: "alarmDismiss",
+  /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
+  detalheServico: "detalheServico",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

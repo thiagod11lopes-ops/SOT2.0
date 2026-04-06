@@ -1,10 +1,23 @@
 import { FileDown, Lock, Unlock } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
 import {
+  loadDetalheServicoBundleFromIdb,
+  saveDetalheServicoBundleToIdb,
+  normalizeDetalheServicoBundle,
+  emptyRodapeAssinatura,
+  emptyDetalheServicoBundle,
+  isDetalheServicoBundleEmpty,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import {
   downloadDetalheServicoMotoristaPdf,
   type DetalheServicoRodapeAssinatura,
+  type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
 import { Button } from "./ui/button";
 
@@ -59,84 +72,8 @@ function dateKey(year: number, monthIndex: number, day: number): string {
 
 const KEY_MOTORISTA = "motorista";
 
-type SheetSnapshot = {
-  rows: string[];
-  cells: Record<string, Record<string, string>>;
-};
-
-function cloneSheet(s: SheetSnapshot): SheetSnapshot {
+function cloneSheet(s: DetalheServicoSheetSnapshot): DetalheServicoSheetSnapshot {
   return { rows: [...s.rows], cells: structuredClone(s.cells) };
-}
-
-const DETALHE_SHEET_STORAGE_PREFIX = "sot-detalhe-servico-sheet-v1";
-
-function sheetStorageKey(monthKey: string): string {
-  return `${DETALHE_SHEET_STORAGE_PREFIX}:${monthKey}`;
-}
-
-function loadSheetFromStorage(monthKey: string): SheetSnapshot | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(sheetStorageKey(monthKey));
-    if (!raw) return null;
-    const p = JSON.parse(raw) as unknown;
-    if (!p || typeof p !== "object") return null;
-    const o = p as { rows?: unknown; cells?: unknown };
-    if (!Array.isArray(o.rows)) return null;
-    const cells =
-      o.cells && typeof o.cells === "object" && o.cells !== null
-        ? (o.cells as Record<string, Record<string, string>>)
-        : {};
-    return { rows: o.rows as string[], cells };
-  } catch {
-    return null;
-  }
-}
-
-function saveSheetToStorage(monthKey: string, snapshot: SheetSnapshot): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(sheetStorageKey(monthKey), JSON.stringify(snapshot));
-  } catch {
-    /* ignore quota */
-  }
-}
-
-const RODAPE_STORAGE_PREFIX = "sot-detalhe-servico-rodape-v1";
-
-function rodapeStorageKey(monthKey: string): string {
-  return `${RODAPE_STORAGE_PREFIX}:${monthKey}`;
-}
-
-function emptyRodapeAssinatura(): DetalheServicoRodapeAssinatura {
-  return { nome: "", postoGraduacao: "", funcao: "" };
-}
-
-function loadRodapeFromStorage(monthKey: string): DetalheServicoRodapeAssinatura {
-  if (typeof localStorage === "undefined") return emptyRodapeAssinatura();
-  try {
-    const raw = localStorage.getItem(rodapeStorageKey(monthKey));
-    if (!raw) return emptyRodapeAssinatura();
-    const p = JSON.parse(raw) as unknown;
-    if (!p || typeof p !== "object") return emptyRodapeAssinatura();
-    const o = p as Record<string, unknown>;
-    return {
-      nome: typeof o.nome === "string" ? o.nome : "",
-      postoGraduacao: typeof o.postoGraduacao === "string" ? o.postoGraduacao : "",
-      funcao: typeof o.funcao === "string" ? o.funcao : "",
-    };
-  } catch {
-    return emptyRodapeAssinatura();
-  }
-}
-
-function saveRodapeToStorage(monthKey: string, r: DetalheServicoRodapeAssinatura): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(rodapeStorageKey(monthKey), JSON.stringify(r));
-  } catch {
-    /* ignore quota */
-  }
 }
 
 /** Mês civil anterior ao indicado por `YYYY-MM`. */
@@ -165,7 +102,7 @@ function cellContainsWorkToken(raw: string): boolean {
   return tokens.some((t) => t === "S" || t === "RO");
 }
 
-function normalizeLoadedSheet(loaded: SheetSnapshot | null): SheetSnapshot {
+function normalizeLoadedSheet(loaded: DetalheServicoSheetSnapshot | null): DetalheServicoSheetSnapshot {
   if (!loaded || !Array.isArray(loaded.rows)) {
     return { rows: [newRowId()], cells: {} };
   }
@@ -177,7 +114,7 @@ function normalizeLoadedSheet(loaded: SheetSnapshot | null): SheetSnapshot {
 
 /** Números dos dias em que esta linha não tem «S» nem «RO» (ordem cronológica). */
 function listDiasSemMarcacaoSingleRow(
-  snapshot: SheetSnapshot,
+  snapshot: DetalheServicoSheetSnapshot,
   rowId: string,
   prevYear: number,
   prevMonthIndex: number,
@@ -271,29 +208,46 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function DetalheServicoSheet() {
   const { items: catalogItems } = useCatalogItems();
+  const useCloud = isFirebaseConfigured();
+  const applyingRemoteRef = useRef(false);
+  const hydratedRef = useRef(!useCloud);
+
+  const [bundle, setBundle] = useState<DetalheServicoBundle>(emptyDetalheServicoBundle);
+  const [idbReady, setIdbReady] = useState(false);
   const [monthYear, setMonthYear] = useState(() => monthInputValue(new Date()));
-  const [rodapeAssinatura, setRodapeAssinatura] = useState<DetalheServicoRodapeAssinatura>(() =>
-    loadRodapeFromStorage(monthInputValue(new Date())),
-  );
-  const rodapeAssinaturaRef = useRef(rodapeAssinatura);
-  rodapeAssinaturaRef.current = rodapeAssinatura;
-  const [sheet, setSheet] = useState<SheetSnapshot>(() =>
-    normalizeLoadedSheet(loadSheetFromStorage(monthInputValue(new Date()))),
-  );
-  const [, setUndoStack] = useState<SheetSnapshot[]>([]);
+  const [, setUndoStack] = useState<DetalheServicoSheetSnapshot[]>([]);
   const [menu, setMenu] = useState<RowContextMenu | null>(null);
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
-  /** Chaves: `motorista`, data `YYYY-MM-DD`, ou chaves das colunas extra (cargaHoraria, …). */
-  const [columnGray, setColumnGray] = useState<Record<string, boolean>>({});
   const [tableEditable, setTableEditable] = useState(false);
+
+  const monthYearRef = useRef(monthYear);
+  monthYearRef.current = monthYear;
+
+  const sheet = useMemo(
+    () => normalizeLoadedSheet(bundle.sheets[monthYear] ?? null),
+    [bundle, monthYear],
+  );
+
+  const rodapeAssinatura = useMemo(
+    () => bundle.rodapes[monthYear] ?? emptyRodapeAssinatura(),
+    [bundle, monthYear],
+  );
+
+  /** Chaves: `motorista`, data `YYYY-MM-DD`, ou chaves das colunas extra (cargaHoraria, …). */
+  const columnGray = useMemo(
+    () => bundle.columnGrayByMonth[monthYear] ?? {},
+    [bundle, monthYear],
+  );
+
+  const rodapeAssinaturaRef = useRef(rodapeAssinatura);
+  rodapeAssinaturaRef.current = rodapeAssinatura;
+
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
   const tableEditableRef = useRef(tableEditable);
   tableEditableRef.current = tableEditable;
-  const cellEditBeforeRef = useRef<SheetSnapshot | null>(null);
+  const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
-  const monthYearRef = useRef(monthYear);
-  monthYearRef.current = monthYear;
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
@@ -307,32 +261,129 @@ export function DetalheServicoSheet() {
     [prevMonthParsed],
   );
 
-  const [prevMonthSheet, setPrevMonthSheet] = useState<SheetSnapshot | null>(null);
+  useEffect(() => {
+    void loadDetalheServicoBundleFromIdb().then((b) => {
+      setBundle(b);
+      setIdbReady(true);
+      hydratedRef.current = true;
+    });
+  }, []);
+
+  const prevMonthSheet = useMemo(() => {
+    const raw = bundle.sheets[prevMonthKey];
+    if (!raw) return null;
+    if (raw.rows.length === 0) {
+      return { rows: [] as string[], cells: raw.cells ?? {} };
+    }
+    return { rows: [...raw.rows], cells: structuredClone(raw.cells) };
+  }, [bundle, prevMonthKey]);
 
   useEffect(() => {
-    const raw = loadSheetFromStorage(prevMonthKey);
-    if (!raw) {
-      setPrevMonthSheet(null);
+    if (!useCloud || !idbReady) return;
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      try {
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.detalheServico,
+          (payload) => {
+            void (async () => {
+              if (payload === null) {
+                const local = await loadDetalheServicoBundleFromIdb();
+                if (!isDetalheServicoBundleEmpty(local)) {
+                  await setSotStateDoc(SOT_STATE_DOC.detalheServico, local);
+                }
+                return;
+              }
+              applyingRemoteRef.current = true;
+              const next = normalizeDetalheServicoBundle(payload);
+              setBundle(next);
+              void saveDetalheServicoBundleToIdb(next);
+            })();
+          },
+          (err) => console.error("[SOT] Firestore detalhe serviço:", err),
+        );
+      } catch (e) {
+        console.error("[SOT] Firebase auth (detalhe serviço):", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [useCloud, idbReady]);
+
+  useEffect(() => {
+    if (!idbReady) return;
+    void saveDetalheServicoBundleToIdb(bundle);
+  }, [bundle, idbReady]);
+
+  useEffect(() => {
+    if (!useCloud || !hydratedRef.current || !idbReady) return;
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
       return;
     }
-    if (raw.rows.length === 0) {
-      setPrevMonthSheet({ rows: [], cells: raw.cells ?? {} });
-      return;
-    }
-    setPrevMonthSheet({ rows: [...raw.rows], cells: structuredClone(raw.cells) });
-  }, [prevMonthKey]);
+    const t = window.setTimeout(() => {
+      void setSotStateDoc(SOT_STATE_DOC.detalheServico, bundle).catch((e) => {
+        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+      });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [bundle, useCloud, idbReady]);
+
+  const setSheet = useCallback((action: SetStateAction<DetalheServicoSheetSnapshot>) => {
+    setBundle((b) => {
+      const mk = monthYearRef.current;
+      const prevSheet = normalizeLoadedSheet(b.sheets[mk] ?? null);
+      const next =
+        typeof action === "function"
+          ? (action as (p: DetalheServicoSheetSnapshot) => DetalheServicoSheetSnapshot)(prevSheet)
+          : action;
+      return { ...b, version: 1, sheets: { ...b.sheets, [mk]: next } };
+    });
+  }, []);
+
+  const setRodapeAssinatura = useCallback(
+    (action: SetStateAction<DetalheServicoRodapeAssinatura>) => {
+      setBundle((b) => {
+        const mk = monthYearRef.current;
+        const prev = b.rodapes[mk] ?? emptyRodapeAssinatura();
+        const next =
+          typeof action === "function"
+            ? (action as (p: DetalheServicoRodapeAssinatura) => DetalheServicoRodapeAssinatura)(prev)
+            : action;
+        return { ...b, version: 1, rodapes: { ...b.rodapes, [mk]: next } };
+      });
+    },
+    [],
+  );
+
+  const setColumnGray = useCallback((action: SetStateAction<Record<string, boolean>>) => {
+    setBundle((b) => {
+      const mk = monthYearRef.current;
+      const prev = b.columnGrayByMonth[mk] ?? {};
+      const next =
+        typeof action === "function"
+          ? (action as (p: Record<string, boolean>) => Record<string, boolean>)(prev)
+          : action;
+      return {
+        ...b,
+        version: 1,
+        columnGrayByMonth: { ...b.columnGrayByMonth, [mk]: next },
+      };
+    });
+  }, []);
 
   const handleMonthYearChange = useCallback((next: string) => {
-    if (next !== monthYear) {
-      saveSheetToStorage(monthYear, sheetRef.current);
-      saveRodapeToStorage(monthYear, rodapeAssinatura);
-    }
     setMonthYear(next);
-  }, [monthYear, rodapeAssinatura]);
+    setUndoStack([]);
+  }, []);
 
   const handleGerarPdfDetalheServico = useCallback(() => {
     const rodape = rodapeAssinaturaRef.current;
-    saveRodapeToStorage(monthYear, rodape);
     downloadDetalheServicoMotoristaPdf({
       monthYear,
       sheet,
@@ -348,19 +399,8 @@ export function DetalheServicoSheet() {
   }, [monthYear, sheet, tableEditable, prevMonthSheet, columnGray]);
 
   useEffect(() => {
-    setSheet(normalizeLoadedSheet(loadSheetFromStorage(monthYear)));
-    setRodapeAssinatura(loadRodapeFromStorage(monthYear));
     setUndoStack([]);
-    setColumnGray({});
   }, [monthYear]);
-
-  useEffect(() => {
-    saveRodapeToStorage(monthYearRef.current, rodapeAssinatura);
-  }, [rodapeAssinatura]);
-
-  useEffect(() => {
-    saveSheetToStorage(monthYearRef.current, sheet);
-  }, [sheet]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeColumnMenu = useCallback(() => setColumnMenu(null), []);
@@ -375,7 +415,7 @@ export function DetalheServicoSheet() {
       });
       closeColumnMenu();
     },
-    [closeColumnMenu],
+    [closeColumnMenu, setColumnGray],
   );
 
   const clearCellEditSnapshot = useCallback(() => {
@@ -441,25 +481,25 @@ export function DetalheServicoSheet() {
   const addFirstRowDiasNao = useCallback(() => {
     const id = newRowId();
     const next = { rows: [id], cells: { [id]: {} } };
-    saveSheetToStorage(prevMonthKeyRef.current, next);
-    setPrevMonthSheet(next);
+    const pk = prevMonthKeyRef.current;
+    setBundle((b) => ({ ...b, version: 1, sheets: { ...b.sheets, [pk]: next } }));
     closeMenu();
   }, [closeMenu]);
 
   const addRowAboveDiasNao = useCallback(
     (index: number) => {
       const id = newRowId();
-      setPrevMonthSheet((prev) => {
-        if (!prev || prev.rows.length === 0) {
+      const pk = prevMonthKeyRef.current;
+      setBundle((b) => {
+        const raw = b.sheets[pk];
+        if (!raw || raw.rows.length === 0) {
           const n = { rows: [id], cells: { [id]: {} } };
-          saveSheetToStorage(prevMonthKeyRef.current, n);
-          return n;
+          return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
         }
-        const rows = [...prev.rows];
+        const rows = [...raw.rows];
         rows.splice(index, 0, id);
-        const n = { rows, cells: { ...prev.cells, [id]: {} } };
-        saveSheetToStorage(prevMonthKeyRef.current, n);
-        return n;
+        const n = { rows, cells: { ...raw.cells, [id]: {} } };
+        return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
       });
       closeMenu();
     },
@@ -469,17 +509,17 @@ export function DetalheServicoSheet() {
   const addRowBelowDiasNao = useCallback(
     (index: number) => {
       const id = newRowId();
-      setPrevMonthSheet((prev) => {
-        if (!prev || prev.rows.length === 0) {
+      const pk = prevMonthKeyRef.current;
+      setBundle((b) => {
+        const raw = b.sheets[pk];
+        if (!raw || raw.rows.length === 0) {
           const n = { rows: [id], cells: { [id]: {} } };
-          saveSheetToStorage(prevMonthKeyRef.current, n);
-          return n;
+          return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
         }
-        const rows = [...prev.rows];
+        const rows = [...raw.rows];
         rows.splice(index + 1, 0, id);
-        const n = { rows, cells: { ...prev.cells, [id]: {} } };
-        saveSheetToStorage(prevMonthKeyRef.current, n);
-        return n;
+        const n = { rows, cells: { ...raw.cells, [id]: {} } };
+        return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
       });
       closeMenu();
     },
@@ -488,14 +528,15 @@ export function DetalheServicoSheet() {
 
   const deleteRowDiasNao = useCallback(
     (index: number) => {
-      setPrevMonthSheet((prev) => {
-        if (!prev || prev.rows.length === 0) return prev;
-        const rowId = prev.rows[index]!;
-        const rows = prev.rows.filter((_, i) => i !== index);
-        const { [rowId]: _removed, ...cells } = prev.cells;
+      const pk = prevMonthKeyRef.current;
+      setBundle((b) => {
+        const raw = b.sheets[pk];
+        if (!raw || raw.rows.length === 0) return b;
+        const rowId = raw.rows[index]!;
+        const rows = raw.rows.filter((_, i) => i !== index);
+        const { [rowId]: _removed, ...cells } = raw.cells;
         const n = { rows, cells };
-        saveSheetToStorage(prevMonthKeyRef.current, n);
-        return n;
+        return { ...b, version: 1, sheets: { ...b.sheets, [pk]: n } };
       });
       closeMenu();
     },

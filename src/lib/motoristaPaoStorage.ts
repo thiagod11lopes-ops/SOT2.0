@@ -1,18 +1,38 @@
-const STORAGE_KEY = "sot-motorista-pao-v1";
+import { idbGetJson, idbSetJson } from "./indexedDb";
 
-export function getMotoristaPaoStored(): string {
+const IDB_KEY = "sot-motorista-pao-v1";
+const LEGACY_LS_KEY = "sot-motorista-pao-v1";
+
+function readLegacyLocalStorage(): string {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
+    if (typeof localStorage === "undefined") return "";
+    const v = localStorage.getItem(LEGACY_LS_KEY);
     return typeof v === "string" ? v : "";
   } catch {
     return "";
   }
 }
 
-export function setMotoristaPaoStored(value: string): void {
+function clearLegacyLocalStorage(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, value);
+    localStorage.removeItem(LEGACY_LS_KEY);
   } catch {
     /* ignore */
   }
+}
+
+export async function loadMotoristaPaoFromIdb(): Promise<string> {
+  const v = await idbGetJson<string>(IDB_KEY);
+  if (typeof v === "string") return v;
+  const leg = readLegacyLocalStorage();
+  if (leg) {
+    await idbSetJson(IDB_KEY, leg);
+    clearLegacyLocalStorage();
+    return leg;
+  }
+  return "";
+}
+
+export async function saveMotoristaPaoToIdb(value: string): Promise<void> {
+  await idbSetJson(IDB_KEY, value);
 }

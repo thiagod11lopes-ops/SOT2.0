@@ -13,14 +13,14 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   type EscalaPaoStored,
-  getEscalaPaoStored,
   getMotoristaEscalaParaData,
-  setEscalaPaoStored,
+  loadEscalaPaoFromIdb,
+  saveEscalaPaoToIdb,
 } from "../lib/escalaPaoStorage";
 import {
   dedupeIntegrantesOrder,
-  getIntegrantesPaoStored,
-  setIntegrantesPaoStored,
+  loadIntegrantesPaoFromIdb,
+  saveIntegrantesPaoToIdb,
 } from "../lib/integrantesPaoStorage";
 
 function normalizeEscalaPaoBundle(raw: unknown): { escala: EscalaPaoStored; integrantes: string[] } {
@@ -59,14 +59,23 @@ type EscalaPaoContextValue = {
 const EscalaPaoContext = createContext<EscalaPaoContextValue | null>(null);
 
 export function EscalaPaoProvider({ children }: { children: ReactNode }) {
-  const [escala, setEscala] = useState<EscalaPaoStored>(() => getEscalaPaoStored());
-  const [integrantes, setIntegrantesState] = useState<string[]>(() => getIntegrantesPaoStored());
+  const [escala, setEscala] = useState<EscalaPaoStored>({});
+  const [integrantes, setIntegrantesState] = useState<string[]>([]);
+  const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const useCloud = isFirebaseConfigured();
 
   useEffect(() => {
-    if (!useCloud) return;
+    void Promise.all([loadEscalaPaoFromIdb(), loadIntegrantesPaoFromIdb()]).then(([e, i]) => {
+      setEscala(e);
+      setIntegrantesState(i);
+      setIdbReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!useCloud || !idbReady) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
     void (async () => {
@@ -79,8 +88,8 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const e = getEscalaPaoStored();
-                const i = getIntegrantesPaoStored();
+                const e = await loadEscalaPaoFromIdb();
+                const i = await loadIntegrantesPaoFromIdb();
                 if (!isEscalaBundleEmpty(e, i)) {
                   await setSotStateDoc(SOT_STATE_DOC.escalaPaoBundle, { escala: e, integrantes: i });
                 }
@@ -90,8 +99,8 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
               const { escala: nextE, integrantes: nextI } = normalizeEscalaPaoBundle(payload);
               setEscala(nextE);
               setIntegrantesState(nextI);
-              setEscalaPaoStored(nextE);
-              setIntegrantesPaoStored(nextI);
+              void saveEscalaPaoToIdb(nextE);
+              void saveIntegrantesPaoToIdb(nextI);
               hydratedRef.current = true;
             })();
           },
@@ -105,10 +114,20 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud]);
+  }, [useCloud, idbReady]);
 
   useEffect(() => {
-    if (!hydratedRef.current || !useCloud) return;
+    if (!idbReady) return;
+    void saveEscalaPaoToIdb(escala);
+  }, [escala, idbReady]);
+
+  useEffect(() => {
+    if (!idbReady) return;
+    void saveIntegrantesPaoToIdb(integrantes);
+  }, [integrantes, idbReady]);
+
+  useEffect(() => {
+    if (!hydratedRef.current || !useCloud || !idbReady) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
@@ -116,12 +135,11 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
     void setSotStateDoc(SOT_STATE_DOC.escalaPaoBundle, { escala, integrantes }).catch((e) => {
       console.error("[SOT] Gravar escala pão na nuvem:", e);
     });
-  }, [escala, integrantes, useCloud]);
+  }, [escala, integrantes, useCloud, idbReady]);
 
   const setIntegrantes = useCallback((next: string[]) => {
     const cleaned = dedupeIntegrantesOrder(next);
     setIntegrantesState(cleaned);
-    setIntegrantesPaoStored(cleaned);
   }, []);
 
   const motoristaParaData = useCallback(
@@ -132,14 +150,12 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   const setMotoristaNaData = useCallback((dateKey: string, nome: string) => {
     setEscala((prev) => {
       const next = { ...prev, [dateKey]: nome };
-      setEscalaPaoStored(next);
       return next;
     });
   }, []);
 
   const setEscalaCompleta = useCallback((next: EscalaPaoStored) => {
     setEscala(next);
-    setEscalaPaoStored(next);
   }, []);
 
   const value = useMemo(
