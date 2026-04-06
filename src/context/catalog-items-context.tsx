@@ -10,7 +10,7 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
 export type CatalogCategory =
@@ -102,7 +102,32 @@ function isCatalogEmpty(s: CatalogItemsState): boolean {
 }
 
 /** Ignorar snapshots do Firestore logo após add/remove local (evita repor itens com dados antigos do servidor). */
-const SUPPRESS_REMOTE_MS = 450;
+const SUPPRESS_REMOTE_MS = 5000;
+
+/** Mesmo conjunto de entradas por categoria (ignora maiúsculas e ordem na lista). */
+function catalogStatesEquivalent(a: CatalogItemsState, b: CatalogItemsState): boolean {
+  const keys: CatalogCategory[] = [
+    "setores",
+    "responsaveis",
+    "oms",
+    "hospitais",
+    "motoristas",
+    "viaturasAdministrativas",
+    "ambulancias",
+  ];
+  for (const cat of keys) {
+    const sa = a[cat];
+    const sb = b[cat];
+    if (sa.length !== sb.length) return false;
+    const setB = new Set(sb.map((x) => x.trim().toLowerCase()).filter(Boolean));
+    for (const x of sa) {
+      const k = x.trim().toLowerCase();
+      if (!k) return false;
+      if (!setB.has(k)) return false;
+    }
+  }
+  return true;
+}
 
 /** União por categoria (ordem: `a` primeiro, depois `b`), sem duplicar ignorando maiúsculas. */
 function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): CatalogItemsState {
@@ -143,6 +168,8 @@ const CatalogItemsContext = createContext<CatalogItemsContextValue | null>(null)
 
 export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CatalogItemsState>({ ...emptyState });
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   /** `true` após a 1.ª leitura do IndexedDB (evita gravar estado vazio antes do merge). */
   const initialIdbLoadDoneRef = useRef(false);
   const hydratedRef = useRef(false);
@@ -185,7 +212,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 const local = await idbGetJson<StoredCatalog>(STORAGE_KEY);
                 const normalized = normalizeCatalogState(local);
                 if (!isCatalogEmpty(normalized)) {
-                  await setSotStateDoc(SOT_STATE_DOC.catalog, normalized);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.catalog, normalized);
                 }
                 return;
               }
@@ -197,13 +224,28 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
               setItems((prev) => {
                 if (isCatalogEmpty(incoming) && !isCatalogEmpty(prev)) {
                   queueMicrotask(() => {
-                    void setSotStateDoc(SOT_STATE_DOC.catalog, prev).catch((e) => {
+                    void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, prev).catch((e) => {
                       console.error("[SOT] Enviar catálogo local (nuvem vazia):", e);
                     });
                   });
                   return prev;
                 }
-                return incoming;
+                // União local + remoto: um snapshot pode chegar antes do write recente
+                // (ou com latência) e substituir `prev` por dados antigos — isso apagava
+                // viaturas/motoristas recém-cadastrados. O merge preserva entradas locais
+                // até o servidor refletir o estado completo.
+                const merged = mergeCatalogStates(prev, incoming);
+                // Se o estado local tinha itens ainda não refletidos no snapshot (ex.: viatura
+                // recém-cadastrada), o efeito que grava na nuvem era ignorado por
+                // `applyingRemoteRef` — enviamos o merge explicitamente.
+                if (!catalogStatesEquivalent(merged, incoming)) {
+                  queueMicrotask(() => {
+                    void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, merged).catch((e) => {
+                      console.error("[SOT] Reconciliar catálogo local com a nuvem:", e);
+                    });
+                  });
+                }
+                return merged;
               });
               hydratedRef.current = true;
             })();
@@ -222,8 +264,25 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!initialIdbLoadDoneRef.current && isCatalogEmpty(items)) return;
-    void idbSetJson(STORAGE_KEY, items);
+    void idbSetJson(STORAGE_KEY, items, { maxAttempts: 6 });
   }, [items]);
+
+  useEffect(() => {
+    const flushToIdb = () => {
+      const cur = itemsRef.current;
+      if (!initialIdbLoadDoneRef.current && isCatalogEmpty(cur)) return;
+      void idbSetJson(STORAGE_KEY, cur, { maxAttempts: 6 });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushToIdb();
+    };
+    window.addEventListener("pagehide", flushToIdb);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flushToIdb);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hydratedRef.current || !useCloud) return;
@@ -232,7 +291,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       return;
     }
     const t = window.setTimeout(() => {
-      void setSotStateDoc(SOT_STATE_DOC.catalog, items).catch((e) => {
+      void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, items).catch((e) => {
         console.error("[SOT] Gravar catálogo na nuvem:", e);
       });
     }, 120);

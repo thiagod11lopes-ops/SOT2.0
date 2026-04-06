@@ -205,7 +205,7 @@ export async function loadEscalaPaoFromIdb(): Promise<EscalaPaoStored> {
 }
 
 export async function saveEscalaPaoToIdb(escala: EscalaPaoStored): Promise<void> {
-  await idbSetJson(IDB_KEY, escala);
+  await idbSetJson(IDB_KEY, escala, { maxAttempts: 6 });
 }
 
 /**

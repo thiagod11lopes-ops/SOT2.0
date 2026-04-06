@@ -55,5 +55,5 @@ export async function loadIntegrantesPaoFromIdb(): Promise<string[]> {
 
 export async function saveIntegrantesPaoToIdb(list: string[]): Promise<void> {
   const next = dedupeIntegrantesOrder(list);
-  await idbSetJson(IDB_KEY, next);
+  await idbSetJson(IDB_KEY, next, { maxAttempts: 6 });
 }

@@ -81,3 +81,44 @@ export async function setSotStateDoc(docId: SotStateDocId, payload: unknown): Pr
   await ensureFirebaseAuth();
   await setDoc(docRef(docId), { payload: sanitizePayload(payload) });
 }
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFirestoreError(err: unknown): boolean {
+  const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
+  return (
+    code.includes("unavailable") ||
+    code.includes("deadline-exceeded") ||
+    code.includes("resource-exhausted") ||
+    code.includes("aborted") ||
+    code.includes("network") ||
+    code === "auth/network-request-failed"
+  );
+}
+
+/**
+ * Gravação com novas tentativas — falhas transitórias de rede/Firestore são comuns em campo.
+ */
+export async function setSotStateDocWithRetry(
+  docId: SotStateDocId,
+  payload: unknown,
+  options?: { maxAttempts?: number },
+): Promise<void> {
+  const maxAttempts = options?.maxAttempts ?? 4;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await setSotStateDoc(docId, payload);
+      return;
+    } catch (e) {
+      lastError = e;
+      const retry = attempt < maxAttempts && isRetryableFirestoreError(e);
+      console.warn(`[SOT] Firestore write ${docId} tentativa ${attempt}/${maxAttempts}`, e);
+      if (!retry) break;
+      await sleep(250 * 2 ** (attempt - 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
