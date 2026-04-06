@@ -2,9 +2,15 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import {
   emptyRodapeAssinatura,
+  isDetalheServicoBundleEmpty,
   loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  saveDetalheServicoBundleToIdb,
   type DetalheServicoBundle,
 } from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
+import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "../components/ui/button";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
@@ -43,22 +49,66 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
       return;
     }
     let cancelled = false;
+    let unsub: (() => void) | undefined;
+
     setLoading(true);
-    void loadDetalheServicoBundleFromIdb()
-      .then((b) => {
-        if (!cancelled) {
-          setBundle(b);
+    void (async () => {
+      try {
+        const local = await loadDetalheServicoBundleFromIdb();
+        if (cancelled) return;
+        setBundle(local);
+
+        const useCloud = isFirebaseConfigured();
+        if (!useCloud) {
           setLoading(false);
+          return;
         }
-      })
-      .catch(() => {
+
+        await ensureFirebaseAuth();
+        if (cancelled) return;
+
+        unsub = subscribeSotStateDoc(
+          SOT_STATE_DOC.detalheServico,
+          (payload) => {
+            void (async () => {
+              if (cancelled) return;
+              if (payload === null) {
+                const again = await loadDetalheServicoBundleFromIdb();
+                if (!isDetalheServicoBundleEmpty(again)) {
+                  try {
+                    await setSotStateDoc(SOT_STATE_DOC.detalheServico, again);
+                  } catch (e) {
+                    console.error("[SOT] Enviar detalhe serviço para nuvem (mobile):", e);
+                    setLoading(false);
+                  }
+                } else {
+                  setLoading(false);
+                }
+                return;
+              }
+              const next = normalizeDetalheServicoBundle(payload);
+              setBundle(next);
+              await saveDetalheServicoBundleToIdb(next);
+              setLoading(false);
+            })();
+          },
+          (err) => {
+            console.error("[SOT] Firestore detalhe serviço (mobile):", err);
+            if (!cancelled) setLoading(false);
+          },
+        );
+      } catch (e) {
+        console.error("[SOT] Carregar detalhe serviço (mobile):", e);
         if (!cancelled) {
           setBundle(null);
           setLoading(false);
         }
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
+      unsub?.();
     };
   }, [open]);
 
