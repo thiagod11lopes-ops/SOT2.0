@@ -179,9 +179,15 @@ function mergeAvisoGeralItemsPorId(local: AvisoGeralItem[], remote: AvisoGeralIt
   return out;
 }
 
+/** Mesmo id: campos do estado local prevalecem sobre o snapshot (evita horário/nome antigos do servidor). */
 function mergeAlarmesPorId(local: AlarmeDiarioItem[], remote: AlarmeDiarioItem[]): AlarmeDiarioItem[] {
+  const remoteById = new Map(remote.map((x) => [x.id, x]));
   const localIds = new Set(local.map((x) => x.id));
-  const out = [...local];
+  const out: AlarmeDiarioItem[] = [];
+  for (const l of local) {
+    const r = remoteById.get(l.id);
+    out.push(r ? { ...r, ...l } : l);
+  }
   for (const r of remote) {
     if (!localIds.has(r.id)) out.push(r);
   }
@@ -246,6 +252,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     void idbGetJson<unknown>(AVISOS_STORAGE_KEY)
       .then((raw) => {
         const n = normalizeStored(raw);
+        stateRef.current = n;
         setAvisoPrincipalState(n.avisoPrincipal);
         setFainasTextoState(n.fainasTexto);
         setAvisosGeraisItensState(n.avisosGeraisItens);
@@ -319,6 +326,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
 
               applyingRemoteRef.current = true;
               const merged = mergeAvisosPersistedState(prev, incoming);
+              stateRef.current = merged;
 
               if (!avisosPersistedEquivalent(merged, incoming)) {
                 queueMicrotask(() => {
@@ -408,10 +416,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       const n = nome.trim();
       if (!n || parseHhMm(hora) === null) return;
       bumpLocalMutation();
-      setAlarmesDiariosState((prev) => [
-        ...prev,
-        { id: newId(), nome: n, hora, ativo: true },
-      ]);
+      setAlarmesDiariosState((prev) => {
+        const next = [...prev, { id: newId(), nome: n, hora, ativo: true }];
+        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        return next;
+      });
     },
     [bumpLocalMutation],
   );
@@ -420,14 +429,16 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     (id: string, patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo">>) => {
       if (patch.hora !== undefined && parseHhMm(patch.hora) === null) return;
       bumpLocalMutation();
-      setAlarmesDiariosState((prev) =>
-        prev.map((a) => {
+      setAlarmesDiariosState((prev) => {
+        const next = prev.map((a) => {
           if (a.id !== id) return a;
-          const next: AlarmeDiarioItem = { ...a, ...patch };
-          if (patch.nome !== undefined) next.nome = patch.nome.trim();
-          return next;
-        }),
-      );
+          const row: AlarmeDiarioItem = { ...a, ...patch };
+          if (patch.nome !== undefined) row.nome = patch.nome.trim();
+          return row;
+        });
+        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        return next;
+      });
       if (patch.nome !== undefined || patch.hora !== undefined) {
         clearDismissForAlarm(id);
       }
@@ -439,7 +450,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       bumpLocalMutation();
       clearDismissForAlarm(id);
-      setAlarmesDiariosState((prev) => prev.filter((a) => a.id !== id));
+      setAlarmesDiariosState((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        return next;
+      });
     },
     [bumpLocalMutation, clearDismissForAlarm],
   );
