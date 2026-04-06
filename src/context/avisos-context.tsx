@@ -45,51 +45,29 @@ const defaultState: AvisosPersistedState = {
   alarmesDiarios: [],
 };
 
-/** IDs de alarmes apagados neste dispositivo — evita que snapshots atrasados ou outro cliente os recoloquem no merge. */
-const ALARM_TOMBSTONE_STORAGE_KEY = "sot-avisos-alarmes-excluidos-v1";
+type AvisosPersistedDoc = AvisosPersistedState & {
+  /** IDs removidos globalmente (propagam para todas as máquinas via Firebase + IDB). */
+  deletedAlarmIds: string[];
+};
 
-function loadAlarmTombstonesFromStorage(): Set<string> {
-  try {
-    if (typeof localStorage === "undefined") return new Set();
-    const raw = localStorage.getItem(ALARM_TOMBSTONE_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((x): x is string => typeof x === "string" && x.length > 0));
-  } catch {
-    return new Set();
-  }
-}
+const defaultDoc: AvisosPersistedDoc = {
+  ...defaultState,
+  deletedAlarmIds: [],
+};
 
-function saveAlarmTombstonesToStorage(ids: Set<string>) {
-  try {
-    if (typeof localStorage === "undefined") return;
-    if (ids.size === 0) {
-      localStorage.removeItem(ALARM_TOMBSTONE_STORAGE_KEY);
-    } else {
-      localStorage.setItem(ALARM_TOMBSTONE_STORAGE_KEY, JSON.stringify([...ids]));
-    }
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
+const LEGACY_ALARM_TOMBSTONE_STORAGE_KEY = "sot-avisos-alarmes-excluidos-v1";
 
-/**
- * Remove id do tombstone quando remoto e local já não têm esse alarme (exclusão consolidada).
- * Exige ambos sem o id para não limpar com snapshot remoto vazio transitório.
- */
-function pruneAlarmTombstones(
-  tombstones: Set<string>,
-  remoteAlarmes: AlarmeDiarioItem[],
-  localAlarmes: AlarmeDiarioItem[],
-) {
-  const remoteIds = new Set(remoteAlarmes.map((a) => a.id));
-  const localIds = new Set(localAlarmes.map((a) => a.id));
-  for (const id of [...tombstones]) {
-    if (!remoteIds.has(id) && !localIds.has(id)) {
-      tombstones.delete(id);
-    }
+function normalizeDeletedAlarmIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of raw) {
+    if (typeof x !== "string" || !x) continue;
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
   }
+  return out;
 }
 
 type AvisosContextValue = AvisosPersistedState & {
@@ -176,12 +154,17 @@ function migrateAvisosGeraisFromTextoLegado(texto: string): AvisoGeralItem[] {
     }));
 }
 
-function normalizeStored(raw: unknown): AvisosPersistedState {
-  if (!raw || typeof raw !== "object") return { ...defaultState };
+function normalizeStored(raw: unknown): AvisosPersistedDoc {
+  if (!raw || typeof raw !== "object") return { ...defaultDoc };
   const o = raw as Record<string, unknown>;
+  const deletedAlarmIds = normalizeDeletedAlarmIds(o.deletedAlarmIds);
   let alarmesDiarios = normalizeAlarmesFromArray(o.alarmesDiarios);
   if (alarmesDiarios.length === 0) {
     alarmesDiarios = migrateLegacySingleAlarm(o);
+  }
+  if (deletedAlarmIds.length > 0) {
+    const deletedSet = new Set(deletedAlarmIds);
+    alarmesDiarios = alarmesDiarios.filter((a) => !deletedSet.has(a.id));
   }
 
   let avisosGeraisItens: AvisoGeralItem[] = [];
@@ -204,15 +187,17 @@ function normalizeStored(raw: unknown): AvisosPersistedState {
     fainasTexto: typeof o.fainasTexto === "string" ? o.fainasTexto : "",
     avisosGeraisItens,
     alarmesDiarios,
+    deletedAlarmIds,
   };
 }
 
-function isAvisosEmpty(s: AvisosPersistedState): boolean {
+function isAvisosEmpty(s: AvisosPersistedDoc): boolean {
   return (
     !s.avisoPrincipal.trim() &&
     !s.fainasTexto.trim() &&
     s.avisosGeraisItens.length === 0 &&
-    s.alarmesDiarios.length === 0
+    s.alarmesDiarios.length === 0 &&
+    s.deletedAlarmIds.length === 0
   );
 }
 
@@ -256,10 +241,10 @@ function mergeAlarmesPorId(
  * atrasado); caso contrário usa o remoto (ex.: primeira sincronização com IDB vazio).
  */
 function mergeAvisosPersistedState(
-  local: AvisosPersistedState,
-  remote: AvisosPersistedState,
-  alarmesExcluidosLocalmente: ReadonlySet<string>,
-): AvisosPersistedState {
+  local: AvisosPersistedDoc,
+  remote: AvisosPersistedDoc,
+): AvisosPersistedDoc {
+  const deletedSet = new Set<string>([...local.deletedAlarmIds, ...remote.deletedAlarmIds]);
   return {
     avisoPrincipal: local.avisoPrincipal.trim() !== "" ? local.avisoPrincipal : remote.avisoPrincipal,
     fainasTexto: local.fainasTexto.trim() !== "" ? local.fainasTexto : remote.fainasTexto,
@@ -267,17 +252,21 @@ function mergeAvisosPersistedState(
     alarmesDiarios: mergeAlarmesPorId(
       local.alarmesDiarios,
       remote.alarmesDiarios,
-      alarmesExcluidosLocalmente,
+      deletedSet,
     ),
+    deletedAlarmIds: [...deletedSet],
   };
 }
 
-function avisosPersistedEquivalent(a: AvisosPersistedState, b: AvisosPersistedState): boolean {
+function avisosPersistedEquivalent(a: AvisosPersistedDoc, b: AvisosPersistedDoc): boolean {
+  const aDeleted = [...a.deletedAlarmIds].sort();
+  const bDeleted = [...b.deletedAlarmIds].sort();
   return (
     a.avisoPrincipal === b.avisoPrincipal &&
     a.fainasTexto === b.fainasTexto &&
     JSON.stringify(a.avisosGeraisItens) === JSON.stringify(b.avisosGeraisItens) &&
-    JSON.stringify(a.alarmesDiarios) === JSON.stringify(b.alarmesDiarios)
+    JSON.stringify(a.alarmesDiarios) === JSON.stringify(b.alarmesDiarios) &&
+    JSON.stringify(aDeleted) === JSON.stringify(bDeleted)
   );
 }
 
@@ -292,8 +281,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const [persistReady, setPersistReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
-  const stateRef = useRef<AvisosPersistedState>(defaultState);
-  const deletedAlarmIdsRef = useRef<Set<string>>(loadAlarmTombstonesFromStorage());
+  const stateRef = useRef<AvisosPersistedDoc>(defaultDoc);
+  const deletedAlarmIdsRef = useRef<Set<string>>(new Set());
   const useCloud = isFirebaseConfigured();
   /** Atualiza o filtro por data ao mudar o dia (relógio). */
   const [agendaDiaTick, setAgendaDiaTick] = useState(0);
@@ -303,10 +292,19 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     fainasTexto,
     avisosGeraisItens,
     alarmesDiarios,
+    deletedAlarmIds: [...deletedAlarmIdsRef.current],
   };
 
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_ALARM_TOMBSTONE_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -318,6 +316,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     void idbGetJson<unknown>(AVISOS_STORAGE_KEY)
       .then((raw) => {
         const n = normalizeStored(raw);
+        deletedAlarmIdsRef.current = new Set(n.deletedAlarmIds);
         stateRef.current = n;
         setAvisoPrincipalState(n.avisoPrincipal);
         setFainasTextoState(n.fainasTexto);
@@ -329,11 +328,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!persistReady) return;
-    const payload: AvisosPersistedState = {
+    const payload: AvisosPersistedDoc = {
       avisoPrincipal,
       fainasTexto,
       avisosGeraisItens,
       alarmesDiarios,
+      deletedAlarmIds: [...deletedAlarmIdsRef.current],
     };
     void idbSetJson(AVISOS_STORAGE_KEY, payload, { maxAttempts: 6 });
   }, [persistReady, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
@@ -380,8 +380,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               }
               const incoming = normalizeStored(payload);
               const prev = stateRef.current;
-              pruneAlarmTombstones(deletedAlarmIdsRef.current, incoming.alarmesDiarios, prev.alarmesDiarios);
-              saveAlarmTombstonesToStorage(deletedAlarmIdsRef.current);
 
               if (isAvisosEmpty(incoming) && !isAvisosEmpty(prev)) {
                 queueMicrotask(() => {
@@ -393,7 +391,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               }
 
               applyingRemoteRef.current = true;
-              const merged = mergeAvisosPersistedState(prev, incoming, deletedAlarmIdsRef.current);
+              const merged = mergeAvisosPersistedState(prev, incoming);
+              deletedAlarmIdsRef.current = new Set(merged.deletedAlarmIds);
               stateRef.current = merged;
 
               if (!avisosPersistedEquivalent(merged, incoming)) {
@@ -429,11 +428,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       applyingRemoteRef.current = false;
       return;
     }
-    const payload: AvisosPersistedState = {
+    const payload: AvisosPersistedDoc = {
       avisoPrincipal,
       fainasTexto,
       avisosGeraisItens,
       alarmesDiarios,
+      deletedAlarmIds: [...deletedAlarmIdsRef.current],
     };
     const t = window.setTimeout(() => {
       void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, payload).catch((e) => {
@@ -485,8 +485,14 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       if (!n || parseHhMm(hora) === null) return;
       bumpLocalMutation();
       setAlarmesDiariosState((prev) => {
-        const next = [...prev, { id: newId(), nome: n, hora, ativo: true }];
-        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        const id = newId();
+        deletedAlarmIdsRef.current.delete(id);
+        const next = [...prev, { id, nome: n, hora, ativo: true }];
+        stateRef.current = {
+          ...stateRef.current,
+          alarmesDiarios: next,
+          deletedAlarmIds: [...deletedAlarmIdsRef.current],
+        };
         return next;
       });
     },
@@ -504,7 +510,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           if (patch.nome !== undefined) row.nome = patch.nome.trim();
           return row;
         });
-        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        stateRef.current = {
+          ...stateRef.current,
+          alarmesDiarios: next,
+          deletedAlarmIds: [...deletedAlarmIdsRef.current],
+        };
         return next;
       });
       if (patch.nome !== undefined || patch.hora !== undefined) {
@@ -521,8 +531,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       setAlarmesDiariosState((prev) => {
         const next = prev.filter((a) => a.id !== id);
         deletedAlarmIdsRef.current.add(id);
-        saveAlarmTombstonesToStorage(deletedAlarmIdsRef.current);
-        stateRef.current = { ...stateRef.current, alarmesDiarios: next };
+        stateRef.current = {
+          ...stateRef.current,
+          alarmesDiarios: next,
+          deletedAlarmIds: [...deletedAlarmIdsRef.current],
+        };
         return next;
       });
     },
