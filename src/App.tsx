@@ -11,7 +11,6 @@ import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
-import { useIdleReturnToPrincipal } from "./hooks/useIdleReturnToPrincipal";
 import { useOilMaintenanceMap } from "./hooks/useOilMaintenanceMap";
 import { isSettingsTab } from "./lib/tabMatch";
 
@@ -42,7 +41,6 @@ function App() {
   const { activeTab, setActiveTab } = useAppTab();
   /** Um único listener Firestore `oilMaintenance` para Dashboard + faixa inferior (evita leituras duplicadas). */
   const mapaOleo = useOilMaintenanceMap();
-  useIdleReturnToPrincipal();
   const { editIntentVersion } = useDepartures();
   const lastEditIntentVersion = useRef(editIntentVersion);
 
