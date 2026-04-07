@@ -25,8 +25,8 @@ if (!rootEl) {
 createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
-      <AppearanceProvider>
-        <SyncPreferenceProvider>
+      <SyncPreferenceProvider>
+        <AppearanceProvider>
           <DeparturesReportEmailProvider>
             <AlarmDismissProvider>
               <DeparturesProvider>
@@ -49,8 +49,8 @@ createRoot(rootEl).render(
               </DeparturesProvider>
             </AlarmDismissProvider>
           </DeparturesReportEmailProvider>
-        </SyncPreferenceProvider>
-      </AppearanceProvider>
+        </AppearanceProvider>
+      </SyncPreferenceProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );
