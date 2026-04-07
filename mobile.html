@@ -18,9 +18,9 @@
     <title>SOT – Saídas (celular)</title>
     <script>
       (function () {
-        var h = window.location.hash;
-        if (!h || h === "#" || h === "#/") {
-          window.location.hash = "#/saidas";
+        var target = "#/saidas/administrativas";
+        if (window.location.hash !== target) {
+          window.location.hash = target;
         }
       })();
     </script>

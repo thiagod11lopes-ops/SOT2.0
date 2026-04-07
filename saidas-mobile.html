@@ -12,6 +12,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>SOT — Saídas (celular)</title>
+    <script>
+      (function () {
+        var target = "#/saidas/administrativas";
+        if (window.location.hash !== target) {
+          window.location.hash = target;
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
