@@ -21,6 +21,7 @@ import {
   viaturaEstaNaOficina,
 } from "../lib/oficinaVisits";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 const SUPPRESS_REMOTE_MS = 5000;
 
@@ -45,7 +46,8 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   const hidratado = useRef(false);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
@@ -77,11 +79,7 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await idbGetJson<unknown>(OFICINA_STORAGE_KEY);
-                const normalized = normalizarMapaOficinaCarregado(local);
-                if (!isMapaOficinaEmpty(normalized)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.oficina, normalized);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -91,11 +89,6 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
               const prev = mapaRef.current;
 
               if (isMapaOficinaEmpty(incoming) && !isMapaOficinaEmpty(prev)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, prev).catch((e) => {
-                    console.error("[SOT] Enviar oficina local (nuvem vazia):", e);
-                  });
-                });
                 return;
               }
 

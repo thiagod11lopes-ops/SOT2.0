@@ -22,6 +22,7 @@ import {
   loadIntegrantesPaoFromIdb,
   saveIntegrantesPaoToIdb,
 } from "../lib/integrantesPaoStorage";
+import { useSyncPreference } from "./sync-preference-context";
 
 function normalizeEscalaPaoBundle(raw: unknown): { escala: EscalaPaoStored; integrantes: string[] } {
   if (!raw || typeof raw !== "object") {
@@ -123,7 +124,8 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   /** `false` até hidratar do IndexedDB — evita enviar `{}` para a nuvem antes da carga local. */
   const hydratedRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
@@ -152,11 +154,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const e = await loadEscalaPaoFromIdb();
-                const i = await loadIntegrantesPaoFromIdb();
-                if (!isEscalaBundleEmpty(e, i)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.escalaPaoBundle, { escala: e, integrantes: i });
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -167,14 +165,6 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
               const prevI = integrantesRef.current;
 
               if (isEscalaBundleEmpty(incoming.escala, incoming.integrantes) && !isEscalaBundleEmpty(prevE, prevI)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.escalaPaoBundle, {
-                    escala: prevE,
-                    integrantes: prevI,
-                  }).catch((e) => {
-                    console.error("[SOT] Enviar escala pão local (nuvem vazia):", e);
-                  });
-                });
                 return;
               }
 
@@ -183,14 +173,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
               const mergedI = mergeIntegrantesLists(prevI, incoming.integrantes);
 
               if (!bundlesEquivalent(mergedE, mergedI, incoming.escala, incoming.integrantes)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.escalaPaoBundle, {
-                    escala: mergedE,
-                    integrantes: mergedI,
-                  }).catch((e) => {
-                    console.error("[SOT] Reconciliar escala do pão com a nuvem:", e);
-                  });
-                });
+                // Em modo Firebase-only, não forçar writeback local após merge do snapshot.
               }
 
               setEscala(mergedE);

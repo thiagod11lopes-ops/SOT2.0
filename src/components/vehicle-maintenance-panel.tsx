@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
+import { useSyncPreference } from "../context/sync-preference-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
@@ -53,7 +54,8 @@ export function VehicleMaintenancePanel() {
   const suppressRemoteUntilRef = useRef(0);
   const mapaRef = useRef<MapaOleo>({});
   mapaRef.current = mapa;
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
   const bumpLocalOleoMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
@@ -85,11 +87,7 @@ export function VehicleMaintenancePanel() {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
-                const normalized = normalizeMapaOleo(local);
-                if (!isMapaOleoEmpty(normalized)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -99,11 +97,6 @@ export function VehicleMaintenancePanel() {
               const prev = mapaRef.current;
 
               if (isMapaOleoEmpty(incoming) && !isMapaOleoEmpty(prev)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, prev).catch((e) => {
-                    console.error("[SOT] Enviar troca de óleo local (nuvem vazia):", e);
-                  });
-                });
                 return;
               }
 
@@ -111,11 +104,7 @@ export function VehicleMaintenancePanel() {
               const merged = mergeMapaTrocaOleo(prev, incoming);
 
               if (!mapaTrocaOleoIgual(merged, incoming)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, merged).catch((e) => {
-                    console.error("[SOT] Reconciliar troca de óleo com a nuvem:", e);
-                  });
-                });
+                // Em modo Firebase-only, não forçar writeback local após merge do snapshot.
               }
 
               setMapa(merged);

@@ -2,13 +2,13 @@ import { FileDown, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useSyncPreference } from "../context/sync-preference-context";
 import {
   loadDetalheServicoBundleFromIdb,
   saveDetalheServicoBundleToIdb,
   normalizeDetalheServicoBundle,
   emptyRodapeAssinatura,
   emptyDetalheServicoBundle,
-  isDetalheServicoBundleEmpty,
   type DetalheServicoBundle,
 } from "../lib/detalheServicoBundle";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
@@ -208,7 +208,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function DetalheServicoSheet() {
   const { items: catalogItems } = useCatalogItems();
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(!useCloud);
 
@@ -291,10 +292,7 @@ export function DetalheServicoSheet() {
           (payload) => {
             void (async () => {
               if (payload === null) {
-                const local = await loadDetalheServicoBundleFromIdb();
-                if (!isDetalheServicoBundleEmpty(local)) {
-                  await setSotStateDoc(SOT_STATE_DOC.detalheServico, local);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               applyingRemoteRef.current = true;

@@ -13,6 +13,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { localDateKey, normalizeAlarmDismissMap } from "../lib/dailyAlarmDismiss";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 const IDB_KEY = "sot-alarm-dismiss-v2";
 const LEGACY_LS_KEY = "sot-alarm-dismiss-v2";
@@ -43,10 +44,6 @@ async function saveDismissMapToIdb(map: Record<string, string>): Promise<void> {
   await idbSetJson(IDB_KEY, map);
 }
 
-function isMapEmpty(m: Record<string, string>): boolean {
-  return Object.keys(m).length === 0;
-}
-
 type AlarmDismissContextValue = {
   isDismissedTodayForAlarm: (alarmId: string) => boolean;
   dismissAlarmForToday: (alarmId: string) => void;
@@ -61,7 +58,8 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
   }, []);
@@ -87,10 +85,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await loadDismissMapFromIdb();
-                if (!isMapEmpty(local)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.alarmDismiss, local);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) return;

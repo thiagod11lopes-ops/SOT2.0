@@ -19,6 +19,7 @@ import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "..
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { AvisoGeralItem } from "../types/aviso-geral";
 import { parseHhMm } from "../lib/timeInput";
+import { useSyncPreference } from "./sync-preference-context";
 
 export const AVISOS_STORAGE_KEY = "sot-avisos-v1";
 
@@ -213,7 +214,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const suppressRemoteUntilRef = useRef(0);
   const stateRef = useRef<AvisosPersistedDoc>(defaultDoc);
   const deletedAlarmIdsRef = useRef<Set<string>>(new Set());
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   /** Atualiza o filtro por data ao mudar o dia (relógio). */
   const [agendaDiaTick, setAgendaDiaTick] = useState(0);
 

@@ -12,6 +12,7 @@ import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
 import { MotoristaPaoProvider } from "./context/motorista-pao-context";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
+import { SyncPreferenceProvider } from "./context/sync-preference-context";
 import { RootErrorBoundary } from "./root-error-boundary";
 import "./index.css";
 import App from "./App.tsx";
@@ -25,28 +26,30 @@ createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
       <AppearanceProvider>
-        <DeparturesReportEmailProvider>
-          <AlarmDismissProvider>
-            <DeparturesProvider>
-              <AppTabProvider>
-                <BackupDeparturesLoader />
-                <CatalogItemsProvider>
-                  <LimpezaPendenteProvider>
-                    <OficinaVisitasProvider>
-                      <AvisosProvider>
-                        <MotoristaPaoProvider>
-                          <EscalaPaoProvider>
-                            <App />
-                          </EscalaPaoProvider>
-                        </MotoristaPaoProvider>
-                      </AvisosProvider>
-                    </OficinaVisitasProvider>
-                  </LimpezaPendenteProvider>
-                </CatalogItemsProvider>
-              </AppTabProvider>
-            </DeparturesProvider>
-          </AlarmDismissProvider>
-        </DeparturesReportEmailProvider>
+        <SyncPreferenceProvider>
+          <DeparturesReportEmailProvider>
+            <AlarmDismissProvider>
+              <DeparturesProvider>
+                <AppTabProvider>
+                  <BackupDeparturesLoader />
+                  <CatalogItemsProvider>
+                    <LimpezaPendenteProvider>
+                      <OficinaVisitasProvider>
+                        <AvisosProvider>
+                          <MotoristaPaoProvider>
+                            <EscalaPaoProvider>
+                              <App />
+                            </EscalaPaoProvider>
+                          </MotoristaPaoProvider>
+                        </AvisosProvider>
+                      </OficinaVisitasProvider>
+                    </LimpezaPendenteProvider>
+                  </CatalogItemsProvider>
+                </AppTabProvider>
+              </DeparturesProvider>
+            </AlarmDismissProvider>
+          </DeparturesReportEmailProvider>
+        </SyncPreferenceProvider>
       </AppearanceProvider>
     </RootErrorBoundary>
   </StrictMode>,

@@ -12,6 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 export const LIMPEZA_PENDENTE_STORAGE_KEY = "sot-limpeza-pendente-v1";
 const SUPPRESS_REMOTE_MS = 5000;
@@ -41,7 +42,8 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
   const hydratedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
   }, []);
@@ -75,11 +77,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await idbGetJson<unknown>(LIMPEZA_PENDENTE_STORAGE_KEY);
-                const arr = Array.isArray(local) ? local : [];
-                if (arr.length > 0) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.limpezaPendente, arr);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) return;

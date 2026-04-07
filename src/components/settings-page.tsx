@@ -3,6 +3,7 @@ import { useCatalogItems } from "../context/catalog-items-context";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { useDepartures } from "../context/departures-context";
+import { useSyncPreference } from "../context/sync-preference-context";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
@@ -45,6 +46,7 @@ export function SettingsPage() {
   const { items: catalogItems } = useCatalogItems();
   const { nome: motoristaPao, setNome: setMotoristaPao } = useMotoristaPao();
   const { departures, mergeDeparturesFromBackup, clearAllDepartures, cloudDeparturesSync } = useDepartures();
+  const { firebaseOnlyEnabled, setFirebaseOnlyEnabled } = useSyncPreference();
   const { email: reportEmailStored, setEmail: setReportEmailStored } = useDeparturesReportEmail();
   const [reportEmailDest, setReportEmailDest] = useState(reportEmailStored);
   useEffect(() => {
@@ -214,6 +216,25 @@ export function SettingsPage() {
         </p>
       </CardHeader>
       <CardContent className="space-y-8">
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Modo de sincronização</h3>
+          <label className="flex items-center gap-3 rounded-md border border-[hsl(var(--border))] p-3">
+            <input
+              type="checkbox"
+              checked={firebaseOnlyEnabled}
+              onChange={(e) => setFirebaseOnlyEnabled(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">
+              Usar somente dados do Firebase (local apenas como cache de leitura)
+            </span>
+          </label>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Quando ativo: o sistema lê/escreve na nuvem e não promove dados locais antigos para o Firebase no bootstrap.
+            Quando desativado: funciona apenas com dados locais (IndexedDB/localStorage), sem sincronização com a nuvem.
+          </p>
+        </section>
+
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Saídas</h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">

@@ -12,6 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 export type CatalogCategory =
   | "setores"
@@ -175,7 +176,8 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const hydratedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
@@ -209,11 +211,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await idbGetJson<StoredCatalog>(STORAGE_KEY);
-                const normalized = normalizeCatalogState(local);
-                if (!isCatalogEmpty(normalized)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.catalog, normalized);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -223,11 +221,6 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
               const incoming = normalizeCatalogState(payload as StoredCatalog);
               setItems((prev) => {
                 if (isCatalogEmpty(incoming) && !isCatalogEmpty(prev)) {
-                  queueMicrotask(() => {
-                    void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, prev).catch((e) => {
-                      console.error("[SOT] Enviar catálogo local (nuvem vazia):", e);
-                    });
-                  });
                   return prev;
                 }
                 // União local + remoto: um snapshot pode chegar antes do write recente
@@ -239,11 +232,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 // recém-cadastrada), o efeito que grava na nuvem era ignorado por
                 // `applyingRemoteRef` — enviamos o merge explicitamente.
                 if (!catalogStatesEquivalent(merged, incoming)) {
-                  queueMicrotask(() => {
-                    void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, merged).catch((e) => {
-                      console.error("[SOT] Reconciliar catálogo local com a nuvem:", e);
-                    });
-                  });
+                  // Em modo Firebase-only, divergência é resolvida no servidor; cliente não força writeback aqui.
                 }
                 return merged;
               });

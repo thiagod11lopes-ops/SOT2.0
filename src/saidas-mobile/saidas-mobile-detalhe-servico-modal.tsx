@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { useSyncPreference } from "../context/sync-preference-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import {
   emptyRodapeAssinatura,
-  isDetalheServicoBundleEmpty,
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
   saveDetalheServicoBundleToIdb,
@@ -10,7 +10,7 @@ import {
 } from "../lib/detalheServicoBundle";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "../components/ui/button";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
@@ -26,6 +26,7 @@ function isCompleteDatePtBr(value: string) {
 }
 
 export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDatePtBr }: Props) {
+  const { firebaseOnlyEnabled } = useSyncPreference();
   const titleId = useId();
   const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,7 +59,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
         if (cancelled) return;
         setBundle(local);
 
-        const useCloud = isFirebaseConfigured();
+        const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
         if (!useCloud) {
           setLoading(false);
           return;
@@ -73,17 +74,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
             void (async () => {
               if (cancelled) return;
               if (payload === null) {
-                const again = await loadDetalheServicoBundleFromIdb();
-                if (!isDetalheServicoBundleEmpty(again)) {
-                  try {
-                    await setSotStateDoc(SOT_STATE_DOC.detalheServico, again);
-                  } catch (e) {
-                    console.error("[SOT] Enviar detalhe serviço para nuvem (mobile):", e);
-                    setLoading(false);
-                  }
-                } else {
-                  setLoading(false);
-                }
+                setLoading(false);
                 return;
               }
               const next = normalizeDetalheServicoBundle(payload);
@@ -110,7 +101,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
       cancelled = true;
       unsub?.();
     };
-  }, [open]);
+  }, [open, firebaseOnlyEnabled]);
 
   const sheetForMonth = bundle?.sheets[monthKey];
   const rodapeForMonth = bundle?.rodapes[monthKey] ?? emptyRodapeAssinatura();

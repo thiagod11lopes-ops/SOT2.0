@@ -12,6 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 export type AppearanceMode = "original" | "dark" | "ultra-modern";
 
@@ -68,7 +69,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
   }, []);
@@ -94,10 +96,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await loadAppearanceFromIdb();
-                if (local !== "original") {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.appearance, { mode: local });
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) return;

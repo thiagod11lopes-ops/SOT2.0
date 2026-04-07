@@ -22,6 +22,7 @@ import { getSyncClientId } from "../lib/firebase/clientIdentity";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import type { DepartureRecord } from "../types/departure";
+import { useSyncPreference } from "./sync-preference-context";
 
 export type DepartureKmFieldsPatch = Partial<
   Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada">
@@ -186,7 +187,8 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     conflictCountToday: readConflictCountToday(),
   }));
 
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const clientIdRef = useRef<string>(getSyncClientId());
   const writeQueueRef = useRef<Array<() => Promise<void>>>([]);
   const writeQueueProcessingRef = useRef(false);

@@ -12,6 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { useSyncPreference } from "./sync-preference-context";
 
 const IDB_KEY = "sot_departures_report_email";
 const LEGACY_LS_KEY = "sot_departures_report_email";
@@ -58,7 +59,8 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
   const suppressRemoteUntilRef = useRef(0);
-  const useCloud = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
   }, []);
@@ -84,10 +86,7 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = (await loadEmailFromIdb()).trim();
-                if (local) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.departuresReportEmail, { email: local });
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) return;

@@ -11,6 +11,7 @@ import {
 import { useAppTab } from "../context/app-tab-context";
 import { useDepartures } from "../context/departures-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
+import { useSyncPreference } from "../context/sync-preference-context";
 import {
   CUSTOM_LOCATIONS_STORAGE_KEY,
   emptyCustomLocations,
@@ -242,7 +243,8 @@ export function RegisterDeparturePage() {
   const [customLocations, setCustomLocations] = useState<CustomLocationsState>(() => emptyCustomLocations());
   const [customLocationsHydrated, setCustomLocationsHydrated] = useState(false);
   const customLocationsRemoteRef = useRef(false);
-  const useCloudLocations = isFirebaseConfigured();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloudLocations = isFirebaseConfigured() && firebaseOnlyEnabled;
   /** Duplo clique em Cidade/Bairro: modal para novo item. */
   const [addLocationModal, setAddLocationModal] = useState<
     null | { kind: "city" } | { kind: "bairro"; cityKey: string }
@@ -275,14 +277,7 @@ export function RegisterDeparturePage() {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const raw = await idbGetJson<unknown>(CUSTOM_LOCATIONS_STORAGE_KEY);
-                const n = normalizeCustomLocations(raw);
-                if (
-                  n.extraCities.length > 0 ||
-                  Object.keys(n.extraNeighborhoodsByCity).length > 0
-                ) {
-                  await setSotStateDoc(SOT_STATE_DOC.customLocations, n);
-                }
+                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               customLocationsRemoteRef.current = true;
