@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Ambulance, Building2, Upload } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
+import { CloudSyncIndicator } from "../components/cloud-sync-indicator";
 import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import { cn } from "../lib/utils";
@@ -82,6 +83,9 @@ export function SaidasLayout() {
             </button>
           </div>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFile} />
+        </div>
+        <div className="mt-2 flex justify-center">
+          <CloudSyncIndicator compact />
         </div>
       </header>
 

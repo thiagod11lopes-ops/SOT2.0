@@ -10,12 +10,13 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { localDateKey, normalizeAlarmDismissMap } from "../lib/dailyAlarmDismiss";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
 const IDB_KEY = "sot-alarm-dismiss-v2";
 const LEGACY_LS_KEY = "sot-alarm-dismiss-v2";
+const SUPPRESS_REMOTE_MS = 5000;
 
 async function loadDismissMapFromIdb(): Promise<Record<string, string>> {
   const v = await idbGetJson<unknown>(IDB_KEY);
@@ -59,7 +60,11 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
+  const suppressRemoteUntilRef = useRef(0);
   const useCloud = isFirebaseConfigured();
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     void loadDismissMapFromIdb().then((m) => {
@@ -84,10 +89,11 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
               if (payload === null) {
                 const local = await loadDismissMapFromIdb();
                 if (!isMapEmpty(local)) {
-                  await setSotStateDoc(SOT_STATE_DOC.alarmDismiss, local);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.alarmDismiss, local);
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizeAlarmDismissMap(payload);
               setMap(next);
@@ -118,7 +124,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDoc(SOT_STATE_DOC.alarmDismiss, map).catch((e) => {
+    void setSotStateDocWithRetry(SOT_STATE_DOC.alarmDismiss, map).catch((e) => {
       console.error("[SOT] Gravar dismiss alarmes na nuvem:", e);
     });
   }, [map, useCloud, idbReady]);
@@ -129,21 +135,23 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   );
 
   const dismissAlarmForToday = useCallback((alarmId: string) => {
+    bumpLocalMutation();
     const day = localDateKey(new Date());
     setMap((prev) => {
       const next = { ...prev, [alarmId]: day };
       return next;
     });
-  }, []);
+  }, [bumpLocalMutation]);
 
   const clearDismissForAlarm = useCallback((alarmId: string) => {
+    bumpLocalMutation();
     setMap((prev) => {
       if (prev[alarmId] === undefined) return prev;
       const next = { ...prev };
       delete next[alarmId];
       return next;
     });
-  }, []);
+  }, [bumpLocalMutation]);
 
   const value = useMemo(
     () => ({

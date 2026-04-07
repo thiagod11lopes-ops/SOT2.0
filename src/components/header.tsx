@@ -1,6 +1,7 @@
 import { Bell, LogOut } from "lucide-react";
 import { HeaderDateTime } from "./header-datetime";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
+import { CloudSyncIndicator } from "./cloud-sync-indicator";
 import { Button } from "./ui/button";
 import { TabsList } from "./ui/tabs";
 
@@ -25,6 +26,7 @@ export function Header({ tabs, activeTab, onTabChange }: HeaderProps) {
         </h1>
 
         <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <CloudSyncIndicator compact />
           <HeaderPaoMotorista />
           <Button variant="ghost" size="icon" aria-label="Notificações">
             <Bell className="h-5 w-5" />

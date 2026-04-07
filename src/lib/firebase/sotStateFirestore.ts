@@ -56,6 +56,12 @@ export function subscribeSotStateDoc(
       unsub = onSnapshot(
         docRef(docId),
         (snap) => {
+          if (import.meta.env.DEV && (snap.metadata.fromCache || snap.metadata.hasPendingWrites)) {
+            console.debug("[SOT] sot_state snapshot meta", docId, {
+              fromCache: snap.metadata.fromCache,
+              hasPendingWrites: snap.metadata.hasPendingWrites,
+            });
+          }
           if (!snap.exists()) {
             onPayload(null);
             return;

@@ -29,6 +29,8 @@ export type CloudDeparturesSyncState = {
   enabled: boolean;
   status: "idle" | "connecting" | "live" | "error";
   message?: string;
+  lastSyncAt?: number;
+  lastErrorAt?: number;
 };
 
 type DeparturesContextValue = {
@@ -44,22 +46,29 @@ type DeparturesContextValue = {
   beginEditDeparture: (id: string) => void;
   clearPendingEditDeparture: () => void;
   cloudDeparturesSync: CloudDeparturesSyncState;
+  forceCloudResync: () => void;
 };
 
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
 const DEPARTURES_STORAGE_KEY = "sot-departures-v1";
+const SUPPRESS_REMOTE_MS = 5000;
 
 export function DeparturesProvider({ children }: { children: ReactNode }) {
   const [departures, setDepartures] = useState<DepartureRecord[]>([]);
   const hydratedRef = useRef(false);
+  const suppressRemoteUntilRef = useRef(0);
   const [pendingEditDepartureId, setPendingEditDepartureId] = useState<string | null>(null);
   const [editIntentVersion, setEditIntentVersion] = useState(0);
+  const [syncRefreshToken, setSyncRefreshToken] = useState(0);
   const [cloudDeparturesSync, setCloudDeparturesSync] = useState<CloudDeparturesSyncState>(() => ({
     enabled: isFirebaseConfigured(),
     status: isFirebaseConfigured() ? "connecting" : "idle",
   }));
 
   const useCloud = isFirebaseConfigured();
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,10 +99,17 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         unsub = subscribeDepartures(
           (rows) => {
             if (cancelled) return;
+            if (Date.now() < suppressRemoteUntilRef.current) return;
             setDepartures(rows);
             hydratedRef.current = true;
             void idbSetJson(DEPARTURES_STORAGE_KEY, rows);
-            setCloudDeparturesSync({ enabled: true, status: "live" });
+            setCloudDeparturesSync((prev) => ({
+              enabled: true,
+              status: "live",
+              message: undefined,
+              lastSyncAt: Date.now(),
+              lastErrorAt: prev.lastErrorAt,
+            }));
           },
           (err) => {
             console.error("[SOT] Firestore saídas:", err);
@@ -101,6 +117,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
               enabled: true,
               status: "error",
               message: err.message || "Erro ao sincronizar com a nuvem.",
+              lastErrorAt: Date.now(),
             });
           },
         );
@@ -116,6 +133,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           enabled: true,
           status: "error",
           message: base + hint,
+          lastErrorAt: Date.now(),
         });
       }
     })();
@@ -124,7 +142,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud]);
+  }, [useCloud, syncRefreshToken]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
@@ -138,6 +156,8 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       createdAt: Date.now(),
     };
     if (useCloud) {
+      bumpLocalMutation();
+      setDepartures((prev) => [row, ...prev]);
       void upsertDepartureRecord(row).catch((e) => {
         console.error(e);
         window.alert("Não foi possível gravar a saída na nuvem. Verifique a ligação e as regras do Firestore.");
@@ -145,7 +165,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDepartures((prev) => [row, ...prev]);
-  }, [useCloud]);
+  }, [useCloud, bumpLocalMutation]);
 
   const mergeDeparturesFromBackup = useCallback(
     (rows: DepartureRecord[]) => {
@@ -155,21 +175,25 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         const incoming = rows.filter((r) => r.id && !existing.has(r.id));
         if (incoming.length === 0) return prev;
         if (useCloud) {
+          bumpLocalMutation();
           void batchUpsertDepartures(incoming).catch((e) => {
             console.error(e);
             window.alert("Não foi possível importar as saídas para a nuvem.");
           });
-          return prev;
+          const sorted = [...incoming].sort((a, b) => b.createdAt - a.createdAt);
+          return [...sorted, ...prev];
         }
         const sorted = [...incoming].sort((a, b) => b.createdAt - a.createdAt);
         return [...sorted, ...prev];
       });
     },
-    [useCloud],
+    [useCloud, bumpLocalMutation],
   );
 
   const clearAllDepartures = useCallback(() => {
     if (useCloud) {
+      bumpLocalMutation();
+      setDepartures([]);
       void deleteAllDepartureDocuments().catch((e) => {
         console.error(e);
         window.alert("Não foi possível limpar as saídas na nuvem.");
@@ -177,11 +201,12 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDepartures([]);
-  }, [useCloud]);
+  }, [useCloud, bumpLocalMutation]);
 
   const updateDeparture = useCallback(
     (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => {
       if (useCloud) {
+        bumpLocalMutation();
         setDepartures((prev) => {
           const d = prev.find((x) => x.id === id);
           if (!d) return prev;
@@ -195,7 +220,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             console.error(e);
             window.alert("Não foi possível atualizar a saída na nuvem.");
           });
-          return prev;
+          return prev.map((x) => (x.id === id ? next : x));
         });
         return;
       }
@@ -212,12 +237,14 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         ),
       );
     },
-    [useCloud],
+    [useCloud, bumpLocalMutation],
   );
 
   const removeDeparture = useCallback(
     (id: string) => {
       if (useCloud) {
+        bumpLocalMutation();
+        setDepartures((prev) => prev.filter((d) => d.id !== id));
         void deleteDepartureDocument(id).catch((e) => {
           console.error(e);
           window.alert("Não foi possível remover a saída na nuvem.");
@@ -226,12 +253,13 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       }
       setDepartures((prev) => prev.filter((d) => d.id !== id));
     },
-    [useCloud],
+    [useCloud, bumpLocalMutation],
   );
 
   const updateDepartureKmFields = useCallback(
     (id: string, patch: DepartureKmFieldsPatch) => {
       if (useCloud) {
+        bumpLocalMutation();
         setDepartures((prev) => {
           const d = prev.find((x) => x.id === id);
           if (!d || d.cancelada) return prev;
@@ -240,7 +268,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             console.error(e);
             window.alert("Não foi possível gravar os KM na nuvem.");
           });
-          return prev;
+          return prev.map((x) => (x.id === id && !x.cancelada ? next : x));
         });
         return;
       }
@@ -248,7 +276,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         prev.map((d) => (d.id === id && !d.cancelada ? { ...d, ...patch } : d)),
       );
     },
-    [useCloud],
+    [useCloud, bumpLocalMutation],
   );
 
   const beginEditDeparture = useCallback((id: string) => {
@@ -258,6 +286,18 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
 
   const clearPendingEditDeparture = useCallback(() => {
     setPendingEditDepartureId(null);
+  }, []);
+
+  const forceCloudResync = useCallback(() => {
+    suppressRemoteUntilRef.current = 0;
+    setCloudDeparturesSync((prev) => ({
+      enabled: prev.enabled,
+      status: prev.enabled ? "connecting" : "idle",
+      message: prev.message,
+      lastSyncAt: prev.lastSyncAt,
+      lastErrorAt: prev.lastErrorAt,
+    }));
+    setSyncRefreshToken((v) => v + 1);
   }, []);
 
   const value = useMemo(
@@ -274,6 +314,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       beginEditDeparture,
       clearPendingEditDeparture,
       cloudDeparturesSync,
+      forceCloudResync,
     }),
     [
       departures,
@@ -288,6 +329,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       beginEditDeparture,
       clearPendingEditDeparture,
       cloudDeparturesSync,
+      forceCloudResync,
     ],
   );
 

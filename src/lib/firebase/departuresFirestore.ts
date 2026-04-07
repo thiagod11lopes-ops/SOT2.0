@@ -104,6 +104,12 @@ export function subscribeDepartures(
       unsub = onSnapshot(
         q,
         (snap) => {
+          if (import.meta.env.DEV && (snap.metadata.fromCache || snap.metadata.hasPendingWrites)) {
+            console.debug("[SOT] departures snapshot meta", {
+              fromCache: snap.metadata.fromCache,
+              hasPendingWrites: snap.metadata.hasPendingWrites,
+            });
+          }
           const raw: DepartureRecord[] = [];
           snap.forEach((d) => {
             const row = docToDeparture(d);

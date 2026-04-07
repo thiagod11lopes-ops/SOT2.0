@@ -10,10 +10,11 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
 export const LIMPEZA_PENDENTE_STORAGE_KEY = "sot-limpeza-pendente-v1";
+const SUPPRESS_REMOTE_MS = 5000;
 
 type LimpezaPendenteContextValue = {
   /** Placas marcadas para limpeza, ordenadas. */
@@ -39,7 +40,11 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
   const [placasSet, setPlacasSet] = useState<Set<string>>(new Set());
   const hydratedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
+  const suppressRemoteUntilRef = useRef(0);
   const useCloud = isFirebaseConfigured();
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     void idbGetJson<unknown>(LIMPEZA_PENDENTE_STORAGE_KEY)
@@ -73,10 +78,11 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
                 const local = await idbGetJson<unknown>(LIMPEZA_PENDENTE_STORAGE_KEY);
                 const arr = Array.isArray(local) ? local : [];
                 if (arr.length > 0) {
-                  await setSotStateDoc(SOT_STATE_DOC.limpezaPendente, arr);
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.limpezaPendente, arr);
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) return;
               applyingRemoteRef.current = true;
               const next = placasArrayToSet(payload);
               setPlacasSet(next);
@@ -114,7 +120,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
       return;
     }
     const sorted = Array.from(placasSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
-    void setSotStateDoc(SOT_STATE_DOC.limpezaPendente, sorted).catch((e) => {
+    void setSotStateDocWithRetry(SOT_STATE_DOC.limpezaPendente, sorted).catch((e) => {
       console.error("[SOT] Gravar limpeza pendente na nuvem:", e);
     });
   }, [placasSet, useCloud]);
@@ -122,6 +128,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
   const setPendente = useCallback((placa: string, pendente: boolean) => {
     const t = placa.trim();
     if (!t) return;
+    bumpLocalMutation();
     setPlacasSet((prev) => {
       const next = new Set(prev);
       const existing = [...next].find((p) => p.toLowerCase() === t.toLowerCase());
@@ -132,7 +139,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-  }, []);
+  }, [bumpLocalMutation]);
 
   const isPendente = useCallback(
     (placa: string) => {

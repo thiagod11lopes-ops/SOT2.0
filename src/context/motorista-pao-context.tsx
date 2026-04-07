@@ -10,7 +10,7 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { loadMotoristaPaoFromIdb, saveMotoristaPaoToIdb } from "../lib/motoristaPaoStorage";
 
 type MotoristaPaoContextValue = {
@@ -20,6 +20,7 @@ type MotoristaPaoContextValue = {
 };
 
 const MotoristaPaoContext = createContext<MotoristaPaoContextValue | null>(null);
+const SUPPRESS_REMOTE_MS = 5000;
 
 function normalizeMotoristaPaoDoc(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "";
@@ -32,7 +33,11 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
   const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
+  const suppressRemoteUntilRef = useRef(0);
   const useCloud = isFirebaseConfigured();
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     void loadMotoristaPaoFromIdb().then((n) => {
@@ -57,10 +62,11 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
               if (payload === null) {
                 const local = (await loadMotoristaPaoFromIdb()).trim();
                 if (local) {
-                  await setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome: local });
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: local });
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) return;
               applyingRemoteRef.current = true;
               const n = normalizeMotoristaPaoDoc(payload);
               setNomeState(n);
@@ -91,14 +97,15 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDoc(SOT_STATE_DOC.motoristaPao, { nome }).catch((e) => {
+    void setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome }).catch((e) => {
       console.error("[SOT] Gravar motorista pão na nuvem:", e);
     });
   }, [nome, useCloud, idbReady]);
 
   const setNome = useCallback((value: string) => {
+    bumpLocalMutation();
     setNomeState(value);
-  }, []);
+  }, [bumpLocalMutation]);
 
   const value = useMemo(() => ({ nome, setNome }), [nome, setNome]);
 

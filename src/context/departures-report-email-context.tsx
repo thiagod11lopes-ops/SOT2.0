@@ -10,11 +10,12 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 
 const IDB_KEY = "sot_departures_report_email";
 const LEGACY_LS_KEY = "sot_departures_report_email";
+const SUPPRESS_REMOTE_MS = 5000;
 
 async function loadEmailFromIdb(): Promise<string> {
   const v = await idbGetJson<unknown>(IDB_KEY);
@@ -56,7 +57,11 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
   const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(true);
+  const suppressRemoteUntilRef = useRef(0);
   const useCloud = isFirebaseConfigured();
+  const bumpLocalMutation = useCallback(() => {
+    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
 
   useEffect(() => {
     void loadEmailFromIdb().then((e) => {
@@ -81,10 +86,11 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
               if (payload === null) {
                 const local = (await loadEmailFromIdb()).trim();
                 if (local) {
-                  await setSotStateDoc(SOT_STATE_DOC.departuresReportEmail, { email: local });
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.departuresReportEmail, { email: local });
                 }
                 return;
               }
+              if (Date.now() < suppressRemoteUntilRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizePayload(payload);
               setEmailState(next);
@@ -115,15 +121,16 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDoc(SOT_STATE_DOC.departuresReportEmail, { email: email.trim() }).catch((e) => {
+    void setSotStateDocWithRetry(SOT_STATE_DOC.departuresReportEmail, { email: email.trim() }).catch((e) => {
       console.error("[SOT] Gravar email relatório na nuvem:", e);
     });
   }, [email, useCloud, idbReady]);
 
   const setEmail = useCallback((value: string) => {
     const t = value.trim();
+    bumpLocalMutation();
     setEmailState(t);
-  }, []);
+  }, [bumpLocalMutation]);
 
   const value = useMemo(() => ({ email, setEmail }), [email, setEmail]);
 
