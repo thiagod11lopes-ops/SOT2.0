@@ -66,11 +66,16 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setIdbReady(true);
+      return;
+    }
     void loadEmailFromIdb().then((e) => {
       setEmailState(e);
       setIdbReady(true);
     });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud || !idbReady) return;

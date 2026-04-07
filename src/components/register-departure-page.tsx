@@ -252,11 +252,16 @@ export function RegisterDeparturePage() {
   const [addLocationDraft, setAddLocationDraft] = useState("");
 
   useEffect(() => {
+    if (useCloudLocations) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setCustomLocationsHydrated(true);
+      return;
+    }
     void idbGetJson<unknown>(CUSTOM_LOCATIONS_STORAGE_KEY).then((stored) => {
       setCustomLocations(normalizeCustomLocations(stored));
       setCustomLocationsHydrated(true);
     });
-  }, []);
+  }, [useCloudLocations]);
 
   useEffect(() => {
     if (!customLocationsHydrated) return;

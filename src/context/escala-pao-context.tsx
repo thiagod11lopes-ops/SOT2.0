@@ -132,13 +132,18 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setIdbReady(true);
+      return;
+    }
     void Promise.all([loadEscalaPaoFromIdb(), loadIntegrantesPaoFromIdb()]).then(([e, i]) => {
       setEscala(e);
       setIntegrantesState(i);
       setIdbReady(true);
       hydratedRef.current = true;
     });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud || !idbReady) return;

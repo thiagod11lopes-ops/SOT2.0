@@ -62,6 +62,10 @@ export function VehicleMaintenancePanel() {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      return;
+    }
     let cancel = false;
     void idbGetJson<MapaOleo>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
       if (cancel) return;
@@ -71,7 +75,7 @@ export function VehicleMaintenancePanel() {
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) return;

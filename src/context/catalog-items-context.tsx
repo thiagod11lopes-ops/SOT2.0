@@ -184,6 +184,11 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      initialIdbLoadDoneRef.current = true;
+      return;
+    }
     let cancelled = false;
     void idbGetJson<StoredCatalog>(STORAGE_KEY).then((stored) => {
       if (cancelled) return;
@@ -195,7 +200,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) return;

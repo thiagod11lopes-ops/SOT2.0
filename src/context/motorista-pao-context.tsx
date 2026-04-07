@@ -42,11 +42,16 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setIdbReady(true);
+      return;
+    }
     void loadMotoristaPaoFromIdb().then((n) => {
       setNomeState(n);
       setIdbReady(true);
     });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud || !idbReady) return;

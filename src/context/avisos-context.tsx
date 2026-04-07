@@ -245,6 +245,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setPersistReady(true);
+      return;
+    }
     void idbGetJson<unknown>(AVISOS_STORAGE_KEY)
       .then((raw) => {
         const n = normalizeStored(raw);
@@ -256,7 +261,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         setAlarmesDiariosState(n.alarmesDiarios);
       })
       .finally(() => setPersistReady(true));
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!persistReady) return;

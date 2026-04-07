@@ -54,6 +54,10 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      return;
+    }
     let cancel = false;
     void idbGetJson<unknown>(OFICINA_STORAGE_KEY).then((raw) => {
       if (cancel) return;
@@ -63,7 +67,7 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) return;

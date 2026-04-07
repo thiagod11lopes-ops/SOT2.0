@@ -65,11 +65,16 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setIdbReady(true);
+      return;
+    }
     void loadDismissMapFromIdb().then((m) => {
       setMap(m);
       setIdbReady(true);
     });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) return;

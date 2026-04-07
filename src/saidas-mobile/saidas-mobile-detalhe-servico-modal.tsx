@@ -55,12 +55,11 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
     setLoading(true);
     void (async () => {
       try {
-        const local = await loadDetalheServicoBundleFromIdb();
-        if (cancelled) return;
-        setBundle(local);
-
         const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
         if (!useCloud) {
+          const local = await loadDetalheServicoBundleFromIdb();
+          if (cancelled) return;
+          setBundle(local);
           setLoading(false);
           return;
         }

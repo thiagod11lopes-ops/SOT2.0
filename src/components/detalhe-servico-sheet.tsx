@@ -263,12 +263,17 @@ export function DetalheServicoSheet() {
   );
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setIdbReady(true);
+      return;
+    }
     void loadDetalheServicoBundleFromIdb().then((b) => {
       setBundle(b);
       setIdbReady(true);
       hydratedRef.current = true;
     });
-  }, []);
+  }, [useCloud]);
 
   const prevMonthSheet = useMemo(() => {
     const raw = bundle.sheets[prevMonthKey];

@@ -274,6 +274,10 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: não hidratar estado inicial com cache local.
+      return;
+    }
     let cancelled = false;
     void idbGetJson<unknown>(DEPARTURES_STORAGE_KEY).then((stored) => {
       if (cancelled) return;
@@ -283,7 +287,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) {
@@ -311,21 +315,10 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             if (Date.now() < suppressRemoteUntilRef.current) return;
             sweepRecentMutationGuards();
             let resolvedRows = rows;
-            let promoteRows: DepartureRecord[] = [];
             const firstRemoteSync = !initialRemoteSyncDoneRef.current;
             setDepartures((prev) => {
               const remoteById = new Map(rows.map((r) => [r.id, r]));
               const mergedById = new Map(rows.map((r) => [r.id, r]));
-
-              if (firstRemoteSync) {
-                // No reconnect: só promove local→nuvem quando o MESMO id local está mais novo por versão.
-                // Não ressuscita registros ausentes no remoto (podem ter sido removidos noutro dispositivo).
-                promoteRows = prev.filter((local) => {
-                  const remote = remoteById.get(local.id);
-                  if (!remote) return false;
-                  return (local.version ?? 0) > (remote.version ?? 0);
-                });
-              }
 
               for (const local of prev) {
                 const remote = remoteById.get(local.id);
@@ -355,11 +348,6 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             });
             if (firstRemoteSync) {
               initialRemoteSyncDoneRef.current = true;
-              if (promoteRows.length > 0) {
-                void batchUpsertDepartures(promoteRows).catch((e) => {
-                  console.error("[SOT] Reconciliar saídas locais mais novas após reconnect:", e);
-                });
-              }
               if (!migrationAttemptedRef.current) {
                 migrationAttemptedRef.current = true;
                 const docsToMigrate = rows.filter(needsDepartureMetadataMigration);

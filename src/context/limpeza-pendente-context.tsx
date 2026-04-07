@@ -49,6 +49,10 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      return;
+    }
     void idbGetJson<unknown>(LIMPEZA_PENDENTE_STORAGE_KEY)
       .then((raw) => {
         const loaded = placasArrayToSet(raw);
@@ -61,7 +65,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         hydratedRef.current = true;
       });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud) return;

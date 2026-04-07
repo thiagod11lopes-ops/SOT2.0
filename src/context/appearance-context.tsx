@@ -76,11 +76,16 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (useCloud) {
+      // Modo estrito Firebase: ignora hidratação inicial por cache local.
+      setLocalReady(true);
+      return;
+    }
     void loadAppearanceFromIdb().then((m) => {
       setAppearanceState(m);
       setLocalReady(true);
     });
-  }, []);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!useCloud || !localReady) return;
