@@ -13,6 +13,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "../components/ui/button";
+import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
 
 type Props = {
@@ -110,7 +111,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-[280] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+      className={MOBILE_MODAL_OVERLAY_CLASS}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

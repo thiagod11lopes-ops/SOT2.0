@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import type { DepartureRecord } from "../types/departure";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 type Props = {
@@ -9,6 +10,8 @@ type Props = {
   onSave: (id: string, texto: string) => void;
   /** Mobile: botão Guardar antes de Cancelar. */
   confirmFirst?: boolean;
+  /** Mobile: modal no topo da tela, sobre todo o conteúdo. */
+  alignTop?: boolean;
 };
 
 export function DepartureOcorrenciasModal({
@@ -17,6 +20,7 @@ export function DepartureOcorrenciasModal({
   record,
   onSave,
   confirmFirst = false,
+  alignTop = false,
 }: Props) {
   const titleId = useId();
   const textId = useId();
@@ -43,7 +47,12 @@ export function DepartureOcorrenciasModal({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-[290] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+      className={cn(
+        "pointer-events-auto fixed inset-0 flex justify-center bg-black/55 p-4",
+        alignTop
+          ? "z-[500] items-start pt-[max(1rem,env(safe-area-inset-top,0px))]"
+          : "z-[290] items-end sm:items-center",
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

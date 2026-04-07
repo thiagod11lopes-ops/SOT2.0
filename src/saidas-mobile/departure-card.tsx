@@ -11,6 +11,7 @@ import { normalize24hTime } from "../lib/timeInput";
 import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
+import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
@@ -521,12 +522,13 @@ export function DepartureCard({
           record={record}
           onSave={handleSalvarOcorrencias}
           confirmFirst
+          alignTop
         />
       ) : null}
 
       {rubricaModalOpen ? (
         <div
-          className="pointer-events-auto fixed inset-0 z-[200] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          className={MOBILE_MODAL_OVERLAY_CLASS}
           role="dialog"
           aria-modal="true"
           aria-labelledby={rubricaTitleId}

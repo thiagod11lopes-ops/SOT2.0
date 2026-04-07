@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import type { DepartureRecord } from "../types/departure";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 type Step = "escolher" | "nome";
@@ -11,6 +12,8 @@ type Props = {
   records: DepartureRecord[] | null;
   onExcluirDefinitivo: (id: string) => void;
   onConfirmarCancelamento: (id: string, nomeResponsavel: string) => void;
+  /** Mobile: modal no topo da tela, sobre todo o conteúdo. */
+  alignTop?: boolean;
 };
 
 export function DepartureDeleteOrCancelModal({
@@ -19,6 +22,7 @@ export function DepartureDeleteOrCancelModal({
   records,
   onExcluirDefinitivo,
   onConfirmarCancelamento,
+  alignTop = false,
 }: Props) {
   const titleId = useId();
   const nomeId = useId();
@@ -61,7 +65,12 @@ export function DepartureDeleteOrCancelModal({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-[300] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+      className={cn(
+        "pointer-events-auto fixed inset-0 flex justify-center bg-black/55 p-4",
+        alignTop
+          ? "z-[500] items-start pt-[max(1rem,env(safe-area-inset-top,0px))]"
+          : "z-[300] items-end sm:items-center",
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

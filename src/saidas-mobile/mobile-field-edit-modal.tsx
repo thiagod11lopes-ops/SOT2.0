@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { Button } from "../components/ui/button";
 import { normalize24hTime, normalize24hTimeWithCaret } from "../lib/timeInput";
 import { cn } from "../lib/utils";
+import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 
 type BaseProps = {
   open: boolean;
@@ -128,7 +129,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-[220] flex items-end justify-center bg-black/55 p-3 sm:items-center sm:p-4"
+      className={cn(MOBILE_MODAL_OVERLAY_CLASS, "p-3 sm:p-4")}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
