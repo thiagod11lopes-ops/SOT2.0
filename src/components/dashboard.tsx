@@ -29,7 +29,7 @@ import {
   viaturasCatalogoUnicas,
 } from "../lib/oilMaintenance";
 import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficinaVisits";
-import { dedupeDeparturesMesmoCadastro, type DepartureRecord } from "../types/departure";
+import { groupDeparturesForListDisplay, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -101,7 +101,7 @@ function proximaSaidaHoje(
 
   const primeiroHorario = sortKeyHoraSaida(candidatas[0].horaSaida);
   const mesmoHorario = candidatas.filter((r) => sortKeyHoraSaida(r.horaSaida) === primeiroHorario);
-  return dedupeDeparturesMesmoCadastro(mesmoHorario);
+  return mesmoHorario;
 }
 
 /**
@@ -244,17 +244,20 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
   const proximas = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    return proximaSaidaHoje(departures, hoje, agoraDashboard);
+    const rows = proximaSaidaHoje(departures, hoje, agoraDashboard);
+    return groupDeparturesForListDisplay(rows);
   }, [departures, agoraDashboard]);
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    return saidasEmAndamentoHoje(departures, hoje);
+    const rows = saidasEmAndamentoHoje(departures, hoje);
+    return groupDeparturesForListDisplay(rows);
   }, [departures]);
 
   const comAtraso = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    return saidasComAtrasoHoje(departures, hoje, agoraDashboard);
+    const rows = saidasComAtrasoHoje(departures, hoje, agoraDashboard);
+    return groupDeparturesForListDisplay(rows);
   }, [departures, agoraDashboard]);
 
   return (
@@ -300,13 +303,14 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {proximas.map((r) => {
+                    {proximas.map((group) => {
+                      const r = group.primary;
                       const hora = r.horaSaida.trim() || "—";
-                      const destino = r.bairro.trim() || "—";
+                      const destino = group.destinoDisplay;
                       const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
                       return (
                         <TableRow
-                          key={r.id}
+                          key={group.records.map((x) => x.id).join("|")}
                           className={cn(alertaProxima && "home-proxima-saida-blink")}
                           aria-label={alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined}
                         >
@@ -369,11 +373,12 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {comAtraso.map((r) => {
+                      {comAtraso.map((group) => {
+                        const r = group.primary;
                         const hora = r.horaSaida.trim() || "—";
-                        const destino = r.bairro.trim() || "—";
+                        const destino = group.destinoDisplay;
                         return (
-                          <TableRow key={r.id}>
+                          <TableRow key={group.records.map((x) => x.id).join("|")}>
                             <TableCell className={cn("max-w-[14rem] truncate", homeTableCellClass)}>
                               {r.viaturas.trim() || "—"}
                             </TableCell>
@@ -435,12 +440,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {emAndamento.map((r) => {
+                      {emAndamento.map((group) => {
+                        const r = group.primary;
                         const hora = r.horaSaida.trim() || "—";
-                        const destino = r.bairro.trim() || "—";
+                        const destino = group.destinoDisplay;
                         const kmS = r.kmSaida.trim() || "—";
                         return (
-                          <TableRow key={r.id}>
+                          <TableRow key={group.records.map((x) => x.id).join("|")}>
                             <TableCell className={cn("max-w-[14rem] truncate", homeTableCellClass)}>
                               {r.viaturas.trim() || "—"}
                             </TableCell>
