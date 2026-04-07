@@ -21,6 +21,12 @@ export function normalizeDepartureRows(value: unknown): DepartureRecord[] {
       const r = row as DepartureRecord;
       return {
         ...r,
+        version: typeof r.version === "number" && Number.isFinite(r.version) ? Math.max(0, Math.trunc(r.version)) : 0,
+        updatedAt:
+          typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt)
+            ? Math.max(0, Math.trunc(r.updatedAt))
+            : r.createdAt,
+        updatedBy: typeof r.updatedBy === "string" ? r.updatedBy : "",
         rubrica: typeof r.rubrica === "string" ? r.rubrica : "",
         cancelada: typeof r.cancelada === "boolean" ? r.cancelada : false,
         ocorrencias: typeof r.ocorrencias === "string" ? r.ocorrencias : "",

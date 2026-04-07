@@ -130,6 +130,57 @@ function applyDepartureRecordToForm(
   setters.setTipoSaidaOutros(r.tipo === "Ambulância" && r.tipoSaidaOutros === true);
 }
 
+function applyDeparturePayloadToForm(
+  payload: Omit<DepartureRecord, "id" | "createdAt">,
+  setters: {
+    setDepartureType: (v: string) => void;
+    setRequestDate: (v: string) => void;
+    setRequestTime: (v: string) => void;
+    setDepartureDate: (v: string) => void;
+    setDepartureTime: (v: string) => void;
+    setSector: (v: string) => void;
+    setExtension: (v: string) => void;
+    setDepartureObjective: (v: string) => void;
+    setPassengerCount: (v: string) => void;
+    setRequestResponsible: (v: string) => void;
+    setOm: (v: string) => void;
+    setVehicles: (v: string) => void;
+    setDrivers: (v: string) => void;
+    setDestinationHospital: (v: string) => void;
+    setKmDeparture: (v: string) => void;
+    setKmArrival: (v: string) => void;
+    setArrivalTime: (v: string) => void;
+    setCity: (v: string) => void;
+    setNeighborhood: (v: string) => void;
+    setTipoSaidaInterHospitalar: (v: boolean) => void;
+    setTipoSaidaAlta: (v: boolean) => void;
+    setTipoSaidaOutros: (v: boolean) => void;
+  },
+) {
+  setters.setDepartureType(payload.tipo);
+  setters.setRequestDate(payload.dataPedido);
+  setters.setRequestTime(payload.horaPedido);
+  setters.setDepartureDate(payload.dataSaida);
+  setters.setDepartureTime(payload.horaSaida);
+  setters.setSector(payload.setor);
+  setters.setExtension(payload.ramal);
+  setters.setDepartureObjective(payload.objetivoSaida);
+  setters.setPassengerCount(payload.numeroPassageiros);
+  setters.setRequestResponsible(payload.responsavelPedido);
+  setters.setOm(payload.om);
+  setters.setVehicles(payload.viaturas);
+  setters.setDrivers(payload.motoristas);
+  setters.setDestinationHospital(payload.hospitalDestino);
+  setters.setKmDeparture(formatKmThousandsPtBr(payload.kmSaida));
+  setters.setKmArrival(formatKmThousandsPtBr(payload.kmChegada));
+  setters.setArrivalTime(payload.chegada);
+  setters.setCity(payload.cidade);
+  setters.setNeighborhood(payload.bairro);
+  setters.setTipoSaidaInterHospitalar(payload.tipo === "Ambulância" && payload.tipoSaidaInterHospitalar === true);
+  setters.setTipoSaidaAlta(payload.tipo === "Ambulância" && payload.tipoSaidaAlta === true);
+  setters.setTipoSaidaOutros(payload.tipo === "Ambulância" && payload.tipoSaidaOutros === true);
+}
+
 export function RegisterDeparturePage() {
   const {
     departures,
@@ -140,6 +191,7 @@ export function RegisterDeparturePage() {
     pendingEditDepartureId,
     editIntentVersion,
     clearPendingEditDeparture,
+    forceCloudResync,
   } = useDepartures();
   const { setActiveTab: setMainAppTab } = useAppTab();
   const { items: catalogItems, addItem: addCatalogItem } = useCatalogItems();
@@ -148,6 +200,11 @@ export function RegisterDeparturePage() {
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBaseVersion, setEditingBaseVersion] = useState<number>(0);
+  const [editConflictInfo, setEditConflictInfo] = useState<{
+    id: string;
+    payload: Omit<DepartureRecord, "id" | "createdAt">;
+  } | null>(null);
   const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
   const deleteModalRecord = useMemo(
     () => (deleteModalId ? departures.find((d) => d.id === deleteModalId) ?? null : null),
@@ -300,6 +357,34 @@ export function RegisterDeparturePage() {
         setTipoSaidaOutros,
       });
       setEditingId(record.id);
+      setEditingBaseVersion(record.version ?? 0);
+      if (editConflictInfo?.id === record.id) {
+        applyDeparturePayloadToForm(editConflictInfo.payload, {
+          setDepartureType,
+          setRequestDate,
+          setRequestTime,
+          setDepartureDate,
+          setDepartureTime,
+          setSector,
+          setExtension,
+          setDepartureObjective,
+          setPassengerCount,
+          setRequestResponsible,
+          setOm,
+          setVehicles,
+          setDrivers,
+          setDestinationHospital,
+          setKmDeparture,
+          setKmArrival,
+          setArrivalTime,
+          setCity,
+          setNeighborhood,
+          setTipoSaidaInterHospitalar,
+          setTipoSaidaAlta,
+          setTipoSaidaOutros,
+        });
+        setEditConflictInfo(null);
+      }
       setActiveSubTab("Cadastrar Nova Saída");
       lastAppliedEditVersion.current = editIntentVersion;
       clearPendingEditDeparture();
@@ -307,7 +392,7 @@ export function RegisterDeparturePage() {
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [editIntentVersion, pendingEditDepartureId, departures, clearPendingEditDeparture]);
+  }, [editIntentVersion, pendingEditDepartureId, departures, clearPendingEditDeparture, editConflictInfo]);
 
   const allCityNames = useMemo(() => {
     const s = new Set<string>([...metroRioCities, ...customLocations.extraCities]);
@@ -531,8 +616,18 @@ export function RegisterDeparturePage() {
     setCatalogSubmitAttempted(false);
     const payload = buildDeparturePayload();
     if (editingId) {
-      updateDeparture(editingId, payload);
+      const editingTargetId = editingId;
+      updateDeparture(editingTargetId, payload, {
+        expectedBaseVersion: editingBaseVersion,
+        onVersionConflict: () => {
+          setEditConflictInfo({
+            id: editingTargetId,
+            payload,
+          });
+        },
+      });
       setEditingId(null);
+      setEditingBaseVersion(0);
     } else {
       addDeparture(payload);
     }
@@ -604,6 +699,7 @@ export function RegisterDeparturePage() {
 
   const fillExampleDeparture = useCallback(() => {
     setEditingId(null);
+    setEditingBaseVersion(0);
     setCatalogSubmitAttempted(false);
     const hoje = getCurrentDatePtBr();
     const bairrosRj = mergedNeighborhoodsByCity["Rio de Janeiro"];
@@ -1093,6 +1189,32 @@ export function RegisterDeparturePage() {
                     <strong>Viaturas</strong> e <strong>Motoristas</strong>, cadastre em <strong>Frota e Pessoal</strong>{" "}
                     e selecione de novo.
                   </p>
+                ) : null}
+                {editConflictInfo ? (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    Esta saída foi alterada em outro dispositivo. Recarregue os dados da nuvem e reaplique a sua edição.
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          forceCloudResync();
+                          beginEditDeparture(editConflictInfo.id);
+                        }}
+                      >
+                        Recarregar e reaplicar edição
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditConflictInfo(null)}
+                      >
+                        Ignorar
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-end gap-3">
                 <Button type="button" variant="default" onClick={handleCadastrarSaida}>

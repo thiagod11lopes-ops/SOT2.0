@@ -7,7 +7,7 @@ import {
   getFirestore,
   onSnapshot,
   query,
-  setDoc,
+  runTransaction,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -15,14 +15,31 @@ import {
 } from "firebase/firestore";
 import { ensureFirebaseAuth } from "./auth";
 import { getFirebaseApp } from "./config";
+import { getSyncClientId } from "./clientIdentity";
 import { normalizeDepartureRows } from "../normalizeDepartures";
 import type { DepartureRecord } from "../../types/departure";
 
 const COLLECTION = "departures";
 const BATCH_MAX = 450;
 
+export class DepartureVersionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DepartureVersionConflictError";
+  }
+}
+
+export function isDepartureVersionConflictError(err: unknown): err is DepartureVersionConflictError {
+  return err instanceof DepartureVersionConflictError;
+}
+
 function departureToDoc(r: DepartureRecord): Record<string, unknown> {
+  const now = Date.now();
   return {
+    version: typeof r.version === "number" && Number.isFinite(r.version) ? Math.max(0, Math.trunc(r.version)) : 0,
+    updatedAt:
+      typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) ? Math.max(0, Math.trunc(r.updatedAt)) : now,
+    updatedBy: typeof r.updatedBy === "string" && r.updatedBy.trim() ? r.updatedBy.trim() : getSyncClientId(),
     tipo: r.tipo,
     dataPedido: r.dataPedido,
     horaPedido: r.horaPedido,
@@ -52,6 +69,23 @@ function departureToDoc(r: DepartureRecord): Record<string, unknown> {
   };
 }
 
+function buildDepartureUpdatePatch(
+  current: DepartureRecord,
+  next: DepartureRecord,
+): Record<string, unknown> {
+  const currentDoc = departureToDoc(current);
+  const nextDoc = departureToDoc(next);
+  const patch: Record<string, unknown> = {};
+  for (const key of Object.keys(nextDoc)) {
+    // `createdAt` é estável por registro; não atualizar em edits.
+    if (key === "createdAt") continue;
+    if (!Object.is(currentDoc[key], nextDoc[key])) {
+      patch[key] = nextDoc[key];
+    }
+  }
+  return patch;
+}
+
 function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord | null {
   const data = d.data();
   const tipo = data.tipo;
@@ -66,9 +100,24 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
         : typeof createdRaw === "object" && createdRaw !== null && "toMillis" in createdRaw
           ? (createdRaw as { toMillis: () => number }).toMillis()
           : 0;
+  const updatedAtRaw = data.updatedAt;
+  const updatedAt =
+    typeof updatedAtRaw === "number"
+      ? updatedAtRaw
+      : updatedAtRaw instanceof Timestamp
+        ? updatedAtRaw.toMillis()
+        : typeof updatedAtRaw === "object" && updatedAtRaw !== null && "toMillis" in updatedAtRaw
+          ? (updatedAtRaw as { toMillis: () => number }).toMillis()
+          : createdAt;
+  const versionRaw = data.version;
+  const version = typeof versionRaw === "number" && Number.isFinite(versionRaw) ? Math.max(0, Math.trunc(versionRaw)) : 0;
+
   return {
     id: d.id,
     createdAt,
+    version,
+    updatedAt,
+    updatedBy: typeof data.updatedBy === "string" ? data.updatedBy : "",
     tipo,
     dataPedido: String(data.dataPedido ?? ""),
     horaPedido: String(data.horaPedido ?? ""),
@@ -137,10 +186,50 @@ export function subscribeDepartures(
   };
 }
 
-export async function upsertDepartureRecord(r: DepartureRecord): Promise<void> {
+export async function upsertDepartureRecord(
+  r: DepartureRecord,
+  options?: { expectedBaseVersion?: number },
+): Promise<void> {
   await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
-  await setDoc(doc(db, COLLECTION, r.id), departureToDoc(r));
+  const ref = doc(db, COLLECTION, r.id);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const expected = options?.expectedBaseVersion;
+    if (!snap.exists()) {
+      if (typeof expected === "number" && expected > 0) {
+        throw new DepartureVersionConflictError("Registro remoto ausente para a versão base informada.");
+      }
+      const next: DepartureRecord = {
+        ...r,
+        version: Math.max(1, typeof r.version === "number" ? r.version : 1),
+        updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : Date.now(),
+      };
+      tx.set(ref, departureToDoc(next));
+      return;
+    }
+    const current = docToDeparture(snap as QueryDocumentSnapshot<DocumentData>);
+    if (!current) {
+      throw new Error("Documento de saída inválido no Firestore.");
+    }
+    const currentVersion = current.version ?? 0;
+    if (typeof expected === "number" && expected !== currentVersion) {
+      throw new DepartureVersionConflictError(
+        `Conflito de versão: esperado ${expected}, remoto ${currentVersion}.`,
+      );
+    }
+    const nextVersion = currentVersion + 1;
+    const next: DepartureRecord = {
+      ...r,
+      version: nextVersion,
+      updatedAt: Date.now(),
+    };
+    const patch = buildDepartureUpdatePatch(current, next);
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+    tx.update(ref, patch);
+  });
 }
 
 export async function deleteDepartureDocument(id: string): Promise<void> {

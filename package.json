@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "generate:bairros": "node scripts/generate-bairros-ibge.mjs"
+    "generate:bairros": "node scripts/generate-bairros-ibge.mjs",
+    "verify:sync-two-machines": "node scripts/verify-sync-two-machines.mjs"
   },
   "dependencies": {
     "@radix-ui/react-popover": "^1.1.15",

@@ -5,12 +5,45 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function versionValue(data) {
+      return ('version' in data) ? data.version : 0;
+    }
+
+    function updatedAtValue(data) {
+      return ('updatedAt' in data) ? data.updatedAt : 0;
+    }
+
+    function validVersionForCreate() {
+      return ('version' in request.resource.data) &&
+        (request.resource.data.version is int) &&
+        (request.resource.data.version >= 1);
+    }
+
+    function validVersionAdvanceForUpdate() {
+      return ('version' in request.resource.data) &&
+        (request.resource.data.version is int) &&
+        (request.resource.data.version == versionValue(resource.data) + 1);
+    }
+
+    function validUpdatedAtMonotonic() {
+      return ('updatedAt' in request.resource.data) &&
+        (request.resource.data.updatedAt is int) &&
+        (request.resource.data.updatedAt >= updatedAtValue(resource.data));
+    }
+
     match /departures/{departureId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && validVersionForCreate();
+      allow update: if isSignedIn() && validVersionAdvanceForUpdate() && validUpdatedAtMonotonic();
+      allow delete: if isSignedIn();
     }
 
     match /sot_state/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
   }
 }

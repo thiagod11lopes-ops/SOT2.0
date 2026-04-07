@@ -6,6 +6,12 @@ export type DepartureType = "Administrativa" | "Ambulância";
 export interface DepartureRecord {
   id: string;
   createdAt: number;
+  /** Versão do registro para estratégia de concorrência (passos seguintes). */
+  version?: number;
+  /** Epoch ms da última atualização conhecida. */
+  updatedAt?: number;
+  /** Identificador do cliente que fez a última atualização conhecida. */
+  updatedBy?: string;
   tipo: DepartureType;
   dataPedido: string;
   horaPedido: string;
@@ -38,7 +44,10 @@ export interface DepartureRecord {
   ocorrencias: string;
 }
 
-const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "createdAt">[] = [
+const CAMPOS_CADASTRO_SAIDA: readonly Exclude<
+  keyof DepartureRecord,
+  "id" | "createdAt" | "version" | "updatedAt" | "updatedBy"
+>[] = [
   "tipo",
   "dataPedido",
   "horaPedido",

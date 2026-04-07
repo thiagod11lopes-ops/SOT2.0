@@ -110,6 +110,12 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
           <p className="text-xs text-[hsl(var(--muted-foreground))]">
             Ultimo erro: <span className="text-[hsl(var(--foreground))]">{lastErrorText}</span>
           </p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            Conflitos hoje:{" "}
+            <span className="text-[hsl(var(--foreground))]">
+              {cloudDeparturesSync.conflictCountToday ?? 0}
+            </span>
+          </p>
           {cloudDeparturesSync.message ? (
             <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-200">
               {cloudDeparturesSync.message}
