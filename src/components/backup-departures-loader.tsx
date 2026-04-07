@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useDepartures } from "../context/departures-context";
+import { useSyncPreference } from "../context/sync-preference-context";
+import { isFirebaseConfigured } from "../lib/firebase/config";
 import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 
 function seedDeparturesUrl() {
@@ -22,8 +24,14 @@ function legacyBackupUrl() {
  */
 export function BackupDeparturesLoader() {
   const { mergeDeparturesFromBackup } = useDepartures();
+  const { firebaseOnlyEnabled } = useSyncPreference();
+  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
   useEffect(() => {
+    if (useCloud) {
+      // Em modo Firebase-only, não semear saídas a partir de arquivo estático.
+      return;
+    }
     const ac = new AbortController();
     const signal = ac.signal;
 
@@ -44,7 +52,7 @@ export function BackupDeparturesLoader() {
 
     void load();
     return () => ac.abort();
-  }, [mergeDeparturesFromBackup]);
+  }, [mergeDeparturesFromBackup, useCloud]);
 
   return null;
 }
