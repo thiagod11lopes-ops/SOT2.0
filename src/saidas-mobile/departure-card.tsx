@@ -21,6 +21,8 @@ export function DepartureCard({
   isSelectedForExcluir,
   onSelectForExcluir,
   allowMobileEdit = true,
+  mergedDestinoDisplay,
+  mergedSetorDisplay,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
@@ -31,6 +33,10 @@ export function DepartureCard({
   onSelectForExcluir?: () => void;
   /** No separador mobile, só o dia atual pode ser alterado; outros dias são só leitura. */
   allowMobileEdit?: boolean;
+  /** Quando vários registos são fundidos num cartão (mesma hora, viatura e motorista): destino combinado. */
+  mergedDestinoDisplay?: string;
+  /** Idem: setores combinados (vista administrativa). */
+  mergedSetorDisplay?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
@@ -57,6 +63,8 @@ export function DepartureCard({
   const hospitalResumo = record.hospitalDestino.trim();
   const hospitalAoLadoDestino = isAmbulancia && hospitalResumo.length > 0;
   const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
+  const destinoCabecalho = mergedDestinoDisplay ?? row.destino;
+  const destinoCabecalhoLongo = Boolean(mergedDestinoDisplay);
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -92,6 +100,14 @@ export function DepartureCard({
     void id;
     void createdAt;
     updateDeparture(departureId, { ...rest, ocorrencias: texto });
+  }
+
+  function applyAdminCadastroPatch(partial: Partial<DepartureRecord>) {
+    if (!editavel || !updateDeparture) return;
+    updateDeparture(record.id, {
+      ...record,
+      ...partial,
+    });
   }
 
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
@@ -173,11 +189,13 @@ export function DepartureCard({
           <p
             className={cn(
               "text-sm",
-              hospitalAoLadoDestino ? "min-w-0 break-words text-balance leading-snug line-clamp-3" : "truncate",
+              hospitalAoLadoDestino || destinoCabecalhoLongo
+                ? "min-w-0 break-words text-balance leading-snug line-clamp-3"
+                : "truncate",
             )}
           >
             <span className="text-[hsl(var(--muted-foreground))]">Dest. </span>
-            <span className="font-medium text-[hsl(var(--foreground))]">{row.destino}</span>
+            <span className="font-medium text-[hsl(var(--foreground))]">{destinoCabecalho}</span>
             {hospitalAoLadoDestino ? (
               <>
                 <span className="text-[hsl(var(--muted-foreground))]"> · </span>
@@ -297,17 +315,17 @@ export function DepartureCard({
               </div>
             </div>
             <MobileEditableTextField
-              label="Destino"
-              value={record.bairro}
-              onCommit={(v) => applyAmbPatch({ bairro: v })}
-              disabled={!editavel}
-            />
-            <MobileEditableTextField
               label="Hora da saída"
               value={record.horaSaida}
               onCommit={(v) => applyAmbPatch({ horaSaida: v })}
               transform={normalize24hTime}
               time24h
+              disabled={!editavel}
+            />
+            <MobileEditableTextField
+              label="Destino"
+              value={record.bairro}
+              onCommit={(v) => applyAmbPatch({ bairro: v })}
               disabled={!editavel}
             />
             <MobileEditableTextField
@@ -401,7 +419,7 @@ export function DepartureCard({
                 Setor / ramal
               </p>
               <p className="text-sm text-[hsl(var(--foreground))]">
-                {record.setor.trim() || "—"} · {record.ramal.trim() || "—"}
+                {mergedSetorDisplay ?? (record.setor.trim() || "—")} · {record.ramal.trim() || "—"}
               </p>
             </div>
             <div className="col-span-2">
@@ -414,6 +432,14 @@ export function DepartureCard({
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="col-span-1 sm:col-span-3">
+              <MobileEditableTextField
+                label="Destino"
+                value={record.bairro}
+                onCommit={(v) => applyAdminCadastroPatch({ bairro: v })}
+                disabled={!editavel || !updateDeparture}
+              />
+            </div>
             <MobileEditableTextField
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
