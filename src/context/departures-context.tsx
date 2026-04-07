@@ -52,11 +52,46 @@ type DeparturesContextValue = {
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
 const DEPARTURES_STORAGE_KEY = "sot-departures-v1";
 const SUPPRESS_REMOTE_MS = 5000;
+const LOCAL_MUTATION_GUARD_MS = 60_000;
+
+function departureRowsEqual(a: DepartureRecord, b: DepartureRecord): boolean {
+  return (
+    a.id === b.id &&
+    a.createdAt === b.createdAt &&
+    a.tipo === b.tipo &&
+    a.dataPedido === b.dataPedido &&
+    a.horaPedido === b.horaPedido &&
+    a.dataSaida === b.dataSaida &&
+    a.horaSaida === b.horaSaida &&
+    a.setor === b.setor &&
+    a.ramal === b.ramal &&
+    a.objetivoSaida === b.objetivoSaida &&
+    a.numeroPassageiros === b.numeroPassageiros &&
+    a.responsavelPedido === b.responsavelPedido &&
+    a.om === b.om &&
+    a.viaturas === b.viaturas &&
+    a.motoristas === b.motoristas &&
+    a.hospitalDestino === b.hospitalDestino &&
+    a.tipoSaidaInterHospitalar === b.tipoSaidaInterHospitalar &&
+    a.tipoSaidaAlta === b.tipoSaidaAlta &&
+    a.tipoSaidaOutros === b.tipoSaidaOutros &&
+    a.kmSaida === b.kmSaida &&
+    a.kmChegada === b.kmChegada &&
+    a.chegada === b.chegada &&
+    a.cidade === b.cidade &&
+    a.bairro === b.bairro &&
+    a.rubrica === b.rubrica &&
+    a.cancelada === b.cancelada &&
+    a.ocorrencias === b.ocorrencias
+  );
+}
 
 export function DeparturesProvider({ children }: { children: ReactNode }) {
   const [departures, setDepartures] = useState<DepartureRecord[]>([]);
   const hydratedRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
+  const recentTouchedIdsRef = useRef<Map<string, number>>(new Map());
+  const recentDeletedIdsRef = useRef<Map<string, number>>(new Map());
   const [pendingEditDepartureId, setPendingEditDepartureId] = useState<string | null>(null);
   const [editIntentVersion, setEditIntentVersion] = useState(0);
   const [syncRefreshToken, setSyncRefreshToken] = useState(0);
@@ -68,6 +103,25 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   const useCloud = isFirebaseConfigured();
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+  }, []);
+  const markTouched = useCallback((id: string) => {
+    const until = Date.now() + LOCAL_MUTATION_GUARD_MS;
+    recentTouchedIdsRef.current.set(id, until);
+    recentDeletedIdsRef.current.delete(id);
+  }, []);
+  const markDeleted = useCallback((id: string) => {
+    const until = Date.now() + LOCAL_MUTATION_GUARD_MS;
+    recentDeletedIdsRef.current.set(id, until);
+    recentTouchedIdsRef.current.delete(id);
+  }, []);
+  const sweepRecentMutationGuards = useCallback(() => {
+    const now = Date.now();
+    for (const [id, until] of recentTouchedIdsRef.current) {
+      if (until <= now) recentTouchedIdsRef.current.delete(id);
+    }
+    for (const [id, until] of recentDeletedIdsRef.current) {
+      if (until <= now) recentDeletedIdsRef.current.delete(id);
+    }
   }, []);
 
   useEffect(() => {
@@ -100,9 +154,34 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           (rows) => {
             if (cancelled) return;
             if (Date.now() < suppressRemoteUntilRef.current) return;
-            setDepartures(rows);
+            sweepRecentMutationGuards();
+            let resolvedRows = rows;
+            setDepartures((prev) => {
+              const remoteById = new Map(rows.map((r) => [r.id, r]));
+              const out = [...rows];
+
+              for (const local of prev) {
+                const touchedUntil = recentTouchedIdsRef.current.get(local.id) ?? 0;
+                if (touchedUntil > Date.now()) {
+                  const remote = remoteById.get(local.id);
+                  if (!remote) {
+                    out.push(local);
+                  } else if (!departureRowsEqual(remote, local)) {
+                    const idx = out.findIndex((x) => x.id === local.id);
+                    if (idx >= 0) out[idx] = local;
+                  }
+                }
+              }
+              const deletedIds = recentDeletedIdsRef.current;
+              if (deletedIds.size > 0) {
+                resolvedRows = out.filter((r) => (deletedIds.get(r.id) ?? 0) <= Date.now());
+                return resolvedRows;
+              }
+              resolvedRows = out;
+              return resolvedRows;
+            });
             hydratedRef.current = true;
-            void idbSetJson(DEPARTURES_STORAGE_KEY, rows);
+            void idbSetJson(DEPARTURES_STORAGE_KEY, resolvedRows);
             setCloudDeparturesSync((prev) => ({
               enabled: true,
               status: "live",
@@ -142,7 +221,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud, syncRefreshToken]);
+  }, [useCloud, syncRefreshToken, sweepRecentMutationGuards]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
@@ -157,6 +236,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     };
     if (useCloud) {
       bumpLocalMutation();
+      markTouched(row.id);
       setDepartures((prev) => [row, ...prev]);
       void upsertDepartureRecord(row).catch((e) => {
         console.error(e);
@@ -165,7 +245,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDepartures((prev) => [row, ...prev]);
-  }, [useCloud, bumpLocalMutation]);
+  }, [useCloud, bumpLocalMutation, markTouched]);
 
   const mergeDeparturesFromBackup = useCallback(
     (rows: DepartureRecord[]) => {
@@ -193,7 +273,12 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   const clearAllDepartures = useCallback(() => {
     if (useCloud) {
       bumpLocalMutation();
-      setDepartures([]);
+      setDepartures((prev) => {
+        for (const d of prev) {
+          markDeleted(d.id);
+        }
+        return [];
+      });
       void deleteAllDepartureDocuments().catch((e) => {
         console.error(e);
         window.alert("Não foi possível limpar as saídas na nuvem.");
@@ -201,7 +286,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       return;
     }
     setDepartures([]);
-  }, [useCloud, bumpLocalMutation]);
+  }, [useCloud, bumpLocalMutation, markDeleted]);
 
   const updateDeparture = useCallback(
     (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => {
@@ -216,6 +301,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             id: d.id,
             createdAt: d.createdAt,
           };
+          markTouched(next.id);
           void upsertDepartureRecord(next).catch((e) => {
             console.error(e);
             window.alert("Não foi possível atualizar a saída na nuvem.");
@@ -237,7 +323,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         ),
       );
     },
-    [useCloud, bumpLocalMutation],
+    [useCloud, bumpLocalMutation, markTouched],
   );
 
   const removeDeparture = useCallback(
@@ -245,6 +331,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       if (useCloud) {
         bumpLocalMutation();
         setDepartures((prev) => prev.filter((d) => d.id !== id));
+        markDeleted(id);
         void deleteDepartureDocument(id).catch((e) => {
           console.error(e);
           window.alert("Não foi possível remover a saída na nuvem.");
@@ -253,7 +340,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       }
       setDepartures((prev) => prev.filter((d) => d.id !== id));
     },
-    [useCloud, bumpLocalMutation],
+    [useCloud, bumpLocalMutation, markDeleted],
   );
 
   const updateDepartureKmFields = useCallback(
@@ -264,6 +351,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           const d = prev.find((x) => x.id === id);
           if (!d || d.cancelada) return prev;
           const next = { ...d, ...patch };
+          markTouched(next.id);
           void upsertDepartureRecord(next).catch((e) => {
             console.error(e);
             window.alert("Não foi possível gravar os KM na nuvem.");
@@ -276,7 +364,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         prev.map((d) => (d.id === id && !d.cancelada ? { ...d, ...patch } : d)),
       );
     },
-    [useCloud, bumpLocalMutation],
+    [useCloud, bumpLocalMutation, markTouched],
   );
 
   const beginEditDeparture = useCallback((id: string) => {
