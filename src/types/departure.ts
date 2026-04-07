@@ -20,6 +20,10 @@ export interface DepartureRecord {
   viaturas: string;
   motoristas: string;
   hospitalDestino: string;
+  /** Ambulância: tipo de saída (vários podem estar marcados). */
+  tipoSaidaInterHospitalar: boolean;
+  tipoSaidaAlta: boolean;
+  tipoSaidaOutros: boolean;
   kmSaida: string;
   kmChegada: string;
   /** Hora de chegada (ambulância) — campo CHEGADA do formulário */
@@ -49,6 +53,9 @@ const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "cre
   "viaturas",
   "motoristas",
   "hospitalDestino",
+  "tipoSaidaInterHospitalar",
+  "tipoSaidaAlta",
+  "tipoSaidaOutros",
   "kmSaida",
   "kmChegada",
   "chegada",
@@ -63,9 +70,25 @@ const CAMPOS_CADASTRO_SAIDA: readonly Exclude<keyof DepartureRecord, "id" | "cre
 export function departureCadastroFingerprint(r: DepartureRecord): string {
   const o: Record<string, string> = {};
   for (const k of CAMPOS_CADASTRO_SAIDA) {
-    o[k] = String(r[k] ?? "").trim();
+    const v = r[k];
+    o[k] = typeof v === "boolean" ? (v ? "1" : "0") : String(v ?? "").trim();
   }
   return JSON.stringify(o);
+}
+
+/** Rótulos do tipo de saída (ambulância), ordem fixa. */
+export function labelsTipoSaidaAmbulancia(r: DepartureRecord): string[] {
+  const out: string[] = [];
+  if (r.tipoSaidaInterHospitalar) out.push("Inter-Hospitalar");
+  if (r.tipoSaidaAlta) out.push("Alta");
+  if (r.tipoSaidaOutros) out.push("Outros");
+  return out;
+}
+
+/** Texto para exibir o tipo de saída (ambulância); vazio se nenhum marcado. */
+export function formatTipoSaidaAmbulancia(r: DepartureRecord): string {
+  const labels = labelsTipoSaidaAmbulancia(r);
+  return labels.length === 0 ? "" : labels.join(", ");
 }
 
 /** Mantém a primeira ocorrência de cada cadastro distinto (ordem de `rows` preservada). */
@@ -177,6 +200,7 @@ export function listRowFromRecord(r: DepartureRecord) {
     saida,
     destino,
     om: r.om.trim() || "—",
+    hospital: r.hospitalDestino.trim() || "—",
     kmSaida: r.kmSaida.trim() || "—",
     kmChegada: r.kmChegada.trim() || "—",
     chegada: r.chegada.trim() || "—",

@@ -6,7 +6,7 @@ import { SaidasPage } from "./saidas-page";
 /** Vista mobile das saídas — mesmo IndexedDB que o resto do SOT (usa HashRouter: #/saidas/...). */
 export function SaidasMobileApp() {
   return (
-    <div className="saidas-mobile-scope min-h-dvh text-[hsl(var(--foreground))]">
+    <div className="saidas-mobile-scope flex h-full min-h-0 w-full flex-col text-[hsl(var(--foreground))]">
       <HashRouter>
         <SaidasMobileFilterDateProvider>
         <Routes>

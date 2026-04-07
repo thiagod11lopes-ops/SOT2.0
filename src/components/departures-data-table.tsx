@@ -86,6 +86,8 @@ function ChegadaTimeInput({
 interface DeparturesDataTableProps {
   rows: DepartureRecord[];
   showTipoColumn?: boolean;
+  /** Ambulância: coluna «Hospital» em vez de «OM». */
+  listColumnOmOrHospital?: "om" | "hospital";
   /** Negrito nos cabeçalhos e células (abas Saídas Administrativas / Ambulância). */
   bodyFontBold?: boolean;
   emptyLabel: string;
@@ -100,6 +102,7 @@ interface DeparturesDataTableProps {
 export function DeparturesDataTable({
   rows,
   showTipoColumn,
+  listColumnOmOrHospital = "om",
   bodyFontBold,
   emptyLabel,
   onTrashClick,
@@ -214,7 +217,7 @@ export function DeparturesDataTable({
           <TableHead className={head()}>Motorista</TableHead>
           <TableHead className={head()}>Saída</TableHead>
           <TableHead className={head()}>Destino</TableHead>
-          <TableHead className={head()}>OM</TableHead>
+          <TableHead className={head()}>{listColumnOmOrHospital === "hospital" ? "Hospital" : "OM"}</TableHead>
           <TableHead className={head()}>KM saída</TableHead>
           <TableHead className={head()}>KM chegada</TableHead>
           <TableHead className={head()}>Chegada</TableHead>
@@ -273,7 +276,9 @@ export function DeparturesDataTable({
                 <TableCell className={cell("max-w-[min(280px,42vw)] break-words")} title={destinoCell}>
                   {destinoCell}
                 </TableCell>
-                <TableCell className={cell()}>{lr.om}</TableCell>
+                <TableCell className={cell()}>
+                  {listColumnOmOrHospital === "hospital" ? lr.hospital : lr.om}
+                </TableCell>
                 <TableCell className={cn(cell(), kmEditavel && "p-1.5 align-middle")}>
                   {kmEditavel ? (
                     <input

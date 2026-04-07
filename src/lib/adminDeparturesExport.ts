@@ -13,6 +13,10 @@ function str(v: unknown): string {
   return String(v);
 }
 
+function bool(v: unknown): boolean {
+  return v === true;
+}
+
 /** Normaliza objeto importado para DepartureRecord (valores em falta viram string vazia). */
 export function normalizeImportedDeparture(raw: Record<string, unknown>): DepartureRecord | null {
   if (typeof raw.id !== "string" || !raw.id) return null;
@@ -39,6 +43,9 @@ export function normalizeImportedDeparture(raw: Record<string, unknown>): Depart
     viaturas: str(raw.viaturas),
     motoristas: str(raw.motoristas),
     hospitalDestino: str(raw.hospitalDestino),
+    tipoSaidaInterHospitalar: raw.tipo === "Ambulância" && bool(raw.tipoSaidaInterHospitalar),
+    tipoSaidaAlta: raw.tipo === "Ambulância" && bool(raw.tipoSaidaAlta),
+    tipoSaidaOutros: raw.tipo === "Ambulância" && bool(raw.tipoSaidaOutros),
     kmSaida: str(raw.kmSaida),
     kmChegada: str(raw.kmChegada),
     chegada: str(raw.chegada),

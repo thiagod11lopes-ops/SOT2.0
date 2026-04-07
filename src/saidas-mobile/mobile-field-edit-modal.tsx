@@ -27,6 +27,8 @@ type SelectProps = BaseProps & {
   options: string[];
   /** Valor no registo que não está no catálogo (opção extra). */
   orphanValue?: string | null;
+  /** Não listar estas opções (ex.: hospitais de demonstração implantados no catálogo). */
+  excludeOptions?: string[];
 };
 
 export type MobileFieldEditModalProps = InputProps | SelectProps;
@@ -89,6 +91,15 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
     onOpenChange(false);
   }
 
+  const excludeOptionKeys =
+    props.variant === "select"
+      ? new Set(
+          (props.excludeOptions ?? [])
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean),
+        )
+      : null;
+
   const orphan =
     props.variant === "select"
       ? (() => {
@@ -98,6 +109,22 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
           return v;
         })()
       : null;
+
+  /** Opções visíveis no select (sem excluídas); o valor atual mantém-se se ainda existir no catálogo completo. */
+  const selectOptionsList =
+    props.variant === "select"
+      ? (() => {
+          const full = props.options;
+          const vis = excludeOptionKeys
+            ? full.filter((o) => !excludeOptionKeys.has(o.trim().toLowerCase()))
+            : full;
+          const v = draft.trim();
+          if (v && !vis.some((o) => o === v) && full.some((o) => o === v)) {
+            return [v, ...vis];
+          }
+          return vis;
+        })()
+      : [];
 
   return (
     <div
@@ -161,13 +188,13 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
               ref={selectRef}
               autoFocus
               value={
-                props.options.some((o) => o === draft) || draft === "" || orphan === draft
+                selectOptionsList.some((o) => o === draft) || draft === "" || orphan === draft
                   ? draft
                   : ""
               }
               onChange={(e) => setDraft(e.target.value)}
               autoComplete="off"
-              size={Math.min(12, Math.max(4, props.options.length + (orphan ? 2 : 1)))}
+              size={Math.min(12, Math.max(4, selectOptionsList.length + (orphan ? 2 : 1)))}
               className="min-h-[12rem] w-full rounded-xl border-2 border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-lg text-[hsl(var(--foreground))] outline-none focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/35"
             >
               <option value="">— Selecionar —</option>
@@ -176,7 +203,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
                   {orphan} (fora do catálogo)
                 </option>
               ) : null}
-              {props.options.map((opt) => (
+              {selectOptionsList.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
                 </option>
@@ -288,6 +315,7 @@ export function MobileEditableSelectField({
   options,
   disabled,
   emptyCatalogHint,
+  excludeOptions,
 }: {
   label: string;
   value: string;
@@ -295,6 +323,8 @@ export function MobileEditableSelectField({
   options: string[];
   disabled?: boolean;
   emptyCatalogHint?: boolean;
+  /** Não listar no modal (ex.: hospitais de demonstração). */
+  excludeOptions?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const orphan = useMemo(() => {
@@ -344,6 +374,7 @@ export function MobileEditableSelectField({
         initialValue={value}
         onConfirm={onChange}
         options={options}
+        excludeOptions={excludeOptions}
       />
     </>
   );

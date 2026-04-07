@@ -8,7 +8,7 @@ import { useOficinaVisitas } from "../context/oficina-visits-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
-import type { DepartureRecord } from "../types/departure";
+import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -54,6 +54,9 @@ export function DepartureCard({
   const isAmbulancia = record.tipo === "Ambulância";
   const cancelada = record.cancelada === true;
   const editavel = allowMobileEdit && !cancelada;
+  const hospitalResumo = record.hospitalDestino.trim();
+  const hospitalAoLadoDestino = isAmbulancia && hospitalResumo.length > 0;
+  const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -161,20 +164,45 @@ export function DepartureCard({
             <span className="truncate text-base font-semibold text-[hsl(var(--foreground))]">{row.viatura}</span>
           </div>
           <p className="truncate text-sm text-[hsl(var(--muted-foreground))]">{row.motorista}</p>
-          <p className="truncate text-sm">
+          {tipoSaidaResumo ? (
+            <p className="min-w-0 break-words text-sm leading-snug line-clamp-2">
+              <span className="text-[hsl(var(--muted-foreground))]">Tipo saída </span>
+              <span className="font-medium text-[hsl(var(--foreground))]">{tipoSaidaResumo}</span>
+            </p>
+          ) : null}
+          <p
+            className={cn(
+              "text-sm",
+              hospitalAoLadoDestino ? "min-w-0 break-words text-balance leading-snug line-clamp-3" : "truncate",
+            )}
+          >
             <span className="text-[hsl(var(--muted-foreground))]">Dest. </span>
             <span className="font-medium text-[hsl(var(--foreground))]">{row.destino}</span>
+            {hospitalAoLadoDestino ? (
+              <>
+                <span className="text-[hsl(var(--muted-foreground))]"> · </span>
+                <span className="text-[hsl(var(--muted-foreground))]">Hosp. </span>
+                <span className="font-medium text-[hsl(var(--foreground))]">{hospitalResumo}</span>
+              </>
+            ) : null}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end justify-between gap-1">
-          <span className="rounded-lg bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.65rem] font-bold text-[hsl(var(--foreground))]">
-            {row.om}
-          </span>
-          {open ? (
-            <ChevronUp className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
-          ) : (
-            <ChevronDown className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
-          )}
+        <div className="flex shrink-0 flex-col items-end gap-1 self-stretch">
+          {!hospitalAoLadoDestino ? (
+            <span
+              className="max-w-[40%] truncate rounded-lg bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.65rem] font-bold text-[hsl(var(--foreground))]"
+              title={row.hospital}
+            >
+              {row.hospital}
+            </span>
+          ) : null}
+          <div className="mt-auto">
+            {open ? (
+              <ChevronUp className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
+            )}
+          </div>
         </div>
       </button>
 
@@ -208,6 +236,66 @@ export function DepartureCard({
               disabled={!editavel}
               emptyCatalogHint
             />
+            <MobileEditableTextField
+              label="Hospital"
+              value={record.hospitalDestino}
+              onCommit={(v) => applyAmbPatch({ hospitalDestino: v })}
+              disabled={!editavel}
+            />
+            <div className="col-span-1 flex flex-col gap-2 sm:col-span-2">
+              <span className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                Tipo de saída (ambulância)
+              </span>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaInterHospitalar === true}
+                    disabled={!editavel}
+                    onChange={(e) =>
+                      applyAmbPatch({ tipoSaidaInterHospitalar: e.target.checked })
+                    }
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Inter-Hospitalar
+                </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaAlta === true}
+                    disabled={!editavel}
+                    onChange={(e) => applyAmbPatch({ tipoSaidaAlta: e.target.checked })}
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Alta
+                </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaOutros === true}
+                    disabled={!editavel}
+                    onChange={(e) => applyAmbPatch({ tipoSaidaOutros: e.target.checked })}
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Outros
+                </label>
+              </div>
+            </div>
             <MobileEditableTextField
               label="Destino"
               value={record.bairro}

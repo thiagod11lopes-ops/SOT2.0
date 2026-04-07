@@ -42,7 +42,7 @@ export function SaidasLayout() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[hsl(var(--background))]">
+    <div className="flex h-full min-h-0 flex-col bg-[hsl(var(--background))]">
       <SaidasMobileDetalheServicoModal
         open={detalheServicoOpen}
         onOpenChange={setDetalheServicoOpen}
@@ -85,7 +85,7 @@ export function SaidasLayout() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col overscroll-contain px-3 pb-28 pt-2 min-[480px]:px-4">
+      <main className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-y-auto overscroll-y-contain px-3 pb-28 pt-2 min-[480px]:px-4">
         <Outlet />
       </main>
 

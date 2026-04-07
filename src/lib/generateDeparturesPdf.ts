@@ -116,8 +116,9 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
   doc.text(`Data: ${dateLabel}`, centerX, y, { align: "center" });
   y += 9;
 
+  const omOrHospitalHead = params.tipo === "Ambulância" ? "Hospital" : "OM";
   const head = [
-    ["Viatura", "Motorista", "Saída", "Destino", "OM", "KM saída", "KM chegada", "Chegada", "Setor", "Rubrica"],
+    ["Viatura", "Motorista", "Saída", "Destino", omOrHospitalHead, "KM saída", "KM chegada", "Chegada", "Setor", "Rubrica"],
   ];
 
   /** Índice da linha da tabela → índice em `params.rows`, ou `occ` para linha de ocorrências. */
@@ -136,12 +137,13 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
       const lr = { ...listRowFromRecord(r), destino: g.destinoDisplay, setor: g.setorDisplay };
       const rubricaCol = rubricaColunaPdf(r);
       const primaryIdx = params.rows.findIndex((x) => x.id === r.id);
+      const omOrHospitalCell = params.tipo === "Ambulância" ? lr.hospital : lr.om;
       tableBody.push([
         lr.viatura,
         lr.motorista,
         lr.saida,
         lr.destino,
-        lr.om,
+        omOrHospitalCell,
         lr.kmSaida,
         lr.kmChegada,
         lr.chegada,

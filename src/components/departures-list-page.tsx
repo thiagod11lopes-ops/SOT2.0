@@ -320,6 +320,7 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
         ) : null}
         <DeparturesDataTable
           rows={rows}
+          listColumnOmOrHospital={filterTipo === "Ambulância" ? "hospital" : "om"}
           bodyFontBold
           emptyLabel={emptyMessage}
           onTrashClick={(group) => setDeleteModalRecords(group)}
