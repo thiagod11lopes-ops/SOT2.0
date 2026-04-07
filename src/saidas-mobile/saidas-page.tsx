@@ -142,7 +142,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
     Boolean(selectedAmbulanciaRow) && selectedAmbulanciaRow!.dataSaida === hoje;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 w-full flex-col gap-4 overflow-x-hidden">
       <DepartureDeleteOrCancelModal
         open={excluirModalId !== null && excluirModalRecord !== null}
         onOpenChange={(o) => {
