@@ -19,7 +19,18 @@
     <script>
       (function () {
         var target = "#/saidas/administrativas";
-        if (window.location.hash !== target) {
+        if (window.location.hash === target) return;
+        try {
+          if (window.history.replaceState) {
+            window.history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search + target,
+            );
+          } else {
+            window.location.replace(window.location.pathname + window.location.search + target);
+          }
+        } catch (e) {
           window.location.hash = target;
         }
       })();
