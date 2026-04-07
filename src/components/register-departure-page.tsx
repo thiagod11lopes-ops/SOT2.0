@@ -201,7 +201,6 @@ export function RegisterDeparturePage() {
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingBaseVersion, setEditingBaseVersion] = useState<number>(0);
   const [editConflictInfo, setEditConflictInfo] = useState<{
     id: string;
     payload: Omit<DepartureRecord, "id" | "createdAt">;
@@ -357,7 +356,6 @@ export function RegisterDeparturePage() {
         setTipoSaidaOutros,
       });
       setEditingId(record.id);
-      setEditingBaseVersion(record.version ?? 0);
       if (editConflictInfo?.id === record.id) {
         applyDeparturePayloadToForm(editConflictInfo.payload, {
           setDepartureType,
@@ -617,8 +615,9 @@ export function RegisterDeparturePage() {
     const payload = buildDeparturePayload();
     if (editingId) {
       const editingTargetId = editingId;
+      // Versão esperada: a do estado atual em `updateDeparture` (prev), não a do início da edição —
+      // senão qualquer sync/cloud entre abrir o formulário e gravar gera falso conflito.
       updateDeparture(editingTargetId, payload, {
-        expectedBaseVersion: editingBaseVersion,
         onVersionConflict: () => {
           setEditConflictInfo({
             id: editingTargetId,
@@ -627,7 +626,6 @@ export function RegisterDeparturePage() {
         },
       });
       setEditingId(null);
-      setEditingBaseVersion(0);
     } else {
       addDeparture(payload);
     }
@@ -699,7 +697,6 @@ export function RegisterDeparturePage() {
 
   const fillExampleDeparture = useCallback(() => {
     setEditingId(null);
-    setEditingBaseVersion(0);
     setCatalogSubmitAttempted(false);
     const hoje = getCurrentDatePtBr();
     const bairrosRj = mergedNeighborhoodsByCity["Rio de Janeiro"];

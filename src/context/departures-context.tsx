@@ -508,6 +508,8 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             ...data,
             id: d.id,
             createdAt: d.createdAt,
+            // Não aceitar `version` do payload (ex. spread de `record` desatualizado no mobile).
+            version: d.version,
             updatedAt: now,
             updatedBy: clientIdRef.current,
           };
