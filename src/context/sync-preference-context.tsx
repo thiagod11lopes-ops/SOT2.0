@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 const SYNC_PREF_KEY = "sot_sync_firebase_only_v1";
 
@@ -22,22 +22,31 @@ function readInitialPreference(): boolean {
 
 export function SyncPreferenceProvider({ children }: { children: ReactNode }) {
   const [firebaseOnlyEnabledState, setFirebaseOnlyEnabledState] = useState<boolean>(readInitialPreference);
+  const forceFirebaseOnlyForMobile =
+    typeof window !== "undefined" && window.location.hash.startsWith("#/saidas");
+  const firebaseOnlyEnabled = forceFirebaseOnlyForMobile ? true : firebaseOnlyEnabledState;
 
-  const setFirebaseOnlyEnabled = (value: boolean) => {
-    setFirebaseOnlyEnabledState(value);
-    try {
-      localStorage.setItem(SYNC_PREF_KEY, value ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  };
+  const setFirebaseOnlyEnabled = useCallback(
+    (value: boolean) => {
+      if (forceFirebaseOnlyForMobile && !value) {
+        return;
+      }
+      setFirebaseOnlyEnabledState(value);
+      try {
+        localStorage.setItem(SYNC_PREF_KEY, value ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+    },
+    [forceFirebaseOnlyForMobile],
+  );
 
   const value = useMemo(
     () => ({
-      firebaseOnlyEnabled: firebaseOnlyEnabledState,
+      firebaseOnlyEnabled,
       setFirebaseOnlyEnabled,
     }),
-    [firebaseOnlyEnabledState],
+    [firebaseOnlyEnabled, setFirebaseOnlyEnabled],
   );
 
   return <SyncPreferenceContext.Provider value={value}>{children}</SyncPreferenceContext.Provider>;
