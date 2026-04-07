@@ -24,6 +24,7 @@ import { formatDateToPtBr, getCurrentDatePtBr, normalizeDatePtBr, parsePtBrToDat
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
+import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
 import { cn } from "../lib/utils";
 import type { DepartureRecord } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
@@ -100,6 +101,9 @@ function applyDepartureRecordToForm(
     setArrivalTime: (v: string) => void;
     setCity: (v: string) => void;
     setNeighborhood: (v: string) => void;
+    setTipoSaidaInterHospitalar: (v: boolean) => void;
+    setTipoSaidaAlta: (v: boolean) => void;
+    setTipoSaidaOutros: (v: boolean) => void;
   },
 ) {
   setters.setDepartureType(r.tipo);
@@ -121,6 +125,9 @@ function applyDepartureRecordToForm(
   setters.setArrivalTime(r.chegada);
   setters.setCity(r.cidade);
   setters.setNeighborhood(r.bairro);
+  setters.setTipoSaidaInterHospitalar(r.tipo === "Ambulância" && r.tipoSaidaInterHospitalar === true);
+  setters.setTipoSaidaAlta(r.tipo === "Ambulância" && r.tipoSaidaAlta === true);
+  setters.setTipoSaidaOutros(r.tipo === "Ambulância" && r.tipoSaidaOutros === true);
 }
 
 export function RegisterDeparturePage() {
@@ -165,6 +172,9 @@ export function RegisterDeparturePage() {
   const [vehicles, setVehicles] = useState<string>("");
   const [drivers, setDrivers] = useState<string>("");
   const [destinationHospital, setDestinationHospital] = useState<string>("");
+  const [tipoSaidaInterHospitalar, setTipoSaidaInterHospitalar] = useState(false);
+  const [tipoSaidaAlta, setTipoSaidaAlta] = useState(false);
+  const [tipoSaidaOutros, setTipoSaidaOutros] = useState(false);
   const [kmDeparture, setKmDeparture] = useState<string>("");
   const [kmArrival, setKmArrival] = useState<string>("");
   const [arrivalTime, setArrivalTime] = useState<string>("");
@@ -285,6 +295,9 @@ export function RegisterDeparturePage() {
         setArrivalTime,
         setCity,
         setNeighborhood,
+        setTipoSaidaInterHospitalar,
+        setTipoSaidaAlta,
+        setTipoSaidaOutros,
       });
       setEditingId(record.id);
       setActiveSubTab("Cadastrar Nova Saída");
@@ -409,12 +422,14 @@ export function RegisterDeparturePage() {
     if (!isValueInCatalog(requestResponsible, catalogItems.responsaveis)) {
       f.push("Responsável pelo Pedido");
     }
-    if (!isValueInCatalog(om, catalogItems.oms)) f.push("OM");
+    if (departureType === "Administrativa" && !isValueInCatalog(om, catalogItems.oms)) {
+      f.push("OM");
+    }
     if (
       departureType === "Ambulância" &&
       !isValueInCatalog(destinationHospital, catalogItems.hospitais)
     ) {
-      f.push("Hospital de Destino");
+      f.push("Hospital");
     }
     {
       const v = vehicles.trim();
@@ -465,10 +480,13 @@ export function RegisterDeparturePage() {
       objetivoSaida: departureObjective,
       numeroPassageiros: passengerCount,
       responsavelPedido: requestResponsible,
-      om,
+      om: departureType === "Administrativa" ? om : "",
       viaturas: vehicles,
       motoristas: drivers,
       hospitalDestino: destinationHospital,
+      tipoSaidaInterHospitalar: departureType === "Ambulância" && tipoSaidaInterHospitalar,
+      tipoSaidaAlta: departureType === "Ambulância" && tipoSaidaAlta,
+      tipoSaidaOutros: departureType === "Ambulância" && tipoSaidaOutros,
       kmSaida: kmDeparture,
       kmChegada: kmArrival,
       chegada: arrivalTime,
@@ -591,8 +609,7 @@ export function RegisterDeparturePage() {
     const bairrosRj = mergedNeighborhoodsByCity["Rio de Janeiro"];
     addCatalogItem("setores", "SAMU Central");
     addCatalogItem("responsaveis", "Cap. Silva");
-    addCatalogItem("oms", "1º BPM");
-    addCatalogItem("hospitais", "Hospital Municipal Souza Aguiar");
+    addCatalogItem("hospitais", HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE[0]);
     addCatalogItem("ambulancias", "AMB-01 / M-10234");
     addCatalogItem("motoristas", "Sd Santos / Sd Oliveira");
     setDepartureType("Ambulância");
@@ -605,10 +622,13 @@ export function RegisterDeparturePage() {
     setDepartureObjective("Transporte inter-hospitalar de paciente em estado estável");
     setPassengerCount("2");
     setRequestResponsible("Cap. Silva");
-    setOm("1º BPM");
+    setOm("");
     setVehicles("AMB-01 / M-10234");
     setDrivers("Sd Santos / Sd Oliveira");
-    setDestinationHospital("Hospital Municipal Souza Aguiar");
+    setDestinationHospital(HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE[0]);
+    setTipoSaidaInterHospitalar(true);
+    setTipoSaidaAlta(false);
+    setTipoSaidaOutros(false);
     setKmDeparture(formatKmThousandsPtBr("45230"));
     setKmArrival(formatKmThousandsPtBr("45268"));
     setArrivalTime("10:15");
@@ -650,7 +670,7 @@ export function RegisterDeparturePage() {
                 onOpenChange={(o) => {
                   if (!o) setDeleteModalId(null);
                 }}
-                record={deleteModalRecord}
+                records={deleteModalRecord ? [deleteModalRecord] : null}
                 onExcluirDefinitivo={removeDeparture}
                 onConfirmarCancelamento={handleConfirmarCancelamentoCadastro}
               />
@@ -818,15 +838,17 @@ export function RegisterDeparturePage() {
                 showPlusAfterAttempt={catalogSubmitAttempted}
               />
 
-              <CatalogComboField
-                id="field-om"
-                label="OM"
-                category="oms"
-                value={om}
-                onChange={setOm}
-                options={catalogItems.oms}
-                showPlusAfterAttempt={catalogSubmitAttempted}
-              />
+              {departureType === "Administrativa" ? (
+                <CatalogComboField
+                  id="field-om"
+                  label="OM"
+                  category="oms"
+                  value={om}
+                  onChange={setOm}
+                  options={catalogItems.oms}
+                  showPlusAfterAttempt={catalogSubmitAttempted}
+                />
+              ) : null}
 
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="field-viaturas">
@@ -920,13 +942,46 @@ export function RegisterDeparturePage() {
                 <>
                   <CatalogComboField
                     id="field-hospital"
-                    label="Hospital de Destino"
+                    label="Hospital"
                     category="hospitais"
                     value={destinationHospital}
                     onChange={setDestinationHospital}
                     options={catalogItems.hospitais}
                     showPlusAfterAttempt={catalogSubmitAttempted}
                   />
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <p className="text-sm font-medium">Tipo de saída (ambulância)</p>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={tipoSaidaInterHospitalar}
+                          onChange={(e) => setTipoSaidaInterHospitalar(e.target.checked)}
+                          className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                        />
+                        Inter-Hospitalar
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={tipoSaidaAlta}
+                          onChange={(e) => setTipoSaidaAlta(e.target.checked)}
+                          className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                        />
+                        Alta
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={tipoSaidaOutros}
+                          onChange={(e) => setTipoSaidaOutros(e.target.checked)}
+                          className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                        />
+                        Outros
+                      </label>
+                    </div>
+                  </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">KM SAÍDA</label>
@@ -1031,10 +1086,12 @@ export function RegisterDeparturePage() {
                 {catalogSubmitAttempted && !canSubmitWithCatalog ? (
                   <p className="text-sm text-red-800 dark:text-red-300/90" role="alert">
                     Cadastro bloqueado: ajuste os campos{" "}
-                    <strong>{catalogBlockingLabels.join(", ")}</strong>. Para Setor, Responsável, OM e Hospital
-                    de Destino, inclua o valor em <strong>Cadastrar Itens</strong> (botão <strong>+</strong>{" "}
-                    vermelho). Para <strong>Viaturas</strong> e <strong>Motoristas</strong>, cadastre em{" "}
-                    <strong>Frota e Pessoal</strong> e selecione de novo.
+                    <strong>{catalogBlockingLabels.join(", ")}</strong>. Para Setor, Responsável
+                    {departureType === "Administrativa" ? ", OM" : ""}
+                    {departureType === "Ambulância" ? ", Hospital" : ""}, inclua o valor em{" "}
+                    <strong>Cadastrar Itens</strong> (botão <strong>+</strong> vermelho). Para{" "}
+                    <strong>Viaturas</strong> e <strong>Motoristas</strong>, cadastre em <strong>Frota e Pessoal</strong>{" "}
+                    e selecione de novo.
                   </p>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-end gap-3">
@@ -1104,7 +1161,6 @@ export function RegisterDeparturePage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setAddLocationModal(null);
                   setAddLocationDraft("");

@@ -1,5 +1,14 @@
 import type { DepartureRecord } from "../types/departure";
 
+function ambTipoSaidaBools(r: DepartureRecord) {
+  const amb = r.tipo === "Ambulância";
+  return {
+    tipoSaidaInterHospitalar: amb && r.tipoSaidaInterHospitalar === true,
+    tipoSaidaAlta: amb && r.tipoSaidaAlta === true,
+    tipoSaidaOutros: amb && r.tipoSaidaOutros === true,
+  };
+}
+
 export function normalizeDepartureRows(value: unknown): DepartureRecord[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -8,14 +17,14 @@ export function normalizeDepartureRows(value: unknown): DepartureRecord[] {
       const r = row as Record<string, unknown>;
       return typeof r.id === "string" && !!r.id && (r.tipo === "Administrativa" || r.tipo === "Ambulância");
     })
-    .map((row) => ({
-      ...row,
-      rubrica: typeof row.rubrica === "string" ? row.rubrica : "",
-      cancelada: typeof (row as { cancelada?: unknown }).cancelada === "boolean"
-        ? (row as { cancelada: boolean }).cancelada
-        : false,
-      ocorrencias: typeof (row as { ocorrencias?: unknown }).ocorrencias === "string"
-        ? (row as { ocorrencias: string }).ocorrencias
-        : "",
-    }));
+    .map((row) => {
+      const r = row as DepartureRecord;
+      return {
+        ...r,
+        rubrica: typeof r.rubrica === "string" ? r.rubrica : "",
+        cancelada: typeof r.cancelada === "boolean" ? r.cancelada : false,
+        ocorrencias: typeof r.ocorrencias === "string" ? r.ocorrencias : "",
+        ...ambTipoSaidaBools(r),
+      };
+    });
 }

@@ -43,14 +43,14 @@ export function SaidasLayout() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[hsl(var(--background))]">
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
       <SaidasMobileDetalheServicoModal
         open={detalheServicoOpen}
         onOpenChange={setDetalheServicoOpen}
         filterDatePtBr={filterDatePtBr}
       />
       <header
-        className="sticky top-0 z-20 border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
+        className="sticky top-0 z-20 w-full min-w-0 overflow-x-hidden border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
       >
         <div className="relative mx-auto flex max-w-lg items-center justify-center gap-1.5 min-[400px]:gap-2">
@@ -89,7 +89,7 @@ export function SaidasLayout() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col overscroll-contain px-3 pb-28 pt-2 min-[480px]:px-4">
+      <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-lg flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain overscroll-x-none px-3 pb-28 pt-2 min-[480px]:px-4">
         <Outlet />
       </main>
 

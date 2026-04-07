@@ -37,6 +37,9 @@ function departureToDoc(r: DepartureRecord): Record<string, unknown> {
     viaturas: r.viaturas,
     motoristas: r.motoristas,
     hospitalDestino: r.hospitalDestino,
+    tipoSaidaInterHospitalar: r.tipoSaidaInterHospitalar === true,
+    tipoSaidaAlta: r.tipoSaidaAlta === true,
+    tipoSaidaOutros: r.tipoSaidaOutros === true,
     kmSaida: r.kmSaida,
     kmChegada: r.kmChegada,
     chegada: r.chegada,
@@ -53,6 +56,7 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
   const data = d.data();
   const tipo = data.tipo;
   if (tipo !== "Administrativa" && tipo !== "Ambulância") return null;
+  const amb = tipo === "Ambulância";
   const createdRaw = data.createdAt;
   const createdAt =
     typeof createdRaw === "number"
@@ -79,6 +83,9 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
     viaturas: String(data.viaturas ?? ""),
     motoristas: String(data.motoristas ?? ""),
     hospitalDestino: String(data.hospitalDestino ?? ""),
+    tipoSaidaInterHospitalar: amb && data.tipoSaidaInterHospitalar === true,
+    tipoSaidaAlta: amb && data.tipoSaidaAlta === true,
+    tipoSaidaOutros: amb && data.tipoSaidaOutros === true,
     kmSaida: String(data.kmSaida ?? ""),
     kmChegada: String(data.kmChegada ?? ""),
     chegada: String(data.chegada ?? ""),

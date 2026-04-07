@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
-import type { DepartureRecord, DepartureType } from "../types/departure";
+import { groupDeparturesForListDisplay, type DepartureRecord, type DepartureType } from "../types/departure";
 import { DepartureDeleteOrCancelModal } from "../components/departure-delete-or-cancel-modal";
 import { addDaysPtBr, getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
@@ -47,6 +47,9 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
     viaturas: "",
     motoristas: "",
     hospitalDestino: "",
+    tipoSaidaInterHospitalar: false,
+    tipoSaidaAlta: false,
+    tipoSaidaOutros: false,
     kmSaida: "",
     kmChegada: "",
     chegada: "",
@@ -82,6 +85,8 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
       return a.id.localeCompare(b.id);
     });
   }, [departures, tipo, filterDate]);
+
+  const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
 
   const emptyMessage = useMemo(() => {
     const ofTipo = departures.filter((d) => d.tipo === tipo);
@@ -139,13 +144,13 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
     Boolean(selectedAmbulanciaRow) && selectedAmbulanciaRow!.dataSaida === hoje;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 w-full flex-col gap-4 overflow-x-hidden">
       <DepartureDeleteOrCancelModal
         open={excluirModalId !== null && excluirModalRecord !== null}
         onOpenChange={(o) => {
           if (!o) setExcluirModalId(null);
         }}
-        record={excluirModalRecord}
+        records={excluirModalRecord ? [excluirModalRecord] : null}
         onExcluirDefinitivo={(id) => {
           removeDeparture(id);
           setSelectedAmbulanciaId(null);
@@ -267,12 +272,16 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             {emptyMessage}
           </li>
         ) : (
-          rows.map((r) => {
+          mergedGroups.map((group) => {
+            const r = group.primary;
             const editavelMobile = r.dataSaida === hoje;
+            const cardKey = group.records.map((x) => x.id).join("|");
             return (
-              <li key={r.id}>
+              <li key={cardKey}>
                 <DepartureCard
                   record={r}
+                  mergedDestinoDisplay={group.destinoDisplay}
+                  mergedSetorDisplay={group.setorDisplay}
                   allowMobileEdit={editavelMobile}
                   onPatchKm={(patch) => {
                     if (!editavelMobile) return;

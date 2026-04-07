@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
-import type { DepartureType } from "../types/departure";
+import type { DepartureRecord, DepartureType } from "../types/departure";
 import {
   formatDateToPtBr,
   getCurrentDatePtBr,
@@ -57,12 +57,8 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   const [selectedMotoristaAssinatura, setSelectedMotoristaAssinatura] = useState("");
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
-  const [deleteModalId, setDeleteModalId] = useState<string | null>(null);
+  const [deleteModalRecords, setDeleteModalRecords] = useState<DepartureRecord[] | null>(null);
   const [servicoModalOpen, setServicoModalOpen] = useState(false);
-  const deleteModalRecord = useMemo(
-    () => (deleteModalId ? departures.find((d) => d.id === deleteModalId) ?? null : null),
-    [departures, deleteModalId],
-  );
   useEffect(() => {
     setFilterDepartureDate(getCurrentDatePtBr());
     setActionsToolbarOpen(false);
@@ -307,11 +303,11 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
 
       <CardContent className="pt-4">
         <DepartureDeleteOrCancelModal
-          open={deleteModalId !== null && deleteModalRecord !== null}
+          open={deleteModalRecords !== null && deleteModalRecords.length > 0}
           onOpenChange={(o) => {
-            if (!o) setDeleteModalId(null);
+            if (!o) setDeleteModalRecords(null);
           }}
-          record={deleteModalRecord}
+          records={deleteModalRecords}
           onExcluirDefinitivo={removeDeparture}
           onConfirmarCancelamento={handleConfirmarCancelamentoLista}
         />
@@ -324,9 +320,10 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
         ) : null}
         <DeparturesDataTable
           rows={rows}
+          listColumnOmOrHospital={filterTipo === "Ambulância" ? "hospital" : "om"}
           bodyFontBold
           emptyLabel={emptyMessage}
-          onTrashClick={(id) => setDeleteModalId(id)}
+          onTrashClick={(group) => setDeleteModalRecords(group)}
           onUpdateKmFields={updateDepartureKmFields}
           onEdit={beginEditDeparture}
         />

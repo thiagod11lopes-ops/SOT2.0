@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
@@ -8,107 +8,11 @@ import { useOficinaVisitas } from "../context/oficina-visits-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
-import type { DepartureRecord } from "../types/departure";
+import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
-
-function Field({
-  label,
-  value,
-  onChange,
-  inputMode,
-  mono,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
-  mono?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-        {label}
-      </span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode={inputMode}
-        autoComplete="off"
-        disabled={disabled}
-        className={cn(
-          "min-h-[2.75rem] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
-          mono && "font-mono tabular-nums",
-          disabled && "cursor-not-allowed opacity-70",
-        )}
-      />
-    </label>
-  );
-}
-
-/**
- * Apenas `<select>` (sem input de texto): escolha entre itens do catálogo Frota e Pessoal.
- * Se o registo tiver valor que já não está no catálogo, mostra uma opção extra só para esse valor.
- */
-function FleetSelectField({
-  label,
-  value,
-  onChange,
-  options,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  disabled?: boolean;
-}) {
-  const selectId = useId();
-  const orphan = useMemo(() => {
-    if (!value.trim()) return null;
-    if (options.some((o) => o === value)) return null;
-    return value;
-  }, [value, options]);
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]" htmlFor={selectId}>
-        {label}
-      </label>
-      <select
-        id={selectId}
-        value={options.some((o) => o === value) || value === "" || orphan === value ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
-        autoComplete="off"
-        disabled={disabled}
-        className={cn(
-          "min-h-[2.75rem] w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
-          disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer",
-        )}
-      >
-        <option value="">— Selecionar —</option>
-        {orphan ? (
-          <option value={orphan}>
-            {orphan} (fora do catálogo)
-          </option>
-        ) : null}
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-      {options.length === 0 ? (
-        <span className="text-[0.65rem] text-[hsl(var(--muted-foreground))]">
-          Cadastre itens em <strong>Frota e Pessoal</strong> no SOT (ambiente completo).
-        </span>
-      ) : null}
-    </div>
-  );
-}
+import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
 export function DepartureCard({
   record,
@@ -117,6 +21,8 @@ export function DepartureCard({
   isSelectedForExcluir,
   onSelectForExcluir,
   allowMobileEdit = true,
+  mergedDestinoDisplay,
+  mergedSetorDisplay,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
@@ -127,6 +33,10 @@ export function DepartureCard({
   onSelectForExcluir?: () => void;
   /** No separador mobile, só o dia atual pode ser alterado; outros dias são só leitura. */
   allowMobileEdit?: boolean;
+  /** Quando vários registos são fundidos num cartão (mesma hora, viatura e motorista): destino combinado. */
+  mergedDestinoDisplay?: string;
+  /** Idem: setores combinados (vista administrativa). */
+  mergedSetorDisplay?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
@@ -150,6 +60,11 @@ export function DepartureCard({
   const isAmbulancia = record.tipo === "Ambulância";
   const cancelada = record.cancelada === true;
   const editavel = allowMobileEdit && !cancelada;
+  const hospitalResumo = record.hospitalDestino.trim();
+  const hospitalAoLadoDestino = isAmbulancia && hospitalResumo.length > 0;
+  const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
+  const destinoCabecalho = mergedDestinoDisplay ?? row.destino;
+  const destinoCabecalhoLongo = Boolean(mergedDestinoDisplay);
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -185,6 +100,14 @@ export function DepartureCard({
     void id;
     void createdAt;
     updateDeparture(departureId, { ...rest, ocorrencias: texto });
+  }
+
+  function applyAdminCadastroPatch(partial: Partial<DepartureRecord>) {
+    if (!editavel || !updateDeparture) return;
+    updateDeparture(record.id, {
+      ...record,
+      ...partial,
+    });
   }
 
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
@@ -257,20 +180,47 @@ export function DepartureCard({
             <span className="truncate text-base font-semibold text-[hsl(var(--foreground))]">{row.viatura}</span>
           </div>
           <p className="truncate text-sm text-[hsl(var(--muted-foreground))]">{row.motorista}</p>
-          <p className="truncate text-sm">
+          {tipoSaidaResumo ? (
+            <p className="min-w-0 break-words text-sm leading-snug line-clamp-2">
+              <span className="text-[hsl(var(--muted-foreground))]">Tipo saída </span>
+              <span className="font-medium text-[hsl(var(--foreground))]">{tipoSaidaResumo}</span>
+            </p>
+          ) : null}
+          <p
+            className={cn(
+              "text-sm",
+              hospitalAoLadoDestino || destinoCabecalhoLongo
+                ? "min-w-0 break-words text-balance leading-snug line-clamp-3"
+                : "truncate",
+            )}
+          >
             <span className="text-[hsl(var(--muted-foreground))]">Dest. </span>
-            <span className="font-medium text-[hsl(var(--foreground))]">{row.destino}</span>
+            <span className="font-medium text-[hsl(var(--foreground))]">{destinoCabecalho}</span>
+            {hospitalAoLadoDestino ? (
+              <>
+                <span className="text-[hsl(var(--muted-foreground))]"> · </span>
+                <span className="text-[hsl(var(--muted-foreground))]">Hosp. </span>
+                <span className="font-medium text-[hsl(var(--foreground))]">{hospitalResumo}</span>
+              </>
+            ) : null}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end justify-between gap-1">
-          <span className="rounded-lg bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.65rem] font-bold text-[hsl(var(--foreground))]">
-            {row.om}
-          </span>
-          {open ? (
-            <ChevronUp className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
-          ) : (
-            <ChevronDown className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
-          )}
+        <div className="flex shrink-0 flex-col items-end gap-1 self-stretch">
+          {!hospitalAoLadoDestino ? (
+            <span
+              className="max-w-[40%] truncate rounded-lg bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.65rem] font-bold text-[hsl(var(--foreground))]"
+              title={row.hospital}
+            >
+              {row.hospital}
+            </span>
+          ) : null}
+          <div className="mt-auto">
+            {open ? (
+              <ChevronUp className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-[hsl(var(--muted-foreground))]" aria-hidden />
+            )}
+          </div>
         </div>
       </button>
 
@@ -288,56 +238,120 @@ export function DepartureCard({
             {editavel ? "Edição rápida (mesma ordem)" : "Dados (só leitura)"}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FleetSelectField
+            <MobileEditableSelectField
               label="Viatura"
               value={record.viaturas}
               onChange={(v) => applyAmbPatch({ viaturas: v })}
               options={viaturasOpcoes}
               disabled={!editavel}
+              emptyCatalogHint
             />
-            <FleetSelectField
+            <MobileEditableSelectField
               label="Motorista"
               value={record.motoristas}
               onChange={(v) => applyAmbPatch({ motoristas: v })}
               options={motoristasFrota}
               disabled={!editavel}
+              emptyCatalogHint
             />
-            <Field
-              label="Destino"
-              value={record.bairro}
-              onChange={(v) => applyAmbPatch({ bairro: v })}
+            <MobileEditableTextField
+              label="Hospital"
+              value={record.hospitalDestino}
+              onCommit={(v) => applyAmbPatch({ hospitalDestino: v })}
               disabled={!editavel}
             />
-            <Field
+            <div className="col-span-1 flex flex-col gap-2 sm:col-span-2">
+              <span className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                Tipo de saída (ambulância)
+              </span>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaInterHospitalar === true}
+                    disabled={!editavel}
+                    onChange={(e) =>
+                      applyAmbPatch({ tipoSaidaInterHospitalar: e.target.checked })
+                    }
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Inter-Hospitalar
+                </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaAlta === true}
+                    disabled={!editavel}
+                    onChange={(e) => applyAmbPatch({ tipoSaidaAlta: e.target.checked })}
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Alta
+                </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 text-sm text-[hsl(var(--foreground))]",
+                    !editavel && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={record.tipoSaidaOutros === true}
+                    disabled={!editavel}
+                    onChange={(e) => applyAmbPatch({ tipoSaidaOutros: e.target.checked })}
+                    className="h-4 w-4 rounded border-[hsl(var(--border))]"
+                  />
+                  Outros
+                </label>
+              </div>
+            </div>
+            <MobileEditableTextField
               label="Hora da saída"
               value={record.horaSaida}
-              onChange={(v) => applyAmbPatch({ horaSaida: normalize24hTime(v) })}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => applyAmbPatch({ horaSaida: v })}
+              transform={normalize24hTime}
+              time24h
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
+              label="Destino"
+              value={record.bairro}
+              onCommit={(v) => applyAmbPatch({ bairro: v })}
+              disabled={!editavel}
+            />
+            <MobileEditableTextField
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
-              onChange={(v) => applyAmbPatch({ kmSaida: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => applyAmbPatch({ kmSaida: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onChange={(v) => applyAmbPatch({ kmChegada: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => applyAmbPatch({ kmChegada: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="Hora da chegada"
               value={record.chegada}
-              onChange={(v) => applyAmbPatch({ chegada: normalize24hTime(v) })}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => applyAmbPatch({ chegada: v })}
+              transform={normalize24hTime}
+              time24h
               disabled={!editavel}
             />
             {updateDeparture ? (
@@ -405,7 +419,7 @@ export function DepartureCard({
                 Setor / ramal
               </p>
               <p className="text-sm text-[hsl(var(--foreground))]">
-                {record.setor.trim() || "—"} · {record.ramal.trim() || "—"}
+                {mergedSetorDisplay ?? (record.setor.trim() || "—")} · {record.ramal.trim() || "—"}
               </p>
             </div>
             <div className="col-span-2">
@@ -418,28 +432,37 @@ export function DepartureCard({
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field
+            <div className="col-span-1 sm:col-span-3">
+              <MobileEditableTextField
+                label="Destino"
+                value={record.bairro}
+                onCommit={(v) => applyAdminCadastroPatch({ bairro: v })}
+                disabled={!editavel || !updateDeparture}
+              />
+            </div>
+            <MobileEditableTextField
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
-              onChange={(v) => onPatchKm({ kmSaida: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => onPatchKm({ kmSaida: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onChange={(v) => onPatchKm({ kmChegada: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => onPatchKm({ kmChegada: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="Hora da chegada"
               value={record.chegada}
-              onChange={(v) => commitChegada(v)}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => commitChegada(v)}
+              time24h
               disabled={!editavel}
             />
             {updateDeparture ? (
@@ -497,6 +520,7 @@ export function DepartureCard({
           onOpenChange={setOcorrenciasModalOpen}
           record={record}
           onSave={handleSalvarOcorrencias}
+          confirmFirst
         />
       ) : null}
 
@@ -528,21 +552,19 @@ export function DepartureCard({
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl"
+                className="min-h-11 rounded-xl font-medium text-black"
                 onClick={() => rubricaPadRef.current?.clearPad()}
               >
                 Limpar
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl"
+                className="min-h-11 rounded-xl font-medium text-black"
                 onClick={() => setRubricaModalOpen(false)}
               >
                 Cancelar
               </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubrica}>
+              <Button type="button" className="min-h-11 rounded-xl font-semibold text-black" onClick={commitRubrica}>
                 OK
               </Button>
             </div>

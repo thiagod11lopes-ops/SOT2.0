@@ -1,9 +1,16 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="saidas-mobile-shell">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
       name="description"
       content="SOT — vista de saídas para celular. Mesmos dados do sistema principal (mesmo navegador / mesma origem)."
@@ -11,9 +18,20 @@
     <title>SOT – Saídas (celular)</title>
     <script>
       (function () {
-        var h = window.location.hash;
-        if (!h || h === "#" || h === "#/") {
-          window.location.hash = "#/saidas";
+        var target = "#/saidas/administrativas";
+        if (window.location.hash === target) return;
+        try {
+          if (window.history.replaceState) {
+            window.history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search + target,
+            );
+          } else {
+            window.location.replace(window.location.pathname + window.location.search + target);
+          }
+        } catch (e) {
+          window.location.hash = target;
         }
       })();
     </script>

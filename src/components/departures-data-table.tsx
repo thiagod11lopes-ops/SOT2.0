@@ -2,7 +2,7 @@ import { ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDepartures, type DepartureKmFieldsPatch } from "../context/departures-context";
 import type { DepartureRecord } from "../types/departure";
-import { listRowFromRecord } from "../types/departure";
+import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
@@ -10,6 +10,10 @@ import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { cn } from "../lib/utils";
 import { DepartureDetailModal } from "./departure-detail-modal";
 import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
+import {
+  MergedDeparturePickRecordModal,
+  type MergedPickAction,
+} from "./merged-departure-pick-record-modal";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -82,11 +86,13 @@ function ChegadaTimeInput({
 interface DeparturesDataTableProps {
   rows: DepartureRecord[];
   showTipoColumn?: boolean;
+  /** Ambulância: coluna «Hospital» em vez de «OM». */
+  listColumnOmOrHospital?: "om" | "hospital";
   /** Negrito nos cabeçalhos e células (abas Saídas Administrativas / Ambulância). */
   bodyFontBold?: boolean;
   emptyLabel: string;
-  /** Abre o fluxo (modal) de excluir vs cancelar — não apaga diretamente. */
-  onTrashClick: (id: string) => void;
+  /** Abre o fluxo (modal) de excluir vs cancelar — após escolha, tipicamente um registo. */
+  onTrashClick: (group: DepartureRecord[]) => void;
   /** Quando definido, KM saída, KM chegada e Chegada são editáveis inline. */
   onUpdateKmFields?: (id: string, patch: DepartureKmFieldsPatch) => void;
   /** Abre Cadastrar Nova Saída com os dados do registro. */
@@ -96,6 +102,7 @@ interface DeparturesDataTableProps {
 export function DeparturesDataTable({
   rows,
   showTipoColumn,
+  listColumnOmOrHospital = "om",
   bodyFontBold,
   emptyLabel,
   onTrashClick,
@@ -105,6 +112,38 @@ export function DeparturesDataTable({
   const { updateDeparture } = useDepartures();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [ocorrenciasModalId, setOcorrenciasModalId] = useState<string | null>(null);
+  const [pickModal, setPickModal] = useState<{
+    records: DepartureRecord[];
+    action: MergedPickAction;
+  } | null>(null);
+  const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
+
+  function applyPickedAction(record: DepartureRecord, action: MergedPickAction) {
+    switch (action) {
+      case "detail":
+        setDetailId(record.id);
+        break;
+      case "ocorrencias":
+        setOcorrenciasModalId(record.id);
+        break;
+      case "edit":
+        onEdit?.(record.id);
+        break;
+      case "trash":
+        onTrashClick([record]);
+        break;
+    }
+  }
+
+  function openActionOrPick(group: { records: DepartureRecord[] }, action: MergedPickAction) {
+    const recs = group.records;
+    if (recs.length === 1) {
+      applyPickedAction(recs[0]!, action);
+      return;
+    }
+    setPickModal({ records: recs, action });
+  }
+
   const detailRecord = useMemo(
     () => (detailId ? rows.find((r) => r.id === detailId) ?? null : null),
     [rows, detailId],
@@ -135,6 +174,20 @@ export function DeparturesDataTable({
 
   return (
     <>
+      {pickModal ? (
+        <MergedDeparturePickRecordModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setPickModal(null);
+          }}
+          records={pickModal.records}
+          action={pickModal.action}
+          onSelect={(record) => {
+            applyPickedAction(record, pickModal.action);
+            setPickModal(null);
+          }}
+        />
+      ) : null}
       <DepartureDetailModal
         open={detailId !== null && detailRecord !== null}
         onOpenChange={(o) => {
@@ -164,7 +217,7 @@ export function DeparturesDataTable({
           <TableHead className={head()}>Motorista</TableHead>
           <TableHead className={head()}>Saída</TableHead>
           <TableHead className={head()}>Destino</TableHead>
-          <TableHead className={head()}>OM</TableHead>
+          <TableHead className={head()}>{listColumnOmOrHospital === "hospital" ? "Hospital" : "OM"}</TableHead>
           <TableHead className={head()}>KM saída</TableHead>
           <TableHead className={head()}>KM chegada</TableHead>
           <TableHead className={head()}>Chegada</TableHead>
@@ -187,14 +240,19 @@ export function DeparturesDataTable({
             </TableCell>
           </TableRow>
         ) : (
-          rows.map((row) => {
+          mergedGroups.map((group) => {
+            const row = group.primary;
             const lr = listRowFromRecord(row);
             const finalizada = saidaFinalizadaKmEChegada(row);
             const cancelada = row.cancelada === true;
             const kmEditavel = Boolean(onUpdateKmFields) && !cancelada;
+            const destinoCell = group.destinoDisplay;
+            const setorCell = group.setorDisplay;
+            const rowKey = group.records.map((r) => r.id).join("|");
+            const anyOcorrencias = group.records.some((r) => (r.ocorrencias ?? "").trim().length > 0);
             return (
               <TableRow
-                key={row.id}
+                key={rowKey}
                 className={cn(
                   cancelada && "bg-red-950/[0.08] opacity-50",
                   !cancelada &&
@@ -215,10 +273,12 @@ export function DeparturesDataTable({
                 <TableCell className={cell()}>{lr.viatura}</TableCell>
                 <TableCell className={cell()}>{lr.motorista}</TableCell>
                 <TableCell className={cell("whitespace-nowrap tabular-nums")}>{lr.saida}</TableCell>
-                <TableCell className={cell("max-w-[200px] truncate")} title={lr.destino}>
-                  {lr.destino}
+                <TableCell className={cell("max-w-[min(280px,42vw)] break-words")} title={destinoCell}>
+                  {destinoCell}
                 </TableCell>
-                <TableCell className={cell()}>{lr.om}</TableCell>
+                <TableCell className={cell()}>
+                  {listColumnOmOrHospital === "hospital" ? lr.hospital : lr.om}
+                </TableCell>
                 <TableCell className={cn(cell(), kmEditavel && "p-1.5 align-middle")}>
                   {kmEditavel ? (
                     <input
@@ -268,7 +328,9 @@ export function DeparturesDataTable({
                     lr.chegada
                   )}
                 </TableCell>
-                <TableCell className={cell()}>{lr.setor}</TableCell>
+                <TableCell className={cell("max-w-[min(240px,36vw)] break-words")} title={setorCell}>
+                  {setorCell}
+                </TableCell>
                 <TableCell
                   className={cell("max-w-[140px] text-xs")}
                   title={isRubricaImageDataUrl(row.rubrica) ? "Rubrica (desenho)" : lr.rubrica !== "—" ? lr.rubrica : undefined}
@@ -308,7 +370,7 @@ export function DeparturesDataTable({
                       size="icon"
                       className="h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]"
                       aria-label="Ver dados completos da saída"
-                      onClick={() => setDetailId(row.id)}
+                      onClick={() => openActionOrPick(group, "detail")}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -318,11 +380,11 @@ export function DeparturesDataTable({
                       size="icon"
                       className={cn(
                         "h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]",
-                        row.ocorrencias?.trim() && "text-[hsl(var(--primary))]/90",
+                        anyOcorrencias && "text-[hsl(var(--primary))]/90",
                       )}
                       aria-label="Ocorrências"
                       title="Ocorrências"
-                      onClick={() => setOcorrenciasModalId(row.id)}
+                      onClick={() => openActionOrPick(group, "ocorrencias")}
                     >
                       <ClipboardList className="h-4 w-4" />
                     </Button>
@@ -333,7 +395,7 @@ export function DeparturesDataTable({
                         size="icon"
                         className="h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]"
                         aria-label="Editar registro no cadastro"
-                        onClick={() => onEdit(row.id)}
+                        onClick={() => openActionOrPick(group, "edit")}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -344,7 +406,7 @@ export function DeparturesDataTable({
                       size="icon"
                       className="h-8 w-8 text-slate-500 hover:text-red-600"
                       aria-label="Excluir ou cancelar saída"
-                      onClick={() => onTrashClick(row.id)}
+                      onClick={() => openActionOrPick(group, "trash")}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

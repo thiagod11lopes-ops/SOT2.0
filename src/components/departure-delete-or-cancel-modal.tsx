@@ -7,7 +7,8 @@ type Step = "escolher" | "nome";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  record: DepartureRecord | null;
+  /** Um ou mais registos (ex.: linha agrupada na lista de saídas). */
+  records: DepartureRecord[] | null;
   onExcluirDefinitivo: (id: string) => void;
   onConfirmarCancelamento: (id: string, nomeResponsavel: string) => void;
 };
@@ -15,7 +16,7 @@ type Props = {
 export function DepartureDeleteOrCancelModal({
   open,
   onOpenChange,
-  record,
+  records,
   onExcluirDefinitivo,
   onConfirmarCancelamento,
 }: Props) {
@@ -31,9 +32,11 @@ export function DepartureDeleteOrCancelModal({
     }
   }, [open]);
 
-  if (!open || !record) return null;
+  if (!open || !records || records.length === 0) return null;
 
-  const r = record;
+  const groupRecords = records;
+  const r = groupRecords[0]!;
+  const n = groupRecords.length;
   const jaCancelada = r.cancelada === true;
 
   function fechar() {
@@ -41,14 +44,18 @@ export function DepartureDeleteOrCancelModal({
   }
 
   function handleExcluir() {
-    onExcluirDefinitivo(r.id);
+    for (const rec of groupRecords) {
+      onExcluirDefinitivo(rec.id);
+    }
     fechar();
   }
 
   function handleConfirmarNome() {
     const t = nome.trim();
     if (!t) return;
-    onConfirmarCancelamento(r.id, t);
+    for (const rec of groupRecords) {
+      onConfirmarCancelamento(rec.id, t);
+    }
     fechar();
   }
 
@@ -72,10 +79,12 @@ export function DepartureDeleteOrCancelModal({
         {jaCancelada ? (
           <>
             <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-              Esta saída está cancelada. Deseja removê-la definitivamente da lista?
+              {n > 1
+                ? `Estas ${n} saídas estão canceladas. Deseja removê-las definitivamente da lista?`
+                : "Esta saída está cancelada. Deseja removê-la definitivamente da lista?"}
             </p>
             <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fechar}>
+              <Button type="button" onClick={fechar}>
                 Fechar
               </Button>
               <Button
@@ -89,12 +98,19 @@ export function DepartureDeleteOrCancelModal({
           </>
         ) : step === "escolher" ? (
           <>
+            {n > 1 ? (
+              <p className="mt-2 text-sm text-amber-800 dark:text-amber-200/90">
+                Esta linha agrupa {n} saídas com a mesma viatura, motorista e horário. A ação aplicar-se-á a
+                todas.
+              </p>
+            ) : null}
             <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-              Escolha se deseja apagar o registo de forma permanente ou apenas marcar a saída como
-              cancelada (permanece na tabela, com indicação de cancelamento).
+              {n > 1
+                ? "Escolha se deseja apagar os registos de forma permanente ou apenas marcar as saídas como canceladas (permanecem na tabela, com indicação de cancelamento)."
+                : "Escolha se deseja apagar o registo de forma permanente ou apenas marcar a saída como cancelada (permanece na tabela, com indicação de cancelamento)."}
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <Button type="button" variant="outline" onClick={fechar}>
+              <Button type="button" onClick={fechar}>
                 Voltar
               </Button>
               <Button
@@ -127,7 +143,7 @@ export function DepartureDeleteOrCancelModal({
               placeholder="Nome completo"
             />
             <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep("escolher")}>
+              <Button type="button" onClick={() => setStep("escolher")}>
                 Voltar
               </Button>
               <Button

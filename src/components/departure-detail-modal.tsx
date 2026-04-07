@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import type { DepartureRecord } from "../types/departure";
+import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { Button } from "./ui/button";
@@ -87,10 +87,21 @@ export function DepartureDetailModal({ open, onOpenChange, record }: Props) {
             </Field>
             <Field label="Número de passageiros">{displayOrDash(record.numeroPassageiros)}</Field>
             <Field label="Responsável pelo pedido">{displayOrDash(record.responsavelPedido)}</Field>
-            <Field label="OM">{displayOrDash(record.om)}</Field>
+            {record.tipo === "Administrativa" ? (
+              <Field label="OM">{displayOrDash(record.om)}</Field>
+            ) : null}
             <Field label="Viaturas">{displayOrDash(record.viaturas)}</Field>
             <Field label="Motoristas">{displayOrDash(record.motoristas)}</Field>
-            <Field label="Hospital destino">{displayOrDash(record.hospitalDestino)}</Field>
+            {record.tipo === "Ambulância" ? (
+              <Field label="Hospital">{displayOrDash(record.hospitalDestino)}</Field>
+            ) : (
+              <Field label="Hospital destino">{displayOrDash(record.hospitalDestino)}</Field>
+            )}
+            {record.tipo === "Ambulância" ? (
+              <Field label="Tipo de saída (ambulância)">
+                {displayOrDash(formatTipoSaidaAmbulancia(record))}
+              </Field>
+            ) : null}
             <Field label="KM saída">{displayOrDash(formatKmThousandsPtBr(record.kmSaida))}</Field>
             <Field label="KM chegada">{displayOrDash(formatKmThousandsPtBr(record.kmChegada))}</Field>
             <Field label="Hora de chegada">{displayOrDash(record.chegada)}</Field>

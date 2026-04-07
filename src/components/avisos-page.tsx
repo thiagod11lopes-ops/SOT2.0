@@ -246,178 +246,6 @@ export function AvisosPage() {
         />
       </AvisosCollapsibleCard>
 
-      <AvisosCollapsibleCard title="Fainas gerais" open={open.fainas} onToggle={() => toggle("fainas")}>
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Uma linha por faina. Esses itens entram no <strong>telão inferior</strong> da página inicial (texto em
-          movimento) e no card <strong>Fainas Gerais</strong> do painel.
-        </p>
-        <label className="sr-only" htmlFor="fainas-texto">
-          Fainas gerais
-        </label>
-        <textarea
-          id="fainas-texto"
-          value={fainasTexto}
-          onChange={(e) => setFainasTexto(e.target.value)}
-          rows={8}
-          placeholder={"Ex.: Apoio ao evento na Cidade Alta — 08h.\nVistoria no 3º Batalhão — 14h."}
-          className="min-h-[160px] w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-        />
-      </AvisosCollapsibleCard>
-
-      <AvisosCollapsibleCard
-        title="Alarme diário"
-        open={open.alarmeDiario}
-        onToggle={() => toggle("alarmeDiario")}
-      >
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
-          planilha abaixo e aparece na página inicial. Reeditar um alarme na planilha{" "}
-          <strong>zera o ocultar de hoje</strong>, permitindo alertar de novo no mesmo dia.
-        </p>
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="alarm-nome-novo">
-                Nome do alarme
-              </label>
-              <input
-                id="alarm-nome-novo"
-                type="text"
-                value={draftNome}
-                onChange={(e) => setDraftNome(e.target.value)}
-                placeholder="Ex.: Passagem de serviço"
-                className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="alarm-hora-novo">
-                Hora (24h)
-              </label>
-              <input
-                id="alarm-hora-novo"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="HH:MM"
-                value={draftHora}
-                onChange={(e) => setDraftHora(normalize24hTime(e.target.value))}
-                className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              disabled={!podeAtivarNovo}
-              title={podeAtivarNovo ? undefined : "Informe nome e hora (HH:MM) válidos."}
-              onClick={handleAtivar}
-            >
-              Ativar
-            </Button>
-          </div>
-        </div>
-      </AvisosCollapsibleCard>
-
-      <AvisosCollapsibleCard
-        title="Alarmes ativos"
-        open={open.alarmesAtivos}
-        onToggle={() => toggle("alarmesAtivos")}
-      >
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
-          apagar.
-        </p>
-        {alarmesOrdenados.length === 0 ? (
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Nenhum alarme na planilha. Configure em <strong>Alarme diário</strong> e clique em <strong>Ativar</strong>.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead className="w-[7rem]">Hora</TableHead>
-                  <TableHead className="w-[5rem] text-center">Ativo</TableHead>
-                  <TableHead className="w-[12rem] text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {alarmesOrdenados.map((a) => {
-                  const editando = editingId === a.id;
-                  return (
-                    <TableRow key={a.id}>
-                      <TableCell>
-                        {editando ? (
-                          <input
-                            type="text"
-                            value={editNome}
-                            onChange={(e) => setEditNome(e.target.value)}
-                            className="h-9 w-full min-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-sm"
-                          />
-                        ) : (
-                          <span className="font-medium">{a.nome}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editando ? (
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={editHora}
-                            onChange={(e) => setEditHora(normalize24hTime(e.target.value))}
-                            className="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums"
-                          />
-                        ) : (
-                          <span className="font-mono tabular-nums">{a.hora}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
-                          checked={a.ativo}
-                          disabled={editando}
-                          onChange={(e) => updateAlarmeDiario(a.id, { ativo: e.target.checked })}
-                          aria-label={`Alarme ativo: ${a.nome}`}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {editando ? (
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <Button type="button" size="sm" variant="default" onClick={salvarEdicao}>
-                              Salvar
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={cancelarEdicao}>
-                              Cancelar
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <Button type="button" size="sm" variant="outline" onClick={() => iniciarEdicao(a)}>
-                              Editar
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="text-red-700 hover:bg-red-50"
-                              onClick={() => handleExcluir(a.id, a.nome)}
-                            >
-                              Excluir
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </AvisosCollapsibleCard>
-
       <AvisosCollapsibleCard
         title="Avisos Gerais"
         open={open.avisosGerais}
@@ -578,6 +406,178 @@ export function AvisosPage() {
             </Table>
           </div>
         )}
+      </AvisosCollapsibleCard>
+
+      <AvisosCollapsibleCard
+        title="Alarme diário"
+        open={open.alarmeDiario}
+        onToggle={() => toggle("alarmeDiario")}
+      >
+        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+          Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
+          planilha abaixo e aparece na página inicial. Reeditar um alarme na planilha{" "}
+          <strong>zera o ocultar de hoje</strong>, permitindo alertar de novo no mesmo dia.
+        </p>
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="alarm-nome-novo">
+                Nome do alarme
+              </label>
+              <input
+                id="alarm-nome-novo"
+                type="text"
+                value={draftNome}
+                onChange={(e) => setDraftNome(e.target.value)}
+                placeholder="Ex.: Passagem de serviço"
+                className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="alarm-hora-novo">
+                Hora (24h)
+              </label>
+              <input
+                id="alarm-hora-novo"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="HH:MM"
+                value={draftHora}
+                onChange={(e) => setDraftHora(normalize24hTime(e.target.value))}
+                className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              disabled={!podeAtivarNovo}
+              title={podeAtivarNovo ? undefined : "Informe nome e hora (HH:MM) válidos."}
+              onClick={handleAtivar}
+            >
+              Ativar
+            </Button>
+          </div>
+        </div>
+      </AvisosCollapsibleCard>
+
+      <AvisosCollapsibleCard
+        title="Alarmes ativos"
+        open={open.alarmesAtivos}
+        onToggle={() => toggle("alarmesAtivos")}
+      >
+        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+          Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
+          apagar.
+        </p>
+        {alarmesOrdenados.length === 0 ? (
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            Nenhum alarme na planilha. Configure em <strong>Alarme diário</strong> e clique em <strong>Ativar</strong>.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead className="w-[7rem]">Hora</TableHead>
+                  <TableHead className="w-[5rem] text-center">Ativo</TableHead>
+                  <TableHead className="w-[12rem] text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {alarmesOrdenados.map((a) => {
+                  const editando = editingId === a.id;
+                  return (
+                    <TableRow key={a.id}>
+                      <TableCell>
+                        {editando ? (
+                          <input
+                            type="text"
+                            value={editNome}
+                            onChange={(e) => setEditNome(e.target.value)}
+                            className="h-9 w-full min-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-sm"
+                          />
+                        ) : (
+                          <span className="font-medium">{a.nome}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editando ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={editHora}
+                            onChange={(e) => setEditHora(normalize24hTime(e.target.value))}
+                            className="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums"
+                          />
+                        ) : (
+                          <span className="font-mono tabular-nums">{a.hora}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
+                          checked={a.ativo}
+                          disabled={editando}
+                          onChange={(e) => updateAlarmeDiario(a.id, { ativo: e.target.checked })}
+                          aria-label={`Alarme ativo: ${a.nome}`}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {editando ? (
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Button type="button" size="sm" variant="default" onClick={salvarEdicao}>
+                              Salvar
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={cancelarEdicao}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Button type="button" size="sm" variant="outline" onClick={() => iniciarEdicao(a)}>
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-red-700 hover:bg-red-50"
+                              onClick={() => handleExcluir(a.id, a.nome)}
+                            >
+                              Excluir
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </AvisosCollapsibleCard>
+
+      <AvisosCollapsibleCard title="Fainas gerais" open={open.fainas} onToggle={() => toggle("fainas")}>
+        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+          Uma linha por faina. Esses itens entram no <strong>telão inferior</strong> da página inicial (texto em
+          movimento) e no card <strong>Fainas Gerais</strong> do painel.
+        </p>
+        <label className="sr-only" htmlFor="fainas-texto">
+          Fainas gerais
+        </label>
+        <textarea
+          id="fainas-texto"
+          value={fainasTexto}
+          onChange={(e) => setFainasTexto(e.target.value)}
+          rows={8}
+          placeholder={"Ex.: Apoio ao evento na Cidade Alta — 08h.\nVistoria no 3º Batalhão — 14h."}
+          className="min-h-[160px] w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        />
       </AvisosCollapsibleCard>
     </div>
   );

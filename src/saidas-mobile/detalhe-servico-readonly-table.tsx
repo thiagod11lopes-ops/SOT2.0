@@ -119,7 +119,7 @@ export function DetalheServicoReadonlyTable({ monthKey, sheet: rawSheet, columnG
   return (
     <div className="space-y-3">
       <p className="text-center text-sm font-semibold text-[hsl(var(--foreground))]">{formatMonthTitlePt(monthKey)}</p>
-      <div className="w-full min-w-0 overflow-x-auto rounded-xl border border-[hsl(var(--border))]">
+      <div className="w-full min-w-0 touch-pan-x touch-pan-y overflow-x-auto rounded-xl border border-[hsl(var(--border))]">
         <table className="w-max min-w-full border-collapse text-left text-[10px] leading-tight sm:text-[11px]">
           <thead>
             <tr>

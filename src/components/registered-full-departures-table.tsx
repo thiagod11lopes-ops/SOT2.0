@@ -35,7 +35,7 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, 
               Setor, ramal e objetivo
             </TableHead>
             <TableHead className="w-[13%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
-              Pass., resp., OM
+              Pass., resp., OM / Hosp.
             </TableHead>
             <TableHead className="w-[15%] p-1.5 align-bottom text-[10px] sm:p-2 sm:text-xs">
               Viaturas e motoristas
@@ -84,14 +84,20 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, 
                   <TableCell className="p-1.5 sm:p-2">
                     <FieldLine label="Pass.:" value={c.numeroPassageiros} />
                     <FieldLine label="Resp.:" value={c.responsavelPedido} />
-                    <FieldLine label="OM:" value={c.om} />
+                    {row.tipo === "Ambulância" ? (
+                      <FieldLine label="Hospital:" value={c.hospitalDestino} />
+                    ) : (
+                      <FieldLine label="OM:" value={c.om} />
+                    )}
                   </TableCell>
                   <TableCell className="p-1.5 sm:p-2">
                     <FieldLine label="Viaturas:" value={c.viaturas} />
                     <FieldLine label="Mot.:" value={c.motoristas} />
                   </TableCell>
                   <TableCell className="p-1.5 font-mono sm:p-2">
-                    <FieldLine label="Hosp.:" value={c.hospitalDestino} />
+                    {row.tipo === "Administrativa" ? (
+                      <FieldLine label="Hosp.:" value={c.hospitalDestino} />
+                    ) : null}
                     <FieldLine label="KM s/c:" value={`${c.kmSaida} / ${c.kmChegada}`} />
                     <FieldLine label="Cheg.:" value={c.chegada} />
                   </TableCell>
