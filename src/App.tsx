@@ -11,8 +11,11 @@ import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
+import { useSyncPreference } from "./context/sync-preference-context";
 import { useOilMaintenanceMap } from "./hooks/useOilMaintenanceMap";
+import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
 import { isSettingsTab } from "./lib/tabMatch";
+import { Button } from "./components/ui/button";
 
 function useLocationHash() {
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
@@ -36,13 +39,45 @@ const tabs = [
   "Configurações",
 ];
 
+const DAILY_BACKUP_KEY = "sot_daily_backup_gate_v1";
+
+function localDayKeyNow(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function readDailyBackupDone(): string {
+  try {
+    return localStorage.getItem(DAILY_BACKUP_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function markDailyBackupDone(dayKey: string): void {
+  try {
+    localStorage.setItem(DAILY_BACKUP_KEY, dayKey);
+  } catch {
+    /* ignore */
+  }
+}
+
 function App() {
   const hash = useLocationHash();
   const { activeTab, setActiveTab } = useAppTab();
   /** Um único listener Firestore `oilMaintenance` para Dashboard + faixa inferior (evita leituras duplicadas). */
   const mapaOleo = useOilMaintenanceMap();
-  const { editIntentVersion } = useDepartures();
+  const { editIntentVersion, cloudDeparturesSync } = useDepartures();
+  const { firebaseOnlyEnabled } = useSyncPreference();
   const lastEditIntentVersion = useRef(editIntentVersion);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [dailyBackupDoneKey, setDailyBackupDoneKey] = useState<string>(() => readDailyBackupDone());
 
   useEffect(() => {
     if (hash.startsWith("#/saidas")) return;
@@ -51,6 +86,47 @@ function App() {
       setActiveTab("Cadastrar Saída");
     }
   }, [editIntentVersion, setActiveTab, hash]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  const todayKey = localDayKeyNow();
+  const isMobileRoute = hash.startsWith("#/saidas");
+  const shouldRequireDailyBackup =
+    !isMobileRoute &&
+    isOnline &&
+    firebaseOnlyEnabled &&
+    cloudDeparturesSync.enabled &&
+    dailyBackupDoneKey !== todayKey;
+
+  async function handleDailyBackupNow() {
+    try {
+      setBackupBusy(true);
+      const backup = await exportFullBackupFromFirebase();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = URL.createObjectURL(blob);
+      a.download = `sot_backup_automatico_${stamp}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      markDailyBackupDone(todayKey);
+      setDailyBackupDoneKey(todayKey);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao gerar backup automático.";
+      window.alert(msg);
+    } finally {
+      setBackupBusy(false);
+    }
+  }
 
   const content = useMemo(() => {
     if (!activeTab) return <Dashboard mapaOleo={mapaOleo} />;
@@ -67,13 +143,11 @@ function App() {
     return <PlaceholderPage title={activeTab} />;
   }, [activeTab, mapaOleo]);
 
-  if (hash.startsWith("#/saidas")) {
-    return <SaidasMobileApp />;
-  }
-
   const isHome = !activeTab;
 
-  return (
+  const appContent = isMobileRoute ? (
+    <SaidasMobileApp />
+  ) : (
     <>
       <Layout
         tabs={tabs}
@@ -84,6 +158,28 @@ function App() {
         {content}
       </Layout>
       {isHome ? <HomeNewsTicker mapaOleo={mapaOleo} /> : null}
+    </>
+  );
+
+  return (
+    <>
+      {appContent}
+      {shouldRequireDailyBackup ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
+            <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">Backup diário obrigatório</h2>
+            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+              Sistema em modo online com Firebase. Antes de continuar, é obrigatório gerar um backup geral com todos os
+              dados preenchidos no sistema.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <Button type="button" onClick={handleDailyBackupNow} disabled={backupBusy}>
+                {backupBusy ? "Gerando backup..." : "Fazer Backup"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
