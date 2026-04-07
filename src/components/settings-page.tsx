@@ -8,6 +8,13 @@ import { getDepartureReferenceDate } from "../lib/dateFormat";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
+import {
+  buildBackupPreviewItems,
+  exportFullBackupFromFirebase,
+  type FirebaseFullBackup,
+  parseFullBackupJson,
+  restoreFullBackupToLocal,
+} from "../lib/firebase/systemBackup";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -53,9 +60,13 @@ export function SettingsPage() {
     setReportEmailDest(reportEmailStored);
   }, [reportEmailStored]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fullBackupFileInputRef = useRef<HTMLInputElement>(null);
   const [savePeriodMode, setSavePeriodMode] = useState<SavePeriodMode>("full");
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
+  const [fullBackupBusy, setFullBackupBusy] = useState(false);
+  const [backupPreviewOpen, setBackupPreviewOpen] = useState(false);
+  const [preparedBackup, setPreparedBackup] = useState<FirebaseFullBackup | null>(null);
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -163,6 +174,69 @@ export function SettingsPage() {
     clearAllDepartures();
   }
 
+  async function handleAbrirPreviewBackupGeral() {
+    try {
+      setFullBackupBusy(true);
+      const backup = await exportFullBackupFromFirebase();
+      setPreparedBackup(backup);
+      setBackupPreviewOpen(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao gerar backup geral do Firebase.";
+      window.alert(msg);
+    } finally {
+      setFullBackupBusy(false);
+    }
+  }
+
+  function handleConfirmarDownloadBackupGeral() {
+    if (!preparedBackup) return;
+    const blob = new Blob([JSON.stringify(preparedBackup, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = URL.createObjectURL(blob);
+    a.download = `sot_backup_geral_firebase_${stamp}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setBackupPreviewOpen(false);
+  }
+
+  function handleCarregarBackupGeralClick() {
+    if (firebaseOnlyEnabled) {
+      window.alert("Desative 'Usar somente dados do Firebase' para carregar backup local.");
+      return;
+    }
+    fullBackupFileInputRef.current?.click();
+  }
+
+  function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (firebaseOnlyEnabled) {
+      window.alert("Carregamento bloqueado: use apenas com o modo local ativo.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      void (async () => {
+        try {
+          setFullBackupBusy(true);
+          const raw = JSON.parse(String(reader.result)) as unknown;
+          const backup = parseFullBackupJson(raw);
+          await restoreFullBackupToLocal(backup);
+          window.alert("Backup geral carregado na memória local. A página será recarregada.");
+          window.location.reload();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Falha ao carregar backup geral.";
+          window.alert(msg);
+        } finally {
+          setFullBackupBusy(false);
+        }
+      })();
+    };
+    reader.readAsText(file);
+  }
+
   return (
     <Card>
       <CardHeader className="space-y-1">
@@ -233,7 +307,69 @@ export function SettingsPage() {
             Quando ativo: o sistema lê/escreve na nuvem e não promove dados locais antigos para o Firebase no bootstrap.
             Quando desativado: funciona apenas com dados locais (IndexedDB/localStorage), sem sincronização com a nuvem.
           </p>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleAbrirPreviewBackupGeral}
+              disabled={fullBackupBusy}
+            >
+              {fullBackupBusy ? "Processando..." : "Backup geral do Firebase"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCarregarBackupGeralClick}
+              disabled={firebaseOnlyEnabled || fullBackupBusy}
+            >
+              Carregar backup geral (local)
+            </Button>
+            <input
+              ref={fullBackupFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleFullBackupFileChange}
+            />
+          </div>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            O carregamento do backup geral só é permitido em modo local para evitar conflito e sobrescrita na nuvem.
+          </p>
         </section>
+        {backupPreviewOpen && preparedBackup ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
+              <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">
+                Backup geral - Pré-visualização dos dados
+              </h3>
+              <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                Projeto: <strong>{preparedBackup.projectId || "-"}</strong> · Exportado em:{" "}
+                {new Date(preparedBackup.exportedAt).toLocaleString("pt-BR")}
+              </p>
+              <div className="mt-3 space-y-2">
+                {buildBackupPreviewItems(preparedBackup).map((item, idx) => (
+                  <div
+                    key={`${item.aba}-${item.descricao}-${idx}`}
+                    className="rounded-md border border-[hsl(var(--border))] px-3 py-2"
+                  >
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{item.aba}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      {item.descricao}: <strong>{item.quantidade}</strong>
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setBackupPreviewOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant="default" onClick={handleConfirmarDownloadBackupGeral}>
+                  Baixar backup geral
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Saídas</h3>
