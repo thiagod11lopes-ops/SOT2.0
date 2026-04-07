@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
@@ -12,103 +12,7 @@ import type { DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
-
-function Field({
-  label,
-  value,
-  onChange,
-  inputMode,
-  mono,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
-  mono?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-        {label}
-      </span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode={inputMode}
-        autoComplete="off"
-        disabled={disabled}
-        className={cn(
-          "min-h-[2.75rem] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
-          mono && "font-mono tabular-nums",
-          disabled && "cursor-not-allowed opacity-70",
-        )}
-      />
-    </label>
-  );
-}
-
-/**
- * Apenas `<select>` (sem input de texto): escolha entre itens do catálogo Frota e Pessoal.
- * Se o registo tiver valor que já não está no catálogo, mostra uma opção extra só para esse valor.
- */
-function FleetSelectField({
-  label,
-  value,
-  onChange,
-  options,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  disabled?: boolean;
-}) {
-  const selectId = useId();
-  const orphan = useMemo(() => {
-    if (!value.trim()) return null;
-    if (options.some((o) => o === value)) return null;
-    return value;
-  }, [value, options]);
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[0.65rem] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]" htmlFor={selectId}>
-        {label}
-      </label>
-      <select
-        id={selectId}
-        value={options.some((o) => o === value) || value === "" || orphan === value ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
-        autoComplete="off"
-        disabled={disabled}
-        className={cn(
-          "min-h-[2.75rem] w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40",
-          disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer",
-        )}
-      >
-        <option value="">— Selecionar —</option>
-        {orphan ? (
-          <option value={orphan}>
-            {orphan} (fora do catálogo)
-          </option>
-        ) : null}
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-      {options.length === 0 ? (
-        <span className="text-[0.65rem] text-[hsl(var(--muted-foreground))]">
-          Cadastre itens em <strong>Frota e Pessoal</strong> no SOT (ambiente completo).
-        </span>
-      ) : null}
-    </div>
-  );
-}
+import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
 export function DepartureCard({
   record,
@@ -288,56 +192,60 @@ export function DepartureCard({
             {editavel ? "Edição rápida (mesma ordem)" : "Dados (só leitura)"}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FleetSelectField
+            <MobileEditableSelectField
               label="Viatura"
               value={record.viaturas}
               onChange={(v) => applyAmbPatch({ viaturas: v })}
               options={viaturasOpcoes}
               disabled={!editavel}
+              emptyCatalogHint
             />
-            <FleetSelectField
+            <MobileEditableSelectField
               label="Motorista"
               value={record.motoristas}
               onChange={(v) => applyAmbPatch({ motoristas: v })}
               options={motoristasFrota}
               disabled={!editavel}
+              emptyCatalogHint
             />
-            <Field
+            <MobileEditableTextField
               label="Destino"
               value={record.bairro}
-              onChange={(v) => applyAmbPatch({ bairro: v })}
+              onCommit={(v) => applyAmbPatch({ bairro: v })}
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="Hora da saída"
               value={record.horaSaida}
-              onChange={(v) => applyAmbPatch({ horaSaida: normalize24hTime(v) })}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => applyAmbPatch({ horaSaida: v })}
+              transform={normalize24hTime}
+              time24h
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
-              onChange={(v) => applyAmbPatch({ kmSaida: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => applyAmbPatch({ kmSaida: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onChange={(v) => applyAmbPatch({ kmChegada: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => applyAmbPatch({ kmChegada: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="Hora da chegada"
               value={record.chegada}
-              onChange={(v) => applyAmbPatch({ chegada: normalize24hTime(v) })}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => applyAmbPatch({ chegada: v })}
+              transform={normalize24hTime}
+              time24h
               disabled={!editavel}
             />
             {updateDeparture ? (
@@ -418,28 +326,29 @@ export function DepartureCard({
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field
+            <MobileEditableTextField
               label="KM saída"
               value={formatKmThousandsPtBr(record.kmSaida)}
-              onChange={(v) => onPatchKm({ kmSaida: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => onPatchKm({ kmSaida: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onChange={(v) => onPatchKm({ kmChegada: formatKmThousandsPtBr(v) })}
+              onCommit={(v) => onPatchKm({ kmChegada: v })}
+              transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <Field
+            <MobileEditableTextField
               label="Hora da chegada"
               value={record.chegada}
-              onChange={(v) => commitChegada(v)}
-              inputMode="numeric"
-              mono
+              onCommit={(v) => commitChegada(v)}
+              time24h
               disabled={!editavel}
             />
             {updateDeparture ? (
@@ -528,21 +437,19 @@ export function DepartureCard({
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl"
+                className="min-h-11 rounded-xl font-medium text-black"
                 onClick={() => rubricaPadRef.current?.clearPad()}
               >
                 Limpar
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl"
+                className="min-h-11 rounded-xl font-medium text-black"
                 onClick={() => setRubricaModalOpen(false)}
               >
                 Cancelar
               </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubrica}>
+              <Button type="button" className="min-h-11 rounded-xl font-semibold text-black" onClick={commitRubrica}>
                 OK
               </Button>
             </div>

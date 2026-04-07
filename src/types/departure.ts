@@ -1,3 +1,5 @@
+import { parseHhMm } from "../lib/timeInput";
+
 export type DepartureType = "Administrativa" | "Ambulância";
 
 /** Registro completo conforme os campos de Cadastrar Nova Saída. */
@@ -77,6 +79,85 @@ export function dedupeDeparturesMesmoCadastro(rows: DepartureRecord[]): Departur
     out.push(r);
   }
   return out;
+}
+
+/** Formata lista de destinos (bairros): «A», «A e B», «A, B e C», «A, B, C e D». */
+export function formatDestinosListaPt(parts: string[]): string {
+  const cleaned = parts.map((p) => p.trim()).filter(Boolean);
+  if (cleaned.length === 0) return "—";
+  if (cleaned.length === 1) return cleaned[0]!;
+  if (cleaned.length === 2) return `${cleaned[0]} e ${cleaned[1]}`;
+  const last = cleaned[cleaned.length - 1]!;
+  const head = cleaned.slice(0, -1).join(", ");
+  return `${head} e ${last}`;
+}
+
+/** Textos não vazios, ordem preservada, sem duplicar ignorando maiúsculas. */
+function dedupeTextoListaPreserveOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const b of values) {
+    const t = b.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+function horaMergeKey(hora: string): string {
+  const p = parseHhMm(hora);
+  if (!p) return hora.trim().toLowerCase();
+  return `${String(p.h).padStart(2, "0")}:${String(p.m).padStart(2, "0")}`;
+}
+
+/** Chave de agrupamento: mesma viatura, motorista, hora de saída e estado cancelada. */
+export function mergeGroupKey(r: DepartureRecord): string {
+  const v = r.viaturas.trim().toLowerCase();
+  const m = r.motoristas.trim().toLowerCase();
+  const h = horaMergeKey(r.horaSaida);
+  const c = r.cancelada === true ? "1" : "0";
+  return `${c}|${v}|${m}|${h}`;
+}
+
+export type DepartureListMergeGroup = {
+  records: DepartureRecord[];
+  /** Primeiro registo na ordem já ordenada da lista. */
+  primary: DepartureRecord;
+  /** Destinos fundidos para a coluna Destino. */
+  destinoDisplay: string;
+  /** Setores fundidos (mesmo formato: vírgulas e «e» antes do último). */
+  setorDisplay: string;
+};
+
+/**
+ * Agrupa saídas com a mesma viatura, motorista e horário (e mesmo estado cancelada)
+ * para uma única linha na tabela, fundindo bairros e setores.
+ */
+export function groupDeparturesForListDisplay(rows: DepartureRecord[]): DepartureListMergeGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, DepartureRecord[]>();
+
+  for (const r of rows) {
+    const k = mergeGroupKey(r);
+    if (!map.has(k)) {
+      order.push(k);
+      map.set(k, []);
+    }
+    map.get(k)!.push(r);
+  }
+
+  return order.map((k) => {
+    const records = map.get(k)!;
+    const primary = records[0]!;
+    const dedupedBairros = dedupeTextoListaPreserveOrder(records.map((x) => x.bairro));
+    const destinoDisplay = dedupedBairros.length === 0 ? "—" : formatDestinosListaPt(dedupedBairros);
+    const dedupedSetores = dedupeTextoListaPreserveOrder(records.map((x) => x.setor));
+    const setorDisplay = dedupedSetores.length === 0 ? "—" : formatDestinosListaPt(dedupedSetores);
+    return { records, primary, destinoDisplay, setorDisplay };
+  });
 }
 
 /** Linha resumida para as abas Saídas Administrativas / Ambulância (tabela enxuta). Destino = só bairro. */

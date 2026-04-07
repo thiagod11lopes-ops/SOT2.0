@@ -266,7 +266,7 @@ export function TrocaOleoModal({
         </div>
 
         <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" onClick={onClose}>
             Cancelar
           </Button>
           <Button type="button" onClick={handleConfirmar}>

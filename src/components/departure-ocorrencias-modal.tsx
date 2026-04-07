@@ -65,7 +65,7 @@ export function DepartureOcorrenciasModal({ open, onOpenChange, record, onSave }
           placeholder="Descreva a ocorrência…"
         />
         <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" onClick={fechar}>
+          <Button type="button" onClick={fechar}>
             Cancelar
           </Button>
           <Button type="button" variant="default" onClick={handleSalvar}>

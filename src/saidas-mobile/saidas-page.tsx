@@ -145,7 +145,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
         onOpenChange={(o) => {
           if (!o) setExcluirModalId(null);
         }}
-        record={excluirModalRecord}
+        records={excluirModalRecord ? [excluirModalRecord] : null}
         onExcluirDefinitivo={(id) => {
           removeDeparture(id);
           setSelectedAmbulanciaId(null);

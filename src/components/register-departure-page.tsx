@@ -650,7 +650,7 @@ export function RegisterDeparturePage() {
                 onOpenChange={(o) => {
                   if (!o) setDeleteModalId(null);
                 }}
-                record={deleteModalRecord}
+                records={deleteModalRecord ? [deleteModalRecord] : null}
                 onExcluirDefinitivo={removeDeparture}
                 onConfirmarCancelamento={handleConfirmarCancelamentoCadastro}
               />
@@ -1104,7 +1104,6 @@ export function RegisterDeparturePage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
                 onClick={() => {
                   setAddLocationModal(null);
                   setAddLocationDraft("");

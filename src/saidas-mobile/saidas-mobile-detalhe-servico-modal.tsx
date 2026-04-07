@@ -237,7 +237,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
 
         <div className="shrink-0 flex flex-col gap-2 border-t border-[hsl(var(--border))] px-5 py-3 sm:flex-row sm:flex-wrap sm:items-center">
           {fullDetail ? (
-            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setFullDetail(false)}>
+            <Button type="button" className="w-full font-medium sm:w-auto" onClick={() => setFullDetail(false)}>
               Voltar ao resumo
             </Button>
           ) : (
@@ -253,8 +253,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
           )}
           <Button
             type="button"
-            variant="outline"
-            className="w-full sm:w-auto sm:min-w-[7rem]"
+            className="w-full font-medium sm:w-auto sm:min-w-[7rem]"
             onClick={() => onOpenChange(false)}
           >
             Fechar
