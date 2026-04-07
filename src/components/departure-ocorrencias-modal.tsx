@@ -7,9 +7,17 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   record: DepartureRecord | null;
   onSave: (id: string, texto: string) => void;
+  /** Mobile: botão Guardar antes de Cancelar. */
+  confirmFirst?: boolean;
 };
 
-export function DepartureOcorrenciasModal({ open, onOpenChange, record, onSave }: Props) {
+export function DepartureOcorrenciasModal({
+  open,
+  onOpenChange,
+  record,
+  onSave,
+  confirmFirst = false,
+}: Props) {
   const titleId = useId();
   const textId = useId();
   const [draft, setDraft] = useState("");
@@ -65,12 +73,25 @@ export function DepartureOcorrenciasModal({ open, onOpenChange, record, onSave }
           placeholder="Descreva a ocorrência…"
         />
         <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <Button type="button" onClick={fechar}>
-            Cancelar
-          </Button>
-          <Button type="button" variant="default" onClick={handleSalvar}>
-            Guardar
-          </Button>
+          {confirmFirst ? (
+            <>
+              <Button type="button" variant="default" onClick={handleSalvar}>
+                Guardar
+              </Button>
+              <Button type="button" onClick={fechar}>
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" onClick={fechar}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="default" onClick={handleSalvar}>
+                Guardar
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

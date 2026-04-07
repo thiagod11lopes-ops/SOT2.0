@@ -406,6 +406,7 @@ export function DepartureCard({
           onOpenChange={setOcorrenciasModalOpen}
           record={record}
           onSave={handleSalvarOcorrencias}
+          confirmFirst
         />
       ) : null}
 

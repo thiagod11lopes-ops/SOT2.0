@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "../components/ui/button";
 import { normalize24hTime, normalize24hTimeWithCaret } from "../lib/timeInput";
 import { cn } from "../lib/utils";
@@ -30,7 +31,7 @@ type SelectProps = BaseProps & {
 
 export type MobileFieldEditModalProps = InputProps | SelectProps;
 
-/** Modal grande para editar um campo no mobile (OK / Cancelar). */
+/** Modal grande para editar um campo no mobile (OK antes de Cancelar). */
 export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,17 +49,30 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
     }
   }, [props.open, props.initialValue, isTime24h]);
 
-  useEffect(() => {
+  /** Foco imediato + rAF: ajuda o teclado virtual (sobretudo Android) a abrir ao abrir o modal. */
+  useLayoutEffect(() => {
     if (!props.open) return;
-    const t = window.setTimeout(() => {
+
+    function focusField() {
       if (props.variant === "input") {
-        inputRef.current?.focus();
-        inputRef.current?.select?.();
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        try {
+          el.select();
+        } catch {
+          /* select() pode falhar em alguns estados */
+        }
       } else {
-        selectRef.current?.focus();
+        selectRef.current?.focus({ preventScroll: true });
       }
-    }, 100);
-    return () => window.clearTimeout(t);
+    }
+
+    focusField();
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(focusField);
+    });
+    return () => cancelAnimationFrame(id);
   }, [props.open, props.variant]);
 
   if (!props.open) return null;
@@ -119,6 +133,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
           {props.variant === "input" ? (
             <input
               ref={inputRef}
+              autoFocus
               value={draft}
               onChange={(e) => {
                 if (isTime24h) {
@@ -144,6 +159,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
           ) : (
             <select
               ref={selectRef}
+              autoFocus
               value={
                 props.options.some((o) => o === draft) || draft === "" || orphan === draft
                   ? draft
@@ -172,17 +188,17 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
         <div className="shrink-0 flex flex-col gap-2 border-t border-[hsl(var(--border))] px-4 py-4 sm:flex-row sm:justify-end sm:px-5">
           <Button
             type="button"
-            className="min-h-12 w-full rounded-xl text-base font-medium text-black sm:w-auto sm:min-w-[7rem]"
-            onClick={handleCancel}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="button"
             className="min-h-12 w-full rounded-xl text-base font-semibold text-black sm:w-auto sm:min-w-[7rem]"
             onClick={handleConfirm}
           >
             OK
+          </Button>
+          <Button
+            type="button"
+            className="min-h-12 w-full rounded-xl text-base font-medium text-black sm:w-auto sm:min-w-[7rem]"
+            onClick={handleCancel}
+          >
+            Cancelar
           </Button>
         </div>
       </div>
@@ -190,7 +206,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
   );
 }
 
-/** Campo de texto: toque abre modal grande (OK / Cancelar). */
+/** Campo de texto: toque abre modal grande (OK antes de Cancelar). */
 export function MobileEditableTextField({
   label,
   value,
@@ -236,7 +252,9 @@ export function MobileEditableTextField({
         ) : (
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              flushSync(() => setOpen(true));
+            }}
             className={cn(
               "min-h-[2.75rem] w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-left text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40 active:bg-[hsl(var(--muted))]/25",
               mono && "font-mono tabular-nums",
@@ -262,7 +280,7 @@ export function MobileEditableTextField({
   );
 }
 
-/** Select de catálogo: toque abre modal grande (OK / Cancelar). */
+/** Select de catálogo: toque abre modal grande (OK antes de Cancelar). */
 export function MobileEditableSelectField({
   label,
   value,
@@ -304,7 +322,9 @@ export function MobileEditableSelectField({
         ) : (
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              flushSync(() => setOpen(true));
+            }}
             className="min-h-[2.75rem] w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-3 text-left text-sm text-[hsl(var(--foreground))] outline-none ring-0 transition focus:border-[hsl(var(--primary))] focus:ring-2 focus:ring-[hsl(var(--ring))]/40 active:bg-[hsl(var(--muted))]/25"
           >
             {display}
