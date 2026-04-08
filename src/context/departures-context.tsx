@@ -14,6 +14,7 @@ import {
   batchUpsertDepartures,
   deleteAllDepartureDocuments,
   deleteDepartureDocument,
+  getDepartureRecord,
   isDepartureVersionConflictError,
   subscribeDepartures,
   upsertDepartureRecord,
@@ -516,7 +517,30 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           markTouched(next.id);
           const expectedBaseVersion = options?.expectedBaseVersion ?? d.version ?? 0;
           enqueueWrite(
-            () => upsertDepartureRecord(next, { expectedBaseVersion }),
+            async () => {
+              try {
+                await upsertDepartureRecord(next, { expectedBaseVersion });
+                return;
+              } catch (err) {
+                if (!isDepartureVersionConflictError(err)) throw err;
+              }
+
+              // Auto-resolver: recarrega o remoto, reaplica a edição e tenta novamente.
+              const remote = await getDepartureRecord(id);
+              if (!remote) {
+                throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
+              }
+              const merged: DepartureRecord = {
+                ...remote,
+                ...data,
+                id: remote.id,
+                createdAt: remote.createdAt,
+                version: remote.version,
+                updatedAt: Date.now(),
+                updatedBy: clientIdRef.current,
+              };
+              await upsertDepartureRecord(merged, { expectedBaseVersion: remote.version ?? 0 });
+            },
             {
               conflict: "A saída foi alterada em outro dispositivo.",
               generic: "Não foi possível atualizar a saída na nuvem.",

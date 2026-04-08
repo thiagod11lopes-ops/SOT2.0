@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
   onSnapshot,
@@ -230,6 +231,14 @@ export async function upsertDepartureRecord(
     }
     tx.update(ref, patch);
   });
+}
+
+export async function getDepartureRecord(id: string): Promise<DepartureRecord | null> {
+  await ensureFirebaseAuth();
+  const db = getFirestore(getFirebaseApp());
+  const snap = await getDoc(doc(db, COLLECTION, id));
+  if (!snap.exists()) return null;
+  return docToDeparture(snap as QueryDocumentSnapshot<DocumentData>);
 }
 
 export async function deleteDepartureDocument(id: string): Promise<void> {
