@@ -23,6 +23,7 @@ import { getSyncClientId } from "../lib/firebase/clientIdentity";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import type { DepartureRecord } from "../types/departure";
+import { mergeGroupKey } from "../types/departure";
 import { useSyncPreference } from "./sync-preference-context";
 
 export type DepartureKmFieldsPatch = Partial<
@@ -518,28 +519,32 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           const expectedBaseVersion = options?.expectedBaseVersion ?? d.version ?? 0;
           enqueueWrite(
             async () => {
-              try {
-                await upsertDepartureRecord(next, { expectedBaseVersion });
-                return;
-              } catch (err) {
-                if (!isDepartureVersionConflictError(err)) throw err;
+              let candidate = next;
+              let expected = expectedBaseVersion;
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                  await upsertDepartureRecord(candidate, { expectedBaseVersion: expected });
+                  return;
+                } catch (err) {
+                  if (!isDepartureVersionConflictError(err)) throw err;
+                  // Auto-resolver: recarrega o remoto, reaplica a edição e tenta novamente.
+                  const remote = await getDepartureRecord(id);
+                  if (!remote) {
+                    throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
+                  }
+                  candidate = {
+                    ...remote,
+                    ...data,
+                    id: remote.id,
+                    createdAt: remote.createdAt,
+                    version: remote.version,
+                    updatedAt: Date.now(),
+                    updatedBy: clientIdRef.current,
+                  };
+                  expected = remote.version ?? 0;
+                }
               }
-
-              // Auto-resolver: recarrega o remoto, reaplica a edição e tenta novamente.
-              const remote = await getDepartureRecord(id);
-              if (!remote) {
-                throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
-              }
-              const merged: DepartureRecord = {
-                ...remote,
-                ...data,
-                id: remote.id,
-                createdAt: remote.createdAt,
-                version: remote.version,
-                updatedAt: Date.now(),
-                updatedBy: clientIdRef.current,
-              };
-              await upsertDepartureRecord(merged, { expectedBaseVersion: remote.version ?? 0 });
+              throw new Error("Conflito persistente após múltiplas tentativas de auto-resolução.");
             },
             {
               conflict: "A saída foi alterada em outro dispositivo.",
@@ -591,29 +596,45 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       if (useCloud) {
         bumpLocalMutation();
         setDepartures((prev) => {
-          const d = prev.find((x) => x.id === id);
-          if (!d || d.cancelada) return prev;
-          const next = {
-            ...d,
-            ...patch,
-            updatedAt: Date.now(),
-            updatedBy: clientIdRef.current,
-          };
-          markTouched(next.id);
-          enqueueWrite(
-            () => upsertDepartureRecord(next, { expectedBaseVersion: d.version ?? 0 }),
-            {
-              conflict: "Conflito de versão: os KM foram alterados em outro dispositivo.",
-              generic: "Não foi possível gravar os KM na nuvem.",
-            },
-          );
-          return prev.map((x) => (x.id === id && !x.cancelada ? next : x));
+          const seed = prev.find((x) => x.id === id);
+          if (!seed || seed.cancelada) return prev;
+          const groupKey = mergeGroupKey(seed);
+          const now = Date.now();
+          const updates = prev
+            .filter((x) => !x.cancelada && mergeGroupKey(x) === groupKey)
+            .map((d) => ({
+              current: d,
+              next: {
+                ...d,
+                ...patch,
+                updatedAt: now,
+                updatedBy: clientIdRef.current,
+              } as DepartureRecord,
+            }));
+          if (updates.length === 0) return prev;
+          for (const { current, next } of updates) {
+            markTouched(next.id);
+            enqueueWrite(
+              () => upsertDepartureRecord(next, { expectedBaseVersion: current.version ?? 0 }),
+              {
+                conflict: "Conflito de versão: os KM foram alterados em outro dispositivo.",
+                generic: "Não foi possível gravar os KM na nuvem.",
+              },
+            );
+          }
+          const nextById = new Map(updates.map((u) => [u.next.id, u.next]));
+          return prev.map((d) => nextById.get(d.id) ?? d);
         });
         return;
       }
-      setDepartures((prev) =>
-        prev.map((d) => (d.id === id && !d.cancelada ? { ...d, ...patch } : d)),
-      );
+      setDepartures((prev) => {
+        const seed = prev.find((x) => x.id === id);
+        if (!seed || seed.cancelada) return prev;
+        const groupKey = mergeGroupKey(seed);
+        return prev.map((d) =>
+          !d.cancelada && mergeGroupKey(d) === groupKey ? { ...d, ...patch } : d,
+        );
+      });
     },
     [useCloud, bumpLocalMutation, markTouched, enqueueWrite],
   );
