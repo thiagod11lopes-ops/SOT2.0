@@ -15,6 +15,7 @@ export const SOT_STATE_DOC = {
   catalog: "catalog",
   avisos: "avisos",
   limpezaPendente: "limpezaPendente",
+  viaturasInoperantes: "viaturasInoperantes",
   oficina: "oficina",
   oilMaintenance: "oilMaintenance",
   customLocations: "customLocations",

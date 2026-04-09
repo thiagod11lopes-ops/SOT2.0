@@ -1,4 +1,5 @@
 import { useVehicleMaintenance } from "../context/vehicle-maintenance-context";
+import { useViaturasInoperantes } from "../context/viaturas-inoperantes-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { maiorKmChegadaPorViatura, statusTrocaOleo } from "../lib/oilMaintenance";
 import { viaturaEstaNaOficina } from "../lib/oficinaVisits";
@@ -16,6 +17,7 @@ import {
 export function VehicleMaintenancePanel() {
   const { mapa, mapaOficina, departures, placas, setOficinaPlacaAberta, setTrocaOleoPlaca } =
     useVehicleMaintenance();
+  const { isInoperante, setInoperante } = useViaturasInoperantes();
 
   if (placas.length === 0) {
     return (
@@ -53,6 +55,7 @@ export function VehicleMaintenancePanel() {
               const st = statusTrocaOleo(kmAtual, reg);
               const visitasOficina = mapaOficina[placa] ?? [];
               const oficinaComSaidaEmBranco = viaturaEstaNaOficina(visitasOficina);
+              const inoperante = isInoperante(placa);
 
               let statusLabel = "—";
               let statusClass = "text-[hsl(var(--muted-foreground))]";
@@ -90,6 +93,19 @@ export function VehicleMaintenancePanel() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={() => setTrocaOleoPlaca(placa)}>
                         Troca de Óleo
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          inoperante &&
+                            "border-0 bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500",
+                        )}
+                        onClick={() => setInoperante(placa, !inoperante)}
+                        aria-pressed={inoperante}
+                      >
+                        INOP
                       </Button>
                       <Button
                         type="button"

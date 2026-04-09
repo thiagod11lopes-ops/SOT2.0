@@ -14,6 +14,7 @@ import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
 import { useOficinaVisitas } from "../context/oficina-visits-context";
+import { useViaturasInoperantes } from "../context/viaturas-inoperantes-context";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import {
@@ -209,6 +210,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
   const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
+  const { placas: placasInoperantes } = useViaturasInoperantes();
 
   const { mapaOficina } = useOficinaVisitas();
   const placasCatalogo = useMemo(
@@ -491,27 +493,52 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className={departuresTableShadowClass}>
             <CardContent className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
-                {placasNaOficina.length === 0 ? (
-                  <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma viatura com entrada na oficina sem data de saída.
-                  </p>
-                ) : (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
-                    {placasNaOficina.map((placa) => (
-                      <li
-                        key={placa}
-                        className={cn(
-                          "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
-                          homeBodyEmphasisClass,
-                        )}
-                      >
-                        {placa}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="min-w-0 flex-1 space-y-4">
+                <div>
+                  <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
+                  {placasNaOficina.length === 0 ? (
+                    <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      Nenhuma viatura com entrada na oficina sem data de saída.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {placasNaOficina.map((placa) => (
+                        <li
+                          key={placa}
+                          className={cn(
+                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                            homeBodyEmphasisClass,
+                          )}
+                        >
+                          {placa}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="border-t border-[hsl(var(--border))] pt-3">
+                  <p className={homeSectionTitleClass}>Viaturas Inoperantes</p>
+                  {placasInoperantes.length === 0 ? (
+                    <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      Nenhuma viatura inoperante cadastrada.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {placasInoperantes.map((placa) => (
+                        <li
+                          key={placa}
+                          className={cn(
+                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                            homeBodyEmphasisClass,
+                          )}
+                        >
+                          {placa}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
               <Button
                 type="button"

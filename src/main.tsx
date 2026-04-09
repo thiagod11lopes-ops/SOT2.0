@@ -12,6 +12,7 @@ import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
 import { MotoristaPaoProvider } from "./context/motorista-pao-context";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
+import { ViaturasInoperantesProvider } from "./context/viaturas-inoperantes-context";
 import { VehicleMaintenanceProvider } from "./context/vehicle-maintenance-context";
 import { VehicleMaintenanceModals } from "./components/vehicle-maintenance-modals";
 import { SyncPreferenceProvider } from "./context/sync-preference-context";
@@ -36,18 +37,20 @@ createRoot(rootEl).render(
                   <BackupDeparturesLoader />
                   <CatalogItemsProvider>
                     <LimpezaPendenteProvider>
-                      <OficinaVisitasProvider>
-                        <VehicleMaintenanceProvider>
-                          <VehicleMaintenanceModals />
-                          <AvisosProvider>
-                            <MotoristaPaoProvider>
-                              <EscalaPaoProvider>
-                                <App />
-                              </EscalaPaoProvider>
-                            </MotoristaPaoProvider>
-                          </AvisosProvider>
-                        </VehicleMaintenanceProvider>
-                      </OficinaVisitasProvider>
+                      <ViaturasInoperantesProvider>
+                        <OficinaVisitasProvider>
+                          <VehicleMaintenanceProvider>
+                            <VehicleMaintenanceModals />
+                            <AvisosProvider>
+                              <MotoristaPaoProvider>
+                                <EscalaPaoProvider>
+                                  <App />
+                                </EscalaPaoProvider>
+                              </MotoristaPaoProvider>
+                            </AvisosProvider>
+                          </VehicleMaintenanceProvider>
+                        </OficinaVisitasProvider>
+                      </ViaturasInoperantesProvider>
                     </LimpezaPendenteProvider>
                   </CatalogItemsProvider>
                 </AppTabProvider>
