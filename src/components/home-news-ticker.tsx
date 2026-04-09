@@ -11,6 +11,10 @@ import { cn } from "../lib/utils";
 /** Faixa fixa inferior na página inicial: aviso opcional + telão estilo TV. */
 export function HomeNewsTicker({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { departures } = useDepartures();
+  const departuresAtivas = useMemo(
+    () => departures.filter((d) => d.cancelada !== true),
+    [departures],
+  );
   const { items } = useCatalogItems();
   const { placas: placasLimpeza } = useLimpezaPendente();
   const { mapaOficina } = useOficinaVisitas();
@@ -19,7 +23,7 @@ export function HomeNewsTicker({ mapaOleo }: { mapaOleo: Record<string, TrocaOle
   const marqueeText = useMemo(() => {
     const segments = buildHomeTickerSegments({
       mapaOficina,
-      departures,
+      departures: departuresAtivas,
       mapaOleo,
       viaturasAdministrativas: items.viaturasAdministrativas,
       ambulancias: items.ambulancias,
@@ -30,7 +34,7 @@ export function HomeNewsTicker({ mapaOleo }: { mapaOleo: Record<string, TrocaOle
     return joinTickerSegments(segments);
   }, [
     mapaOficina,
-    departures,
+    departuresAtivas,
     mapaOleo,
     items.viaturasAdministrativas,
     items.ambulancias,

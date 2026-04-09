@@ -201,6 +201,11 @@ function formatDataHojeLongaPtBr() {
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
+  /** Na home não entram saídas canceladas (mantêm-se nas listas por tipo). */
+  const departuresAtivas = useMemo(
+    () => departures.filter((d) => d.cancelada !== true),
+    [departures],
+  );
   const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
 
@@ -212,13 +217,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const linhasProximasTrocasOleo = useMemo(() => {
     return placasCatalogo
       .map((placa) => {
-        const kmAtual = maiorKmChegadaPorViatura(departures, placa);
+        const kmAtual = maiorKmChegadaPorViatura(departuresAtivas, placa);
         const st = statusTrocaOleo(kmAtual, mapaOleo[placa]);
         return { placa, st };
       })
       .filter(({ st }) => alertaProximaTrocaOleo(st))
       .sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
-  }, [placasCatalogo, departures, mapaOleo]);
+  }, [placasCatalogo, departuresAtivas, mapaOleo]);
   const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
   /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
@@ -248,21 +253,21 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
   const proximas = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = proximaSaidaHoje(departures, hoje, agoraDashboard);
+    const rows = proximaSaidaHoje(departuresAtivas, hoje, agoraDashboard);
     return groupDeparturesForListDisplay(rows);
-  }, [departures, agoraDashboard]);
+  }, [departuresAtivas, agoraDashboard]);
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = saidasEmAndamentoHoje(departures, hoje);
+    const rows = saidasEmAndamentoHoje(departuresAtivas, hoje);
     return groupDeparturesForListDisplay(rows);
-  }, [departures]);
+  }, [departuresAtivas]);
 
   const comAtraso = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = saidasComAtrasoHoje(departures, hoje, agoraDashboard);
+    const rows = saidasComAtrasoHoje(departuresAtivas, hoje, agoraDashboard);
     return groupDeparturesForListDisplay(rows);
-  }, [departures, agoraDashboard]);
+  }, [departuresAtivas, agoraDashboard]);
 
   return (
     <div className="space-y-6">
