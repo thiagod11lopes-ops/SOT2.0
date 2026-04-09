@@ -32,6 +32,42 @@ export function migrarRegistroOficina(r: RegistroOficina): RegistroOficina {
   };
 }
 
+/**
+ * Evita que um snapshot sem data de saída (ou incompleto) apague uma data já completa no outro lado.
+ * Só “some” a data quando o utilizador a apaga manualmente (string vazia) e não há alternativa completa.
+ */
+export function mergeDataSaidaPreferindoCompleteza(a: string, b: string): string {
+  const x = (a ?? "").trim();
+  const y = (b ?? "").trim();
+  if (isCompleteDatePtBr(x)) return x;
+  if (isCompleteDatePtBr(y)) return y;
+  return x || y;
+}
+
+/**
+ * Ao sincronizar o modal com `visitas` vindas do contexto/servidor, preserva `dataSaida` completa
+ * no rascunho local se o snapshot ainda estiver desatualizado (ex.: Firestore atrasado).
+ */
+export function mergeVisitasOficinaPreservandoDataSaida(
+  prev: RegistroOficina[],
+  incoming: RegistroOficina[],
+): RegistroOficina[] {
+  const byInc = new Map(incoming.map((v) => [v.id, v]));
+  const byPrev = new Map(prev.map((v) => [v.id, v]));
+  const order = [...new Set([...prev.map((v) => v.id), ...incoming.map((v) => v.id)])];
+  return order.map((id) => {
+    const p = byPrev.get(id);
+    const inc = byInc.get(id);
+    if (!inc) return migrarRegistroOficina(p!);
+    if (!p) return migrarRegistroOficina({ ...inc });
+    const merged = { ...inc, ...p };
+    return migrarRegistroOficina({
+      ...merged,
+      dataSaida: mergeDataSaidaPreferindoCompleteza(p.dataSaida, inc.dataSaida),
+    });
+  });
+}
+
 export function normalizarMapaOficinaCarregado(raw: unknown): MapaOficinaPorViatura {
   if (!raw || typeof raw !== "object") return {};
   const out: MapaOficinaPorViatura = {};
@@ -80,7 +116,15 @@ export function mergeVisitasPorIdPreferLocal(
   for (const v of loc) {
     const r = byId.get(v.id);
     const lv = migrarRegistroOficina(v);
-    byId.set(v.id, r ? { ...r, ...lv } : lv);
+    if (!r) {
+      byId.set(v.id, lv);
+    } else {
+      const merged = { ...r, ...lv };
+      byId.set(v.id, {
+        ...merged,
+        dataSaida: mergeDataSaidaPreferindoCompleteza(lv.dataSaida, r.dataSaida),
+      });
+    }
   }
 
   const order: string[] = [];

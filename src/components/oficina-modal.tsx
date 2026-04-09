@@ -2,7 +2,7 @@ import { Search, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeDatePtBr } from "../lib/dateFormat";
-import type { RegistroOficina } from "../lib/oficinaVisits";
+import { mergeVisitasOficinaPreservandoDataSaida, type RegistroOficina } from "../lib/oficinaVisits";
 import { Button } from "./ui/button";
 
 function escapeRegExp(s: string) {
@@ -88,7 +88,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
     }
     if (key !== lastVisitasKeyRef.current) {
       lastVisitasKeyRef.current = key;
-      setDraftVisitas(copiarVisitas(visitas));
+      setDraftVisitas((prev) => mergeVisitasOficinaPreservandoDataSaida(prev, visitas));
     }
   }, [placa, visitas]);
 
