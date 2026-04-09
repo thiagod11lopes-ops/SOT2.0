@@ -87,7 +87,7 @@ function drawSignatureBlock(
     doc.text(line, centerX, ty, { align: "center" });
     ty += 4.8;
   }
-  let y = ty;
+  const y = ty;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(70, 70, 70);

@@ -167,7 +167,7 @@ export function DeparturesListPage({
   }
 
   function departuresRowsForDate(datePtBr: string): DepartureRecord[] {
-    let list = departures.filter((d) => d.tipo === filterTipo && d.dataSaida === datePtBr);
+    const list = departures.filter((d) => d.tipo === filterTipo && d.dataSaida === datePtBr);
     return [...list].sort((a, b) => {
       const ka = sortKeyHoraSaida(a.horaSaida);
       const kb = sortKeyHoraSaida(b.horaSaida);
