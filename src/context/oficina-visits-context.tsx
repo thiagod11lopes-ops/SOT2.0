@@ -13,7 +13,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   mapaOficinaIgual,
-  mergeMapaOficina,
+  mergeMapaOficinaProfundo,
   normalizarMapaOficinaCarregado,
   OFICINA_STORAGE_KEY,
   type MapaOficinaPorViatura,
@@ -23,7 +23,8 @@ import {
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { useSyncPreference } from "./sync-preference-context";
 
-const SUPPRESS_REMOTE_MS = 5000;
+/** Ignorar snapshots remotos logo após edição local (evita sobrescrever data de saída / troca de óleo em corrida com o listener). */
+const SUPPRESS_REMOTE_MS = 12_000;
 
 type OficinaVisitasContextValue = {
   mapaOficina: MapaOficinaPorViatura;
@@ -44,8 +45,9 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   mapaRef.current = mapaOficina;
 
   const hidratado = useRef(false);
-  const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
+  /** Evita reenviar o mesmo JSON ao Firestore em loop (snapshot → estado → escrita). */
+  const lastCloudOficinaJsonRef = useRef<string | null>(null);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
@@ -99,26 +101,33 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
                 return;
               }
               const incoming = normalizarMapaOficinaCarregado(payload);
-              const prev = mapaRef.current;
 
-              if (isMapaOficinaEmpty(incoming) && !isMapaOficinaEmpty(prev)) {
-                return;
-              }
-
-              applyingRemoteRef.current = true;
-              const merged = mergeMapaOficina(prev, incoming);
-
-              if (!mapaOficinaIgual(merged, incoming)) {
-                queueMicrotask(() => {
-                  void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, merged).catch((e) => {
-                    console.error("[SOT] Reconciliar oficina com a nuvem:", e);
-                  });
-                });
-              }
-
-              setMapaOficina(merged);
+              setMapaOficina((prev) => {
+                if (isMapaOficinaEmpty(incoming) && !isMapaOficinaEmpty(prev)) {
+                  return prev;
+                }
+                const merged = mergeMapaOficinaProfundo(prev, incoming);
+                if (mapaOficinaIgual(prev, merged)) {
+                  if (!mapaOficinaIgual(incoming, prev)) {
+                    queueMicrotask(() => {
+                      void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, prev)
+                        .then(() => {
+                          try {
+                            lastCloudOficinaJsonRef.current = JSON.stringify(prev);
+                          } catch {
+                            /* ignore */
+                          }
+                        })
+                        .catch((e) => {
+                          console.error("[SOT] Sincronizar oficina (local mais recente que snapshot):", e);
+                        });
+                    });
+                  }
+                  return prev;
+                }
+                return merged;
+              });
               hidratado.current = true;
-              void idbSetJson(OFICINA_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore oficina:", err),
@@ -156,15 +165,20 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hidratado.current || !useCloud) return;
-    if (applyingRemoteRef.current) {
-      applyingRemoteRef.current = false;
-      return;
-    }
     const t = window.setTimeout(() => {
+      let json: string;
+      try {
+        json = JSON.stringify(mapaOficina);
+      } catch {
+        return;
+      }
+      if (lastCloudOficinaJsonRef.current === json) return;
+      lastCloudOficinaJsonRef.current = json;
       void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, mapaOficina).catch((e) => {
         console.error("[SOT] Gravar oficina na nuvem:", e);
+        lastCloudOficinaJsonRef.current = null;
       });
-    }, 120);
+    }, 400);
     return () => window.clearTimeout(t);
   }, [mapaOficina, useCloud]);
 

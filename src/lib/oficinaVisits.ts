@@ -59,6 +59,53 @@ export function mergeMapaOficina(
   return out;
 }
 
+/**
+ * Funde listas de visitas pelo mesmo `id`: campos do registo **local** prevalecem sobre o remoto.
+ * Evita que um snapshot do Firestore (ainda sem o último campo, ex. data de saída) apague edição recente.
+ */
+export function mergeVisitasPorIdPreferLocal(
+  localList: RegistroOficina[] | undefined,
+  remoteList: RegistroOficina[] | undefined,
+): RegistroOficina[] {
+  const loc = localList ?? [];
+  const rem = remoteList ?? [];
+  if (loc.length === 0 && rem.length === 0) return [];
+  if (loc.length === 0) return rem.map((v) => migrarRegistroOficina(v));
+  if (rem.length === 0) return loc.map((v) => migrarRegistroOficina(v));
+
+  const byId = new Map<string, RegistroOficina>();
+  for (const v of rem) {
+    byId.set(v.id, migrarRegistroOficina(v));
+  }
+  for (const v of loc) {
+    const r = byId.get(v.id);
+    const lv = migrarRegistroOficina(v);
+    byId.set(v.id, r ? { ...r, ...lv } : lv);
+  }
+
+  const order: string[] = [];
+  for (const v of loc) {
+    if (!order.includes(v.id)) order.push(v.id);
+  }
+  for (const v of rem) {
+    if (!order.includes(v.id)) order.push(v.id);
+  }
+  return order.map((id) => byId.get(id)!);
+}
+
+/** Merge por placa com fusão por id de visita (local ganha em conflito de campos). */
+export function mergeMapaOficinaProfundo(
+  local: MapaOficinaPorViatura,
+  remote: MapaOficinaPorViatura,
+): MapaOficinaPorViatura {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const out: MapaOficinaPorViatura = {};
+  for (const k of keys) {
+    out[k] = mergeVisitasPorIdPreferLocal(local[k], remote[k]);
+  }
+  return out;
+}
+
 export function mapaOficinaIgual(a: MapaOficinaPorViatura, b: MapaOficinaPorViatura): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const k of keys) {
