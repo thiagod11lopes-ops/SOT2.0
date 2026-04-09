@@ -23,8 +23,14 @@ import {
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { useSyncPreference } from "./sync-preference-context";
 
-/** Ignorar snapshots remotos logo após edição local (evita sobrescrever data de saída / troca de óleo em corrida com o listener). */
-const SUPPRESS_REMOTE_MS = 12_000;
+/**
+ * Ignorar snapshots do listener logo após edição local ou gravação na nuvem.
+ * Com Firestore online, snapshots (cache ou servidor) podem chegar atrasados em relação ao `setDoc`;
+ * janelas curtas faziam o merge reaplicar um estado antigo e “apagar” data de saída no mapa da oficina.
+ */
+const SUPPRESS_REMOTE_MS = 60_000;
+/** Após gravar o doc com sucesso, prolonga o bloqueio para evitar eco/corrida servidor ↔ cliente. */
+const POST_WRITE_SUPPRESS_EXTRA_MS = 25_000;
 
 type OficinaVisitasContextValue = {
   mapaOficina: MapaOficinaPorViatura;
@@ -174,10 +180,17 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
       }
       if (lastCloudOficinaJsonRef.current === json) return;
       lastCloudOficinaJsonRef.current = json;
-      void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, mapaOficina).catch((e) => {
-        console.error("[SOT] Gravar oficina na nuvem:", e);
-        lastCloudOficinaJsonRef.current = null;
-      });
+      void setSotStateDocWithRetry(SOT_STATE_DOC.oficina, mapaOficina)
+        .then(() => {
+          suppressRemoteUntilRef.current = Math.max(
+            suppressRemoteUntilRef.current,
+            Date.now() + POST_WRITE_SUPPRESS_EXTRA_MS,
+          );
+        })
+        .catch((e) => {
+          console.error("[SOT] Gravar oficina na nuvem:", e);
+          lastCloudOficinaJsonRef.current = null;
+        });
     }, 400);
     return () => window.clearTimeout(t);
   }, [mapaOficina, useCloud]);

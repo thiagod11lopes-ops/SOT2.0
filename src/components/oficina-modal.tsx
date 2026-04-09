@@ -2,7 +2,11 @@ import { Search, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeDatePtBr } from "../lib/dateFormat";
-import { mergeVisitasOficinaPreservandoDataSaida, type RegistroOficina } from "../lib/oficinaVisits";
+import {
+  mergeVisitasOficinaPreservandoDataSaida,
+  migrarRegistroOficina,
+  type RegistroOficina,
+} from "../lib/oficinaVisits";
 import { Button } from "./ui/button";
 
 function escapeRegExp(s: string) {
@@ -59,6 +63,11 @@ function copiarVisitas(list: RegistroOficina[]): RegistroOficina[] {
   return list.map((v) => ({ ...v }));
 }
 
+/** Garante strings e formato dd/mm/aaaa antes de gravar no contexto / IndexedDB / Firestore. */
+function visitasParaPersistir(list: RegistroOficina[]): RegistroOficina[] {
+  return list.map((v) => migrarRegistroOficina({ ...v }));
+}
+
 function visitasIguais(a: RegistroOficina[], b: RegistroOficina[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -67,7 +76,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
   const open = placa !== null;
   const [buscaManutencao, setBuscaManutencao] = useState("");
   const [rascunho, setRascunho] = useState<Rascunho>(rascunhoVazio);
-  /** Rascunho do histórico — só vai para o contexto ao clicar em Atualizar. */
+  /** Rascunho do histórico — gravado no contexto ao clicar em Atualizar ou ao fechar o modal. */
   const [draftVisitas, setDraftVisitas] = useState<RegistroOficina[]>([]);
   const lastPlacaRef = useRef<string | null>(null);
   const lastVisitasKeyRef = useRef<string>("");
@@ -146,15 +155,12 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
   }
 
   function handleSalvarAlteracoes() {
-    onChange(copiarVisitas(draftVisitas));
+    onChange(visitasParaPersistir(draftVisitas));
   }
 
   function handleFechar() {
     if (haAlteracoesPendentes) {
-      const ok = window.confirm(
-        "Existem alterações não guardadas. Deseja fechar sem guardar?",
-      );
-      if (!ok) return;
+      onChange(visitasParaPersistir(draftVisitas));
     }
     onClose();
   }
@@ -186,8 +192,8 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
           </h2>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
             Preencha o registro no topo e clique em <strong>Incluir registro</strong> para adicioná-lo ao histórico
-            abaixo. Depois de alterar qualquer campo, clique em <strong>Atualizar</strong> para guardar no sistema. O
-            primeiro bloco fica sempre vazio para novas entradas.
+            abaixo. As alterações são guardadas ao clicar em <strong>Atualizar</strong> ou ao fechar o modal. O primeiro
+            bloco fica sempre vazio para novas entradas.
           </p>
         </div>
 
