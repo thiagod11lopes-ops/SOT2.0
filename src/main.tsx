@@ -12,6 +12,8 @@ import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
 import { MotoristaPaoProvider } from "./context/motorista-pao-context";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
+import { VehicleMaintenanceProvider } from "./context/vehicle-maintenance-context";
+import { VehicleMaintenanceModals } from "./components/vehicle-maintenance-modals";
 import { SyncPreferenceProvider } from "./context/sync-preference-context";
 import { RootErrorBoundary } from "./root-error-boundary";
 import "./index.css";
@@ -35,13 +37,16 @@ createRoot(rootEl).render(
                   <CatalogItemsProvider>
                     <LimpezaPendenteProvider>
                       <OficinaVisitasProvider>
-                        <AvisosProvider>
-                          <MotoristaPaoProvider>
-                            <EscalaPaoProvider>
-                              <App />
-                            </EscalaPaoProvider>
-                          </MotoristaPaoProvider>
-                        </AvisosProvider>
+                        <VehicleMaintenanceProvider>
+                          <VehicleMaintenanceModals />
+                          <AvisosProvider>
+                            <MotoristaPaoProvider>
+                              <EscalaPaoProvider>
+                                <App />
+                              </EscalaPaoProvider>
+                            </MotoristaPaoProvider>
+                          </AvisosProvider>
+                        </VehicleMaintenanceProvider>
                       </OficinaVisitasProvider>
                     </LimpezaPendenteProvider>
                   </CatalogItemsProvider>

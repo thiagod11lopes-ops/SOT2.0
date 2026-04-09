@@ -78,10 +78,7 @@ export function CatalogComboField({
             type="button"
             size="icon"
             variant="default"
-            className={cn(
-              "h-10 w-10 shrink-0 border-0 bg-red-600 text-white hover:bg-red-700",
-              "catalog-plus-blink",
-            )}
+            className={cn("h-10 w-10 shrink-0 border-0", "catalog-plus-blink")}
             disabled={disabled}
             title="Adicionar este texto a Cadastrar Itens"
             aria-label={`Adicionar "${trimmed}" aos itens cadastrados`}
@@ -93,8 +90,8 @@ export function CatalogComboField({
       </div>
       {showPlusAfterAttempt && needsCatalogEntry ? (
         <p className="text-xs text-red-700 dark:text-red-300/90">
-          Este texto ainda não está em <strong>Cadastrar Itens</strong>. Clique no botão <strong>+</strong>{" "}
-          (vermelho) para cadastrá-lo antes de salvar.
+          Este texto ainda não está em <strong>Cadastrar Itens</strong>. Clique no botão <strong>+</strong> para
+          cadastrá-lo antes de salvar.
         </p>
       ) : null}
       <CatalogSuccessModal open={successOpen} onClose={() => setSuccessOpen(false)} />

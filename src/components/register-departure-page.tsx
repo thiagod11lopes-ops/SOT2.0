@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Loader2 } from "lucide-react";
 import {
   isValueInCatalog,
   mergeViaturasCatalog,
@@ -21,7 +22,16 @@ import {
   normalizeCustomLocations,
   type CustomLocationsState,
 } from "../lib/customLocationsStorage";
-import { formatDateToPtBr, getCurrentDatePtBr, normalizeDatePtBr, parsePtBrToDate } from "../lib/dateFormat";
+import { stashDeparturesListFilterFromCadastro } from "../lib/departuresListFilterCadastro";
+import {
+  dataSaidaToListFilterPtBr,
+  formatDateToPtBr,
+  getCurrentDatePtBr,
+  getWeekdayDatesFromTodayThroughEndOfCurrentMonth,
+  isCompleteDatePtBr,
+  normalizeDatePtBr,
+  parsePtBrToDate,
+} from "../lib/dateFormat";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
@@ -78,6 +88,67 @@ function mainListTabForDepartureTipo(tipo: string): "Saídas Administrativas" | 
 function getCurrentTime() {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+const WEEKDAY_NAMES_PT = [
+  "domingo",
+  "segunda-feira",
+  "terça-feira",
+  "quarta-feira",
+  "quinta-feira",
+  "sexta-feira",
+  "sábado",
+] as const;
+
+function isSameLocalCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  );
+}
+
+function formatWeekdayCommaDatePtBr(d: Date): string {
+  return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
+}
+
+function hasSiadDepartureOnDate(records: DepartureRecord[], target: Date): boolean {
+  for (const r of records) {
+    if (r.setor.trim().toLowerCase() !== "siad") continue;
+    const ds = parsePtBrToDate(r.dataSaida.trim());
+    if (!ds) continue;
+    if (isSameLocalCalendarDay(ds, target)) return true;
+  }
+  return false;
+}
+
+function hasExternoBatchDepartureOnDate(records: DepartureRecord[], target: Date): boolean {
+  for (const r of records) {
+    if (r.setor.trim().toLowerCase() !== "secom") continue;
+    if (r.objetivoSaida.trim().toLowerCase() !== "externo") continue;
+    const ds = parsePtBrToDate(r.dataSaida.trim());
+    if (!ds) continue;
+    if (isSameLocalCalendarDay(ds, target)) return true;
+  }
+  return false;
+}
+
+function getMissingSiadWeekdayDates(records: DepartureRecord[]): Date[] {
+  return getWeekdayDatesFromTodayThroughEndOfCurrentMonth().filter((d) => !hasSiadDepartureOnDate(records, d));
+}
+
+function getMissingExternoBatchWeekdayDates(records: DepartureRecord[]): Date[] {
+  return getWeekdayDatesFromTodayThroughEndOfCurrentMonth().filter(
+    (d) => !hasExternoBatchDepartureOnDate(records, d),
+  );
+}
+
+/** Datas únicas (dd/mm/aaaa), ordenadas cronologicamente. */
+function uniqueSortedSeriesDates(dates: Date[]): Date[] {
+  const byKey = new Map<string, Date>();
+  for (const d of dates) {
+    const key = formatDateToPtBr(d);
+    if (!byKey.has(key)) byKey.set(key, d);
+  }
+  return [...byKey.values()].sort((a, b) => a.getTime() - b.getTime());
 }
 
 function applyDepartureRecordToForm(
@@ -194,7 +265,11 @@ export function RegisterDeparturePage() {
     clearPendingEditDeparture,
     forceCloudResync,
   } = useDepartures();
-  const { setActiveTab: setMainAppTab } = useAppTab();
+  const {
+    setActiveTab: setMainAppTab,
+    setPendingDeparturesFilterDatePtBr,
+    bumpDeparturesListMountKey,
+  } = useAppTab();
   const { items: catalogItems, addItem: addCatalogItem } = useCatalogItems();
   const { estaNaOficina } = useOficinaVisitas();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
@@ -219,6 +294,8 @@ export function RegisterDeparturePage() {
   const [departureDate, setDepartureDate] = useState<string>("");
   const [requestCalendarOpen, setRequestCalendarOpen] = useState(false);
   const [departureCalendarOpen, setDepartureCalendarOpen] = useState(false);
+  const [seriesCalendarOpen, setSeriesCalendarOpen] = useState(false);
+  const [seriesSelectedDates, setSeriesSelectedDates] = useState<Date[]>([]);
   const [departureTime, setDepartureTime] = useState<string>("");
   const [sector, setSector] = useState<string>("");
   const [extension, setExtension] = useState<string>("");
@@ -249,6 +326,22 @@ export function RegisterDeparturePage() {
     null | { kind: "city" } | { kind: "bairro"; cityKey: string }
   >(null);
   const [addLocationDraft, setAddLocationDraft] = useState("");
+  const [siadGapMissingDates, setSiadGapMissingDates] = useState<Date[] | null>(null);
+  const [siadMonthBlockedModalOpen, setSiadMonthBlockedModalOpen] = useState(false);
+  const [externoGapMissingDates, setExternoGapMissingDates] = useState<Date[] | null>(null);
+  const [externoMonthBlockedModalOpen, setExternoMonthBlockedModalOpen] = useState(false);
+  /**
+   * Nomes legados dos modais de confirmação em lote (substituídos por `siadGapMissingDates` / `externoGapMissingDates`).
+   * Mantidos como `false` para evitar ReferenceError se alguma referência antiga ou HMR stale ainda existir.
+   */
+  const siadBatchModalOpen = false;
+  const externoBatchModalOpen = false;
+  void siadBatchModalOpen;
+  void externoBatchModalOpen;
+  const [cadastroSuccessModalOpen, setCadastroSuccessModalOpen] = useState(false);
+  const [cadastroSuccessModalDescription, setCadastroSuccessModalDescription] = useState("");
+  const cadastroSuccessNavigateTabRef = useRef<"Saídas Administrativas" | "Saídas de Ambulância" | null>(null);
+  const cadastroSuccessFilterDatePtBrRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (useCloudLocations) {
@@ -551,6 +644,38 @@ export function RegisterDeparturePage() {
     }
   }, [canSubmitWithCatalog]);
 
+  useEffect(() => {
+    if (editingId) {
+      setSeriesSelectedDates([]);
+      setSeriesCalendarOpen(false);
+    }
+  }, [editingId]);
+
+  useEffect(() => {
+    if (!cadastroSuccessModalOpen) return;
+    const id = window.setTimeout(() => {
+      const tab = cadastroSuccessNavigateTabRef.current;
+      const filterPtBr = cadastroSuccessFilterDatePtBrRef.current;
+      cadastroSuccessNavigateTabRef.current = null;
+      cadastroSuccessFilterDatePtBrRef.current = null;
+      const filterOk = filterPtBr && isCompleteDatePtBr(filterPtBr) ? filterPtBr : null;
+      if (filterOk) {
+        stashDeparturesListFilterFromCadastro(filterOk);
+      }
+      flushSync(() => {
+        setCadastroSuccessModalOpen(false);
+        if (tab) {
+          if (filterOk) {
+            setPendingDeparturesFilterDatePtBr(filterOk);
+            bumpDeparturesListMountKey();
+          }
+          setMainAppTab(tab);
+        }
+      });
+    }, 2000);
+    return () => window.clearTimeout(id);
+  }, [cadastroSuccessModalOpen, setMainAppTab, setPendingDeparturesFilterDatePtBr, bumpDeparturesListMountKey]);
+
   function buildDeparturePayload(): Omit<DepartureRecord, "id" | "createdAt"> {
     const base: Omit<DepartureRecord, "id" | "createdAt"> = {
       tipo: departureType as DepartureRecord["tipo"],
@@ -626,10 +751,60 @@ export function RegisterDeparturePage() {
         },
       });
       setEditingId(null);
-    } else {
-      addDeparture(payload);
+      {
+        const ds = dataSaidaToListFilterPtBr(payload.dataSaida);
+        if (ds) {
+          stashDeparturesListFilterFromCadastro(ds);
+          setPendingDeparturesFilterDatePtBr(ds);
+          bumpDeparturesListMountKey();
+        }
+      }
+      setMainAppTab(mainListTabForDepartureTipo(departureType));
+      return;
     }
-    setMainAppTab(mainListTabForDepartureTipo(departureType));
+    if (seriesSelectedDates.length > 0) {
+      const dates = uniqueSortedSeriesDates(seriesSelectedDates);
+      const base = buildDeparturePayload();
+      for (const d of dates) {
+        addDeparture({ ...base, dataSaida: formatDateToPtBr(d) });
+      }
+      setSeriesSelectedDates([]);
+      setSeriesCalendarOpen(false);
+      cadastroSuccessNavigateTabRef.current = mainListTabForDepartureTipo(departureType);
+      cadastroSuccessFilterDatePtBrRef.current =
+        dates.length > 0 ? formatDateToPtBr(dates[dates.length - 1]) : null;
+      setCadastroSuccessModalDescription(
+        dates.length === 1 ? "A saída foi cadastrada." : `${dates.length} saídas foram cadastradas.`,
+      );
+      setCadastroSuccessModalOpen(true);
+      return;
+    }
+    addDeparture(payload);
+    cadastroSuccessNavigateTabRef.current = mainListTabForDepartureTipo(departureType);
+    cadastroSuccessFilterDatePtBrRef.current = dataSaidaToListFilterPtBr(payload.dataSaida);
+    setCadastroSuccessModalDescription("A saída foi cadastrada.");
+    setCadastroSuccessModalOpen(true);
+  }
+
+  /** Cadastra como “Cadastrar Saída”, mantém o formulário e só reinicia Cidade/Bairro para novo destino. */
+  function handleCadastrarMultiplosDestinos() {
+    if (editingId) return;
+    if (!canSubmitWithCatalog) {
+      setCatalogSubmitAttempted(true);
+      return;
+    }
+    setCatalogSubmitAttempted(false);
+    addDeparture(buildDeparturePayload());
+    setSeriesSelectedDates([]);
+    setSeriesCalendarOpen(false);
+    setCity("Rio de Janeiro");
+    setNeighborhood(IBGE_BAIRROS_POR_CIDADE["Rio de Janeiro"]?.[0] ?? "");
+    cadastroSuccessNavigateTabRef.current = null;
+    cadastroSuccessFilterDatePtBrRef.current = null;
+    setCadastroSuccessModalDescription(
+      "A saída foi cadastrada. Cidade e bairro foram reiniciados para o próximo destino.",
+    );
+    setCadastroSuccessModalOpen(true);
   }
 
   function openAddCityModal() {
@@ -644,6 +819,160 @@ export function RegisterDeparturePage() {
     }
     setAddLocationModal({ kind: "bairro", cityKey: city });
     setAddLocationDraft("");
+  }
+
+  function runSiadBatchForDates(dates: Date[]) {
+    if (dates.length === 0) return;
+    const dataPedido = getCurrentDatePtBr();
+    const horaPedido = getCurrentTime();
+    addCatalogItem("setores", "SIAD");
+    addCatalogItem("responsaveis", "SIAD");
+    addCatalogItem("viaturasAdministrativas", "ASD");
+    addCatalogItem("motoristas", "ASD");
+
+    const base: Omit<DepartureRecord, "id" | "createdAt"> = {
+      tipo: "Administrativa",
+      dataPedido,
+      horaPedido,
+      dataSaida: "",
+      horaSaida: "08:00",
+      setor: "SIAD",
+      ramal: "",
+      objetivoSaida: "Atendimento domiciliar",
+      numeroPassageiros: "2",
+      responsavelPedido: "SIAD",
+      om: "",
+      viaturas: "ASD",
+      motoristas: "ASD",
+      hospitalDestino: "",
+      tipoSaidaInterHospitalar: false,
+      tipoSaidaAlta: false,
+      tipoSaidaOutros: false,
+      kmSaida: "",
+      kmChegada: "",
+      chegada: "",
+      cidade: "ASD",
+      bairro: "ASD",
+      rubrica: "",
+      cancelada: false,
+      ocorrencias: "",
+    };
+
+    for (const d of dates) {
+      addDeparture({ ...base, dataSaida: formatDateToPtBr(d) });
+    }
+    setSiadGapMissingDates(null);
+    const firstPtBr = formatDateToPtBr(dates[0]!);
+    stashDeparturesListFilterFromCadastro(firstPtBr);
+    flushSync(() => {
+      setPendingDeparturesFilterDatePtBr(firstPtBr);
+      bumpDeparturesListMountKey();
+      setMainAppTab("Saídas Administrativas");
+    });
+  }
+
+  function handleConfirmSiadGapBatch() {
+    if (!siadGapMissingDates || siadGapMissingDates.length === 0) {
+      setSiadGapMissingDates(null);
+      return;
+    }
+    runSiadBatchForDates(siadGapMissingDates);
+  }
+
+  function handleOpenSiadBatchClick() {
+    const scope = getWeekdayDatesFromTodayThroughEndOfCurrentMonth();
+    if (scope.length === 0) {
+      window.alert("Não há dias úteis (segunda a sexta) restantes no mês vigente.");
+      return;
+    }
+    const missing = getMissingSiadWeekdayDates(departures);
+    if (missing.length === 0) {
+      setSiadMonthBlockedModalOpen(true);
+      return;
+    }
+    setSiadGapMissingDates(missing);
+  }
+
+  /** Sexta-feira (local): hora 08:00; demais dias úteis: 13:00. */
+  function horaSaidaLoteExterno(d: Date): string {
+    return d.getDay() === 5 ? "08:00" : "13:00";
+  }
+
+  function runExternoBatchForDates(dates: Date[]) {
+    if (dates.length === 0) return;
+    const dataPedido = getCurrentDatePtBr();
+    const horaPedido = getCurrentTime();
+    addCatalogItem("setores", "SECOM");
+    addCatalogItem("responsaveis", "SECOM");
+    addCatalogItem("oms", "1°DN");
+    addCatalogItem("viaturasAdministrativas", "ASD");
+    addCatalogItem("motoristas", "ASD");
+
+    const base: Omit<DepartureRecord, "id" | "createdAt"> = {
+      tipo: "Administrativa",
+      dataPedido,
+      horaPedido,
+      dataSaida: "",
+      horaSaida: "13:00",
+      setor: "SECOM",
+      ramal: "",
+      objetivoSaida: "Externo",
+      numeroPassageiros: "1",
+      responsavelPedido: "SECOM",
+      om: "1°DN",
+      viaturas: "ASD",
+      motoristas: "ASD",
+      hospitalDestino: "",
+      tipoSaidaInterHospitalar: false,
+      tipoSaidaAlta: false,
+      tipoSaidaOutros: false,
+      kmSaida: "",
+      kmChegada: "",
+      chegada: "",
+      cidade: "Rio de Janeiro",
+      bairro: "Centro",
+      rubrica: "",
+      cancelada: false,
+      ocorrencias: "",
+    };
+
+    for (const d of dates) {
+      addDeparture({
+        ...base,
+        dataSaida: formatDateToPtBr(d),
+        horaSaida: horaSaidaLoteExterno(d),
+      });
+    }
+    setExternoGapMissingDates(null);
+    const firstPtBr = formatDateToPtBr(dates[0]!);
+    stashDeparturesListFilterFromCadastro(firstPtBr);
+    flushSync(() => {
+      setPendingDeparturesFilterDatePtBr(firstPtBr);
+      bumpDeparturesListMountKey();
+      setMainAppTab("Saídas Administrativas");
+    });
+  }
+
+  function handleConfirmExternoGapBatch() {
+    if (!externoGapMissingDates || externoGapMissingDates.length === 0) {
+      setExternoGapMissingDates(null);
+      return;
+    }
+    runExternoBatchForDates(externoGapMissingDates);
+  }
+
+  function handleOpenExternoBatchClick() {
+    const scope = getWeekdayDatesFromTodayThroughEndOfCurrentMonth();
+    if (scope.length === 0) {
+      window.alert("Não há dias úteis (segunda a sexta) restantes no mês vigente.");
+      return;
+    }
+    const missing = getMissingExternoBatchWeekdayDates(departures);
+    if (missing.length === 0) {
+      setExternoMonthBlockedModalOpen(true);
+      return;
+    }
+    setExternoGapMissingDates(missing);
   }
 
   function confirmAddLocation() {
@@ -750,7 +1079,7 @@ export function RegisterDeparturePage() {
             ) : null}
           </div>
           {activeSubTab === "Cadastrar Nova Saída" ? (
-            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={fillExampleDeparture}>
+            <Button type="button" variant="default" size="sm" className="shrink-0" onClick={fillExampleDeparture}>
               Preencher com exemplo
             </Button>
           ) : null}
@@ -805,13 +1134,13 @@ export function RegisterDeparturePage() {
                     <PopoverTrigger asChild>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
                         size="icon"
                         translate="no"
-                        className="h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
+                        className="h-10 w-10 shrink-0 rounded-xl shadow-sm transition hover:brightness-105"
                         aria-label="Abrir calendário — data do pedido"
                       >
-                        <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
+                        <CalendarDays className="h-4 w-4 text-white" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="border-0 bg-transparent p-0 shadow-none">
@@ -855,13 +1184,13 @@ export function RegisterDeparturePage() {
                     <PopoverTrigger asChild>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
                         size="icon"
                         translate="no"
-                        className="h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] shadow-sm transition hover:shadow-md"
+                        className="h-10 w-10 shrink-0 rounded-xl shadow-sm transition hover:brightness-105"
                         aria-label="Abrir calendário — data da saída"
                       >
-                        <CalendarDays className="h-4 w-4 text-[hsl(var(--primary))]" />
+                        <CalendarDays className="h-4 w-4 text-white" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="border-0 bg-transparent p-0 shadow-none">
@@ -1182,7 +1511,7 @@ export function RegisterDeparturePage() {
                     <strong>{catalogBlockingLabels.join(", ")}</strong>. Para Setor, Responsável
                     {departureType === "Administrativa" ? ", OM" : ""}
                     {departureType === "Ambulância" ? ", Hospital" : ""}, inclua o valor em{" "}
-                    <strong>Cadastrar Itens</strong> (botão <strong>+</strong> vermelho). Para{" "}
+                    <strong>Cadastrar Itens</strong> (botão <strong>+</strong>). Para{" "}
                     <strong>Viaturas</strong> e <strong>Motoristas</strong>, cadastre em <strong>Frota e Pessoal</strong>{" "}
                     e selecione de novo.
                   </p>
@@ -1193,7 +1522,7 @@ export function RegisterDeparturePage() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         onClick={() => {
                           forceCloudResync();
@@ -1204,7 +1533,7 @@ export function RegisterDeparturePage() {
                       </Button>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="default"
                         size="sm"
                         onClick={() => setEditConflictInfo(null)}
                       >
@@ -1213,16 +1542,97 @@ export function RegisterDeparturePage() {
                     </div>
                   </div>
                 ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="min-w-[5.5rem]"
+                    onClick={handleOpenSiadBatchClick}
+                  >
+                    SIAD
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    className="min-w-[5.5rem]"
+                    onClick={handleOpenExternoBatchClick}
+                  >
+                    Externo
+                  </Button>
+                </div>
                 <div className="flex flex-wrap items-center justify-end gap-3">
                 <Button type="button" variant="default" onClick={handleCadastrarSaida}>
-                  {editingId ? "Atualizar saída" : "Cadastrar Saída"}
+                  {editingId
+                    ? "Atualizar saída"
+                    : seriesSelectedDates.length > 0
+                      ? "Cadastrar Saídas em Série"
+                      : "Cadastrar Saída"}
                 </Button>
-                <Button type="button" variant="outline">
-                  Cadastrar em Série
-                </Button>
-                <Button type="button" variant="outline">
+                <Popover open={seriesCalendarOpen} onOpenChange={setSeriesCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="default"
+                      disabled={Boolean(editingId)}
+                      aria-expanded={seriesCalendarOpen}
+                      aria-haspopup="dialog"
+                      aria-label="Cadastrar em série — abrir calendário para várias datas"
+                    >
+                      Cadastrar em Série
+                      {seriesSelectedDates.length > 0 ? (
+                        <span className="ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-medium text-white">
+                          {seriesSelectedDates.length}
+                        </span>
+                      ) : null}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    className="w-auto max-w-[calc(100vw-1.5rem)] border-0 bg-transparent p-0 shadow-none"
+                  >
+                    <div className="flex flex-col gap-2">
+                      <Calendar
+                        mode="multiple"
+                        selected={seriesSelectedDates}
+                        defaultMonth={seriesSelectedDates[0] ?? parsePtBrToDate(departureDate) ?? new Date()}
+                        onSelect={(d) => setSeriesSelectedDates(d ?? [])}
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 shadow-sm">
+                        <p className="max-w-[14rem] text-xs text-[hsl(var(--muted-foreground))]">
+                          Toque ou clique nos dias para marcar várias datas. Cada data gera um cadastro com a mesma
+                          informação e <span className="font-medium text-[hsl(var(--foreground))]">data da saída</span>{" "}
+                          correspondente.
+                        </p>
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => setSeriesSelectedDates([])}
+                          >
+                            Limpar
+                          </Button>
+                          <Button type="button" variant="default" size="sm" onClick={() => setSeriesCalendarOpen(false)}>
+                            Pronto
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Button
+                  type="button"
+                  variant="default"
+                  disabled={Boolean(editingId)}
+                  onClick={handleCadastrarMultiplosDestinos}
+                  aria-label="Cadastrar saída e manter dados; limpar cidade e bairro para outro destino"
+                >
                   Cadastrar Múltiplos Destinos
                 </Button>
+                </div>
                 </div>
               </div>
             </form>
@@ -1233,6 +1643,164 @@ export function RegisterDeparturePage() {
           )}
         </CardContent>
       </Card>
+
+      {siadMonthBlockedModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="siad-month-blocked-dialog-title"
+          aria-describedby="siad-month-blocked-dialog-desc"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSiadMonthBlockedModalOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border-2 border-red-600 bg-red-50 p-4 shadow-lg dark:border-red-500 dark:bg-red-950/60">
+            <h2
+              id="siad-month-blocked-dialog-title"
+              className="text-base font-semibold text-red-900 dark:text-red-100"
+            >
+              Lote SIAD indisponível
+            </h2>
+            <p
+              id="siad-month-blocked-dialog-desc"
+              className="mt-3 text-sm leading-relaxed text-red-800 dark:text-red-100/90"
+            >
+              Todos os <strong>dias úteis</strong> (segunda a sexta-feira), <strong>de hoje até o fim do mês vigente</strong>
+              , já possuem saída com setor <strong>SIAD</strong> cadastrada para a data da saída correspondente.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="default" onClick={() => setSiadMonthBlockedModalOpen(false)}>
+                OK
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {externoMonthBlockedModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="externo-month-blocked-dialog-title"
+          aria-describedby="externo-month-blocked-dialog-desc"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setExternoMonthBlockedModalOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border-2 border-red-600 bg-red-50 p-4 shadow-lg dark:border-red-500 dark:bg-red-950/60">
+            <h2
+              id="externo-month-blocked-dialog-title"
+              className="text-base font-semibold text-red-900 dark:text-red-100"
+            >
+              Lote Externo (SECOM) indisponível
+            </h2>
+            <p
+              id="externo-month-blocked-dialog-desc"
+              className="mt-3 text-sm leading-relaxed text-red-800 dark:text-red-100/90"
+            >
+              Todos os <strong>dias úteis</strong> (segunda a sexta-feira), <strong>de hoje até o fim do mês vigente</strong>
+              , já possuem saída do lote <strong>Externo</strong> (setor <strong>SECOM</strong> e objetivo{" "}
+              <strong>Externo</strong>) cadastrada para a data da saída correspondente.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="default" onClick={() => setExternoMonthBlockedModalOpen(false)}>
+                OK
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {siadGapMissingDates && siadGapMissingDates.length > 0 ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="siad-gap-dialog-title"
+          aria-describedby="siad-gap-dialog-desc"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSiadGapMissingDates(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-lg">
+            <h2
+              id="siad-gap-dialog-title"
+              className="text-base font-semibold text-[hsl(var(--foreground))]"
+            >
+              Dias úteis sem saída SIAD
+            </h2>
+            <p id="siad-gap-dialog-desc" className="mt-3 text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
+              Os dias abaixo (segunda a sexta, de hoje até o fim do mês vigente) ainda{" "}
+              <strong>não possuem</strong> saída com setor <strong>SIAD</strong> cadastrada para a data da saída. Será
+              usado o padrão do lote SIAD: saída às <strong>08:00</strong>, objetivo <strong>Atendimento domiciliar</strong>
+              , passageiros <strong>2</strong>, responsável <strong>SIAD</strong>, viatura e motorista{" "}
+              <strong>ASD</strong>, cidade e bairro <strong>ASD</strong>.
+            </p>
+            <ul className="mt-3 max-h-[40vh] list-inside list-disc space-y-1 overflow-y-auto rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm text-[hsl(var(--foreground))]">
+              {siadGapMissingDates.map((d) => (
+                <li key={d.getTime()}>{formatWeekdayCommaDatePtBr(d)}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-sm text-[hsl(var(--foreground))]">
+              Deseja <strong>cadastrar</strong> as saídas SIAD apenas para esses dias?
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="default" onClick={() => setSiadGapMissingDates(null)}>
+                Não
+              </Button>
+              <Button type="button" variant="default" onClick={handleConfirmSiadGapBatch}>
+                Cadastrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {externoGapMissingDates && externoGapMissingDates.length > 0 ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="externo-gap-dialog-title"
+          aria-describedby="externo-gap-dialog-desc"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setExternoGapMissingDates(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-lg">
+            <h2
+              id="externo-gap-dialog-title"
+              className="text-base font-semibold text-[hsl(var(--foreground))]"
+            >
+              Dias úteis sem saída Externo (SECOM)
+            </h2>
+            <p id="externo-gap-dialog-desc" className="mt-3 text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
+              Os dias abaixo ainda <strong>não possuem</strong> saída do lote <strong>Externo</strong> (setor{" "}
+              <strong>SECOM</strong>, objetivo <strong>Externo</strong>). Horário: <strong>13:00</strong> (sexta-feira{" "}
+              <strong>08:00</strong>); <strong>1</strong> passageiro; OM <strong>1°DN</strong>; viatura e motorista{" "}
+              <strong>ASD</strong>; <strong>Rio de Janeiro</strong> — <strong>Centro</strong>.
+            </p>
+            <ul className="mt-3 max-h-[40vh] list-inside list-disc space-y-1 overflow-y-auto rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm text-[hsl(var(--foreground))]">
+              {externoGapMissingDates.map((d) => (
+                <li key={d.getTime()}>{formatWeekdayCommaDatePtBr(d)}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-sm text-[hsl(var(--foreground))]">
+              Deseja <strong>cadastrar</strong> as saídas apenas para esses dias?
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="default" onClick={() => setExternoGapMissingDates(null)}>
+                Não
+              </Button>
+              <Button type="button" variant="default" onClick={handleConfirmExternoGapBatch}>
+                Cadastrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {addLocationModal ? (
         <div
@@ -1280,6 +1848,7 @@ export function RegisterDeparturePage() {
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 type="button"
+                variant="default"
                 onClick={() => {
                   setAddLocationModal(null);
                   setAddLocationDraft("");
@@ -1291,6 +1860,34 @@ export function RegisterDeparturePage() {
                 Adicionar
               </Button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {cadastroSuccessModalOpen ? (
+        <div
+          className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="cadastro-success-title"
+          aria-describedby="cadastro-success-desc"
+          aria-live="polite"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-6 py-5 text-center shadow-lg">
+            <CheckCircle2
+              className="mx-auto h-12 w-12 text-emerald-600 dark:text-emerald-400"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <h2
+              id="cadastro-success-title"
+              className="mt-3 text-lg font-semibold text-[hsl(var(--foreground))]"
+            >
+              Cadastrado com sucesso
+            </h2>
+            <p id="cadastro-success-desc" className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+              {cadastroSuccessModalDescription}
+            </p>
           </div>
         </div>
       ) : null}

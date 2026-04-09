@@ -32,6 +32,8 @@ import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficina
 import { groupDeparturesForListDisplay, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
+import { VehicleMaintenancePanel } from "./vehicle-maintenance-panel";
+import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
@@ -199,7 +201,7 @@ function formatDataHojeLongaPtBr() {
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
-  const { placas: placasPendenciaLimpeza } = useLimpezaPendente();
+  const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
 
   const { mapaOficina } = useOficinaVisitas();
@@ -220,6 +222,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
   /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
+  const [manutencoesModalOpen, setManutencoesModalOpen] = useState(false);
+  const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
@@ -498,9 +502,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </ul>
                 )}
               </div>
-              <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                onClick={() => setManutencoesModalOpen(true)}
+                aria-label="Abrir manutenções (mesma aba Frota e Pessoal — Manutenções)"
+              >
                 <Wrench className="h-5 w-5 text-slate-600" />
-              </div>
+              </Button>
             </CardContent>
           </Card>
 
@@ -534,9 +544,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </ul>
                 )}
               </div>
-              <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                onClick={() => setManutencoesModalOpen(true)}
+                aria-label="Abrir manutenções — próximas trocas de óleo (mesma aba Frota e Pessoal — Manutenções)"
+              >
                 <Droplets className="h-5 w-5 text-slate-600" />
-              </div>
+              </Button>
             </CardContent>
           </Card>
 
@@ -564,9 +580,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </ul>
                 )}
               </div>
-              <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                onClick={() => setLimpezaModalOpen(true)}
+                aria-label="Marcar pendência de limpeza por viatura"
+              >
                 <Sparkles className="h-5 w-5 text-slate-600" />
-              </div>
+              </Button>
             </CardContent>
           </Card>
 
@@ -601,6 +623,96 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           </Card>
         </div>
       </section>
+
+      {manutencoesModalOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dashboard-manutencoes-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setManutencoesModalOpen(false);
+          }}
+        >
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[hsl(var(--border))] px-4 py-3">
+              <h2
+                id="dashboard-manutencoes-title"
+                className="text-lg font-semibold text-[hsl(var(--foreground))]"
+              >
+                Manutenções
+              </h2>
+              <Button type="button" variant="default" size="sm" onClick={() => setManutencoesModalOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <VehicleMaintenancePanel />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {limpezaModalOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dashboard-limpeza-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setLimpezaModalOpen(false);
+          }}
+        >
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[hsl(var(--border))] px-4 py-3">
+              <h2
+                id="dashboard-limpeza-title"
+                className="text-lg font-semibold text-[hsl(var(--foreground))]"
+              >
+                Pendência de limpeza
+              </h2>
+              <Button type="button" variant="default" size="sm" onClick={() => setLimpezaModalOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
+                Marque as viaturas que devem aparecer no card <strong>Viaturas com pendência de limpeza</strong> na
+                página inicial. O mesmo estado é usado em <strong>Frota e Pessoal</strong> → Cadastrar Viatura.
+              </p>
+              {placasCatalogo.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Cadastre viaturas em <strong>Frota e Pessoal</strong> para listá-las aqui.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {placasCatalogo.map((placa) => (
+                    <li
+                      key={placa}
+                      className="flex items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.15)] px-3 py-2"
+                    >
+                      <input
+                        id={`dashboard-limpeza-${placa}`}
+                        type="checkbox"
+                        checked={isPendente(placa)}
+                        onChange={(e) => setPendente(placa, e.target.checked)}
+                        className="h-4 w-4 shrink-0 rounded border-[hsl(var(--border))]"
+                        aria-label={`Pendência de limpeza para ${placa}`}
+                      />
+                      <label
+                        htmlFor={`dashboard-limpeza-${placa}`}
+                        className="min-w-0 flex-1 cursor-pointer font-mono text-sm text-[hsl(var(--foreground))]"
+                      >
+                        {placa}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

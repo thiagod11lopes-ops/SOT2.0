@@ -13,6 +13,60 @@ export function getCurrentDatePtBr() {
   return formatDateToPtBr(new Date());
 }
 
+/** Todas as datas locais de segunda a sexta no mês (`monthIndex` 0–11). */
+export function getWeekdayDatesInMonth(year: number, monthIndex: number): Date[] {
+  const out: Date[] = [];
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  for (let day = 1; day <= lastDay; day++) {
+    const d = new Date(year, monthIndex, day);
+    const wd = d.getDay();
+    if (wd >= 1 && wd <= 5) out.push(d);
+  }
+  return out;
+}
+
+/** Segunda a sexta no mês civil corrente (do dia 1 ao último dia). */
+export function getWeekdayDatesInCurrentMonth(): Date[] {
+  const n = new Date();
+  return getWeekdayDatesInMonth(n.getFullYear(), n.getMonth());
+}
+
+/** Dias úteis (segunda a sexta) entre o dia atual e o fim do mês corrente (inclusive). */
+export function getWeekdayDatesFromTodayThroughEndOfCurrentMonth(): Date[] {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const startDay = now.getDate();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const out: Date[] = [];
+  for (let day = startDay; day <= lastDay; day++) {
+    const d = new Date(y, m, day);
+    const wd = d.getDay();
+    if (wd >= 1 && wd <= 5) out.push(d);
+  }
+  return out;
+}
+
+/** `dd/mm/aaaa` completo (10 caracteres), para filtros e validações. */
+export function isCompleteDatePtBr(value: string) {
+  return /^\d{2}\/\d{2}\/\d{4}$/.test(value.trim());
+}
+
+/**
+ * Converte o texto de "data da saída" do formulário para `dd/mm/aaaa` usado no filtro da lista.
+ * Aceita valor já mascarado ou só com 8 dígitos.
+ */
+export function dataSaidaToListFilterPtBr(raw: string): string | null {
+  const t = raw.trim();
+  if (isCompleteDatePtBr(t)) return t;
+  const digits = t.replace(/\D/g, "").slice(0, 8);
+  if (digits.length === 8) {
+    const n = normalizeDatePtBr(digits);
+    if (isCompleteDatePtBr(n)) return n;
+  }
+  return null;
+}
+
 /** Máscara numérica para dd/mm/aaaa durante a digitação. */
 export function normalizeDatePtBr(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 8);
@@ -68,6 +122,17 @@ export function parsePtBrToDate(value: string): Date | undefined {
   const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   if (Number.isNaN(d.getTime())) return undefined;
   return d;
+}
+
+/** Ordena datas `dd/mm/aaaa` do mais antigo ao mais recente; ignora entradas incompletas. */
+export function sortDatasPtBr(dates: string[]): string[] {
+  return [...dates]
+    .filter((d) => isCompleteDatePtBr(d))
+    .sort((a, b) => {
+      const ta = parsePtBrToDate(a)?.getTime() ?? 0;
+      const tb = parsePtBrToDate(b)?.getTime() ?? 0;
+      return ta - tb;
+    });
 }
 
 /** dd/mm/aaaa válido → yyyy-mm-dd; inválido retorna string vazia. */

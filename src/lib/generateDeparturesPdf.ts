@@ -1,5 +1,6 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
+import { fetchRubricaThiagoAsDataUrl, isAssinanteRubricaThiago } from "./rubricaAssinanteThiago";
 import { isRubricaImageDataUrl } from "./rubricaDrawing";
 import {
   groupDeparturesForListDisplay,
@@ -48,6 +49,7 @@ function drawSignatureBlock(
   blockWidth: number,
   name: string,
   label: string,
+  rubricaPngDataUrl: string | null = null,
 ): number {
   const centerX = blockX + blockWidth / 2;
   doc.setFont("helvetica", "bold");
@@ -61,17 +63,31 @@ function drawSignatureBlock(
   }
   const lineW = Math.min(blockWidth, maxLineW + SIGNATURE_LINE_PAD_MM * 2);
 
-  let y = topY + 4;
+  const lineY = topY + 4;
   doc.setDrawColor(40);
   doc.setLineWidth(0.35);
-  doc.line(centerX - lineW / 2, y, centerX + lineW / 2, y);
-  y += 6;
-  let ty = y;
+  doc.line(centerX - lineW / 2, lineY, centerX + lineW / 2, lineY);
+
+  let nameStartY = lineY + 6;
+  if (rubricaPngDataUrl) {
+    const imgH = 10;
+    const imgW = Math.min(blockWidth - 6, Math.max(38, lineW + 6));
+    const ix = centerX - imgW / 2;
+    const iy = lineY - imgH;
+    try {
+      doc.addImage(rubricaPngDataUrl, "PNG", ix, iy, imgW, imgH);
+    } catch {
+      /* ignore */
+    }
+    nameStartY = Math.max(lineY + 6, iy + imgH + 2);
+  }
+
+  let ty = nameStartY;
   for (const line of nameLines) {
     doc.text(line, centerX, ty, { align: "center" });
     ty += 4.8;
   }
-  y = ty;
+  let y = ty;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(70, 70, 70);
@@ -95,7 +111,7 @@ export interface DeparturesListPdfParams {
 /**
  * Monta o PDF em paisagem com a tabela de saídas e blocos de assinatura (quando houver).
  */
-export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: jsPDF; filename: string } {
+export async function buildDeparturesListPdf(params: DeparturesListPdfParams): Promise<{ doc: jsPDF; filename: string }> {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const margin = 12;
   const pageW = doc.internal.pageSize.getWidth();
@@ -251,6 +267,11 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
   const { assinanteDivisao } = params.signatures;
   const hasAny = Boolean(assinanteDivisao);
 
+  let rubricaAssinanteDataUrl: string | null = null;
+  if (assinanteDivisao && isAssinanteRubricaThiago(assinanteDivisao)) {
+    rubricaAssinanteDataUrl = await fetchRubricaThiagoAsDataUrl();
+  }
+
   /** Largura do bloco de assinatura (Divisão de Transporte), centrada na página. */
   const signGroupW = Math.min(usableW, 168);
 
@@ -260,7 +281,15 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
       y = margin;
     }
     const blockLeft = margin + (usableW - signGroupW) / 2;
-    y = drawSignatureBlock(doc, blockLeft, y, signGroupW, assinanteDivisao, "Divisão de Transporte");
+    y = drawSignatureBlock(
+      doc,
+      blockLeft,
+      y,
+      signGroupW,
+      assinanteDivisao,
+      "Divisão de Transporte",
+      rubricaAssinanteDataUrl,
+    );
   }
 
   if (!hasAny) {
@@ -277,12 +306,24 @@ export function buildDeparturesListPdf(params: DeparturesListPdfParams): { doc: 
   return { doc, filename };
 }
 
-export function downloadDeparturesListPdf(params: DeparturesListPdfParams): void {
-  const { doc, filename } = buildDeparturesListPdf(params);
+export async function downloadDeparturesListPdf(params: DeparturesListPdfParams): Promise<void> {
+  const { doc, filename } = await buildDeparturesListPdf(params);
   doc.save(filename);
 }
 
-export function getDeparturesListPdfBlob(params: DeparturesListPdfParams): { blob: Blob; filename: string } {
-  const { doc, filename } = buildDeparturesListPdf(params);
+/** Descarrega vários PDFs em sequência (evita bloquear pop-ups do navegador). */
+export async function downloadDeparturesListPdfsInSequence(
+  paramsList: DeparturesListPdfParams[],
+): Promise<void> {
+  for (let i = 0; i < paramsList.length; i++) {
+    await downloadDeparturesListPdf(paramsList[i]);
+    if (i < paramsList.length - 1) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+}
+
+export async function getDeparturesListPdfBlob(params: DeparturesListPdfParams): Promise<{ blob: Blob; filename: string }> {
+  const { doc, filename } = await buildDeparturesListPdf(params);
   return { blob: doc.output("blob"), filename };
 }

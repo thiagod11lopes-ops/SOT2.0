@@ -3,18 +3,27 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
+import type { DeparturesListPdfParams } from "../lib/generateDeparturesPdf";
 import type { DepartureRecord, DepartureType } from "../types/departure";
+import {
+  clearDeparturesListFilterFromCadastro,
+  peekDeparturesListFilterFromCadastro,
+} from "../lib/departuresListFilterCadastro";
 import {
   formatDateToPtBr,
   getCurrentDatePtBr,
+  isCompleteDatePtBr,
   normalizeDatePtBrWithCaret,
   parsePtBrToDate,
+  sortDatasPtBr,
 } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import { isPlausibleEmail } from "../lib/departuresReportEmail";
-import { downloadDeparturesListPdf } from "../lib/generateDeparturesPdf";
-import { openGmailComposeWithDeparturesPdf } from "../lib/sendDeparturesListPdfEmail";
+import { downloadDeparturesListPdfsInSequence } from "../lib/generateDeparturesPdf";
+import { isAssinanteRubricaThiago, rubricaThiagoPublicUrl } from "../lib/rubricaAssinanteThiago";
+import { openGmailComposeWithDeparturesPdfList } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
+import { AssinarOpcoesModal, AssinarPeriodosCalendarModal } from "./departures-assinar-modals";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
 import { DetalheServicoServicoModal } from "./detalhe-servico-servico-modal";
 import { DeparturesDataTable } from "./departures-data-table";
@@ -26,10 +35,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 interface DeparturesListPageProps {
   title: string;
   filterTipo: DepartureType;
-}
-
-function isCompleteDatePtBr(value: string) {
-  return /^\d{2}\/\d{2}\/\d{4}$/.test(value);
+  /** Definido ao abrir a lista após cadastro (contexto), para filtrar pela data da saída. */
+  initialDeparturesFilterDatePtBr?: string | null;
 }
 
 /** Minutos desde meia-noite; horário inválido/vazio ordena por último. */
@@ -39,7 +46,11 @@ function sortKeyHoraSaida(horaSaida: string): number {
   return parsed.h * 60 + parsed.m;
 }
 
-export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProps) {
+export function DeparturesListPage({
+  title,
+  filterTipo,
+  initialDeparturesFilterDatePtBr = null,
+}: DeparturesListPageProps) {
   const { departures, removeDeparture, updateDeparture, updateDepartureKmFields, beginEditDeparture } =
     useDepartures();
   const { items: catalogItems } = useCatalogItems();
@@ -48,28 +59,46 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
   const assinaturaSelectId = useId();
   const filterDateInputRef = useRef<HTMLInputElement>(null);
   const pendingFilterCaret = useRef<number | null>(null);
-  const [filterDepartureDate, setFilterDepartureDate] = useState<string>(() => getCurrentDatePtBr());
+  const [filterDepartureDate, setFilterDepartureDate] = useState<string>(() => {
+    const fromCadastro = peekDeparturesListFilterFromCadastro();
+    if (fromCadastro) return fromCadastro;
+    const init = initialDeparturesFilterDatePtBr;
+    if (init && isCompleteDatePtBr(init)) return init;
+    return getCurrentDatePtBr();
+  });
   const [calendarOpen, setCalendarOpen] = useState(false);
   /** Mostra Imprimir / Assinar / Serviço após clicar na seta. */
   const [actionsToolbarOpen, setActionsToolbarOpen] = useState(false);
-  /** Painel de assinatura com select de motoristas (Frota e Pessoal). */
-  const [signPanelOpen, setSignPanelOpen] = useState(false);
+  const [assinarOpcoesModalOpen, setAssinarOpcoesModalOpen] = useState(false);
+  const [assinarPeriodosCalendarioOpen, setAssinarPeriodosCalendarioOpen] = useState(false);
+  /** Dias (dd/mm/aaaa) em que a assinatura da Divisão se aplica — definido no modal ou calendário. */
+  const [datasAssinatura, setDatasAssinatura] = useState<string[]>([]);
   const [selectedMotoristaAssinatura, setSelectedMotoristaAssinatura] = useState("");
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
   const [deleteModalRecords, setDeleteModalRecords] = useState<DepartureRecord[] | null>(null);
   const [servicoModalOpen, setServicoModalOpen] = useState(false);
+  /** Remove o valor one-shot após montagem (após cadastro); não força “hoje” no filtro. */
   useEffect(() => {
-    setFilterDepartureDate(getCurrentDatePtBr());
+    clearDeparturesListFilterFromCadastro();
+  }, []);
+
+  /** Ao trocar o tipo de lista (Administrativa ↔ Ambulância), só reinicia UI auxiliar — a data fica no estado. */
+  useEffect(() => {
     setActionsToolbarOpen(false);
-    setSignPanelOpen(false);
+    setAssinarOpcoesModalOpen(false);
+    setAssinarPeriodosCalendarioOpen(false);
+    setDatasAssinatura([]);
     setSelectedMotoristaAssinatura("");
     setAssinaturaConfirmadaNome(null);
     setServicoModalOpen(false);
   }, [filterTipo]);
 
   useEffect(() => {
-    if (!actionsToolbarOpen) setSignPanelOpen(false);
+    if (!actionsToolbarOpen) {
+      setAssinarOpcoesModalOpen(false);
+      setAssinarPeriodosCalendarioOpen(false);
+    }
   }, [actionsToolbarOpen]);
 
   useLayoutEffect(() => {
@@ -137,24 +166,63 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
     setAssinaturaConfirmadaNome(t);
   }
 
-  const departuresPdfParams = useMemo(
-    () => ({
-      listTitle: title,
-      tipo: filterTipo,
-      filterDate: filterDepartureDate,
-      rows,
-      signatures: {
-        assinanteDivisao: assinaturaConfirmadaNome,
-      },
-    }),
-    [title, filterTipo, filterDepartureDate, rows, assinaturaConfirmadaNome],
-  );
-
-  function handleGerarPdf() {
-    downloadDeparturesListPdf(departuresPdfParams);
+  function departuresRowsForDate(datePtBr: string): DepartureRecord[] {
+    let list = departures.filter((d) => d.tipo === filterTipo && d.dataSaida === datePtBr);
+    return [...list].sort((a, b) => {
+      const ka = sortKeyHoraSaida(a.horaSaida);
+      const kb = sortKeyHoraSaida(b.horaSaida);
+      if (ka !== kb) return ka - kb;
+      return a.id.localeCompare(b.id);
+    });
   }
 
-  function handleEnviarPdf() {
+  function buildPdfParamsListForDatasAssinadas(): DeparturesListPdfParams[] {
+    const nome = assinaturaConfirmadaNome;
+    if (!nome) return [];
+    let dates = sortDatasPtBr(datasAssinatura);
+    if (dates.length === 0 && isCompleteDatePtBr(filterDepartureDate)) {
+      dates = [filterDepartureDate];
+    }
+    return dates.map((d) => ({
+      listTitle: title,
+      tipo: filterTipo,
+      filterDate: d,
+      rows: departuresRowsForDate(d),
+      signatures: { assinanteDivisao: nome },
+    }));
+  }
+
+  function handleAssinarDiaAtualEscolhido() {
+    const d = isCompleteDatePtBr(filterDepartureDate) ? filterDepartureDate : getCurrentDatePtBr();
+    setDatasAssinatura([d]);
+    setAssinaturaConfirmadaNome(null);
+    setSelectedMotoristaAssinatura("");
+  }
+
+  function handleConfirmarPeriodosAssinatura(datasPtBr: string[]) {
+    setDatasAssinatura(sortDatasPtBr(datasPtBr));
+    setAssinaturaConfirmadaNome(null);
+    setSelectedMotoristaAssinatura("");
+  }
+
+  async function handleGerarPdf() {
+    if (!assinaturaConfirmadaNome) {
+      window.alert("Confirme a assinatura (escolha o assinante e OK) antes de gerar o PDF.");
+      return;
+    }
+    const list = buildPdfParamsListForDatasAssinadas();
+    if (list.length === 0) {
+      window.alert("Não há dias assinados. Use Assinar e conclua o fluxo (dia atual ou períodos).");
+      return;
+    }
+    try {
+      await downloadDeparturesListPdfsInSequence(list);
+    } catch {
+      window.alert("Não foi possível gerar o PDF. Tente novamente.");
+    }
+  }
+
+  async function handleEnviarPdf() {
     const email = reportEmailDest.trim();
     if (!email) {
       window.alert("Cadastre o e-mail de destino em Configurações.");
@@ -164,12 +232,24 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
       window.alert("O e-mail em Configurações não parece válido. Corrija e guarde antes de enviar.");
       return;
     }
+    if (!assinaturaConfirmadaNome) {
+      window.alert("Confirme a assinatura (escolha o assinante e OK) antes de enviar.");
+      return;
+    }
+    const list = buildPdfParamsListForDatasAssinadas();
+    if (list.length === 0) {
+      window.alert("Não há dias assinados. Use Assinar e conclua o fluxo (dia atual ou períodos).");
+      return;
+    }
     try {
-      openGmailComposeWithDeparturesPdf(departuresPdfParams, email);
+      await openGmailComposeWithDeparturesPdfList(list, email);
     } catch {
       window.alert("Não foi possível preparar o envio. Use Gerar PDF e envie manualmente pelo Gmail.");
     }
   }
+
+  const showPainelEscolherMotorista =
+    actionsToolbarOpen && datasAssinatura.length > 0 && !assinaturaConfirmadaNome;
 
   return (
     <Card className="shadow-[0_22px_56px_-14px_rgba(0,0,0,0.45),0_12px_32px_-10px_rgba(0,0,0,0.3)]">
@@ -280,8 +360,8 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
                 variant="default"
                 size="sm"
                 className="shrink-0"
-                aria-pressed={signPanelOpen}
-                onClick={() => setSignPanelOpen((open) => !open)}
+                aria-pressed={assinarOpcoesModalOpen || assinarPeriodosCalendarioOpen}
+                onClick={() => setAssinarOpcoesModalOpen(true)}
               >
                 Assinar
               </Button>
@@ -311,6 +391,17 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
           onExcluirDefinitivo={removeDeparture}
           onConfirmarCancelamento={handleConfirmarCancelamentoLista}
         />
+        <AssinarOpcoesModal
+          open={assinarOpcoesModalOpen}
+          onOpenChange={setAssinarOpcoesModalOpen}
+          onAssinarDiaAtual={handleAssinarDiaAtualEscolhido}
+          onAssinarPeriodosAnteriores={() => setAssinarPeriodosCalendarioOpen(true)}
+        />
+        <AssinarPeriodosCalendarModal
+          open={assinarPeriodosCalendarioOpen}
+          onOpenChange={setAssinarPeriodosCalendarioOpen}
+          onConfirmar={handleConfirmarPeriodosAssinatura}
+        />
         {filterTipo === "Administrativa" ? (
           <DetalheServicoServicoModal
             open={servicoModalOpen}
@@ -327,60 +418,74 @@ export function DeparturesListPage({ title, filterTipo }: DeparturesListPageProp
           onUpdateKmFields={updateDepartureKmFields}
           onEdit={beginEditDeparture}
         />
-        {signPanelOpen ? (
+        {showPainelEscolherMotorista ? (
           <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col gap-6">
-            {!assinaturaConfirmadaNome ? (
-              <div className="flex w-full flex-col items-center gap-3 text-center">
-                <label
-                  htmlFor={assinaturaSelectId}
-                  className="text-sm font-medium text-[hsl(var(--foreground))]"
+            <div className="flex w-full flex-col items-center gap-3 text-center">
+              <label
+                htmlFor={assinaturaSelectId}
+                className="text-sm font-medium text-[hsl(var(--foreground))]"
+              >
+                Assinante
+              </label>
+              <select
+                id={assinaturaSelectId}
+                value={selectedMotoristaAssinatura}
+                onChange={(e) => setSelectedMotoristaAssinatura(e.target.value)}
+                disabled={catalogItems.motoristas.length === 0}
+                className="h-10 w-full max-w-[22rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--muted))]"
+              >
+                <option value="">Selecione o motorista…</option>
+                {catalogItems.motoristas.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {catalogItems.motoristas.length === 0 ? (
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Nenhum motorista cadastrado. Cadastre em <strong>Frota e Pessoal</strong> →{" "}
+                  <strong>Motorista</strong>.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  className="min-w-[5rem]"
+                  disabled={!selectedMotoristaAssinatura.trim()}
+                  onClick={handleConfirmarAssinatura}
                 >
-                  Assinante
-                </label>
-                <select
-                  id={assinaturaSelectId}
-                  value={selectedMotoristaAssinatura}
-                  onChange={(e) => setSelectedMotoristaAssinatura(e.target.value)}
-                  disabled={catalogItems.motoristas.length === 0}
-                  className="h-10 w-full max-w-[22rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--muted))]"
-                >
-                  <option value="">Selecione o motorista…</option>
-                  {catalogItems.motoristas.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                {catalogItems.motoristas.length === 0 ? (
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Nenhum motorista cadastrado. Cadastre em <strong>Frota e Pessoal</strong> →{" "}
-                    <strong>Motorista</strong>.
-                  </p>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    className="min-w-[5rem]"
-                    disabled={!selectedMotoristaAssinatura.trim()}
-                    onClick={handleConfirmarAssinatura}
-                  >
-                    OK
-                  </Button>
-                )}
-              </div>
-            ) : null}
+                  OK
+                </Button>
+              )}
+            </div>
           </div>
         ) : null}
 
         {assinaturaConfirmadaNome ? (
           <div className="mx-auto mt-8 flex w-full max-w-md flex-col items-center gap-0 text-center print:break-inside-avoid">
             <div className="flex w-full max-w-xs flex-col items-stretch gap-0">
-              <div className="min-h-[3rem] w-full border-0 border-b-2 border-[hsl(var(--foreground))] bg-transparent" />
+              <div className="relative min-h-[3rem] w-full border-0 border-b-2 border-[hsl(var(--foreground))] bg-transparent">
+                {isAssinanteRubricaThiago(assinaturaConfirmadaNome) ? (
+                  <img
+                    src={rubricaThiagoPublicUrl()}
+                    alt=""
+                    className="pointer-events-none absolute bottom-0 left-1/2 max-h-[3.25rem] w-auto max-w-[min(100%,18rem)] -translate-x-1/2 object-contain object-bottom"
+                  />
+                ) : null}
+              </div>
               <span className="sr-only">Área para assinatura manuscrita</span>
             </div>
             <p className="mt-4 text-base font-semibold text-[hsl(var(--foreground))]">{assinaturaConfirmadaNome}</p>
             <p className="mt-1 text-sm font-medium text-[hsl(var(--muted-foreground))]">Divisão de Transporte</p>
+            {datasAssinatura.length > 0 ? (
+              <p className="mt-3 max-w-md text-center text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                Assinatura aplicável aos dias:{" "}
+                <span className="font-medium text-[hsl(var(--foreground))]">
+                  {sortDatasPtBr(datasAssinatura).join(", ")}
+                </span>
+              </p>
+            ) : null}
             <Button
               type="button"
               variant="ghost"

@@ -1,4 +1,4 @@
-import { isoDateToPtBr } from "./dateFormat";
+import { isCompleteDatePtBr, isoDateToPtBr } from "./dateFormat";
 
 /** Registro de entrada/saída da viatura na oficina. */
 export type RegistroOficina = {
@@ -67,10 +67,20 @@ export function mapaOficinaIgual(a: MapaOficinaPorViatura, b: MapaOficinaPorViat
   return true;
 }
 
-/** Há entrada sem saída → viatura considerada na oficina. */
+/**
+ * Registro ainda “aberto” na oficina: entrada informada e data de saída ainda não completa (dd/mm/aaaa).
+ * Só com data de saída completa a viatura deixa de aparecer no card Viaturas na Oficina (página principal).
+ */
+function visitaAbertaNaOficina(v: RegistroOficina): boolean {
+  const ent = String(v.dataEntrada ?? "").trim();
+  const sai = String(v.dataSaida ?? "").trim();
+  if (!ent) return false;
+  if (isCompleteDatePtBr(sai)) return false;
+  return true;
+}
+
+/** Há pelo menos uma visita com entrada e sem data de saída completa → viatura na oficina. */
 export function viaturaEstaNaOficina(visitas: RegistroOficina[] | undefined): boolean {
   if (!visitas?.length) return false;
-  return visitas.some(
-    (v) => Boolean(v.dataEntrada?.trim()) && !String(v.dataSaida ?? "").trim(),
-  );
+  return visitas.some(visitaAbertaNaOficina);
 }

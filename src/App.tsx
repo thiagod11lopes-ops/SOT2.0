@@ -12,7 +12,7 @@ import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
 import { useSyncPreference } from "./context/sync-preference-context";
-import { useOilMaintenanceMap } from "./hooks/useOilMaintenanceMap";
+import { useMapaOleoFromMaintenance } from "./context/vehicle-maintenance-context";
 import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
 import { isSettingsTab } from "./lib/tabMatch";
 import { Button } from "./components/ui/button";
@@ -67,9 +67,32 @@ function markDailyBackupDone(dayKey: string): void {
 
 function App() {
   const hash = useLocationHash();
-  const { activeTab, setActiveTab } = useAppTab();
-  /** Um único listener Firestore `oilMaintenance` para Dashboard + faixa inferior (evita leituras duplicadas). */
-  const mapaOleo = useOilMaintenanceMap();
+  const {
+    activeTab,
+    setActiveTab,
+    pendingDeparturesFilterDatePtBr,
+    setPendingDeparturesFilterDatePtBr,
+    departuresListMountKey,
+  } = useAppTab();
+  const prevActiveTabForPendingRef = useRef<string | null>(null);
+  const skipNextTabPendingClearRef = useRef(true);
+
+  /** Limpa filtro “pendente” só ao entrar em Cadastrar vindo de outra aba (não após salvar e ir para a lista). */
+  useEffect(() => {
+    const current = activeTab ?? null;
+    const prev = prevActiveTabForPendingRef.current;
+    if (skipNextTabPendingClearRef.current) {
+      skipNextTabPendingClearRef.current = false;
+      prevActiveTabForPendingRef.current = current;
+      return;
+    }
+    if (current === "Cadastrar Saída" && prev !== "Cadastrar Saída") {
+      setPendingDeparturesFilterDatePtBr(null);
+    }
+    prevActiveTabForPendingRef.current = current;
+  }, [activeTab, setPendingDeparturesFilterDatePtBr]);
+  /** Mesmo mapa de óleo da aba Manutenções (VehicleMaintenanceProvider). */
+  const mapaOleo = useMapaOleoFromMaintenance();
   const { editIntentVersion, cloudDeparturesSync } = useDepartures();
   const { firebaseOnlyEnabled } = useSyncPreference();
   const lastEditIntentVersion = useRef(editIntentVersion);
@@ -133,15 +156,27 @@ function App() {
     if (activeTab === "Cadastrar Saída") return <RegisterDeparturePage />;
     if (activeTab === "Saídas Administrativas")
       return (
-        <DeparturesListPage title="Saídas Administrativas" filterTipo="Administrativa" />
+        <DeparturesListPage
+          key={`lista-adm-${departuresListMountKey}`}
+          title="Saídas Administrativas"
+          filterTipo="Administrativa"
+          initialDeparturesFilterDatePtBr={pendingDeparturesFilterDatePtBr}
+        />
       );
     if (activeTab === "Saídas de Ambulância")
-      return <DeparturesListPage title="Saídas de Ambulância" filterTipo="Ambulância" />;
+      return (
+        <DeparturesListPage
+          key={`lista-amb-${departuresListMountKey}`}
+          title="Saídas de Ambulância"
+          filterTipo="Ambulância"
+          initialDeparturesFilterDatePtBr={pendingDeparturesFilterDatePtBr}
+        />
+      );
     if (isSettingsTab(activeTab)) return <SettingsPage />;
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
-  }, [activeTab, mapaOleo]);
+  }, [activeTab, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
 
   const isHome = !activeTab;
 
