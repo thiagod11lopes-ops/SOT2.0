@@ -1,6 +1,8 @@
 import { useVehicleMaintenance } from "../context/vehicle-maintenance-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { maiorKmChegadaPorViatura, statusTrocaOleo } from "../lib/oilMaintenance";
+import { viaturaEstaNaOficina } from "../lib/oficinaVisits";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -12,7 +14,8 @@ import {
 } from "./ui/table";
 
 export function VehicleMaintenancePanel() {
-  const { mapa, departures, placas, setOficinaPlacaAberta, setTrocaOleoPlaca } = useVehicleMaintenance();
+  const { mapa, mapaOficina, departures, placas, setOficinaPlacaAberta, setTrocaOleoPlaca } =
+    useVehicleMaintenance();
 
   if (placas.length === 0) {
     return (
@@ -48,6 +51,8 @@ export function VehicleMaintenancePanel() {
               const kmAtual = maiorKmChegadaPorViatura(departures, placa);
               const reg = mapa[placa];
               const st = statusTrocaOleo(kmAtual, reg);
+              const visitasOficina = mapaOficina[placa] ?? [];
+              const oficinaComSaidaEmBranco = viaturaEstaNaOficina(visitasOficina);
 
               let statusLabel = "—";
               let statusClass = "text-[hsl(var(--muted-foreground))]";
@@ -86,7 +91,16 @@ export function VehicleMaintenancePanel() {
                       <Button type="button" size="sm" variant="outline" onClick={() => setTrocaOleoPlaca(placa)}>
                         Troca de Óleo
                       </Button>
-                      <Button type="button" size="sm" variant="default" onClick={() => setOficinaPlacaAberta(placa)}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        className={cn(
+                          oficinaComSaidaEmBranco &&
+                            "border-0 bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500",
+                        )}
+                        onClick={() => setOficinaPlacaAberta(placa)}
+                      >
                         Oficina
                       </Button>
                     </div>
