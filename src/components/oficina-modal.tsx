@@ -1,6 +1,6 @@
 import { Search, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeDatePtBr } from "../lib/dateFormat";
 import type { RegistroOficina } from "../lib/oficinaVisits";
 import { Button } from "./ui/button";
@@ -55,15 +55,42 @@ type OficinaModalProps = {
   onClose: () => void;
 };
 
+function copiarVisitas(list: RegistroOficina[]): RegistroOficina[] {
+  return list.map((v) => ({ ...v }));
+}
+
+function visitasIguais(a: RegistroOficina[], b: RegistroOficina[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModalProps) {
   const open = placa !== null;
   const [buscaManutencao, setBuscaManutencao] = useState("");
   const [rascunho, setRascunho] = useState<Rascunho>(rascunhoVazio);
+  /** Rascunho do histórico — só vai para o contexto ao clicar em Atualizar. */
+  const [draftVisitas, setDraftVisitas] = useState<RegistroOficina[]>([]);
+  const lastPlacaRef = useRef<string | null>(null);
+  const lastVisitasKeyRef = useRef<string>("");
 
   useEffect(() => {
     setBuscaManutencao("");
     setRascunho(rascunhoVazio());
   }, [placa]);
+
+  useEffect(() => {
+    if (!placa) return;
+    const key = JSON.stringify(visitas);
+    if (lastPlacaRef.current !== placa) {
+      lastPlacaRef.current = placa;
+      lastVisitasKeyRef.current = key;
+      setDraftVisitas(copiarVisitas(visitas));
+      return;
+    }
+    if (key !== lastVisitasKeyRef.current) {
+      lastVisitasKeyRef.current = key;
+      setDraftVisitas(copiarVisitas(visitas));
+    }
+  }, [placa, visitas]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,12 +103,20 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
 
   const visitasFiltradas = useMemo(() => {
     const palavras = buscaManutencao.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (palavras.length === 0) return visitas;
-    return visitas.filter((v) => {
+    if (palavras.length === 0) return draftVisitas;
+    return draftVisitas.filter((v) => {
       const t = v.manutencao.toLowerCase();
       return palavras.every((p) => t.includes(p));
     });
-  }, [visitas, buscaManutencao]);
+  }, [draftVisitas, buscaManutencao]);
+
+  /** Mais recente (maior número) no topo; Registro 1 em baixo. */
+  const visitasOrdenadasExibicao = useMemo(
+    () => [...visitasFiltradas].reverse(),
+    [visitasFiltradas],
+  );
+
+  const haAlteracoesPendentes = !visitasIguais(draftVisitas, visitas);
 
   if (!open || !placa) return null;
 
@@ -90,8 +125,8 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
       window.alert("Informe a data de entrada para incluir o registro.");
       return;
     }
-    onChange([
-      ...visitas,
+    setDraftVisitas((prev) => [
+      ...prev,
       {
         id: crypto.randomUUID(),
         dataEntrada: rascunho.dataEntrada.trim(),
@@ -102,26 +137,40 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
     setRascunho(rascunhoVazio());
   }
 
-  function atualizar(id: string, patch: Partial<RegistroOficina>) {
-    onChange(visitas.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+  function atualizarCampo(id: string, patch: Partial<RegistroOficina>) {
+    setDraftVisitas((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
   }
 
   function remover(id: string) {
-    onChange(visitas.filter((v) => v.id !== id));
+    setDraftVisitas((prev) => prev.filter((v) => v.id !== id));
+  }
+
+  function handleSalvarAlteracoes() {
+    onChange(copiarVisitas(draftVisitas));
+  }
+
+  function handleFechar() {
+    if (haAlteracoesPendentes) {
+      const ok = window.confirm(
+        "Existem alterações não guardadas. Deseja fechar sem guardar?",
+      );
+      if (!ok) return;
+    }
+    onClose();
   }
 
   const inputDataClass =
     "h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 text-sm tabular-nums";
 
   const temBusca = buscaManutencao.trim().length > 0;
-  const nenhumHistoricoCombina = visitas.length > 0 && visitasFiltradas.length === 0 && temBusca;
+  const nenhumHistoricoCombina = draftVisitas.length > 0 && visitasFiltradas.length === 0 && temBusca;
 
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
       role="presentation"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleFechar();
       }}
     >
       <div
@@ -136,8 +185,9 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
             Oficina — {placa}
           </h2>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            Preencha o registro no topo e clique em <strong>Incluir registro</strong> para enviá-lo ao histórico
-            abaixo. O primeiro bloco fica sempre vazio para novas entradas.
+            Preencha o registro no topo e clique em <strong>Incluir registro</strong> para adicioná-lo ao histórico
+            abaixo. Depois de alterar qualquer campo, clique em <strong>Atualizar</strong> para guardar no sistema. O
+            primeiro bloco fica sempre vazio para novas entradas.
           </p>
         </div>
 
@@ -238,7 +288,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
               </div>
             </div>
 
-            {visitas.length > 0 ? (
+            {draftVisitas.length > 0 ? (
               <p className="text-xs font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                 Histórico
               </p>
@@ -252,10 +302,10 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
                 Nenhum registro do histórico combina com a busca em manutenção/serviços.
               </p>
-            ) : visitas.length > 0 ? (
+            ) : draftVisitas.length > 0 ? (
               <ul className="space-y-4">
-                {visitasFiltradas.map((v) => {
-                  const indiceReal = visitas.findIndex((x) => x.id === v.id) + 1;
+                {visitasOrdenadasExibicao.map((v) => {
+                  const indiceReal = draftVisitas.findIndex((x) => x.id === v.id) + 1;
                   return (
                     <li
                       key={v.id}
@@ -289,7 +339,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
                             placeholder="dd/mm/aaaa"
                             value={v.dataEntrada}
                             onChange={(e) =>
-                              atualizar(v.id, { dataEntrada: normalizeDatePtBr(e.target.value) })
+                              atualizarCampo(v.id, { dataEntrada: normalizeDatePtBr(e.target.value) })
                             }
                             className={inputDataClass}
                           />
@@ -306,7 +356,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
                             placeholder="dd/mm/aaaa"
                             value={v.dataSaida}
                             onChange={(e) =>
-                              atualizar(v.id, { dataSaida: normalizeDatePtBr(e.target.value) })
+                              atualizarCampo(v.id, { dataSaida: normalizeDatePtBr(e.target.value) })
                             }
                             className={inputDataClass}
                           />
@@ -330,7 +380,7 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
                         <textarea
                           id={`man-${v.id}`}
                           value={v.manutencao}
-                          onChange={(e) => atualizar(v.id, { manutencao: e.target.value })}
+                          onChange={(e) => atualizarCampo(v.id, { manutencao: e.target.value })}
                           rows={3}
                           placeholder="Ex.: troca de pastilhas, revisão geral, alinhamento…"
                           className="w-full resize-y rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]"
@@ -345,8 +395,16 @@ export function OficinaModal({ placa, visitas, onChange, onClose }: OficinaModal
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[hsl(var(--border))] px-4 py-3">
-          <Button type="button" onClick={onClose}>
+          {haAlteracoesPendentes ? (
+            <p className="mr-auto text-xs text-amber-700 dark:text-amber-400">
+              Alterações por guardar — clique em Atualizar para gravar.
+            </p>
+          ) : null}
+          <Button type="button" variant="outline" onClick={handleFechar}>
             Fechar
+          </Button>
+          <Button type="button" disabled={!haAlteracoesPendentes} onClick={handleSalvarAlteracoes}>
+            Atualizar
           </Button>
         </div>
       </div>
