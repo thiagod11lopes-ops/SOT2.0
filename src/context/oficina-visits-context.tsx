@@ -83,7 +83,16 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
+                const localRaw = await idbGetJson<unknown>(OFICINA_STORAGE_KEY);
+                const normalized = normalizarMapaOficinaCarregado(localRaw);
+                if (!isMapaOficinaEmpty(normalized)) {
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.oficina, normalized).catch((e) => {
+                    console.error("[SOT] Promover oficina local → nuvem (doc ausente):", e);
+                  });
+                }
+                setMapaOficina(normalized);
+                hidratado.current = true;
+                void idbSetJson(OFICINA_STORAGE_KEY, normalized, { maxAttempts: 6 });
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -108,6 +117,7 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
               }
 
               setMapaOficina(merged);
+              hidratado.current = true;
               void idbSetJson(OFICINA_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
@@ -161,6 +171,7 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
   const setVisitasParaPlaca = useCallback(
     (placa: string, visitas: RegistroOficina[]) => {
       bumpLocalMutation();
+      hidratado.current = true;
       setMapaOficina((prev) => ({ ...prev, [placa]: visitas }));
     },
     [bumpLocalMutation],

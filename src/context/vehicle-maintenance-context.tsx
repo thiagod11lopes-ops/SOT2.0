@@ -73,6 +73,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
 
   const bumpLocalOleoMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
+    hidratado.current = true;
   }, []);
 
   useEffect(() => {
@@ -104,6 +105,16 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
+                const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
+                const normalized = normalizeMapaOleo(localRaw);
+                if (!isMapaOleoEmpty(normalized)) {
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized).catch((e) => {
+                    console.error("[SOT] Promover troca de óleo local → nuvem (doc ausente):", e);
+                  });
+                }
+                setMapa(normalized);
+                hidratado.current = true;
+                void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, normalized, { maxAttempts: 6 });
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
