@@ -68,7 +68,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
       detail: "Firestore online",
       icon: Cloud,
       className:
-        "border-emerald-500/30 bg-emerald-500/12 text-emerald-200",
+        "border-emerald-800/70 bg-emerald-900/95 text-emerald-50 shadow-sm dark:border-emerald-950/80 dark:bg-emerald-950 dark:text-emerald-100",
     };
   }, [cloudDeparturesSync, isOnline]);
 
