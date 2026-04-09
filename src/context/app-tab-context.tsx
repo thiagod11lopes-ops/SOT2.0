@@ -16,6 +16,12 @@ type AppTabContextValue = {
   /** Incrementado ao aplicar filtro pós-cadastro para remontar `DeparturesListPage`. */
   departuresListMountKey: number;
   bumpDeparturesListMountKey: () => void;
+  /**
+   * Incrementado quando a UI pede abrir Frota e Pessoal → Viaturas → Manutenções
+   * (ex.: ícones na página inicial). `FleetPersonnelPage` reage ao valor.
+   */
+  fleetManutencoesFocusKey: number;
+  requestFleetManutencoesTab: () => void;
 };
 
 const AppTabContext = createContext<AppTabContextValue | null>(null);
@@ -29,6 +35,10 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
   const bumpDeparturesListMountKey = useCallback(() => {
     setDeparturesListMountKey((k) => k + 1);
   }, []);
+  const [fleetManutencoesFocusKey, setFleetManutencoesFocusKey] = useState(0);
+  const requestFleetManutencoesTab = useCallback(() => {
+    setFleetManutencoesFocusKey((k) => k + 1);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -38,8 +48,17 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
       setPendingDeparturesFilterDatePtBr,
       departuresListMountKey,
       bumpDeparturesListMountKey,
+      fleetManutencoesFocusKey,
+      requestFleetManutencoesTab,
     }),
-    [activeTab, pendingDeparturesFilterDatePtBr, departuresListMountKey, bumpDeparturesListMountKey],
+    [
+      activeTab,
+      pendingDeparturesFilterDatePtBr,
+      departuresListMountKey,
+      bumpDeparturesListMountKey,
+      fleetManutencoesFocusKey,
+      requestFleetManutencoesTab,
+    ],
   );
 
   return <AppTabContext.Provider value={value}>{children}</AppTabContext.Provider>;

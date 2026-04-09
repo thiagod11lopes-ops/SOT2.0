@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAvisos } from "../context/avisos-context";
+import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
@@ -32,7 +33,6 @@ import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficina
 import { groupDeparturesForListDisplay, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
-import { VehicleMaintenancePanel } from "./vehicle-maintenance-panel";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -199,6 +199,7 @@ function formatDataHojeLongaPtBr() {
 }
 
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
+  const { setActiveTab, requestFleetManutencoesTab } = useAppTab();
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
   /** Na home não entram saídas canceladas (mantêm-se nas listas por tipo). */
@@ -227,8 +228,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
   /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
-  const [manutencoesModalOpen, setManutencoesModalOpen] = useState(false);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
+
+  function openFleetManutencoes() {
+    requestFleetManutencoesTab();
+    setActiveTab("Frota e Pessoal");
+  }
+
   useEffect(() => {
     const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
@@ -511,8 +517,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 type="button"
                 variant="ghost"
                 className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={() => setManutencoesModalOpen(true)}
-                aria-label="Abrir manutenções (mesma aba Frota e Pessoal — Manutenções)"
+                onClick={openFleetManutencoes}
+                aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — viaturas na oficina"
               >
                 <Wrench className="h-5 w-5 text-slate-600" />
               </Button>
@@ -553,8 +559,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 type="button"
                 variant="ghost"
                 className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={() => setManutencoesModalOpen(true)}
-                aria-label="Abrir manutenções — próximas trocas de óleo (mesma aba Frota e Pessoal — Manutenções)"
+                onClick={openFleetManutencoes}
+                aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — trocas de óleo"
               >
                 <Droplets className="h-5 w-5 text-slate-600" />
               </Button>
@@ -628,35 +634,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           </Card>
         </div>
       </section>
-
-      {manutencoesModalOpen ? (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dashboard-manutencoes-title"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setManutencoesModalOpen(false);
-          }}
-        >
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[hsl(var(--border))] px-4 py-3">
-              <h2
-                id="dashboard-manutencoes-title"
-                className="text-lg font-semibold text-[hsl(var(--foreground))]"
-              >
-                Manutenções
-              </h2>
-              <Button type="button" variant="default" size="sm" onClick={() => setManutencoesModalOpen(false)}>
-                Fechar
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <VehicleMaintenancePanel />
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {limpezaModalOpen ? (
         <div

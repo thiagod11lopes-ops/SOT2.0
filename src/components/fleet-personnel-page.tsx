@@ -1,7 +1,8 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CatalogCategory } from "../context/catalog-items-context";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useAppTab } from "../context/app-tab-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
@@ -17,12 +18,20 @@ const motoristaCategory: CatalogCategory = "motoristas";
 
 export function FleetPersonnelPage() {
   const { items, addItem, removeItem } = useCatalogItems();
+  const { fleetManutencoesFocusKey } = useAppTab();
   const { isPendente, setPendente } = useLimpezaPendente();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
   const [draftMotorista, setDraftMotorista] = useState("");
   const [draftViaturaAdmin, setDraftViaturaAdmin] = useState("");
   const [draftViaturaAmb, setDraftViaturaAmb] = useState("");
   const [viaturaInnerTab, setViaturaInnerTab] = useState<string>(viaturaSubTabs[0]);
+
+  useEffect(() => {
+    if (fleetManutencoesFocusKey > 0) {
+      setActiveSubTab("Viaturas");
+      setViaturaInnerTab("Manutenções");
+    }
+  }, [fleetManutencoesFocusKey]);
 
   const isMotorista = activeSubTab === "Motorista";
   const isViatura = activeSubTab === "Viaturas";
