@@ -203,6 +203,7 @@ function App() {
         activeTab={activeTab ?? ""}
         onTabChange={setActiveTab}
         homeTickerActive={showHomeAvisosTicker}
+        fitHomeViewport={isHome}
       >
         {content}
       </Layout>
