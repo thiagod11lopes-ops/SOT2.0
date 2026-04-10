@@ -271,6 +271,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       ),
     [alarmesDiarios, agoraDashboard],
   );
+  /** Enquanto um alarme estiver «ativo» na home (após a hora, antes de desativar), esconde oficina/óleo/limpeza/fainas. */
+  const alarmeBloqueiaSecoesOperacionais = alarmesNaHome.length > 0;
   const proximas = useMemo(() => {
     const hoje = getCurrentDatePtBr();
     const rows = proximaSaidaHoje(departuresAtivas, hoje, agoraDashboard);
@@ -597,30 +599,36 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <Card className={departuresTableShadowClass}>
             <CardContent className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 space-y-4">
-                <div>
-                  <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
-                  {placasNaOficina.length === 0 ? (
-                    <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                      Nenhuma viatura com entrada na oficina sem data de saída.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 flex flex-wrap gap-1.5">
-                      {placasNaOficina.map((placa) => (
-                        <li
-                          key={placa}
-                          className={cn(
-                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
-                            homeBodyEmphasisClass,
-                          )}
-                        >
-                          {placa}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                {!alarmeBloqueiaSecoesOperacionais ? (
+                  <div>
+                    <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
+                    {placasNaOficina.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Nenhuma viatura com entrada na oficina sem data de saída.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {placasNaOficina.map((placa) => (
+                          <li
+                            key={placa}
+                            className={cn(
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                              homeBodyEmphasisClass,
+                            )}
+                          >
+                            {placa}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
 
-                <div className="border-t border-[hsl(var(--border))] pt-3">
+                <div
+                  className={cn(
+                    !alarmeBloqueiaSecoesOperacionais && "border-t border-[hsl(var(--border))] pt-3",
+                  )}
+                >
                   <p className={homeSectionTitleClass}>Viaturas Inoperantes</p>
                   {placasInoperantes.length === 0 ? (
                     <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
@@ -655,119 +663,123 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             </CardContent>
           </Card>
 
-          <Card className={departuresTableShadowClass}>
-            <CardContent className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className={homeSectionTitleClass}>Próximas Trocas de Óleo</p>
-                {placasCatalogo.length === 0 ? (
-                  <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                    Cadastre viaturas em <strong>Frota e Pessoal</strong> para acompanhar trocas de óleo.
-                  </p>
-                ) : linhasProximasTrocasOleo.length === 0 ? (
-                  <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma viatura está próxima do prazo de troca de óleo.
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {linhasProximasTrocasOleo.map(({ placa, st }) => (
-                      <li
-                        key={placa}
-                        className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
-                      >
-                        <span className={cn("shrink-0 font-mono text-sm", homeBodyEmphasisClass)}>
-                          {rotuloViaturaPlaca(placa)}
-                        </span>
-                        <span className={cn("min-w-0 text-sm", homeBodyEmphasisClass)}>
-                          {fraseProximaTrocaOleo(st)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={openFleetManutencoes}
-                aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — trocas de óleo"
-              >
-                <Droplets className="h-5 w-5 text-slate-600" />
-              </Button>
-            </CardContent>
-          </Card>
+          {!alarmeBloqueiaSecoesOperacionais ? (
+            <>
+              <Card className={departuresTableShadowClass}>
+                <CardContent className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={homeSectionTitleClass}>Próximas Trocas de Óleo</p>
+                    {placasCatalogo.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Cadastre viaturas em <strong>Frota e Pessoal</strong> para acompanhar trocas de óleo.
+                      </p>
+                    ) : linhasProximasTrocasOleo.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Nenhuma viatura está próxima do prazo de troca de óleo.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {linhasProximasTrocasOleo.map(({ placa, st }) => (
+                          <li
+                            key={placa}
+                            className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
+                          >
+                            <span className={cn("shrink-0 font-mono text-sm", homeBodyEmphasisClass)}>
+                              {rotuloViaturaPlaca(placa)}
+                            </span>
+                            <span className={cn("min-w-0 text-sm", homeBodyEmphasisClass)}>
+                              {fraseProximaTrocaOleo(st)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                    onClick={openFleetManutencoes}
+                    aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — trocas de óleo"
+                  >
+                    <Droplets className="h-5 w-5 text-slate-600" />
+                  </Button>
+                </CardContent>
+              </Card>
 
-          <Card className={departuresTableShadowClass}>
-            <CardContent className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className={homeSectionTitleClass}>Viaturas com pendência de limpeza.</p>
-                {placasPendenciaLimpeza.length === 0 ? (
-                  <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma viatura marcada em Frota e Pessoal → Cadastrar Viatura.
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {placasPendenciaLimpeza.map((placa) => (
-                      <li
-                        key={placa}
-                        className={cn(
-                          "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
-                          homeBodyEmphasisClass,
-                        )}
-                      >
-                        {frasePendenciaLimpezaViatura(placa)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={() => setLimpezaModalOpen(true)}
-                aria-label="Marcar pendência de limpeza por viatura"
-              >
-                <Sparkles className="h-5 w-5 text-slate-600" />
-              </Button>
-            </CardContent>
-          </Card>
+              <Card className={departuresTableShadowClass}>
+                <CardContent className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={homeSectionTitleClass}>Viaturas com pendência de limpeza.</p>
+                    {placasPendenciaLimpeza.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Nenhuma viatura marcada em Frota e Pessoal → Cadastrar Viatura.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {placasPendenciaLimpeza.map((placa) => (
+                          <li
+                            key={placa}
+                            className={cn(
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
+                              homeBodyEmphasisClass,
+                            )}
+                          >
+                            {frasePendenciaLimpezaViatura(placa)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                    onClick={() => setLimpezaModalOpen(true)}
+                    aria-label="Marcar pendência de limpeza por viatura"
+                  >
+                    <Sparkles className="h-5 w-5 text-slate-600" />
+                  </Button>
+                </CardContent>
+              </Card>
 
-          <Card className={departuresTableShadowClass}>
-            <CardContent className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className={homeSectionTitleClass}>Fainas Gerais</p>
-                {fainasLinhas.length === 0 ? (
-                  <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma faina cadastrada. Use a aba <strong>Avisos</strong>.
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {fainasLinhas.map((linha, i) => (
-                      <li
-                        key={`${i}-${linha.slice(0, 24)}`}
-                        className={cn(
-                          "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
-                          homeBodyEmphasisClass,
-                        )}
-                      >
-                        {linha}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={openAvisosFainasGerais}
-                aria-label="Abrir Avisos — Fainas gerais"
-              >
-                <ClipboardList className="h-5 w-5 text-slate-600" />
-              </Button>
-            </CardContent>
-          </Card>
+              <Card className={departuresTableShadowClass}>
+                <CardContent className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={homeSectionTitleClass}>Fainas Gerais</p>
+                    {fainasLinhas.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Nenhuma faina cadastrada. Use a aba <strong>Avisos</strong>.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {fainasLinhas.map((linha, i) => (
+                          <li
+                            key={`${i}-${linha.slice(0, 24)}`}
+                            className={cn(
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
+                              homeBodyEmphasisClass,
+                            )}
+                          >
+                            {linha}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                    onClick={openAvisosFainasGerais}
+                    aria-label="Abrir Avisos — Fainas gerais"
+                  >
+                    <ClipboardList className="h-5 w-5 text-slate-600" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
         </div>
       </section>
 
