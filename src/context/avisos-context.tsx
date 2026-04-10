@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { getCurrentDatePtBr } from "../lib/dateFormat";
 import {
   avisoGeralExpiradoParaRemocaoAutomatica,
   avisoGeralVisivelNoDia,
@@ -32,11 +33,37 @@ export type AlarmeDiarioItem = {
   ativo: boolean;
 };
 
+/** Rascunho do formulário «Incluir novo aviso» (persistido para não perder ao mudar de aba ou atualizar). */
+export type AvisoGeralDraftNovo = {
+  texto: string;
+  dataInicio: string;
+  dataFim: string;
+};
+
+/** Edição em curso na tabela de avisos gerais (persistido). */
+export type AvisoGeralDraftEdicao = {
+  id: string;
+  texto: string;
+  dataInicio: string;
+  dataFim: string;
+};
+
+/** Rascunho do formulário «novo alarme» e edição em linha (persistido). */
+export type AlarmDiarioDraftEdicao = {
+  id: string;
+  nome: string;
+  hora: string;
+};
+
 export type AvisosPersistedState = {
   avisoPrincipal: string;
   fainasTexto: string;
   avisosGeraisItens: AvisoGeralItem[];
   alarmesDiarios: AlarmeDiarioItem[];
+  avisosGeraisDraftNovo: AvisoGeralDraftNovo;
+  avisosGeraisDraftEdicao: AvisoGeralDraftEdicao | null;
+  alarmDiarioDraftNovo: { nome: string; hora: string };
+  alarmDiarioDraftEdicao: AlarmDiarioDraftEdicao | null;
 };
 
 const defaultState: AvisosPersistedState = {
@@ -44,6 +71,10 @@ const defaultState: AvisosPersistedState = {
   fainasTexto: "",
   avisosGeraisItens: [],
   alarmesDiarios: [],
+  avisosGeraisDraftNovo: { texto: "", dataInicio: "", dataFim: "" },
+  avisosGeraisDraftEdicao: null,
+  alarmDiarioDraftNovo: { nome: "", hora: "" },
+  alarmDiarioDraftEdicao: null,
 };
 
 type AvisosPersistedDoc = AvisosPersistedState & {
@@ -75,6 +106,18 @@ type AvisosContextValue = AvisosPersistedState & {
   setAvisoPrincipal: (v: string) => void;
   setFainasTexto: (v: string) => void;
   setAvisosGeraisItens: (items: AvisoGeralItem[] | ((prev: AvisoGeralItem[]) => AvisoGeralItem[])) => void;
+  setAvisosGeraisDraftNovo: (
+    v: AvisoGeralDraftNovo | ((prev: AvisoGeralDraftNovo) => AvisoGeralDraftNovo),
+  ) => void;
+  setAvisosGeraisDraftEdicao: (
+    v: AvisoGeralDraftEdicao | null | ((prev: AvisoGeralDraftEdicao | null) => AvisoGeralDraftEdicao | null),
+  ) => void;
+  setAlarmDiarioDraftNovo: (
+    v: { nome: string; hora: string } | ((prev: { nome: string; hora: string }) => { nome: string; hora: string }),
+  ) => void;
+  setAlarmDiarioDraftEdicao: (
+    v: AlarmDiarioDraftEdicao | null | ((prev: AlarmDiarioDraftEdicao | null) => AlarmDiarioDraftEdicao | null),
+  ) => void;
   addAlarmeDiario: (nome: string, hora: string) => void;
   updateAlarmeDiario: (
     id: string,
@@ -142,6 +185,73 @@ function normalizeAvisoGeralItem(raw: unknown): AvisoGeralItem | null {
   };
 }
 
+function normalizeAvisoGeralDraftNovo(raw: unknown): AvisoGeralDraftNovo {
+  if (!raw || typeof raw !== "object") return { ...defaultState.avisosGeraisDraftNovo };
+  const o = raw as Record<string, unknown>;
+  return {
+    texto: typeof o.texto === "string" ? o.texto : "",
+    dataInicio: typeof o.dataInicio === "string" ? o.dataInicio : "",
+    dataFim: typeof o.dataFim === "string" ? o.dataFim : "",
+  };
+}
+
+function normalizeAvisoGeralDraftEdicao(raw: unknown): AvisoGeralDraftEdicao | null {
+  if (raw === null || raw === undefined) return null;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || !o.id) return null;
+  return {
+    id: o.id,
+    texto: typeof o.texto === "string" ? o.texto : "",
+    dataInicio: typeof o.dataInicio === "string" ? o.dataInicio : "",
+    dataFim: typeof o.dataFim === "string" ? o.dataFim : "",
+  };
+}
+
+/** Primeira abertura: data inicial pré-preenchida com hoje (igual ao comportamento antigo em memória). */
+function hydrateDraftNovoSeTotalmenteVazio(novo: AvisoGeralDraftNovo): AvisoGeralDraftNovo {
+  if (novo.texto === "" && novo.dataInicio === "" && novo.dataFim === "") {
+    return { ...novo, dataInicio: getCurrentDatePtBr() };
+  }
+  return novo;
+}
+
+function normalizeAlarmDiarioDraftNovo(raw: unknown): { nome: string; hora: string } {
+  if (!raw || typeof raw !== "object") return { ...defaultState.alarmDiarioDraftNovo };
+  const o = raw as Record<string, unknown>;
+  return {
+    nome: typeof o.nome === "string" ? o.nome : "",
+    hora: typeof o.hora === "string" ? o.hora : "",
+  };
+}
+
+function normalizeAlarmDiarioDraftEdicao(raw: unknown): AlarmDiarioDraftEdicao | null {
+  if (raw === null || raw === undefined) return null;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || !o.id) return null;
+  return {
+    id: o.id,
+    nome: typeof o.nome === "string" ? o.nome : "",
+    hora: typeof o.hora === "string" ? o.hora : "",
+  };
+}
+
+/** Documento sem dados úteis (snapshot vazio do Firestore antes do primeiro upload). */
+function isAvisosDocEffectivelyEmpty(d: AvisosPersistedDoc): boolean {
+  if (d.deletedAlarmIds.length > 0) return false;
+  if (d.avisoPrincipal.trim()) return false;
+  if (d.fainasTexto.trim()) return false;
+  if (d.avisosGeraisItens.length > 0) return false;
+  if (d.alarmesDiarios.length > 0) return false;
+  const ag = d.avisosGeraisDraftNovo;
+  if (ag.texto.trim() || ag.dataInicio.trim() || ag.dataFim.trim()) return false;
+  if (d.avisosGeraisDraftEdicao !== null) return false;
+  if (d.alarmDiarioDraftNovo.nome.trim() || d.alarmDiarioDraftNovo.hora.trim()) return false;
+  if (d.alarmDiarioDraftEdicao !== null) return false;
+  return true;
+}
+
 function migrateAvisosGeraisFromTextoLegado(texto: string): AvisoGeralItem[] {
   return texto
     .split("\n")
@@ -189,6 +299,10 @@ function normalizeStored(raw: unknown): AvisosPersistedDoc {
     avisosGeraisItens,
     alarmesDiarios,
     deletedAlarmIds,
+    avisosGeraisDraftNovo: normalizeAvisoGeralDraftNovo(o.avisosGeraisDraftNovo),
+    avisosGeraisDraftEdicao: normalizeAvisoGeralDraftEdicao(o.avisosGeraisDraftEdicao),
+    alarmDiarioDraftNovo: normalizeAlarmDiarioDraftNovo(o.alarmDiarioDraftNovo),
+    alarmDiarioDraftEdicao: normalizeAlarmDiarioDraftEdicao(o.alarmDiarioDraftEdicao),
   };
 }
 
@@ -209,6 +323,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const [fainasTexto, setFainasTextoState] = useState("");
   const [avisosGeraisItens, setAvisosGeraisItensState] = useState<AvisoGeralItem[]>([]);
   const [alarmesDiarios, setAlarmesDiariosState] = useState<AlarmeDiarioItem[]>([]);
+  const [avisosGeraisDraftNovo, setAvisosGeraisDraftNovoState] = useState<AvisoGeralDraftNovo>(
+    defaultState.avisosGeraisDraftNovo,
+  );
+  const [avisosGeraisDraftEdicao, setAvisosGeraisDraftEdicaoState] = useState<AvisoGeralDraftEdicao | null>(null);
+  const [alarmDiarioDraftNovo, setAlarmDiarioDraftNovoState] = useState(defaultState.alarmDiarioDraftNovo);
+  const [alarmDiarioDraftEdicao, setAlarmDiarioDraftEdicaoState] = useState<AlarmDiarioDraftEdicao | null>(null);
   const [persistReady, setPersistReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
@@ -225,6 +345,10 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     avisosGeraisItens,
     alarmesDiarios,
     deletedAlarmIds: [...deletedAlarmIdsRef.current],
+    avisosGeraisDraftNovo,
+    avisosGeraisDraftEdicao,
+    alarmDiarioDraftNovo,
+    alarmDiarioDraftEdicao,
   };
 
   const bumpLocalMutation = useCallback(() => {
@@ -244,24 +368,25 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(id);
   }, []);
 
+  /** Sempre hidrata do IndexedDB (também com Firebase) para recuperar dados após F5 antes do snapshot remoto. */
   useEffect(() => {
-    if (useCloud) {
-      // Modo estrito Firebase: ignora hidratação inicial por cache local.
-      setPersistReady(true);
-      return;
-    }
     void idbGetJson<unknown>(AVISOS_STORAGE_KEY)
       .then((raw) => {
         const n = normalizeStored(raw);
         deletedAlarmIdsRef.current = new Set(n.deletedAlarmIds);
-        stateRef.current = n;
+        const draftNovo = hydrateDraftNovoSeTotalmenteVazio(n.avisosGeraisDraftNovo);
+        stateRef.current = { ...n, avisosGeraisDraftNovo: draftNovo };
         setAvisoPrincipalState(n.avisoPrincipal);
         setFainasTextoState(n.fainasTexto);
         setAvisosGeraisItensState(n.avisosGeraisItens);
         setAlarmesDiariosState(n.alarmesDiarios);
+        setAvisosGeraisDraftNovoState(draftNovo);
+        setAvisosGeraisDraftEdicaoState(n.avisosGeraisDraftEdicao);
+        setAlarmDiarioDraftNovoState(n.alarmDiarioDraftNovo);
+        setAlarmDiarioDraftEdicaoState(n.alarmDiarioDraftEdicao);
       })
       .finally(() => setPersistReady(true));
-  }, [useCloud]);
+  }, []);
 
   useEffect(() => {
     if (!persistReady) return;
@@ -271,9 +396,23 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisItens,
       alarmesDiarios,
       deletedAlarmIds: [...deletedAlarmIdsRef.current],
+      avisosGeraisDraftNovo,
+      avisosGeraisDraftEdicao,
+      alarmDiarioDraftNovo,
+      alarmDiarioDraftEdicao,
     };
     void idbSetJson(AVISOS_STORAGE_KEY, payload, { maxAttempts: 6 });
-  }, [persistReady, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
+  }, [
+    persistReady,
+    avisoPrincipal,
+    fainasTexto,
+    avisosGeraisItens,
+    alarmesDiarios,
+    avisosGeraisDraftNovo,
+    avisosGeraisDraftEdicao,
+    alarmDiarioDraftNovo,
+    alarmDiarioDraftEdicao,
+  ]);
 
   useEffect(() => {
     const flush = () => {
@@ -308,14 +447,24 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
                 return;
               }
               const incoming = normalizeFromCloudPayload(payload);
+              /** Evita apagar dados ainda não enviados ao Firestore (snapshot vazio/lag). */
+              if (isAvisosDocEffectivelyEmpty(incoming) && !isAvisosDocEffectivelyEmpty(stateRef.current)) {
+                return;
+              }
               applyingRemoteRef.current = true;
               deletedAlarmIdsRef.current = new Set(incoming.deletedAlarmIds);
-              stateRef.current = incoming;
+              const draftNovo = hydrateDraftNovoSeTotalmenteVazio(incoming.avisosGeraisDraftNovo);
+              const merged = { ...incoming, avisosGeraisDraftNovo: draftNovo };
+              stateRef.current = merged;
               setAvisoPrincipalState(incoming.avisoPrincipal);
               setFainasTextoState(incoming.fainasTexto);
               setAvisosGeraisItensState(incoming.avisosGeraisItens);
               setAlarmesDiariosState(incoming.alarmesDiarios);
-              void idbSetJson(AVISOS_STORAGE_KEY, incoming, { maxAttempts: 6 });
+              setAvisosGeraisDraftNovoState(draftNovo);
+              setAvisosGeraisDraftEdicaoState(incoming.avisosGeraisDraftEdicao);
+              setAlarmDiarioDraftNovoState(incoming.alarmDiarioDraftNovo);
+              setAlarmDiarioDraftEdicaoState(incoming.alarmDiarioDraftEdicao);
+              void idbSetJson(AVISOS_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },
           (err) => console.error("[SOT] Firestore avisos:", err),
@@ -342,14 +491,29 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisItens,
       alarmesDiarios,
       deletedAlarmIds: [...deletedAlarmIdsRef.current],
+      avisosGeraisDraftNovo,
+      avisosGeraisDraftEdicao,
+      alarmDiarioDraftNovo,
+      alarmDiarioDraftEdicao,
     };
     const t = window.setTimeout(() => {
       void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, payload).catch((e) => {
         console.error("[SOT] Gravar avisos na nuvem:", e);
       });
-    }, 900);
+    }, 400);
     return () => window.clearTimeout(t);
-  }, [persistReady, useCloud, avisoPrincipal, fainasTexto, avisosGeraisItens, alarmesDiarios]);
+  }, [
+    persistReady,
+    useCloud,
+    avisoPrincipal,
+    fainasTexto,
+    avisosGeraisItens,
+    alarmesDiarios,
+    avisosGeraisDraftNovo,
+    avisosGeraisDraftEdicao,
+    alarmDiarioDraftNovo,
+    alarmDiarioDraftEdicao,
+  ]);
 
   /** Remove avisos com data final já ultrapassada (inclui após meia-noite). */
   useEffect(() => {
@@ -383,6 +547,48 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     (v: AvisoGeralItem[] | ((prev: AvisoGeralItem[]) => AvisoGeralItem[])) => {
       bumpLocalMutation();
       setAvisosGeraisItensState(v);
+    },
+    [bumpLocalMutation],
+  );
+
+  const setAvisosGeraisDraftNovo = useCallback(
+    (v: AvisoGeralDraftNovo | ((prev: AvisoGeralDraftNovo) => AvisoGeralDraftNovo)) => {
+      bumpLocalMutation();
+      setAvisosGeraisDraftNovoState(v);
+    },
+    [bumpLocalMutation],
+  );
+
+  const setAvisosGeraisDraftEdicao = useCallback(
+    (
+      v:
+        | AvisoGeralDraftEdicao
+        | null
+        | ((prev: AvisoGeralDraftEdicao | null) => AvisoGeralDraftEdicao | null),
+    ) => {
+      bumpLocalMutation();
+      setAvisosGeraisDraftEdicaoState(v);
+    },
+    [bumpLocalMutation],
+  );
+
+  const setAlarmDiarioDraftNovo = useCallback(
+    (v: { nome: string; hora: string } | ((prev: { nome: string; hora: string }) => { nome: string; hora: string })) => {
+      bumpLocalMutation();
+      setAlarmDiarioDraftNovoState(v);
+    },
+    [bumpLocalMutation],
+  );
+
+  const setAlarmDiarioDraftEdicao = useCallback(
+    (
+      v:
+        | AlarmDiarioDraftEdicao
+        | null
+        | ((prev: AlarmDiarioDraftEdicao | null) => AlarmDiarioDraftEdicao | null),
+    ) => {
+      bumpLocalMutation();
+      setAlarmDiarioDraftEdicaoState(v);
     },
     [bumpLocalMutation],
   );
@@ -462,11 +668,26 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const avisosGeraisLinhas = useMemo(() => {
     void agendaDiaTick;
     const hoje = new Date();
-    return avisosGeraisItens
+    const fromTable = avisosGeraisItens
       .filter((it) => avisoGeralVisivelNoDia(it, hoje))
       .map((it) => it.texto.trim())
       .filter(Boolean);
-  }, [avisosGeraisItens, agendaDiaTick]);
+
+    /** Rascunho «Incluir novo aviso» com o mesmo critério de datas do telão (antes de clicar em Adicionar). */
+    const draft = avisosGeraisDraftNovo;
+    const draftAsItem: AvisoGeralItem = {
+      id: "__draft__",
+      texto: draft.texto,
+      dataInicio: draft.dataInicio,
+      dataFim: draft.dataFim,
+    };
+    const draftLinha =
+      draft.texto.trim() && avisoGeralVisivelNoDia(draftAsItem, hoje) ? draft.texto.trim() : null;
+
+    if (!draftLinha) return fromTable;
+    if (fromTable.includes(draftLinha)) return fromTable;
+    return [...fromTable, draftLinha];
+  }, [avisosGeraisItens, agendaDiaTick, avisosGeraisDraftNovo]);
 
   const value = useMemo(
     () => ({
@@ -474,9 +695,17 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       fainasTexto,
       avisosGeraisItens,
       alarmesDiarios,
+      avisosGeraisDraftNovo,
+      avisosGeraisDraftEdicao,
+      alarmDiarioDraftNovo,
+      alarmDiarioDraftEdicao,
       setAvisoPrincipal,
       setFainasTexto,
       setAvisosGeraisItens,
+      setAvisosGeraisDraftNovo,
+      setAvisosGeraisDraftEdicao,
+      setAlarmDiarioDraftNovo,
+      setAlarmDiarioDraftEdicao,
       addAlarmeDiario,
       updateAlarmeDiario,
       removeAlarmeDiario,
@@ -488,9 +717,17 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       fainasTexto,
       avisosGeraisItens,
       alarmesDiarios,
+      avisosGeraisDraftNovo,
+      avisosGeraisDraftEdicao,
+      alarmDiarioDraftNovo,
+      alarmDiarioDraftEdicao,
       setAvisoPrincipal,
       setFainasTexto,
       setAvisosGeraisItens,
+      setAvisosGeraisDraftNovo,
+      setAvisosGeraisDraftEdicao,
+      setAlarmDiarioDraftNovo,
+      setAlarmDiarioDraftEdicao,
       addAlarmeDiario,
       updateAlarmeDiario,
       removeAlarmeDiario,

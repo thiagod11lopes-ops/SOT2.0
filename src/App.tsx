@@ -9,6 +9,7 @@ import { PlaceholderPage } from "./components/placeholder-page";
 import { SettingsPage } from "./components/settings-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { useAvisos } from "./context/avisos-context";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
 import { useSyncPreference } from "./context/sync-preference-context";
@@ -93,6 +94,7 @@ function App() {
   }, [activeTab, setPendingDeparturesFilterDatePtBr]);
   /** Mesmo mapa de óleo da aba Manutenções (VehicleMaintenanceProvider). */
   const mapaOleo = useMapaOleoFromMaintenance();
+  const { avisoPrincipal, avisosGeraisLinhas } = useAvisos();
   const { editIntentVersion, cloudDeparturesSync } = useDepartures();
   const { firebaseOnlyEnabled } = useSyncPreference();
   const lastEditIntentVersion = useRef(editIntentVersion);
@@ -179,6 +181,8 @@ function App() {
   }, [activeTab, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
 
   const isHome = !activeTab;
+  const showHomeAvisosTicker =
+    isHome && (Boolean(avisoPrincipal.trim()) || avisosGeraisLinhas.length > 0);
 
   const appContent = isMobileRoute ? (
     <SaidasMobileApp />
@@ -188,11 +192,11 @@ function App() {
         tabs={tabs}
         activeTab={activeTab ?? ""}
         onTabChange={setActiveTab}
-        homeTickerActive={isHome}
+        homeTickerActive={showHomeAvisosTicker}
       >
         {content}
       </Layout>
-      {isHome ? <HomeNewsTicker mapaOleo={mapaOleo} /> : null}
+      {showHomeAvisosTicker ? <HomeNewsTicker /> : null}
     </>
   );
 

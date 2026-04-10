@@ -207,7 +207,7 @@ function formatDataHojeLongaPtBr() {
 }
 
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
-  const { setActiveTab, requestFleetManutencoesTab } = useAppTab();
+  const { setActiveTab, requestFleetManutencoesTab, requestAvisosFainasGeraisOpen } = useAppTab();
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
   /** Na home não entram saídas canceladas (mantêm-se nas listas por tipo). */
@@ -242,6 +242,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   function openFleetManutencoes() {
     requestFleetManutencoesTab();
     setActiveTab("Frota e Pessoal");
+  }
+
+  function openAvisosFainasGerais() {
+    requestAvisosFainasGeraisOpen();
+    setActiveTab("Avisos");
   }
 
   useEffect(() => {
@@ -752,9 +757,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </ul>
                 )}
               </div>
-              <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                onClick={openAvisosFainasGerais}
+                aria-label="Abrir Avisos — Fainas gerais"
+              >
                 <ClipboardList className="h-5 w-5 text-slate-600" />
-              </div>
+              </Button>
             </CardContent>
           </Card>
         </div>
