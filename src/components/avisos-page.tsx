@@ -454,9 +454,8 @@ export function AvisosPage() {
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
           Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
-          planilha abaixo e aparece na página inicial. Se ocultar o card do alarme na página inicial, o alerta só
-          volta <strong>no dia seguinte</strong>, depois da hora configurada; editar o alarme aqui não antecipa esse
-          retorno.
+          planilha abaixo e aparece na página inicial.           Desativar o alarme na página inicial desliga o <strong>Ativo</strong> aqui; no dia seguinte o alarme volta a
+          ficar ativo sozinho. Editar nome ou hora aqui não altera esse comportamento.
         </p>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -570,7 +569,13 @@ export function AvisosPage() {
                           className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
                           checked={a.ativo}
                           disabled={editando}
-                          onChange={(e) => updateAlarmeDiario(a.id, { ativo: e.target.checked })}
+                          onChange={(e) => {
+                            const ativo = e.target.checked;
+                            updateAlarmeDiario(a.id, {
+                              ativo,
+                              pausaAteDia: null,
+                            });
+                          }}
                           aria-label={`Alarme ativo: ${a.nome}`}
                         />
                       </TableCell>

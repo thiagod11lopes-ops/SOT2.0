@@ -19,6 +19,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { AvisoGeralItem } from "../types/aviso-geral";
+import { localDateKey } from "../lib/dailyAlarmDismiss";
 import { parseHhMm } from "../lib/timeInput";
 import { useSyncPreference } from "./sync-preference-context";
 
@@ -31,6 +32,11 @@ export type AlarmeDiarioItem = {
   nome: string;
   hora: string;
   ativo: boolean;
+  /**
+   * Data local (YYYY-MM-DD) em que o alarme foi desativado pela página inicial.
+   * No dia seguinte, `ativo` volta a `true` e este campo é limpo. `null` = sem pausa automática.
+   */
+  pausaAteDia?: string | null;
 };
 
 /** Rascunho do formulário «Incluir novo aviso» (persistido para não perder ao mudar de aba ou atualizar). */
@@ -121,7 +127,7 @@ type AvisosContextValue = AvisosPersistedState & {
   addAlarmeDiario: (nome: string, hora: string) => void;
   updateAlarmeDiario: (
     id: string,
-    patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo">>,
+    patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo" | "pausaAteDia">>,
   ) => void;
   removeAlarmeDiario: (id: string) => void;
   fainasLinhas: string[];
@@ -132,6 +138,12 @@ const AvisosContext = createContext<AvisosContextValue | null>(null);
 
 function newId() {
   return crypto.randomUUID();
+}
+
+function pausaAteDiaFromStored(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
 }
 
 function rowValid(r: unknown): r is AlarmeDiarioItem {
@@ -152,11 +164,14 @@ function normalizeAlarmesFromArray(raw: unknown): AlarmeDiarioItem[] {
   const out: AlarmeDiarioItem[] = [];
   for (const item of raw) {
     if (!rowValid(item)) continue;
+    const o = item as Record<string, unknown>;
+    const pausa = pausaAteDiaFromStored(o.pausaAteDia);
     out.push({
       id: item.id,
       nome: item.nome.trim(),
       hora: item.hora,
       ativo: item.ativo,
+      ...(pausa ? { pausaAteDia: pausa } : {}),
     });
   }
   return out;
@@ -527,6 +542,31 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     });
   }, [persistReady, agendaDiaTick, avisosGeraisItens, bumpLocalMutation]);
 
+  /** Reativa alarmes desligados na página inicial quando entra um novo dia local. */
+  useEffect(() => {
+    if (!persistReady) return;
+    setAlarmesDiariosState((prev) => {
+      const hoje = localDateKey(new Date());
+      let changed = false;
+      const next = prev.map((a) => {
+        if (!a.pausaAteDia || a.ativo) return a;
+        if (hoje > a.pausaAteDia) {
+          changed = true;
+          return { ...a, ativo: true, pausaAteDia: null };
+        }
+        return a;
+      });
+      if (!changed) return prev;
+      queueMicrotask(() => bumpLocalMutation());
+      stateRef.current = {
+        ...stateRef.current,
+        alarmesDiarios: next,
+        deletedAlarmIds: [...deletedAlarmIdsRef.current],
+      };
+      return next;
+    });
+  }, [persistReady, agendaDiaTick, bumpLocalMutation]);
+
   const setAvisoPrincipal = useCallback(
     (v: string) => {
       bumpLocalMutation();
@@ -614,7 +654,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   );
 
   const updateAlarmeDiario = useCallback(
-    (id: string, patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo">>) => {
+    (id: string, patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo" | "pausaAteDia">>) => {
       if (patch.hora !== undefined && parseHhMm(patch.hora) === null) return;
       bumpLocalMutation();
       setAlarmesDiariosState((prev) => {
@@ -622,6 +662,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           if (a.id !== id) return a;
           const row: AlarmeDiarioItem = { ...a, ...patch };
           if (patch.nome !== undefined) row.nome = patch.nome.trim();
+          if (patch.pausaAteDia !== undefined && patch.pausaAteDia !== null) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(patch.pausaAteDia)) {
+              row.pausaAteDia = null;
+            }
+          }
           return row;
         });
         stateRef.current = {
