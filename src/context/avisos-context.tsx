@@ -330,6 +330,18 @@ function normalizeFromCloudPayload(payload: unknown | null): AvisosPersistedDoc 
   return normalizeStored(payload);
 }
 
+/**
+ * Preserva textos locais não vazios ao aplicar snapshot remoto.
+ * Evita perder "Fainas Gerais" por atraso/ordem de snapshots no Firestore.
+ */
+function mergeAvisosDocPreferLocalText(local: AvisosPersistedDoc, remote: AvisosPersistedDoc): AvisosPersistedDoc {
+  return {
+    ...remote,
+    avisoPrincipal: local.avisoPrincipal.trim() ? local.avisoPrincipal : remote.avisoPrincipal,
+    fainasTexto: local.fainasTexto.trim() ? local.fainasTexto : remote.fainasTexto,
+  };
+}
+
 const SUPPRESS_REMOTE_MS = 5000;
 
 export function AvisosProvider({ children }: { children: ReactNode }) {
@@ -467,18 +479,19 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
                 return;
               }
               applyingRemoteRef.current = true;
-              deletedAlarmIdsRef.current = new Set(incoming.deletedAlarmIds);
-              const draftNovo = hydrateDraftNovoSeTotalmenteVazio(incoming.avisosGeraisDraftNovo);
-              const merged = { ...incoming, avisosGeraisDraftNovo: draftNovo };
+              const mergedIncoming = mergeAvisosDocPreferLocalText(stateRef.current, incoming);
+              deletedAlarmIdsRef.current = new Set(mergedIncoming.deletedAlarmIds);
+              const draftNovo = hydrateDraftNovoSeTotalmenteVazio(mergedIncoming.avisosGeraisDraftNovo);
+              const merged = { ...mergedIncoming, avisosGeraisDraftNovo: draftNovo };
               stateRef.current = merged;
-              setAvisoPrincipalState(incoming.avisoPrincipal);
-              setFainasTextoState(incoming.fainasTexto);
-              setAvisosGeraisItensState(incoming.avisosGeraisItens);
-              setAlarmesDiariosState(incoming.alarmesDiarios);
+              setAvisoPrincipalState(mergedIncoming.avisoPrincipal);
+              setFainasTextoState(mergedIncoming.fainasTexto);
+              setAvisosGeraisItensState(mergedIncoming.avisosGeraisItens);
+              setAlarmesDiariosState(mergedIncoming.alarmesDiarios);
               setAvisosGeraisDraftNovoState(draftNovo);
-              setAvisosGeraisDraftEdicaoState(incoming.avisosGeraisDraftEdicao);
-              setAlarmDiarioDraftNovoState(incoming.alarmDiarioDraftNovo);
-              setAlarmDiarioDraftEdicaoState(incoming.alarmDiarioDraftEdicao);
+              setAvisosGeraisDraftEdicaoState(mergedIncoming.avisosGeraisDraftEdicao);
+              setAlarmDiarioDraftNovoState(mergedIncoming.alarmDiarioDraftNovo);
+              setAlarmDiarioDraftEdicaoState(mergedIncoming.alarmDiarioDraftEdicao);
               void idbSetJson(AVISOS_STORAGE_KEY, merged, { maxAttempts: 6 });
             })();
           },

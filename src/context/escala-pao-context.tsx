@@ -126,6 +126,11 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   const suppressRemoteUntilRef = useRef(0);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
+  /**
+   * Modo Firebase: após o primeiro snapshot do Firestore (estado para o efeito de gravação reagir;
+   * só refs fariam o utilizador ficar sem sync quando o doc está ausente e o estado local não muda).
+   */
+  const [cloudBootstrapDone, setCloudBootstrapDone] = useState(false);
 
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
@@ -147,6 +152,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!useCloud || !idbReady) return;
+    setCloudBootstrapDone(false);
     let cancelled = false;
     let unsub: (() => void) | undefined;
     void (async () => {
@@ -158,11 +164,18 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
           (payload) => {
             if (cancelled) return;
             void (async () => {
+              const markCloudBootstrapDone = () => {
+                hydratedRef.current = true;
+                setCloudBootstrapDone((d) => d || true);
+              };
+
               if (payload === null) {
+                markCloudBootstrapDone();
                 // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
+                markCloudBootstrapDone();
                 return;
               }
               const incoming = normalizeEscalaPaoBundle(payload);
@@ -170,9 +183,11 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
               const prevI = integrantesRef.current;
 
               if (isEscalaBundleEmpty(incoming.escala, incoming.integrantes) && !isEscalaBundleEmpty(prevE, prevI)) {
+                markCloudBootstrapDone();
                 return;
               }
 
+              markCloudBootstrapDone();
               applyingRemoteRef.current = true;
               const mergedE = mergeEscalaPaoStored(prevE, incoming.escala);
               const mergedI = mergeIntegrantesLists(prevI, incoming.integrantes);
@@ -227,7 +242,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
   }, [idbReady]);
 
   useEffect(() => {
-    if (!hydratedRef.current || !useCloud || !idbReady) return;
+    if (!hydratedRef.current || !cloudBootstrapDone || !useCloud || !idbReady) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
@@ -241,7 +256,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
       });
     }, 120);
     return () => window.clearTimeout(t);
-  }, [escala, integrantes, useCloud, idbReady]);
+  }, [escala, integrantes, useCloud, idbReady, cloudBootstrapDone]);
 
   const setIntegrantes = useCallback(
     (next: string[]) => {
