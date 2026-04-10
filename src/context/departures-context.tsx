@@ -613,13 +613,37 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             }));
           if (updates.length === 0) return prev;
           for (const { current, next } of updates) {
-            markTouched(next.id);
+            const rowId = next.id;
+            markTouched(rowId);
             enqueueWrite(
-              () => upsertDepartureRecord(next, { expectedBaseVersion: current.version ?? 0 }),
-              {
-                conflict: "Conflito de versão: os KM foram alterados em outro dispositivo.",
-                generic: "Não foi possível gravar os KM na nuvem.",
+              async () => {
+                let candidate = next;
+                let expected = current.version ?? 0;
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                  try {
+                    await upsertDepartureRecord(candidate, { expectedBaseVersion: expected });
+                    return;
+                  } catch (err) {
+                    if (!isDepartureVersionConflictError(err)) throw err;
+                    const remote = await getDepartureRecord(rowId);
+                    if (!remote) {
+                      throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
+                    }
+                    candidate = {
+                      ...remote,
+                      ...patch,
+                      id: remote.id,
+                      createdAt: remote.createdAt,
+                      version: remote.version,
+                      updatedAt: Date.now(),
+                      updatedBy: clientIdRef.current,
+                    };
+                    expected = remote.version ?? 0;
+                  }
+                }
+                throw new Error("Conflito persistente após múltiplas tentativas de auto-resolução.");
               },
+              { generic: "Não foi possível gravar os KM na nuvem." },
             );
           }
           const nextById = new Map(updates.map((u) => [u.next.id, u.next]));
