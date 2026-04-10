@@ -631,11 +631,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         };
         return next;
       });
-      if (patch.nome !== undefined || patch.hora !== undefined) {
-        clearDismissForAlarm(id);
-      }
     },
-    [bumpLocalMutation, clearDismissForAlarm],
+    [bumpLocalMutation],
   );
 
   const removeAlarmeDiario = useCallback(

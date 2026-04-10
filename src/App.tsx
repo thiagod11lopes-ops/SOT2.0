@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SaidasMobileApp } from "./saidas-mobile/saidas-mobile-app";
 import { AvisosPage } from "./components/avisos-page";
 import { Dashboard } from "./components/dashboard";
@@ -15,6 +15,7 @@ import { useDepartures } from "./context/departures-context";
 import { useSyncPreference } from "./context/sync-preference-context";
 import { useMapaOleoFromMaintenance } from "./context/vehicle-maintenance-context";
 import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
+import { useIdleResetToHome } from "./lib/useIdleResetToHome";
 import { isSettingsTab } from "./lib/tabMatch";
 import { Button } from "./components/ui/button";
 
@@ -103,6 +104,16 @@ function App() {
   );
   const [backupBusy, setBackupBusy] = useState(false);
   const [dailyBackupDoneKey, setDailyBackupDoneKey] = useState<string>(() => readDailyBackupDone());
+  /** Força remontagem do Dashboard ao regressar à página inicial por inatividade. */
+  const [homeRemountKey, setHomeRemountKey] = useState(0);
+
+  const handleIdleReturnHome = useCallback(() => {
+    setActiveTab(null);
+    setHomeRemountKey((k) => k + 1);
+  }, [setActiveTab]);
+
+  const isMobileRoute = hash.startsWith("#/saidas");
+  useIdleResetToHome(!isMobileRoute, handleIdleReturnHome);
 
   useEffect(() => {
     if (hash.startsWith("#/saidas")) return;
@@ -124,7 +135,6 @@ function App() {
   }, []);
 
   const todayKey = localDayKeyNow();
-  const isMobileRoute = hash.startsWith("#/saidas");
   const shouldRequireDailyBackup =
     !isMobileRoute &&
     isOnline &&
@@ -154,7 +164,7 @@ function App() {
   }
 
   const content = useMemo(() => {
-    if (!activeTab) return <Dashboard mapaOleo={mapaOleo} />;
+    if (!activeTab) return <Dashboard key={homeRemountKey} mapaOleo={mapaOleo} />;
     if (activeTab === "Cadastrar Saída") return <RegisterDeparturePage />;
     if (activeTab === "Saídas Administrativas")
       return (
@@ -178,7 +188,7 @@ function App() {
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
-  }, [activeTab, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
+  }, [activeTab, homeRemountKey, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
 
   const isHome = !activeTab;
   const showHomeAvisosTicker =

@@ -454,8 +454,9 @@ export function AvisosPage() {
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
           Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
-          planilha abaixo e aparece na página inicial. Reeditar um alarme na planilha{" "}
-          <strong>zera o ocultar de hoje</strong>, permitindo alertar de novo no mesmo dia.
+          planilha abaixo e aparece na página inicial. Se ocultar o card do alarme na página inicial, o alerta só
+          volta <strong>no dia seguinte</strong>, depois da hora configurada; editar o alarme aqui não antecipa esse
+          retorno.
         </p>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
