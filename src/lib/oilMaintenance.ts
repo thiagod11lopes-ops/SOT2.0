@@ -152,7 +152,11 @@ export function statusTrocaOleo(
     kmRestantes = Math.max(0, kmLimite - kmAtual);
   }
 
-  const diasAtePrazo = dataLimiteOleoIso ? diasAteDataLimite(dataLimiteOleoIso, agora) : null;
+  // Reaproveita o parse já validado de `fimPrazo` para evitar falso alerta
+  // quando a string de data estiver em formato inválido.
+  const diasAtePrazo = fimPrazo
+    ? Math.round((inicioDoDia(fimPrazo).getTime() - inicioDoDia(agora).getTime()) / 86400000)
+    : null;
 
   return {
     temRegistro: true,
