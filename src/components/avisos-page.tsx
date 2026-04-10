@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useAppTab } from "../context/app-tab-context";
 import type { AlarmeDiarioItem } from "../context/avisos-context";
 import { useAvisos } from "../context/avisos-context";
 import { getCurrentDatePtBr, normalizeDatePtBr, parsePtBrToDate } from "../lib/dateFormat";
@@ -57,135 +58,152 @@ function AvisosCollapsibleCard({
 }
 
 export function AvisosPage() {
+  const { avisosFainasFocusKey } = useAppTab();
+  const fainasGeraisSectionRef = useRef<HTMLDivElement>(null);
+  const lastScrolledFainasKeyRef = useRef(0);
+
   const {
     avisoPrincipal,
     fainasTexto,
     avisosGeraisItens,
+    avisosGeraisDraftNovo,
+    avisosGeraisDraftEdicao,
     setAvisoPrincipal,
     setFainasTexto,
     setAvisosGeraisItens,
+    setAvisosGeraisDraftNovo,
+    setAvisosGeraisDraftEdicao,
     alarmesDiarios,
     addAlarmeDiario,
     updateAlarmeDiario,
     removeAlarmeDiario,
+    alarmDiarioDraftNovo,
+    alarmDiarioDraftEdicao,
+    setAlarmDiarioDraftNovo,
+    setAlarmDiarioDraftEdicao,
   } = useAvisos();
 
   const [open, setOpen] = useState({
     avisoPrincipal: false,
     fainas: false,
     alarmeDiario: false,
-    alarmesAtivos: false,
     avisosGerais: false,
   });
-
-  const [draftNome, setDraftNome] = useState("");
-  const [draftHora, setDraftHora] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editNome, setEditNome] = useState("");
-  const [editHora, setEditHora] = useState("");
-
-  const [draftAgTexto, setDraftAgTexto] = useState("");
-  const [draftAgIni, setDraftAgIni] = useState(() => getCurrentDatePtBr());
-  const [draftAgFim, setDraftAgFim] = useState("");
-  const [editingAgId, setEditingAgId] = useState<string | null>(null);
-  const [editAgTexto, setEditAgTexto] = useState("");
-  const [editAgIni, setEditAgIni] = useState("");
-  const [editAgFim, setEditAgFim] = useState("");
 
   const toggle = useCallback((key: keyof typeof open) => {
     setOpen((o) => ({ ...o, [key]: !o[key] }));
   }, []);
 
+  useEffect(() => {
+    if (avisosFainasFocusKey <= 0) return;
+    setOpen((o) => ({ ...o, fainas: true }));
+  }, [avisosFainasFocusKey]);
+
+  useLayoutEffect(() => {
+    if (!open.fainas || avisosFainasFocusKey <= 0) return;
+    if (avisosFainasFocusKey <= lastScrolledFainasKeyRef.current) return;
+    lastScrolledFainasKeyRef.current = avisosFainasFocusKey;
+    fainasGeraisSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [avisosFainasFocusKey, open.fainas]);
+
   const podeAtivarNovo = useMemo(
-    () => draftNome.trim().length > 0 && parseHhMm(draftHora) !== null,
-    [draftNome, draftHora],
+    () =>
+      alarmDiarioDraftNovo.nome.trim().length > 0 && parseHhMm(alarmDiarioDraftNovo.hora) !== null,
+    [alarmDiarioDraftNovo],
   );
 
   const alarmesOrdenados = useMemo(() => sortAlarmesPorHora(alarmesDiarios), [alarmesDiarios]);
 
   const handleAtivar = useCallback(() => {
     if (!podeAtivarNovo) return;
-    addAlarmeDiario(draftNome, draftHora);
-    setDraftNome("");
-    setDraftHora("");
-  }, [podeAtivarNovo, draftNome, draftHora, addAlarmeDiario]);
+    addAlarmeDiario(alarmDiarioDraftNovo.nome, alarmDiarioDraftNovo.hora);
+    setAlarmDiarioDraftNovo({ nome: "", hora: "" });
+  }, [podeAtivarNovo, alarmDiarioDraftNovo, addAlarmeDiario, setAlarmDiarioDraftNovo]);
 
-  const iniciarEdicao = useCallback((a: AlarmeDiarioItem) => {
-    setEditingId(a.id);
-    setEditNome(a.nome);
-    setEditHora(a.hora);
-  }, []);
+  const iniciarEdicao = useCallback(
+    (a: AlarmeDiarioItem) => {
+      setAlarmDiarioDraftEdicao({ id: a.id, nome: a.nome, hora: a.hora });
+    },
+    [setAlarmDiarioDraftEdicao],
+  );
 
   const cancelarEdicao = useCallback(() => {
-    setEditingId(null);
-  }, []);
+    setAlarmDiarioDraftEdicao(null);
+  }, [setAlarmDiarioDraftEdicao]);
 
   const salvarEdicao = useCallback(() => {
-    if (!editingId) return;
-    if (!editNome.trim() || parseHhMm(editHora) === null) return;
-    updateAlarmeDiario(editingId, { nome: editNome, hora: editHora });
-    setEditingId(null);
-  }, [editingId, editNome, editHora, updateAlarmeDiario]);
+    if (!alarmDiarioDraftEdicao) return;
+    if (!alarmDiarioDraftEdicao.nome.trim() || parseHhMm(alarmDiarioDraftEdicao.hora) === null) return;
+    updateAlarmeDiario(alarmDiarioDraftEdicao.id, {
+      nome: alarmDiarioDraftEdicao.nome,
+      hora: alarmDiarioDraftEdicao.hora,
+    });
+    setAlarmDiarioDraftEdicao(null);
+  }, [alarmDiarioDraftEdicao, updateAlarmeDiario, setAlarmDiarioDraftEdicao]);
 
   const handleExcluir = useCallback(
     (id: string, nome: string) => {
       if (!window.confirm(`Excluir o alarme "${nome}"?`)) return;
-      if (editingId === id) setEditingId(null);
+      if (alarmDiarioDraftEdicao?.id === id) setAlarmDiarioDraftEdicao(null);
       removeAlarmeDiario(id);
     },
-    [editingId, removeAlarmeDiario],
+    [alarmDiarioDraftEdicao?.id, setAlarmDiarioDraftEdicao, removeAlarmeDiario],
   );
 
   const podeIncluirAvisoGeral = useMemo(() => {
-    const t = draftAgTexto.trim();
+    const t = avisosGeraisDraftNovo.texto.trim();
     if (!t) return false;
-    const ini = draftAgIni.trim();
+    const ini = avisosGeraisDraftNovo.dataInicio.trim();
     if (!ini || !parsePtBrToDate(ini)) return false;
-    const f = draftAgFim.trim();
+    const f = avisosGeraisDraftNovo.dataFim.trim();
     if (f && !parsePtBrToDate(f)) return false;
     return true;
-  }, [draftAgTexto, draftAgIni, draftAgFim]);
+  }, [avisosGeraisDraftNovo]);
 
   const incluirAvisoGeralNaTabela = useCallback(() => {
     if (!podeIncluirAvisoGeral) return;
-    const ini = normalizeDatePtBr(draftAgIni.trim());
-    const f = draftAgFim.trim();
+    const ini = normalizeDatePtBr(avisosGeraisDraftNovo.dataInicio.trim());
+    const f = avisosGeraisDraftNovo.dataFim.trim();
     setAvisosGeraisItens((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
-        texto: draftAgTexto.trim(),
+        texto: avisosGeraisDraftNovo.texto.trim(),
         dataInicio: ini,
         dataFim: f ? normalizeDatePtBr(f) : "",
       },
     ]);
-    setDraftAgTexto("");
-    setDraftAgFim("");
-    setDraftAgIni(getCurrentDatePtBr());
-  }, [podeIncluirAvisoGeral, draftAgTexto, draftAgIni, draftAgFim, setAvisosGeraisItens]);
+    setAvisosGeraisDraftNovo({ texto: "", dataInicio: getCurrentDatePtBr(), dataFim: "" });
+  }, [podeIncluirAvisoGeral, avisosGeraisDraftNovo, setAvisosGeraisItens, setAvisosGeraisDraftNovo]);
 
-  const iniciarEdicaoAvisoGeral = useCallback((ag: AvisoGeralItem) => {
-    setEditingAgId(ag.id);
-    setEditAgTexto(ag.texto);
-    setEditAgIni(ag.dataInicio);
-    setEditAgFim(ag.dataFim);
-  }, []);
+  const iniciarEdicaoAvisoGeral = useCallback(
+    (ag: AvisoGeralItem) => {
+      setAvisosGeraisDraftEdicao({
+        id: ag.id,
+        texto: ag.texto,
+        dataInicio: ag.dataInicio,
+        dataFim: ag.dataFim,
+      });
+    },
+    [setAvisosGeraisDraftEdicao],
+  );
 
   const cancelarEdicaoAvisoGeral = useCallback(() => {
-    setEditingAgId(null);
-  }, []);
+    setAvisosGeraisDraftEdicao(null);
+  }, [setAvisosGeraisDraftEdicao]);
 
   const salvarEdicaoAvisoGeral = useCallback(() => {
-    if (!editingAgId) return;
-    const t = editAgTexto.trim();
+    if (!avisosGeraisDraftEdicao) return;
+    const editingAgId = avisosGeraisDraftEdicao.id;
+    const t = avisosGeraisDraftEdicao.texto.trim();
     if (!t) return;
-    const ini = editAgIni.trim();
-    const f = editAgFim.trim();
+    const ini = avisosGeraisDraftEdicao.dataInicio.trim();
+    const f = avisosGeraisDraftEdicao.dataFim.trim();
     if (!ini && !f) {
       setAvisosGeraisItens((prev) =>
         prev.map((x) => (x.id === editingAgId ? { ...x, texto: t, dataInicio: "", dataFim: "" } : x)),
       );
-      setEditingAgId(null);
+      setAvisosGeraisDraftEdicao(null);
       return;
     }
     if (!ini || !parsePtBrToDate(ini)) return;
@@ -202,15 +220,15 @@ export function AvisosPage() {
           : x,
       ),
     );
-    setEditingAgId(null);
-  }, [editingAgId, editAgTexto, editAgIni, editAgFim, setAvisosGeraisItens]);
+    setAvisosGeraisDraftEdicao(null);
+  }, [avisosGeraisDraftEdicao, setAvisosGeraisItens, setAvisosGeraisDraftEdicao]);
 
   const removeAvisoGeral = useCallback(
     (id: string) => {
-      if (editingAgId === id) setEditingAgId(null);
+      if (avisosGeraisDraftEdicao?.id === id) setAvisosGeraisDraftEdicao(null);
       setAvisosGeraisItens((prev) => prev.filter((x) => x.id !== id));
     },
-    [editingAgId, setAvisosGeraisItens],
+    [avisosGeraisDraftEdicao?.id, setAvisosGeraisDraftEdicao, setAvisosGeraisItens],
   );
 
   const handleExcluirAvisoGeral = useCallback(
@@ -230,8 +248,9 @@ export function AvisosPage() {
         onToggle={() => toggle("avisoPrincipal")}
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Se preenchido, o texto aparece numa faixa fixa na base da <strong>página inicial</strong>, acima do telão
-          de avisos em movimento (estilo telejornal). Deixe em branco para ocultar.
+          Se preenchido, o texto aparece na <strong>faixa laranja</strong> na base da página inicial. Os{" "}
+          <strong>Avisos gerais</strong> do período seguem no <strong>telão escuro</strong> com texto em movimento
+          abaixo. Deixe em branco para ocultar.
         </p>
         <label className="sr-only" htmlFor="aviso-principal">
           Aviso principal
@@ -267,8 +286,8 @@ export function AvisosPage() {
             </label>
             <textarea
               id="ag-novo-texto"
-              value={draftAgTexto}
-              onChange={(e) => setDraftAgTexto(e.target.value)}
+              value={avisosGeraisDraftNovo.texto}
+              onChange={(e) => setAvisosGeraisDraftNovo((d) => ({ ...d, texto: e.target.value }))}
               rows={3}
               placeholder="Ex.: Reunião de coordenação — 15h."
               className="min-h-[72px] w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
@@ -284,8 +303,10 @@ export function AvisosPage() {
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
-                value={draftAgIni}
-                onChange={(e) => setDraftAgIni(normalizeDatePtBr(e.target.value))}
+                value={avisosGeraisDraftNovo.dataInicio}
+                onChange={(e) =>
+                  setAvisosGeraisDraftNovo((d) => ({ ...d, dataInicio: normalizeDatePtBr(e.target.value) }))
+                }
                 placeholder="dd/mm/aaaa"
                 className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               />
@@ -299,8 +320,10 @@ export function AvisosPage() {
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
-                value={draftAgFim}
-                onChange={(e) => setDraftAgFim(normalizeDatePtBr(e.target.value))}
+                value={avisosGeraisDraftNovo.dataFim}
+                onChange={(e) =>
+                  setAvisosGeraisDraftNovo((d) => ({ ...d, dataFim: normalizeDatePtBr(e.target.value) }))
+                }
                 placeholder="Mesmo dia se vazio"
                 className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               />
@@ -331,14 +354,18 @@ export function AvisosPage() {
               </TableHeader>
               <TableBody>
                 {avisosGeraisItens.map((ag) => {
-                  const editando = editingAgId === ag.id;
+                  const editando = avisosGeraisDraftEdicao?.id === ag.id;
                   return (
                     <TableRow key={ag.id}>
                       <TableCell className="max-w-[min(28rem,55vw)] align-top">
-                        {editando ? (
+                        {editando && avisosGeraisDraftEdicao ? (
                           <textarea
-                            value={editAgTexto}
-                            onChange={(e) => setEditAgTexto(e.target.value)}
+                            value={avisosGeraisDraftEdicao.texto}
+                            onChange={(e) =>
+                              setAvisosGeraisDraftEdicao((prev) =>
+                                prev && prev.id === ag.id ? { ...prev, texto: e.target.value } : prev,
+                              )
+                            }
                             rows={3}
                             className="min-h-[72px] w-full min-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-1.5 text-sm"
                           />
@@ -347,12 +374,18 @@ export function AvisosPage() {
                         )}
                       </TableCell>
                       <TableCell className="align-top">
-                        {editando ? (
+                        {editando && avisosGeraisDraftEdicao ? (
                           <input
                             type="text"
                             inputMode="numeric"
-                            value={editAgIni}
-                            onChange={(e) => setEditAgIni(normalizeDatePtBr(e.target.value))}
+                            value={avisosGeraisDraftEdicao.dataInicio}
+                            onChange={(e) =>
+                              setAvisosGeraisDraftEdicao((prev) =>
+                                prev && prev.id === ag.id
+                                  ? { ...prev, dataInicio: normalizeDatePtBr(e.target.value) }
+                                  : prev,
+                              )
+                            }
                             className="h-9 w-full min-w-[7.5rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums"
                           />
                         ) : (
@@ -360,12 +393,18 @@ export function AvisosPage() {
                         )}
                       </TableCell>
                       <TableCell className="align-top">
-                        {editando ? (
+                        {editando && avisosGeraisDraftEdicao ? (
                           <input
                             type="text"
                             inputMode="numeric"
-                            value={editAgFim}
-                            onChange={(e) => setEditAgFim(normalizeDatePtBr(e.target.value))}
+                            value={avisosGeraisDraftEdicao.dataFim}
+                            onChange={(e) =>
+                              setAvisosGeraisDraftEdicao((prev) =>
+                                prev && prev.id === ag.id
+                                  ? { ...prev, dataFim: normalizeDatePtBr(e.target.value) }
+                                  : prev,
+                              )
+                            }
                             className="h-9 w-full min-w-[7.5rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums"
                           />
                         ) : (
@@ -415,8 +454,8 @@ export function AvisosPage() {
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
           Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
-          planilha abaixo e aparece na página inicial. Reeditar um alarme na planilha{" "}
-          <strong>zera o ocultar de hoje</strong>, permitindo alertar de novo no mesmo dia.
+          planilha abaixo e aparece na página inicial.           Desativar o alarme na página inicial desliga o <strong>Ativo</strong> aqui; no dia seguinte o alarme volta a
+          ficar ativo sozinho. Editar nome ou hora aqui não altera esse comportamento.
         </p>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -427,8 +466,8 @@ export function AvisosPage() {
               <input
                 id="alarm-nome-novo"
                 type="text"
-                value={draftNome}
-                onChange={(e) => setDraftNome(e.target.value)}
+                value={alarmDiarioDraftNovo.nome}
+                onChange={(e) => setAlarmDiarioDraftNovo((d) => ({ ...d, nome: e.target.value }))}
                 placeholder="Ex.: Passagem de serviço"
                 className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               />
@@ -443,8 +482,10 @@ export function AvisosPage() {
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="HH:MM"
-                value={draftHora}
-                onChange={(e) => setDraftHora(normalize24hTime(e.target.value))}
+                value={alarmDiarioDraftNovo.hora}
+                onChange={(e) =>
+                  setAlarmDiarioDraftNovo((d) => ({ ...d, hora: normalize24hTime(e.target.value) }))
+                }
                 className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               />
             </div>
@@ -460,24 +501,20 @@ export function AvisosPage() {
             </Button>
           </div>
         </div>
-      </AvisosCollapsibleCard>
 
-      <AvisosCollapsibleCard
-        title="Alarmes ativos"
-        open={open.alarmesAtivos}
-        onToggle={() => toggle("alarmesAtivos")}
-      >
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
-          apagar.
-        </p>
-        {alarmesOrdenados.length === 0 ? (
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Nenhum alarme na planilha. Configure em <strong>Alarme diário</strong> e clique em <strong>Ativar</strong>.
+        <div className="mt-8 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="mb-3 text-base font-semibold text-[hsl(var(--foreground))]">Alarmes ativos</h3>
+          <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+            Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
+            apagar.
           </p>
-        ) : (
-          <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-            <Table>
+          {alarmesOrdenados.length === 0 ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Nenhum alarme na planilha. Preencha o formulário acima e clique em <strong>Ativar</strong>.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
@@ -488,15 +525,19 @@ export function AvisosPage() {
               </TableHeader>
               <TableBody>
                 {alarmesOrdenados.map((a) => {
-                  const editando = editingId === a.id;
+                  const editando = alarmDiarioDraftEdicao?.id === a.id;
                   return (
                     <TableRow key={a.id}>
                       <TableCell>
-                        {editando ? (
+                        {editando && alarmDiarioDraftEdicao ? (
                           <input
                             type="text"
-                            value={editNome}
-                            onChange={(e) => setEditNome(e.target.value)}
+                            value={alarmDiarioDraftEdicao.nome}
+                            onChange={(e) =>
+                              setAlarmDiarioDraftEdicao((prev) =>
+                                prev && prev.id === a.id ? { ...prev, nome: e.target.value } : prev,
+                              )
+                            }
                             className="h-9 w-full min-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-sm"
                           />
                         ) : (
@@ -504,12 +545,18 @@ export function AvisosPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {editando ? (
+                        {editando && alarmDiarioDraftEdicao ? (
                           <input
                             type="text"
                             inputMode="numeric"
-                            value={editHora}
-                            onChange={(e) => setEditHora(normalize24hTime(e.target.value))}
+                            value={alarmDiarioDraftEdicao.hora}
+                            onChange={(e) =>
+                              setAlarmDiarioDraftEdicao((prev) =>
+                                prev && prev.id === a.id
+                                  ? { ...prev, hora: normalize24hTime(e.target.value) }
+                                  : prev,
+                              )
+                            }
                             className="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 font-mono text-sm tabular-nums"
                           />
                         ) : (
@@ -522,7 +569,13 @@ export function AvisosPage() {
                           className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
                           checked={a.ativo}
                           disabled={editando}
-                          onChange={(e) => updateAlarmeDiario(a.id, { ativo: e.target.checked })}
+                          onChange={(e) => {
+                            const ativo = e.target.checked;
+                            updateAlarmeDiario(a.id, {
+                              ativo,
+                              pausaAteDia: null,
+                            });
+                          }}
                           aria-label={`Alarme ativo: ${a.nome}`}
                         />
                       </TableCell>
@@ -558,27 +611,30 @@ export function AvisosPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </AvisosCollapsibleCard>
 
-      <AvisosCollapsibleCard title="Fainas gerais" open={open.fainas} onToggle={() => toggle("fainas")}>
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Uma linha por faina. Esses itens entram no <strong>telão inferior</strong> da página inicial (texto em
-          movimento) e no card <strong>Fainas Gerais</strong> do painel.
-        </p>
-        <label className="sr-only" htmlFor="fainas-texto">
-          Fainas gerais
-        </label>
-        <textarea
-          id="fainas-texto"
-          value={fainasTexto}
-          onChange={(e) => setFainasTexto(e.target.value)}
-          rows={8}
-          placeholder={"Ex.: Apoio ao evento na Cidade Alta — 08h.\nVistoria no 3º Batalhão — 14h."}
-          className="min-h-[160px] w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-        />
-      </AvisosCollapsibleCard>
+      <div ref={fainasGeraisSectionRef} id="avisos-fainas-gerais" className="scroll-mt-4">
+        <AvisosCollapsibleCard title="Fainas gerais" open={open.fainas} onToggle={() => toggle("fainas")}>
+          <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+            Uma linha por faina. Esses itens entram no <strong>telão inferior</strong> da página inicial (texto em
+            movimento) e no card <strong>Fainas Gerais</strong> do painel.
+          </p>
+          <label className="sr-only" htmlFor="fainas-texto">
+            Fainas gerais
+          </label>
+          <textarea
+            id="fainas-texto"
+            value={fainasTexto}
+            onChange={(e) => setFainasTexto(e.target.value)}
+            rows={8}
+            placeholder={"Ex.: Apoio ao evento na Cidade Alta — 08h.\nVistoria no 3º Batalhão — 14h."}
+            className="min-h-[160px] w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          />
+        </AvisosCollapsibleCard>
+      </div>
     </div>
   );
 }

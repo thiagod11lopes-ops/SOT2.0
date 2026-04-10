@@ -1,55 +1,28 @@
 import { Bell } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AlarmeDiarioItem } from "../context/avisos-context";
-import { useAlarmDismiss } from "../context/alarm-dismiss-context";
+import { useAvisos, type AlarmeDiarioItem } from "../context/avisos-context";
 import { localDateKey } from "../lib/dailyAlarmDismiss";
 import { parseHhMm } from "../lib/timeInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { cn } from "../lib/utils";
 import { Card, CardContent, CardHeader } from "./ui/card";
 
-function msUntilNextMidnight(): number {
-  const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  return Math.max(0, next.getTime() - now.getTime());
-}
-
 /**
  * Card na página inicial: só deve ser montado a partir do horário configurado (o dashboard filtra);
- * depois de disparar, pisca em laranja até marcar o checkbox para ocultar o dia.
+ * depois de disparar, pisca em laranja até marcar o checkbox para desativar (sincroniza com Avisos).
  */
 export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
-  const { isDismissedTodayForAlarm, dismissAlarmForToday } = useAlarmDismiss();
+  const { updateAlarmeDiario } = useAvisos();
   const [now, setNow] = useState(() => new Date());
-  const [dismissedToday, setDismissedToday] = useState(() =>
-    isDismissedTodayForAlarm(alarm.id),
-  );
 
   useEffect(() => {
-    const tick = () => {
-      setNow(new Date());
-      setDismissedToday(isDismissedTodayForAlarm(alarm.id));
-    };
-    const id = window.setInterval(tick, 5_000);
+    const id = window.setInterval(() => setNow(new Date()), 5_000);
     return () => window.clearInterval(id);
-  }, [alarm.id, isDismissedTodayForAlarm]);
-
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    function armMidnight() {
-      timeoutId = window.setTimeout(() => {
-        setNow(new Date());
-        setDismissedToday(isDismissedTodayForAlarm(alarm.id));
-        armMidnight();
-      }, msUntilNextMidnight());
-    }
-    armMidnight();
-    return () => clearTimeout(timeoutId);
-  }, [alarm.id, isDismissedTodayForAlarm]);
+  }, []);
 
   const alarmParsed = useMemo(() => parseHhMm(alarm.hora), [alarm.hora]);
 
-  /** A partir do horário configurado no dia, até ocultar com o checkbox. */
+  /** A partir do horário configurado no dia, até desativar com o checkbox. */
   const alarmJaDisparouHoje = useMemo(() => {
     if (!alarmParsed) return false;
     const agoraMin = now.getHours() * 60 + now.getMinutes();
@@ -59,14 +32,13 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
 
   const shouldBlink = alarmJaDisparouHoje;
 
-  const handleOcultarHoje = useCallback(() => {
-    dismissAlarmForToday(alarm.id);
-    setDismissedToday(true);
-  }, [alarm.id, dismissAlarmForToday]);
+  const handleDesativarParaHoje = useCallback(() => {
+    const dia = localDateKey(new Date());
+    updateAlarmeDiario(alarm.id, { ativo: false, pausaAteDia: dia });
+  }, [alarm.id, updateAlarmeDiario]);
 
   if (!alarm.ativo || !alarm.nome.trim() || !alarmParsed) return null;
   if (!alarmJaDisparouHoje) return null;
-  if (dismissedToday) return null;
 
   return (
     <Card
@@ -100,10 +72,10 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
             className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
             checked={false}
             onChange={(e) => {
-              if (e.target.checked) handleOcultarHoje();
+              if (e.target.checked) handleDesativarParaHoje();
             }}
           />
-          <span>Ocultar este card hoje (interrompe o piscar; volta amanhã)</span>
+          <span>Desativar alarme (reflete em Avisos; reativa automaticamente amanhã)</span>
         </label>
       </CardContent>
     </Card>

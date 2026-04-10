@@ -22,6 +22,12 @@ type AppTabContextValue = {
    */
   fleetManutencoesFocusKey: number;
   requestFleetManutencoesTab: () => void;
+  /**
+   * Incrementado ao pedir abrir a aba Avisos com a secção **Fainas gerais** expandida
+   * (ex.: ícone do card na página inicial). `AvisosPage` reage ao valor.
+   */
+  avisosFainasFocusKey: number;
+  requestAvisosFainasGeraisOpen: () => void;
 };
 
 const AppTabContext = createContext<AppTabContextValue | null>(null);
@@ -39,6 +45,10 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
   const requestFleetManutencoesTab = useCallback(() => {
     setFleetManutencoesFocusKey((k) => k + 1);
   }, []);
+  const [avisosFainasFocusKey, setAvisosFainasFocusKey] = useState(0);
+  const requestAvisosFainasGeraisOpen = useCallback(() => {
+    setAvisosFainasFocusKey((k) => k + 1);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -50,6 +60,8 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
       bumpDeparturesListMountKey,
       fleetManutencoesFocusKey,
       requestFleetManutencoesTab,
+      avisosFainasFocusKey,
+      requestAvisosFainasGeraisOpen,
     }),
     [
       activeTab,
@@ -58,6 +70,8 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
       bumpDeparturesListMountKey,
       fleetManutencoesFocusKey,
       requestFleetManutencoesTab,
+      avisosFainasFocusKey,
+      requestAvisosFainasGeraisOpen,
     ],
   );
 
