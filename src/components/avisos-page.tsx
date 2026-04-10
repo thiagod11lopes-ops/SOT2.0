@@ -87,7 +87,6 @@ export function AvisosPage() {
     avisoPrincipal: false,
     fainas: false,
     alarmeDiario: false,
-    alarmesAtivos: false,
     avisosGerais: false,
   });
 
@@ -249,8 +248,9 @@ export function AvisosPage() {
         onToggle={() => toggle("avisoPrincipal")}
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Se preenchido, o texto entra na <strong>barra inferior animada</strong> da página inicial (à frente dos
-          avisos gerais do dia). Deixe em branco para ocultar.
+          Se preenchido, o texto aparece na <strong>faixa laranja</strong> na base da página inicial. Os{" "}
+          <strong>Avisos gerais</strong> do período seguem no <strong>telão escuro</strong> com texto em movimento
+          abaixo. Deixe em branco para ocultar.
         </p>
         <label className="sr-only" htmlFor="aviso-principal">
           Aviso principal
@@ -501,24 +501,20 @@ export function AvisosPage() {
             </Button>
           </div>
         </div>
-      </AvisosCollapsibleCard>
 
-      <AvisosCollapsibleCard
-        title="Alarmes ativos"
-        open={open.alarmesAtivos}
-        onToggle={() => toggle("alarmesAtivos")}
-      >
-        <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
-          Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
-          apagar.
-        </p>
-        {alarmesOrdenados.length === 0 ? (
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Nenhum alarme na planilha. Configure em <strong>Alarme diário</strong> e clique em <strong>Ativar</strong>.
+        <div className="mt-8 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="mb-3 text-base font-semibold text-[hsl(var(--foreground))]">Alarmes ativos</h3>
+          <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
+            Controle dos alarmes que disparam na página inicial. Desmarque <strong>Ativo</strong> para pausar sem
+            apagar.
           </p>
-        ) : (
-          <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-            <Table>
+          {alarmesOrdenados.length === 0 ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Nenhum alarme na planilha. Preencha o formulário acima e clique em <strong>Ativar</strong>.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
@@ -609,8 +605,9 @@ export function AvisosPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </AvisosCollapsibleCard>
 
       <div ref={fainasGeraisSectionRef} id="avisos-fainas-gerais" className="scroll-mt-4">
