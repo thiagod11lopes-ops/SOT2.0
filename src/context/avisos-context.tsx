@@ -342,6 +342,10 @@ function mergeAvisosDocPreferLocalText(local: AvisosPersistedDoc, remote: Avisos
   };
 }
 
+function avisosDocEqual(a: AvisosPersistedDoc, b: AvisosPersistedDoc): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 const SUPPRESS_REMOTE_MS = 5000;
 
 export function AvisosProvider({ children }: { children: ReactNode }) {
@@ -478,11 +482,14 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               if (isAvisosDocEffectivelyEmpty(incoming) && !isAvisosDocEffectivelyEmpty(stateRef.current)) {
                 return;
               }
-              applyingRemoteRef.current = true;
               const mergedIncoming = mergeAvisosDocPreferLocalText(stateRef.current, incoming);
               deletedAlarmIdsRef.current = new Set(mergedIncoming.deletedAlarmIds);
               const draftNovo = hydrateDraftNovoSeTotalmenteVazio(mergedIncoming.avisosGeraisDraftNovo);
               const merged = { ...mergedIncoming, avisosGeraisDraftNovo: draftNovo };
+              if (avisosDocEqual(stateRef.current, merged)) {
+                return;
+              }
+              applyingRemoteRef.current = true;
               stateRef.current = merged;
               setAvisoPrincipalState(mergedIncoming.avisoPrincipal);
               setFainasTextoState(mergedIncoming.fainasTexto);
