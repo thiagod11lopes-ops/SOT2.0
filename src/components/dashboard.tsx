@@ -1,4 +1,5 @@
 import {
+  Building2,
   CarFront,
   ClipboardList,
   ClockAlert,
@@ -31,7 +32,7 @@ import {
   viaturasCatalogoUnicas,
 } from "../lib/oilMaintenance";
 import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficinaVisits";
-import { groupDeparturesForListDisplay, type DepartureRecord } from "../types/departure";
+import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
 import { Button } from "./ui/button";
@@ -157,6 +158,12 @@ const homeTableHeadClass =
 /** Mesmo conteúdo de célula (corpo da tabela). */
 const homeTableCellClass = "font-bold text-[hsl(var(--primary))]";
 
+/** Tabela compacta (card resumo à esquerda da Próxima Saída em `lg`). */
+const homeCompactHeadClass =
+  "h-7 px-1 py-0.5 text-[0.65rem] font-bold leading-tight text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] sm:text-xs";
+const homeCompactCellClass =
+  "max-w-[8rem] truncate px-1 py-0.5 text-[0.65rem] font-bold leading-tight text-[hsl(var(--primary))] sm:max-w-none sm:text-xs";
+
 /** Títulos dos cards menores (grade): mesma lógica dos `<th>`. */
 const homeSectionTitleClass =
   "text-sm font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
@@ -277,6 +284,21 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     return groupDeparturesForListDisplay(rows);
   }, [departuresAtivas, agoraDashboard]);
 
+  /** Saídas administrativas do dia atual (agrupadas como nas listas). */
+  const saidasAdministrativasHoje = useMemo(() => {
+    const hoje = getCurrentDatePtBr();
+    const raw = departuresAtivas.filter(
+      (d) => d.tipo === "Administrativa" && isDepartureDateSameLocalDay(d.dataSaida, hoje),
+    );
+    const sorted = [...raw].sort((a, b) => {
+      const ka = sortKeyHoraSaida(a.horaSaida);
+      const kb = sortKeyHoraSaida(b.horaSaida);
+      if (ka !== kb) return ka - kb;
+      return a.id.localeCompare(b.id);
+    });
+    return groupDeparturesForListDisplay(sorted);
+  }, [departuresAtivas]);
+
   return (
     <div className="space-y-6">
       <section className="space-y-4">
@@ -284,74 +306,150 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
 
-        <Card className={cn("w-full", departuresTableShadowClass)}>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+          <Card className={cn("flex h-full min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
+            <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
-              <CardTitle className={homeCardTitleClass}>Próxima Saída</CardTitle>
-              <p
-                className={cn(
-                  "text-xs font-bold text-[hsl(var(--primary))]",
-                  "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
-                )}
-              >
-                {formatDataHojeLongaPtBr()}
-              </p>
-            </div>
-            <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
-              <CarFront className="h-5 w-5 text-slate-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {proximas.length === 0 ? (
-              <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                Nenhuma saída prevista a partir de agora para hoje.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className={cn("min-w-[7rem]", homeTableHeadClass)}>Viatura</TableHead>
-                      <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Motorista</TableHead>
-                      <TableHead className={cn("w-[5.5rem] whitespace-nowrap", homeTableHeadClass)}>
-                        Saída
-                      </TableHead>
-                      <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Destino</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {proximas.map((group) => {
-                      const r = group.primary;
-                      const hora = r.horaSaida.trim() || "—";
-                      const destino = group.destinoDisplay;
-                      const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
-                      return (
-                        <TableRow
-                          key={group.records.map((x) => x.id).join("|")}
-                          className={cn(alertaProxima && "home-proxima-saida-blink")}
-                          aria-label={alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined}
-                        >
-                          <TableCell className={cn("max-w-[14rem] truncate", homeTableCellClass)}>
-                            {r.viaturas.trim() || "—"}
-                          </TableCell>
-                          <TableCell className={cn("max-w-[16rem] truncate", homeTableCellClass)}>
-                            {r.motoristas.trim() || "—"}
-                          </TableCell>
-                          <TableCell className={cn("whitespace-nowrap tabular-nums", homeTableCellClass)}>
-                            {hora}
-                          </TableCell>
-                          <TableCell className={cn("max-w-[18rem] truncate", homeTableCellClass)}>
-                            {destino}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <CardTitle className={cn(homeCardTitleClass, "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]")}>
+                  Saídas administrativas
+                </CardTitle>
+                <p
+                  className={cn(
+                    "text-xs font-bold text-[hsl(var(--primary))]",
+                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
+                  )}
+                >
+                  Dia atual · resumo
+                </p>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
+                <Building2 className="h-5 w-5 text-slate-600" />
+              </div>
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+              {saidasAdministrativasHoje.length === 0 ? (
+                <div className="flex flex-1 flex-col justify-center">
+                  <p className={cn("text-sm", homeBodyEmphasisClass)}>
+                    Nenhuma saída administrativa para hoje.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="max-h-[min(42vh,22rem)] min-h-0 flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
+                    <Table className="table-fixed">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className={cn("w-[22%]", homeCompactHeadClass)}>Viatura</TableHead>
+                        <TableHead className={cn("w-[24%]", homeCompactHeadClass)}>Motorista</TableHead>
+                        <TableHead className={cn("w-[12%] whitespace-nowrap", homeCompactHeadClass)}>Saída</TableHead>
+                        <TableHead className={cn("w-[26%]", homeCompactHeadClass)}>Destino</TableHead>
+                        <TableHead className={cn("w-[16%]", homeCompactHeadClass)}>OM</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {saidasAdministrativasHoje.map((group) => {
+                        const r = group.primary;
+                        const lr = listRowFromRecord(r);
+                        const destino = group.destinoDisplay;
+                        return (
+                          <TableRow key={group.records.map((x) => x.id).join("|")}>
+                            <TableCell className={homeCompactCellClass} title={lr.viatura}>
+                              {lr.viatura}
+                            </TableCell>
+                            <TableCell className={homeCompactCellClass} title={lr.motorista}>
+                              {lr.motorista}
+                            </TableCell>
+                            <TableCell className={cn(homeCompactCellClass, "whitespace-nowrap tabular-nums")}>
+                              {lr.saida}
+                            </TableCell>
+                            <TableCell className={homeCompactCellClass} title={destino}>
+                              {destino}
+                            </TableCell>
+                            <TableCell className={homeCompactCellClass} title={lr.om}>
+                              {lr.om}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={cn("flex h-full min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
+            <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
+              <div className="min-w-0 space-y-1 pr-2">
+                <CardTitle className={homeCardTitleClass}>Próxima Saída</CardTitle>
+                <p
+                  className={cn(
+                    "text-xs font-bold text-[hsl(var(--primary))]",
+                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
+                  )}
+                >
+                  {formatDataHojeLongaPtBr()}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
+                <CarFront className="h-5 w-5 text-slate-600" />
+              </div>
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+              {proximas.length === 0 ? (
+                <div className="flex flex-1 flex-col justify-center">
+                  <p className={cn("text-sm", homeBodyEmphasisClass)}>
+                    Nenhuma saída prevista a partir de agora para hoje.
+                  </p>
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className={cn("min-w-[7rem]", homeTableHeadClass)}>Viatura</TableHead>
+                        <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Motorista</TableHead>
+                        <TableHead className={cn("w-[5.5rem] whitespace-nowrap", homeTableHeadClass)}>
+                          Saída
+                        </TableHead>
+                        <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Destino</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {proximas.map((group) => {
+                        const r = group.primary;
+                        const hora = r.horaSaida.trim() || "—";
+                        const destino = group.destinoDisplay;
+                        const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
+                        return (
+                          <TableRow
+                            key={group.records.map((x) => x.id).join("|")}
+                            className={cn(alertaProxima && "home-proxima-saida-blink")}
+                            aria-label={alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined}
+                          >
+                            <TableCell className={cn("max-w-[14rem] truncate", homeTableCellClass)}>
+                              {r.viaturas.trim() || "—"}
+                            </TableCell>
+                            <TableCell className={cn("max-w-[16rem] truncate", homeTableCellClass)}>
+                              {r.motoristas.trim() || "—"}
+                            </TableCell>
+                            <TableCell className={cn("whitespace-nowrap tabular-nums", homeTableCellClass)}>
+                              {hora}
+                            </TableCell>
+                            <TableCell className={cn("max-w-[18rem] truncate", homeTableCellClass)}>
+                              {destino}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className={cn("min-w-0", departuresTableShadowClass)}>
