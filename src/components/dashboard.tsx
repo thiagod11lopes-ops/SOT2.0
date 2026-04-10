@@ -596,10 +596,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className={departuresTableShadowClass}>
-            <CardContent className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-4">
-                {!alarmeBloqueiaSecoesOperacionais ? (
+          {!alarmeBloqueiaSecoesOperacionais ? (
+            <Card className={departuresTableShadowClass}>
+              <CardContent className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-4">
                   <div>
                     <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
                     {placasNaOficina.length === 0 ? (
@@ -622,46 +622,42 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                       </ul>
                     )}
                   </div>
-                ) : null}
 
-                <div
-                  className={cn(
-                    !alarmeBloqueiaSecoesOperacionais && "border-t border-[hsl(var(--border))] pt-3",
-                  )}
-                >
-                  <p className={homeSectionTitleClass}>Viaturas Inoperantes</p>
-                  {placasInoperantes.length === 0 ? (
-                    <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
-                      Nenhuma viatura inoperante cadastrada.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 flex flex-wrap gap-1.5">
-                      {placasInoperantes.map((placa) => (
-                        <li
-                          key={placa}
-                          className={cn(
-                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
-                            homeBodyEmphasisClass,
-                          )}
-                        >
-                          {placa}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <div className="border-t border-[hsl(var(--border))] pt-3">
+                    <p className={homeSectionTitleClass}>Viaturas Inoperantes</p>
+                    {placasInoperantes.length === 0 ? (
+                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                        Nenhuma viatura inoperante cadastrada.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {placasInoperantes.map((placa) => (
+                          <li
+                            key={placa}
+                            className={cn(
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                              homeBodyEmphasisClass,
+                            )}
+                          >
+                            {placa}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                onClick={openFleetManutencoes}
-                aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — viaturas na oficina"
-              >
-                <Wrench className="h-5 w-5 text-slate-600" />
-              </Button>
-            </CardContent>
-          </Card>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
+                  onClick={openFleetManutencoes}
+                  aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — viaturas na oficina"
+                >
+                  <Wrench className="h-5 w-5 text-slate-600" />
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {!alarmeBloqueiaSecoesOperacionais ? (
             <>
