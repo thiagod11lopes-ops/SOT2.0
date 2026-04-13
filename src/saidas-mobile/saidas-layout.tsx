@@ -1,12 +1,13 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Ambulance, Building2, Upload } from "lucide-react";
+import { Ambulance, Building2, ClipboardCheck, Upload } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import { CloudSyncIndicator } from "../components/cloud-sync-indicator";
 import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import { cn } from "../lib/utils";
 import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
+import { MobileVistoriaFullscreen } from "./mobile-vistoria-fullscreen";
 import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico-modal";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SteeringWheelIcon } from "./steering-wheel-icon";
@@ -15,6 +16,7 @@ export function SaidasLayout() {
   const { mergeDeparturesFromBackup } = useDepartures();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
+  const [vistoriaMobileOpen, setVistoriaMobileOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
@@ -44,6 +46,7 @@ export function SaidasLayout() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
+      <MobileVistoriaFullscreen open={vistoriaMobileOpen} onOpenChange={setVistoriaMobileOpen} />
       <SaidasMobileDetalheServicoModal
         open={detalheServicoOpen}
         onOpenChange={setDetalheServicoOpen}
@@ -54,7 +57,7 @@ export function SaidasLayout() {
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
       >
         <div className="relative mx-auto flex max-w-lg items-center justify-center gap-1.5 min-[400px]:gap-2">
-          <div className="absolute left-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center">
+          <div className="absolute left-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1.5">
             <button
               type="button"
               onClick={() => setDetalheServicoOpen(true)}
@@ -64,8 +67,17 @@ export function SaidasLayout() {
             >
               <SteeringWheelIcon className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" />
             </button>
+            <button
+              type="button"
+              onClick={() => setVistoriaMobileOpen(true)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
+              aria-label="Vistoria — calendário e checklist"
+              title="Vistoria"
+            >
+              <ClipboardCheck className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" />
+            </button>
           </div>
-          <div className="min-w-0 max-w-[calc(100%-11rem)] px-1 text-center sm:max-w-[calc(100%-12rem)]">
+          <div className="min-w-0 max-w-[calc(100%-15rem)] px-1 text-center sm:max-w-[calc(100%-16rem)]">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
               SOT
             </p>

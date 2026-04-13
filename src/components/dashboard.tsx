@@ -32,6 +32,10 @@ import {
   viaturasCatalogoUnicas,
 } from "../lib/oilMaintenance";
 import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficinaVisits";
+import {
+  normalizeViaturaKey,
+  useVistoriaProblemasMarcadosRefresh,
+} from "../lib/vistoriaSituacaoVtr";
 import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
@@ -206,6 +210,12 @@ function formatDataHojeLongaPtBr() {
   return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
+function formatIsoDatePtBrShort(iso: string): string {
+  const m = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { setActiveTab, requestFleetManutencoesTab, requestAvisosFainasGeraisOpen } = useAppTab();
   const { items } = useCatalogItems();
@@ -238,6 +248,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
+  const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
+  const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
 
   function openFleetManutencoes() {
     requestFleetManutencoesTab();
@@ -358,9 +370,29 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                         const r = group.primary;
                         const lr = listRowFromRecord(r);
                         const destino = group.destinoDisplay;
+                        const viaturaKey = normalizeViaturaKey(lr.viatura);
+                        const viaturaComProblemaMarcado =
+                          lr.viatura.trim().length > 0 &&
+                          lr.viatura !== "—" &&
+                          viaturasComProblema.has(viaturaKey);
                         return (
                           <TableRow key={group.records.map((x) => x.id).join("|")}>
-                            <TableCell className={homeCompactCellClass} title={lr.viatura}>
+                            <TableCell
+                              className={cn(
+                                homeCompactCellClass,
+                                viaturaComProblemaMarcado &&
+                                  "cursor-pointer underline decoration-2 underline-offset-2 decoration-[hsl(var(--primary))]",
+                              )}
+                              title={lr.viatura}
+                              onClick={
+                                viaturaComProblemaMarcado
+                                  ? (e) => {
+                                      e.stopPropagation();
+                                      setVistoriaProblemaModalKey(viaturaKey);
+                                    }
+                                  : undefined
+                              }
+                            >
                               {lr.viatura}
                             </TableCell>
                             <TableCell className={homeCompactCellClass} title={lr.motorista}>
@@ -837,6 +869,50 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+      {vistoriaProblemaModalKey !== null ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]">
+          <Card className="w-full max-w-lg border-[hsl(var(--primary))]/25 shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-[hsl(var(--border))]">
+              <CardTitle className="text-lg">
+                Itens com anotação (Marcar Problema)
+                {(() => {
+                  const first = porViatura.get(vistoriaProblemaModalKey)?.[0];
+                  return first?.viatura ? (
+                    <span className="block text-sm font-normal text-[hsl(var(--muted-foreground))]">{first.viatura}</span>
+                  ) : null;
+                })()}
+              </CardTitle>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setVistoriaProblemaModalKey(null)}>
+                Fechar
+              </Button>
+            </CardHeader>
+            <CardContent className="max-h-[min(70vh,28rem)] space-y-3 overflow-y-auto p-4">
+              {(porViatura.get(vistoriaProblemaModalKey) ?? []).length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum item pendente para esta viatura.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {(porViatura.get(vistoriaProblemaModalKey) ?? []).map((item) => (
+                    <li
+                      key={`${item.inspectionId}-${item.itemKey}`}
+                      className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.12] p-3"
+                    >
+                      <p className="text-sm font-semibold text-[hsl(var(--primary))]">{item.itemLabel}</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Data da vistoria: {formatIsoDatePtBrShort(item.inspectionDate)}
+                      </p>
+                      {item.anotacao ? (
+                        <p className="mt-2 text-sm text-[hsl(var(--foreground))]">{item.anotacao}</p>
+                      ) : (
+                        <p className="mt-2 text-sm italic text-[hsl(var(--muted-foreground))]">Sem anotação escrita.</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </div>
       ) : null}
     </div>

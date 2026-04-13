@@ -6,7 +6,9 @@ import { HomeNewsTicker } from "./components/home-news-ticker";
 import { Layout } from "./components/layout";
 import { DeparturesListPage } from "./components/departures-list-page";
 import { PlaceholderPage } from "./components/placeholder-page";
+import { StatisticsPage } from "./components/statistics-page";
 import { SettingsPage } from "./components/settings-page";
+import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { useAvisos } from "./context/avisos-context";
@@ -37,7 +39,6 @@ const tabs = [
   "Frota e Pessoal",
   "Estatística",
   "Avisos",
-  "Equipamentos e Suprimentos",
   "Configurações",
 ];
 
@@ -184,8 +185,10 @@ function App() {
           initialDeparturesFilterDatePtBr={pendingDeparturesFilterDatePtBr}
         />
       );
+    if (activeTab === "Vistoria") return <VistoriaPage />;
     if (isSettingsTab(activeTab)) return <SettingsPage />;
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
+    if (activeTab === "Estatística") return <StatisticsPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [activeTab, homeRemountKey, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
