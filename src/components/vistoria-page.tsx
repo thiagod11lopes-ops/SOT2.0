@@ -221,15 +221,25 @@ export function VistoriaPage() {
     setLoadingServicoData(false);
   }, [activeSubTab, detalheServicoBundle, selectedInspectionDate]);
 
-  const assignmentsSorted = useMemo(
-    () =>
-      [...assignments].sort((a, b) => {
-        const byDriver = a.motorista.localeCompare(b.motorista, "pt-BR");
-        if (byDriver !== 0) return byDriver;
-        return a.viatura.localeCompare(b.viatura, "pt-BR");
-      }),
-    [assignments],
-  );
+  /** Uma linha por motorista; placas agrupadas na mesma célula (lado a lado). */
+  const assignmentsGroupedByDriver = useMemo(() => {
+    const map = new Map<string, VistoriaAssignment[]>();
+    for (const a of assignments) {
+      const nk = normalizeDriverKey(a.motorista);
+      if (!nk) continue;
+      if (!map.has(nk)) map.set(nk, []);
+      map.get(nk)!.push(a);
+    }
+    const rows = [...map.entries()].map(([nk, list]) => {
+      const sorted = [...list].sort((a, b) => a.viatura.localeCompare(b.viatura, "pt-BR"));
+      const nameCandidates = [...new Set(sorted.map((x) => x.motorista.trim()))].filter(Boolean);
+      const displayMotorista =
+        nameCandidates.sort((a, b) => a.localeCompare(b, "pt-BR"))[0] ?? sorted[0].motorista;
+      return { normalizedKey: nk, displayMotorista, assignments: sorted };
+    });
+    rows.sort((a, b) => a.displayMotorista.localeCompare(b.displayMotorista, "pt-BR"));
+    return rows;
+  }, [assignments]);
   const viaturasPorMotorista = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const a of assignments) {
@@ -316,7 +326,30 @@ export function VistoriaPage() {
     return out;
   }, [calendarCursorMonth]);
 
-  const canAdd = selectedMotorista.trim().length > 0 && selectedViatura.trim().length > 0;
+  const viaturasVinculadasAoMotoristaSelecionado = useMemo(() => {
+    const m = selectedMotorista.trim();
+    if (!m) return new Set<string>();
+    const nk = normalizeDriverKey(m);
+    const set = new Set<string>();
+    for (const a of assignments) {
+      if (normalizeDriverKey(a.motorista) === nk) set.add(a.viatura.trim());
+    }
+    return set;
+  }, [assignments, selectedMotorista]);
+
+  useEffect(() => {
+    setSelectedViatura((prev) => {
+      const v = prev.trim();
+      if (!v) return prev;
+      if (viaturasVinculadasAoMotoristaSelecionado.has(v)) return "";
+      return prev;
+    });
+  }, [viaturasVinculadasAoMotoristaSelecionado]);
+
+  const canAdd =
+    selectedMotorista.trim().length > 0 &&
+    selectedViatura.trim().length > 0 &&
+    !viaturasVinculadasAoMotoristaSelecionado.has(selectedViatura.trim());
   const resolvedIssueSet = useMemo(
     () => new Set(resolvedIssues.map((r) => `${r.inspectionId}:${r.itemKey}`)),
     [resolvedIssues],
@@ -614,11 +647,22 @@ export function VistoriaPage() {
                     className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
                   >
                     <option value="">Selecione uma viatura…</option>
-                    {viaturas.map((viatura) => (
-                      <option key={viatura} value={viatura}>
-                        {viatura}
-                      </option>
-                    ))}
+                    {viaturas.map((viatura) => {
+                      const bloqueada =
+                        selectedMotorista.trim().length > 0 &&
+                        viaturasVinculadasAoMotoristaSelecionado.has(viatura.trim());
+                      return (
+                        <option
+                          key={viatura}
+                          value={viatura}
+                          disabled={bloqueada}
+                          className={bloqueada ? "text-red-600" : undefined}
+                          style={bloqueada ? { color: "rgb(220 38 38)" } : undefined}
+                        >
+                          {bloqueada ? `${viatura} (já vinculada)` : viatura}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
 
@@ -645,7 +689,7 @@ export function VistoriaPage() {
               <CardTitle>Viaturas cadastradas por motorista</CardTitle>
             </CardHeader>
             <CardContent>
-              {assignmentsSorted.length === 0 ? (
+              {assignmentsGroupedByDriver.length === 0 ? (
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum vínculo de vistoria cadastrado ainda.</p>
               ) : (
                 <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
@@ -653,29 +697,37 @@ export function VistoriaPage() {
                     <TableHeader className="bg-[hsl(var(--muted))/0.35]">
                       <TableRow>
                         <TableHead className="font-bold text-[hsl(var(--primary))]">Motorista</TableHead>
-                        <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
-                        <TableHead className="w-16 text-right font-bold text-[hsl(var(--primary))]">Ação</TableHead>
+                        <TableHead className="font-bold text-[hsl(var(--primary))]">Viaturas</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {assignmentsSorted.map((assignment, index) => (
+                      {assignmentsGroupedByDriver.map((row, index) => (
                         <TableRow
-                          key={assignment.id}
+                          key={row.normalizedKey}
                           className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}
                         >
-                          <TableCell className="font-medium">{assignment.motorista}</TableCell>
-                          <TableCell>{assignment.viatura}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-slate-500 hover:text-red-600"
-                              aria-label={`Remover vínculo ${assignment.motorista} - ${assignment.viatura}`}
-                              onClick={() => handleRemoveAssignment(assignment.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <TableCell className="align-top font-medium">{row.displayMotorista}</TableCell>
+                          <TableCell className="align-top">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {row.assignments.map((assignment) => (
+                                <span
+                                  key={assignment.id}
+                                  className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-0.5 text-sm shadow-sm"
+                                >
+                                  <span className="font-mono tabular-nums">{assignment.viatura}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 shrink-0 text-slate-500 hover:text-red-600"
+                                    aria-label={`Remover vínculo ${assignment.motorista} - ${assignment.viatura}`}
+                                    onClick={() => handleRemoveAssignment(assignment.id)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </span>
+                              ))}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
