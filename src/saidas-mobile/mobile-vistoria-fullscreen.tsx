@@ -11,8 +11,10 @@ import {
   formatIsoDatePtBr,
   type InspectionAnswer,
   isoDateFromDate,
+  nomesMotoristaVistoriaEquivalentes,
   normalizeDriverKey,
   parseIsoDate,
+  resolveViaturasParaMotoristaEscala,
   readVistoriaAssignments,
   readVistoriaInspections,
   type VistoriaChecklist,
@@ -95,7 +97,7 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
       if (!byNorm.has(nk)) byNorm.set(nk, name);
     }
     return [...byNorm.values()]
-      .filter((name) => (viaturasPorMotorista.get(normalizeDriverKey(name))?.length ?? 0) > 0)
+      .filter((name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0)
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [bundle, selectedDate, viaturasPorMotorista]);
 
@@ -142,7 +144,7 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
     return inspections.some(
       (i) =>
         i.inspectionDate === selectedDate &&
-        normalizeDriverKey(i.motorista) === normalizeDriverKey(motorista) &&
+        nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
         i.viatura.trim() === viatura.trim(),
     );
   }
@@ -153,7 +155,7 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
     const existing = inspections
       .filter(
         (i) =>
-          normalizeDriverKey(i.motorista) === normalizeDriverKey(motorista) && i.viatura.trim() === viatura.trim(),
+          nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) && i.viatura.trim() === viatura.trim(),
       )
       .sort((a, b) => b.createdAt - a.createdAt)[0];
     setInspectionAnswer(existing?.viaturaNaOficina ?? "");
@@ -286,7 +288,7 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
             ) : (
               <ul className="space-y-3" role="list">
                 {motoristasComSRelevantes.map((motorista) => {
-                  const vtrs = viaturasPorMotorista.get(normalizeDriverKey(motorista)) ?? [];
+                  const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
                   return (
                     <li
                       key={motorista}

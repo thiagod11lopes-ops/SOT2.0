@@ -15,9 +15,11 @@ import {
   type InspectionAnswer,
   INSPECTIONS_STORAGE_KEY,
   isoDateFromDate,
+  nomesMotoristaVistoriaEquivalentes,
   normalizeDriverKey,
   parseIsoDate,
   readVistoriaAssignments,
+  resolveViaturasParaMotoristaEscala,
   readVistoriaInspections,
   type VistoriaAssignment,
   type VistoriaChecklist,
@@ -276,19 +278,19 @@ export function VistoriaPage() {
         if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
       }
       const relevant = [...motoristasComSMap.values()].filter(
-        (name) => (viaturasPorMotorista.get(normalizeDriverKey(name))?.length ?? 0) > 0,
+        (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
       );
       if (relevant.length === 0) {
         map.set(iso, "neutral");
         continue;
       }
       const motoristaFinalizouNoDia = (motorista: string): boolean => {
-        const vtrs = viaturasPorMotorista.get(normalizeDriverKey(motorista)) ?? [];
+        const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
         for (const v of vtrs) {
           const ok = inspections.some(
             (i) =>
               i.inspectionDate === iso &&
-              normalizeDriverKey(i.motorista) === normalizeDriverKey(motorista) &&
+              nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
               i.viatura.trim() === v.trim(),
           );
           if (!ok) return false;
@@ -489,7 +491,9 @@ export function VistoriaPage() {
     setInspectionMotorista(motorista);
     setInspectionViatura(viatura);
     const existing = inspections
-      .filter((i) => i.motorista === motorista && i.viatura === viatura)
+      .filter(
+        (i) => nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) && i.viatura.trim() === viatura.trim(),
+      )
       .sort((a, b) => b.createdAt - a.createdAt)[0];
     setInspectionAnswer(existing?.viaturaNaOficina ?? "");
     setInspectionChecklist(existing?.checklist ?? emptyChecklist());
@@ -851,7 +855,7 @@ export function VistoriaPage() {
                     </TableHeader>
                     <TableBody>
                       {motoristasComServicoData.map((motorista, index) => {
-                        const viaturasMotorista = viaturasPorMotorista.get(normalizeDriverKey(motorista)) ?? [];
+                        const viaturasMotorista = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
                         return (
                           <TableRow key={motorista} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                             <TableCell className="font-medium">{motorista}</TableCell>
@@ -862,7 +866,7 @@ export function VistoriaPage() {
                                     const vistoriaFeita = inspections.some(
                                       (i) =>
                                         i.inspectionDate === selectedInspectionDate &&
-                                        normalizeDriverKey(i.motorista) === normalizeDriverKey(motorista) &&
+                                        nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
                                         i.viatura.trim() === viatura.trim(),
                                     );
                                     return (

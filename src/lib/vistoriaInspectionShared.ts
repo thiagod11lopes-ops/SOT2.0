@@ -113,6 +113,67 @@ export function normalizeDriverKey(name: string): string {
     .toLowerCase();
 }
 
+/**
+ * Compara duas chaves já normalizadas (minúsculas, sem acento): nome na escala (Detalhe de Serviço)
+ * vs nome no vínculo de vistoria (catálogo), ex. "helio" ↔ "rm1 helio", "silva" ↔ "joao silva".
+ */
+function motoristaKeysMatchForVistoria(na: string, nb: string): boolean {
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const A = na.split(/\s+/).filter(Boolean);
+  const B = nb.split(/\s+/).filter(Boolean);
+  const [shorter, longer] = A.length <= B.length ? [A, B] : [B, A];
+  if (!shorter.length || longer.length < shorter.length) return false;
+  let pref = true;
+  for (let i = 0; i < shorter.length; i++) {
+    if (longer[i] !== shorter[i]) {
+      pref = false;
+      break;
+    }
+  }
+  if (pref) return true;
+  let suf = true;
+  for (let i = 0; i < shorter.length; i++) {
+    if (longer[longer.length - shorter.length + i] !== shorter[i]) {
+      suf = false;
+      break;
+    }
+  }
+  if (suf) return true;
+  if (shorter.length === 1) return longer.includes(shorter[0]!);
+  return false;
+}
+
+/** Verifica se dois nomes de motorista (escala, vínculo ou vistoria gravada) referem-se à mesma pessoa. */
+export function nomesMotoristaVistoriaEquivalentes(a: string, b: string): boolean {
+  return motoristaKeysMatchForVistoria(normalizeDriverKey(a), normalizeDriverKey(b));
+}
+
+/**
+ * Viaturas para o nome exibido na escala, mesmo quando difere do texto do vínculo (ex.: posto + nome).
+ */
+export function resolveViaturasParaMotoristaEscala(
+  escalaMotorista: string,
+  viaturasPorMotorista: ReadonlyMap<string, string[]>,
+): string[] {
+  const nk = normalizeDriverKey(escalaMotorista);
+  if (!nk) return [];
+  const direct = viaturasPorMotorista.get(nk);
+  if (direct && direct.length > 0) return direct;
+
+  const matchedKeys: string[] = [];
+  for (const assignNk of viaturasPorMotorista.keys()) {
+    const placas = viaturasPorMotorista.get(assignNk);
+    if (!placas?.length) continue;
+    if (motoristaKeysMatchForVistoria(nk, assignNk)) matchedKeys.push(assignNk);
+  }
+  if (matchedKeys.length === 0) return [];
+  const placasList = matchedKeys.flatMap((k) => viaturasPorMotorista.get(k) ?? []);
+  return [...new Set(placasList.map((p) => p.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+}
+
 export function readVistoriaAssignments(): VistoriaAssignment[] {
   try {
     const raw = localStorage.getItem(ASSIGNMENTS_STORAGE_KEY);
