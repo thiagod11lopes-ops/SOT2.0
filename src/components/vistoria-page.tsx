@@ -326,30 +326,30 @@ export function VistoriaPage() {
     return out;
   }, [calendarCursorMonth]);
 
-  const viaturasVinculadasAoMotoristaSelecionado = useMemo(() => {
-    const m = selectedMotorista.trim();
-    if (!m) return new Set<string>();
-    const nk = normalizeDriverKey(m);
+  /** Placas que já têm vínculo com qualquer motorista (não podem ser escolhidas de novo). */
+  const viaturasJaVinculadasGlobalmente = useMemo(() => {
     const set = new Set<string>();
     for (const a of assignments) {
-      if (normalizeDriverKey(a.motorista) === nk) set.add(a.viatura.trim());
+      const v = a.viatura.trim();
+      if (v) set.add(v);
     }
     return set;
-  }, [assignments, selectedMotorista]);
+  }, [assignments]);
 
   useEffect(() => {
+    if (selectedMotorista.trim().length === 0) return;
     setSelectedViatura((prev) => {
       const v = prev.trim();
       if (!v) return prev;
-      if (viaturasVinculadasAoMotoristaSelecionado.has(v)) return "";
+      if (viaturasJaVinculadasGlobalmente.has(v)) return "";
       return prev;
     });
-  }, [viaturasVinculadasAoMotoristaSelecionado]);
+  }, [selectedMotorista, viaturasJaVinculadasGlobalmente]);
 
   const canAdd =
     selectedMotorista.trim().length > 0 &&
     selectedViatura.trim().length > 0 &&
-    !viaturasVinculadasAoMotoristaSelecionado.has(selectedViatura.trim());
+    !viaturasJaVinculadasGlobalmente.has(selectedViatura.trim());
   const resolvedIssueSet = useMemo(
     () => new Set(resolvedIssues.map((r) => `${r.inspectionId}:${r.itemKey}`)),
     [resolvedIssues],
@@ -464,9 +464,9 @@ export function VistoriaPage() {
     if (!canAdd) return;
     const motorista = selectedMotorista.trim();
     const viatura = selectedViatura.trim();
-    const alreadyExists = assignments.some((a) => a.motorista === motorista && a.viatura === viatura);
-    if (alreadyExists) {
-      window.alert("Esta viatura já está cadastrada para este motorista.");
+    const viaturaJaUsada = assignments.some((a) => a.viatura.trim() === viatura);
+    if (viaturaJaUsada) {
+      window.alert("Esta viatura já está vinculada a um motorista.");
       return;
     }
     setAssignments((prev) => [
@@ -650,7 +650,7 @@ export function VistoriaPage() {
                     {viaturas.map((viatura) => {
                       const bloqueada =
                         selectedMotorista.trim().length > 0 &&
-                        viaturasVinculadasAoMotoristaSelecionado.has(viatura.trim());
+                        viaturasJaVinculadasGlobalmente.has(viatura.trim());
                       return (
                         <option
                           key={viatura}
