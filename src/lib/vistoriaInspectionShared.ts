@@ -105,12 +105,27 @@ export function formatIsoDatePtBr(iso: string): string {
   return d.toLocaleDateString("pt-BR");
 }
 
+/**
+ * Chave estável para comparar nomes de motorista: minúsculas, sem acento, espaços colapsados.
+ * Hífen vira espaço (ex.: «FC-HÉLIO» e «FC HÉLIO» produzem a mesma chave «fc helio»).
+ */
 export function normalizeDriverKey(name: string): string {
   return name
     .trim()
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+/** Tokeniza chave já normalizada; reforça hífen como separador se ainda existir. */
+function tokensMotoristaComparacao(nk: string): string[] {
+  return nk
+    .replace(/-/g, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
 /**
@@ -120,8 +135,8 @@ export function normalizeDriverKey(name: string): string {
 function motoristaKeysMatchForVistoria(na: string, nb: string): boolean {
   if (!na || !nb) return false;
   if (na === nb) return true;
-  const A = na.split(/\s+/).filter(Boolean);
-  const B = nb.split(/\s+/).filter(Boolean);
+  const A = tokensMotoristaComparacao(na);
+  const B = tokensMotoristaComparacao(nb);
   const [shorter, longer] = A.length <= B.length ? [A, B] : [B, A];
   if (!shorter.length || longer.length < shorter.length) return false;
   let pref = true;
