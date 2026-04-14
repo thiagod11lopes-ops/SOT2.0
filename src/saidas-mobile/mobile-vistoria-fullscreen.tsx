@@ -44,7 +44,6 @@ type Props = {
  */
 export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
   const { filterDatePtBr } = useSaidasMobileFilterDate();
-  const openWasFalse = useRef(true);
   const [view, setView] = useState<"list" | "form">("list");
   const [listRefresh, setListRefresh] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => isoDateFromDate(new Date()));
@@ -101,21 +100,23 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [bundle, selectedDate, viaturasPorMotorista]);
 
+  /** Data da vistoria = data do filtro das saídas (dd/mm/aaaa) sempre que abrir o painel ou mudar o filtro. */
+  useEffect(() => {
+    if (!open) return;
+    if (isCompleteDatePtBr(filterDatePtBr)) {
+      const iso = ptBrToIsoDate(filterDatePtBr);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) setSelectedDate(iso);
+    }
+  }, [open, filterDatePtBr]);
+
   useEffect(() => {
     if (!open) {
-      openWasFalse.current = true;
       setView("list");
       setRubricaOpen(false);
       return;
     }
-    if (openWasFalse.current) {
-      openWasFalse.current = false;
-      if (isCompleteDatePtBr(filterDatePtBr)) {
-        const iso = ptBrToIsoDate(filterDatePtBr);
-        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) setSelectedDate(iso);
-      }
-    }
-  }, [open, filterDatePtBr]);
+    setListRefresh((k) => k + 1);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -273,6 +274,16 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
                   onChange={(e) => setSelectedDate(e.target.value || selectedDate)}
                 />
               </label>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/12 px-3 py-2.5">
+              <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                Motoristas e viaturas — {formatIsoDatePtBr(selectedDate)}
+              </p>
+              <p className="mt-1 text-xs leading-snug text-[hsl(var(--muted-foreground))]">
+                Lista alinhada ao dia do filtro das Saídas. Mostra quem tem <strong>S</strong> no Detalhe de Serviço e
+                viatura vinculada em Vistoria (computador).
+              </p>
             </div>
 
             {bundleLoading ? (

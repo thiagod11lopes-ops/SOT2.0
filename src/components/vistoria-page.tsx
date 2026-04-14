@@ -547,7 +547,7 @@ export function VistoriaPage() {
     const key = `${inspectionId}:${itemKey}`;
     const current = issueControlMap.get(key);
     const next: IssueControl = {
-      id: current?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: current?.id ?? `issue-ctrl-${inspectionId}-${itemKey}`,
       inspectionId,
       itemKey,
       problemMarked: patch.problemMarked ?? current?.problemMarked ?? true,
