@@ -34,6 +34,7 @@ import {
 import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
   type IssueControl,
   type ResolvedIssue,
@@ -174,6 +175,7 @@ export function VistoriaPage() {
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
     const syncFromCloud = () => {
+      if (!isVistoriaCloudStateHydrated()) return;
       const cloud = getVistoriaCloudState();
       applyingCloudRef.current = true;
       setAssignments(cloud.assignments);
@@ -186,7 +188,9 @@ export function VistoriaPage() {
         applyingCloudRef.current = false;
       });
     };
-    syncFromCloud();
+    if (isVistoriaCloudStateHydrated()) {
+      syncFromCloud();
+    }
     const unsub = subscribeVistoriaCloudStateChange(syncFromCloud);
     return () => unsub();
   }, []);

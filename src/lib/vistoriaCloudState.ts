@@ -38,6 +38,7 @@ const emptyState: VistoriaCloudState = {
 let cache: VistoriaCloudState = { ...emptyState };
 let started = false;
 let unsubscribe: (() => void) | null = null;
+let hydrated = false;
 
 function toStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((x) => typeof x === "string" && x.length > 0) : [];
@@ -119,11 +120,16 @@ function dispatchChange() {
 
 function setCache(next: VistoriaCloudState) {
   cache = next;
+  hydrated = true;
   dispatchChange();
 }
 
 export function getVistoriaCloudState(): VistoriaCloudState {
   return cache;
+}
+
+export function isVistoriaCloudStateHydrated(): boolean {
+  return hydrated;
 }
 
 export function ensureVistoriaCloudStateSyncStarted(): void {
