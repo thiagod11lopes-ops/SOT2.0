@@ -1301,11 +1301,11 @@ export function VistoriaPage() {
                     <TableRow>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Data da Vistoria</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Motorista</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica Administrativa</TableHead>
+                      <TableHead colSpan={2} className="text-center font-bold text-[hsl(var(--primary))]">
+                        Rubricas
+                      </TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Marcar Problema</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Prioridades</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Imprimir</TableHead>
@@ -1322,40 +1322,57 @@ export function VistoriaPage() {
                         <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                           <TableCell>{renderDataSituacao(row)}</TableCell>
                           <TableCell className="font-semibold">{row.viatura}</TableCell>
-                          <TableCell>{renderMotoristaSituacao(row)}</TableCell>
                           <TableCell>{row.itemLabel}</TableCell>
                           <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
-                          <TableCell className="max-w-[140px]">
-                            {(() => {
-                              const rubrica = getCommonRubricaForRow(row);
-                              if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              if (isRubricaImageDataUrl(rubrica)) {
-                                return (
-                                  <img
-                                    src={rubrica}
-                                    alt="Rubrica da vistoria comum"
-                                    className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                  />
-                                );
-                              }
-                              return <span className="text-sm">{rubrica}</span>;
-                            })()}
-                          </TableCell>
-                          <TableCell className="max-w-[140px]">
-                            {(() => {
-                              const rubrica = getAdministrativeRubricaForRow(row);
-                              if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              if (isRubricaImageDataUrl(rubrica)) {
-                                return (
-                                  <img
-                                    src={rubrica}
-                                    alt="Rubrica administrativa"
-                                    className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                  />
-                                );
-                              }
-                              return <span className="text-sm">{rubrica}</span>;
-                            })()}
+                          <TableCell colSpan={2} className="min-w-[16rem] max-w-[22rem] align-top">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-4">
+                                <div className="min-w-[6.5rem] flex-1">
+                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                    Comum
+                                  </div>
+                                  {(() => {
+                                    const rubrica = getCommonRubricaForRow(row);
+                                    if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                    if (isRubricaImageDataUrl(rubrica)) {
+                                      return (
+                                        <img
+                                          src={rubrica}
+                                          alt="Rubrica da vistoria comum"
+                                          className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
+                                        />
+                                      );
+                                    }
+                                    return <span className="text-sm">{rubrica}</span>;
+                                  })()}
+                                </div>
+                                <div className="min-w-[6.5rem] flex-1">
+                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                    Administrativa
+                                  </div>
+                                  {(() => {
+                                    const rubrica = getAdministrativeRubricaForRow(row);
+                                    if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                    if (isRubricaImageDataUrl(rubrica)) {
+                                      return (
+                                        <img
+                                          src={rubrica}
+                                          alt="Rubrica administrativa"
+                                          className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
+                                        />
+                                      );
+                                    }
+                                    return <span className="text-sm">{rubrica}</span>;
+                                  })()}
+                                </div>
+                              </div>
+                              <div className="border-t border-[hsl(var(--border))] pt-2 text-sm">
+                                <div className="mb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                  Motoristas
+                                </div>
+                                {renderMotoristaSituacao(row)}
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <label className="flex items-center gap-2 text-sm">

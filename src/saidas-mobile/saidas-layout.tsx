@@ -167,8 +167,7 @@ export function SaidasLayout() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     type="button"
-                    variant="outline"
-                    className="min-h-11 flex-1 rounded-xl font-semibold"
+                    className="min-h-11 flex-1 rounded-xl border border-red-600/90 bg-red-500 font-semibold text-white"
                     onClick={() => {
                       setVistoriaAdminStep("motorista");
                       setVistoriaAdminSenha("");
@@ -176,7 +175,11 @@ export function SaidasLayout() {
                   >
                     Voltar
                   </Button>
-                  <Button type="button" className="min-h-11 flex-1 rounded-xl font-semibold" onClick={handleVistoriaAdminSenhaOk}>
+                  <Button
+                    type="button"
+                    className="min-h-11 flex-1 rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
+                    onClick={handleVistoriaAdminSenhaOk}
+                  >
                     OK
                   </Button>
                 </div>
