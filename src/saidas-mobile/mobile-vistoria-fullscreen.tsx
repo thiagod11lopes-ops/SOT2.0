@@ -1,27 +1,37 @@
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { isCompleteDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
+import { isCompleteDatePtBr, isoDateToPtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
 import {
   appendVistoriaInspection,
   CHECKLIST_ITEMS,
+  checklistComOkPorDefeito,
+  applySituacaoVtrPendingPrefillForViatura,
+  autoResolveAdministrativeRedundanciesOnCommonSave,
   emptyChecklist,
   emptyChecklistNotes,
   formatIsoDatePtBr,
-  type InspectionAnswer,
+  isViaturaLocalizacao,
   isoDateFromDate,
+  primeiroLabelAnotacoesSemObservacao,
+  findLatestInspectionForFormPrefill,
+  segmentarObservacaoAdmin,
+  VIATURA_LOCALIZACAO_OPCOES,
+  type ViaturaLocalizacao,
   nomesMotoristaVistoriaEquivalentes,
   normalizeDriverKey,
   parseIsoDate,
   resolveViaturasParaMotoristaEscala,
   readVistoriaAssignments,
   readVistoriaInspections,
+  type ChecklistKey,
   type VistoriaChecklist,
   type VistoriaChecklistNotes,
   type VistoriaInspection,
 } from "../lib/vistoriaInspectionShared";
 import { Button } from "../components/ui/button";
+import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -36,32 +46,56 @@ function addDaysToIso(iso: string, delta: number): string {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Fluxo avulso: após senha no layout, escolhe-se viatura e abre-se o formulário para este motorista (sem exigir «S» na escala). */
+  administrativeVistoriadorMotorista?: string | null;
 };
 
 /**
- * Vista mobile (Android/iOS): fluxo alinhado à aba Vistoriar — dia, viaturas com S + responsabilidade,
- * formulário e rubrica ao gravar.
+ * Vista mobile (Android/iOS): fluxo alinhado à aba Vistoriar — dia, viaturas com S + responsabilidade.
+ * «Na Oficina» / «Destacada»: modal de rubrica ao escolher a opção; «Confirmar e guardar» grava e fecha o painel.
+ * «A Bordo»: «Salvar vistoria» abre o modal; «Confirmar e guardar» grava e fecha o painel.
  */
-export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
+export function MobileVistoriaFullscreen({
+  open,
+  onOpenChange,
+  administrativeVistoriadorMotorista = null,
+}: Props) {
   const { filterDatePtBr } = useSaidasMobileFilterDate();
-  const [view, setView] = useState<"list" | "form">("list");
+  const { items: catalogItems } = useCatalogItems();
+  const viaturasCatalogo = useMemo(() => {
+    const v = mergeViaturasCatalog(catalogItems);
+    return [...v].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [catalogItems]);
+  const [view, setView] = useState<"list" | "adminViatura" | "form">("list");
+  const [adminViaturaDraft, setAdminViaturaDraft] = useState("");
   const [listRefresh, setListRefresh] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => isoDateFromDate(new Date()));
+  const [vistoriaDatePtBr, setVistoriaDatePtBr] = useState(() =>
+    isoDateToPtBr(isoDateFromDate(new Date())),
+  );
   const [rubricaPadKey, setRubricaPadKey] = useState(0);
   const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
   const [bundleLoading, setBundleLoading] = useState(false);
 
   const [formMotorista, setFormMotorista] = useState("");
   const [formViatura, setFormViatura] = useState("");
-  const [inspectionAnswer, setInspectionAnswer] = useState<InspectionAnswer | "">("");
+  const [localizacaoViatura, setLocalizacaoViatura] = useState<ViaturaLocalizacao>("A Bordo");
   const [inspectionChecklist, setInspectionChecklist] = useState<VistoriaChecklist>(() => emptyChecklist());
   const [inspectionChecklistNotes, setInspectionChecklistNotes] = useState<VistoriaChecklistNotes>(() =>
     emptyChecklistNotes(),
   );
 
   const [rubricaOpen, setRubricaOpen] = useState(false);
+  const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
+  const rubricaModalIntentRef = useRef<"captureNaoAbordo" | "finalizeAbordo" | null>(null);
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
+  const avisoObservacaoTitleId = useId();
+  const adminFormSnapshotRef = useRef<{
+    checklist: VistoriaChecklist;
+    notes: VistoriaChecklistNotes;
+    source: VistoriaInspection | null;
+  } | null>(null);
 
   const assignments = useMemo(() => (open ? readVistoriaAssignments() : []), [open, listRefresh]);
   const inspections = useMemo(() => (open ? readVistoriaInspections() : []), [open, listRefresh]);
@@ -82,6 +116,14 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
     }
     return map;
   }, [assignments]);
+
+  const isAdminSession = Boolean(administrativeVistoriadorMotorista?.trim());
+
+  const viaturasSugeridasAdmin = useMemo(() => {
+    const m = administrativeVistoriadorMotorista?.trim();
+    if (!m) return [];
+    return resolveViaturasParaMotoristaEscala(m, viaturasPorMotorista);
+  }, [administrativeVistoriadorMotorista, viaturasPorMotorista]);
 
   const motoristasComSRelevantes = useMemo(() => {
     if (!bundle) return [];
@@ -110,13 +152,28 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
   }, [open, filterDatePtBr]);
 
   useEffect(() => {
+    setVistoriaDatePtBr(isoDateToPtBr(selectedDate));
+  }, [selectedDate]);
+
+  useEffect(() => {
     if (!open) {
       setView("list");
       setRubricaOpen(false);
+      setAvisoObservacaoItemLabel(null);
+      setAdminViaturaDraft("");
       return;
     }
     setListRefresh((k) => k + 1);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !administrativeVistoriadorMotorista?.trim()) return;
+    if (view === "form") return;
+    const m = administrativeVistoriadorMotorista.trim();
+    setView("adminViatura");
+    const vtrs = resolveViaturasParaMotoristaEscala(m, viaturasPorMotorista);
+    setAdminViaturaDraft((prev) => (prev.trim() ? prev : vtrs.length === 1 ? vtrs[0] : ""));
+  }, [open, administrativeVistoriadorMotorista, viaturasPorMotorista, view]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,6 +198,22 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
     };
   }, [open]);
 
+  /** Nem OK nem Anotações: assume OK (estado vazio ou dados antigos). */
+  useEffect(() => {
+    if (view !== "form" || !open) return;
+    setInspectionChecklist((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const { key } of CHECKLIST_ITEMS) {
+        if (next[key] === "") {
+          next[key] = "OK";
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [view, open]);
+
   function inspectionFeitaPara(motorista: string, viatura: string): boolean {
     return inspections.some(
       (i) =>
@@ -150,53 +223,219 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
     );
   }
 
+  function abrirFormularioAdministrativo() {
+    const motorista = administrativeVistoriadorMotorista?.trim() ?? "";
+    const viatura = adminViaturaDraft.trim();
+    if (!motorista) {
+      window.alert("Motorista em falta.");
+      return;
+    }
+    if (!viatura) {
+      window.alert("Selecione a viatura.");
+      return;
+    }
+    if (!isValueInCatalog(viatura, viaturasCatalogo)) {
+      window.alert("A viatura deve constar do catálogo (definições no sistema principal).");
+      return;
+    }
+    openForm(motorista, viatura);
+  }
+
   function openForm(motorista: string, viatura: string) {
     setFormMotorista(motorista);
     setFormViatura(viatura);
-    const existing = inspections
-      .filter(
-        (i) =>
-          nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) && i.viatura.trim() === viatura.trim(),
-      )
-      .sort((a, b) => b.createdAt - a.createdAt)[0];
-    setInspectionAnswer(existing?.viaturaNaOficina ?? "");
-    setInspectionChecklist(existing?.checklist ?? emptyChecklist());
-    setInspectionChecklistNotes(existing?.checklistNotes ?? emptyChecklistNotes());
+    const existing = findLatestInspectionForFormPrefill(inspections, motorista, viatura);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura,
+      baseChecklist,
+      baseNotes,
+    });
+    if (isAdminSession) {
+      adminFormSnapshotRef.current = {
+        checklist: { ...nextChecklist },
+        notes: { ...nextNotes },
+        source: existing ?? null,
+      };
+    } else {
+      adminFormSnapshotRef.current = null;
+    }
+    setLocalizacaoViatura(
+      isViaturaLocalizacao(existing?.localizacaoViatura) ? existing.localizacaoViatura : "A Bordo",
+    );
+    setInspectionChecklist(nextChecklist);
+    setInspectionChecklistNotes(nextNotes);
     setView("form");
   }
 
+  function handleLocalizacaoChange(opt: ViaturaLocalizacao) {
+    setLocalizacaoViatura(opt);
+    if (opt === "Na Oficina" || opt === "Destacada") {
+      rubricaModalIntentRef.current = "captureNaoAbordo";
+      setRubricaPadKey((k) => k + 1);
+      setRubricaOpen(true);
+    }
+  }
+
+  function closeRubricaModalSemConfirmar() {
+    rubricaModalIntentRef.current = null;
+    setRubricaOpen(false);
+  }
+
   function handlePedirSalvar() {
-    if (inspectionAnswer !== "Sim" && inspectionAnswer !== "Não") {
-      window.alert("Marque Sim ou Não em «Viatura na Oficina?».");
+    if (!isViaturaLocalizacao(localizacaoViatura)) {
+      window.alert("Marque uma opção em «Localização da Viatura».");
       return;
     }
     const pending = CHECKLIST_ITEMS.find(({ key }) => inspectionChecklist[key] === "");
     if (pending) {
-      window.alert(`Marque OK ou Alterações para «${pending.label}».`);
+      window.alert(`Marque OK ou Anotações para «${pending.label}».`);
       return;
     }
+    const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
+    if (semObs) {
+      setAvisoObservacaoItemLabel(semObs);
+      return;
+    }
+
+    if (localizacaoViatura === "A Bordo") {
+      rubricaModalIntentRef.current = "finalizeAbordo";
+      setRubricaPadKey((k) => k + 1);
+      setRubricaOpen(true);
+      return;
+    }
+
+    rubricaModalIntentRef.current = "captureNaoAbordo";
     setRubricaPadKey((k) => k + 1);
     setRubricaOpen(true);
   }
 
-  function commitRubricaESalvar() {
-    const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
-    const novo: VistoriaInspection = {
+  function finalizeVistoria(rubricaDataUrl: string | undefined) {
+    if (!isViaturaLocalizacao(localizacaoViatura)) return;
+    const rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    const base: Omit<
+      VistoriaInspection,
+      | "rubrica"
+      | "vistoriaAdministrativa"
+      | "rubricaAdministrativa"
+      | "prefillSourceInspectionId"
+      | "prefillMotorista"
+      | "prefillInspectionDate"
+      | "itensAlteradosAdministracao"
+      | "observacaoSegmentacaoAdmin"
+    > = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       motorista: formMotorista,
       viatura: formViatura,
       inspectionDate: selectedDate,
-      viaturaNaOficina: inspectionAnswer as InspectionAnswer,
+      localizacaoViatura,
       checklist: inspectionChecklist,
       checklistNotes: inspectionChecklistNotes,
       createdAt: Date.now(),
-      rubrica: drawn.trim() ? drawn : undefined,
+      origemMobile: true,
     };
+    let novo: VistoriaInspection;
+    if (isAdminSession) {
+      const snap = adminFormSnapshotRef.current;
+      const itensAlterados: ChecklistKey[] = [];
+      const observacaoSegmentacaoAdmin: Partial<Record<ChecklistKey, { plain: string; italic: string }>> = {};
+      if (snap) {
+        for (const { key } of CHECKLIST_ITEMS) {
+          const clChanged = snap.checklist[key] !== inspectionChecklist[key];
+          const ntChanged = (snap.notes[key] ?? "").trim() !== (inspectionChecklistNotes[key] ?? "").trim();
+          if (clChanged || ntChanged) {
+            itensAlterados.push(key);
+            if (ntChanged) {
+              observacaoSegmentacaoAdmin[key] = segmentarObservacaoAdmin(
+                snap.notes[key] ?? "",
+                inspectionChecklistNotes[key] ?? "",
+              );
+            }
+          }
+        }
+      }
+      const src = snap?.source ?? null;
+      novo = {
+        ...base,
+        vistoriaAdministrativa: true,
+        rubricaAdministrativa: rubricaTrim,
+        prefillSourceInspectionId: src?.id,
+        prefillMotorista: src?.motorista,
+        prefillInspectionDate: src?.inspectionDate,
+        itensAlteradosAdministracao: itensAlterados.length ? itensAlterados : undefined,
+        observacaoSegmentacaoAdmin:
+          Object.keys(observacaoSegmentacaoAdmin).length > 0 ? observacaoSegmentacaoAdmin : undefined,
+      };
+    } else {
+      novo = { ...base, rubrica: rubricaTrim };
+    }
+    adminFormSnapshotRef.current = null;
     appendVistoriaInspection(novo);
+    if (!isAdminSession) {
+      autoResolveAdministrativeRedundanciesOnCommonSave({
+        inspections,
+        viatura: formViatura,
+        checklist: inspectionChecklist,
+        notes: inspectionChecklistNotes,
+      });
+    }
+    rubricaModalIntentRef.current = null;
     setRubricaOpen(false);
-    setView("list");
     setListRefresh((k) => k + 1);
     rubricaPadRef.current?.clearPad();
+    onOpenChange(false);
+  }
+
+  function commitRubricaESalvar() {
+    const intent = rubricaModalIntentRef.current;
+    const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
+
+    if (intent === "finalizeAbordo") {
+      if (!isViaturaLocalizacao(localizacaoViatura) || localizacaoViatura !== "A Bordo") {
+        rubricaModalIntentRef.current = null;
+        return;
+      }
+      const pend = CHECKLIST_ITEMS.find(({ key }) => inspectionChecklist[key] === "");
+      if (pend) {
+        window.alert(`Marque OK ou Anotações para «${pend.label}».`);
+        return;
+      }
+      const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
+      if (semObs) {
+        setAvisoObservacaoItemLabel(semObs);
+        return;
+      }
+      rubricaModalIntentRef.current = null;
+      finalizeVistoria(drawn || undefined);
+      return;
+    }
+
+    if (!isViaturaLocalizacao(localizacaoViatura)) {
+      rubricaModalIntentRef.current = null;
+      return;
+    }
+    if (localizacaoViatura === "A Bordo") {
+      rubricaModalIntentRef.current = null;
+      return;
+    }
+
+    const pend = CHECKLIST_ITEMS.find(({ key }) => inspectionChecklist[key] === "");
+    if (pend) {
+      window.alert(
+        `Preencha o checklist no formulário e marque OK ou Anotações em «${pend.label}» antes de confirmar.`,
+      );
+      return;
+    }
+    const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
+    if (semObs) {
+      setAvisoObservacaoItemLabel(semObs);
+      return;
+    }
+
+    rubricaModalIntentRef.current = null;
+    finalizeVistoria(drawn || undefined);
   }
 
   if (!open) return null;
@@ -207,7 +446,7 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
         className="pointer-events-auto fixed inset-0 z-[500] flex justify-center bg-black/50 px-3 backdrop-blur-[2px] min-[480px]:px-4"
         role="dialog"
         aria-modal="true"
-        aria-label="Vistoria"
+        aria-label={isAdminSession ? "Vistoria administrativa" : "Vistoria"}
         style={{
           paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))",
           paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
@@ -223,10 +462,14 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
           <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[hsl(var(--border))] px-3 pb-2 pt-1 min-[480px]:px-4">
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
-              Vistoria
+              {isAdminSession ? "Vistoria administrativa" : "Vistoria"}
             </p>
             <h2 className="truncate text-lg font-bold">
-              {view === "list" ? "Calendário e viaturas" : "Preencher vistoria"}
+              {view === "list"
+                ? "Calendário e viaturas"
+                : view === "adminViatura"
+                  ? "Viatura da vistoria"
+                  : "Preencher vistoria"}
             </h2>
           </div>
           <button
@@ -252,9 +495,20 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value || selectedDate)}
+                type="text"
+                inputMode="numeric"
+                value={vistoriaDatePtBr}
+                onChange={(e) => {
+                  const v = normalizeDatePtBr(e.target.value);
+                  setVistoriaDatePtBr(v);
+                  if (isCompleteDatePtBr(v)) {
+                    const iso = ptBrToIsoDate(v);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) setSelectedDate(iso);
+                  }
+                }}
+                placeholder="dd/mm/aaaa"
+                autoComplete="off"
+                aria-label="Data da vistoria"
                 className="min-h-12 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-center text-base font-semibold tabular-nums outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/50"
               />
               <button
@@ -336,15 +590,61 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
               formulário.
             </p>
           </div>
+          ) : view === "adminViatura" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3 min-[480px]:px-4">
+            <p className="mb-3 text-sm leading-snug text-[hsl(var(--muted-foreground))]">
+              Vistoria avulsa: não exige <strong>S</strong> no Detalhe de Serviço. Escolha a viatura e abra o
+              formulário para o vistoriador indicado.
+            </p>
+            <div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/12 px-3 py-2.5">
+              <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                Vistoriador: {administrativeVistoriadorMotorista?.trim() ?? "—"}
+              </p>
+              <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                Data da vistoria: {formatIsoDatePtBr(selectedDate)} (alinhada ao filtro das Saídas).
+              </p>
+            </div>
+            <label className="mb-1 block text-sm font-medium text-[hsl(var(--foreground))]">Viatura</label>
+            <select
+              className="mb-3 min-h-12 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+              value={adminViaturaDraft}
+              onChange={(e) => setAdminViaturaDraft(e.target.value)}
+              aria-label="Viatura da vistoria administrativa"
+            >
+              <option value="">— Selecionar viatura —</option>
+              {viaturasCatalogo.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            {viaturasSugeridasAdmin.length > 0 ? (
+              <p className="mb-4 text-xs leading-snug text-[hsl(var(--muted-foreground))]">
+                Viaturas associadas em Responsabilidade de Vistoria (computador):{" "}
+                <span className="font-medium text-[hsl(var(--foreground))]">{viaturasSugeridasAdmin.join(", ")}</span>
+              </p>
+            ) : (
+              <p className="mb-4 text-xs text-[hsl(var(--muted-foreground))]">
+                Nenhuma viatura vinculada a este nome nas atribuições — escolha no catálogo acima.
+              </p>
+            )}
+            <Button
+              type="button"
+              className="min-h-12 w-full rounded-xl text-base font-semibold"
+              onClick={abrirFormularioAdministrativo}
+            >
+              Abrir formulário
+            </Button>
+          </div>
           ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-2 min-[480px]:px-4">
             <button
               type="button"
               className="mb-3 text-sm font-medium text-[hsl(var(--primary))] underline-offset-2 active:underline"
-              onClick={() => setView("list")}
+              onClick={() => setView(isAdminSession ? "adminViatura" : "list")}
             >
-              ← Voltar à lista
+              {isAdminSession ? "← Voltar" : "← Voltar à lista"}
             </button>
             <div className="mb-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/15 p-3 text-sm">
               <p>
@@ -359,28 +659,20 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
             </div>
 
             <div className="mb-4 space-y-2 rounded-2xl border border-[hsl(var(--border))] p-3">
-              <p className="text-sm font-medium">Viatura na Oficina?</p>
+              <p className="text-sm font-medium">Localização da Viatura</p>
               <div className="flex flex-wrap gap-4">
-                <label className="flex min-h-11 items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="mobile-vistoria-oficina"
-                    checked={inspectionAnswer === "Sim"}
-                    onChange={() => setInspectionAnswer("Sim")}
-                    className="h-5 w-5 accent-[hsl(var(--primary))]"
-                  />
-                  Sim
-                </label>
-                <label className="flex min-h-11 items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="mobile-vistoria-oficina"
-                    checked={inspectionAnswer === "Não"}
-                    onChange={() => setInspectionAnswer("Não")}
-                    className="h-5 w-5 accent-[hsl(var(--primary))]"
-                  />
-                  Não
-                </label>
+                {VIATURA_LOCALIZACAO_OPCOES.map((opt) => (
+                  <label key={opt} className="flex min-h-11 items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="mobile-vistoria-localizacao"
+                      checked={localizacaoViatura === opt}
+                      onChange={() => handleLocalizacaoChange(opt)}
+                      className="h-5 w-5 accent-[hsl(var(--primary))]"
+                    />
+                    {opt}
+                  </label>
+                ))}
               </div>
             </div>
 
@@ -392,7 +684,11 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
                   className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]/60 p-3"
                 >
                   <p className="mb-2 text-sm font-medium">{item.label}</p>
-                  <div className="mb-2 flex flex-wrap gap-4">
+                  <div
+                    className="mb-2 flex flex-wrap gap-4"
+                    role="radiogroup"
+                    aria-label={`${item.label}: OK ou Anotações`}
+                  >
                     <label className="flex min-h-10 items-center gap-2 text-sm">
                       <input
                         type="radio"
@@ -421,10 +717,10 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
                         }
                         className="h-5 w-5 accent-[hsl(var(--primary))]"
                       />
-                      Alterações
+                      Anotações
                     </label>
                   </div>
-                  <label className="block text-xs text-[hsl(var(--muted-foreground))]">Observações</label>
+                  <label className="block text-xs text-[hsl(var(--muted-foreground))]">Observações do item</label>
                   <input
                     type="text"
                     enterKeyHint="next"
@@ -450,9 +746,8 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
             >
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-12 flex-1 rounded-xl text-base font-medium"
-                onClick={() => setView("list")}
+                className="min-h-12 flex-1 rounded-xl text-base font-semibold"
+                onClick={() => setView(isAdminSession ? "adminViatura" : "list")}
               >
                 Cancelar
               </Button>
@@ -472,10 +767,10 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
           aria-modal="true"
           aria-labelledby={rubricaTitleId}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setRubricaOpen(false);
+            if (e.target === e.currentTarget) closeRubricaModalSemConfirmar();
           }}
           onTouchEnd={(e) => {
-            if (e.target === e.currentTarget) setRubricaOpen(false);
+            if (e.target === e.currentTarget) closeRubricaModalSemConfirmar();
           }}
         >
           <div
@@ -486,8 +781,9 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
               Rubrica
             </h2>
             <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
-              Desenhe a rubrica com o dedo no ecrã (Android/iOS). Pode deixar em branco e confirmar se não for necessário
-              desenho.
+              Desenhe a rubrica com o dedo no ecrã (Android/iOS). Confirmar grava a vistoria e regressa ao ecrã inicial.
+              Preencha o checklist antes de confirmar (em «Na Oficina» ou «Destacada», use «Voltar ao formulário» se
+              ainda faltar o checklist). Pode deixar o desenho em branco se não for necessário.
             </p>
             <div className="h-[min(40vh,280px)] w-full min-h-[200px] touch-none">
               <RubricaSignaturePad ref={rubricaPadRef} key={rubricaPadKey} />
@@ -495,19 +791,53 @@ export function MobileVistoriaFullscreen({ open, onOpenChange }: Props) {
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl"
+                className="min-h-11 rounded-xl font-semibold"
                 onClick={() => rubricaPadRef.current?.clearPad()}
               >
                 Limpar
               </Button>
-              <Button type="button" variant="outline" className="min-h-11 rounded-xl" onClick={() => setRubricaOpen(false)}>
+              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={closeRubricaModalSemConfirmar}>
                 Voltar ao formulário
               </Button>
               <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubricaESalvar}>
                 Confirmar e guardar
               </Button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {avisoObservacaoItemLabel ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[560]`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={avisoObservacaoTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setAvisoObservacaoItemLabel(null);
+          }}
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) setAvisoObservacaoItemLabel(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id={avisoObservacaoTitleId} className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Observações em falta
+            </h2>
+            <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+              O item «{avisoObservacaoItemLabel}» está em <strong>Anotações</strong>. Preencha o campo{" "}
+              <strong>Observações do item</strong> com o detalhe necessário antes de continuar.
+            </p>
+            <Button
+              type="button"
+              className="min-h-11 w-full rounded-xl font-semibold"
+              onClick={() => setAvisoObservacaoItemLabel(null)}
+            >
+              Entendi
+            </Button>
           </div>
         </div>
       ) : null}

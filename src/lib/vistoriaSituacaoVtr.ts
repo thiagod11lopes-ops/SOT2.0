@@ -1,33 +1,17 @@
 import { useEffect, useState } from "react";
+import {
+  INSPECTIONS_STORAGE_KEY,
+  readVistoriaInspections,
+  type ChecklistKey,
+  type VistoriaInspection,
+} from "./vistoriaInspectionShared";
 
 /** Estado persistido da aba Vistoria — Situação das VTR (localStorage). */
 
-export type ChecklistKey =
-  | "nivelOleo"
-  | "agua"
-  | "fluidosFreioDirecao"
-  | "calibragemEstadoPneus"
-  | "eletricaLuzes"
-  | "sireneLuzesSom"
-  | "documentacao"
-  | "trianguloMacacoChaveRoda"
-  | "limpezaInternaExterna"
-  | "lanternagemGeral"
-  | "outros";
+export type { ChecklistKey, VistoriaInspection };
 
 export type VistoriaChecklist = Record<ChecklistKey, "OK" | "Alterações" | "">;
 export type VistoriaChecklistNotes = Record<ChecklistKey, string>;
-
-export type VistoriaInspection = {
-  id: string;
-  motorista: string;
-  viatura: string;
-  inspectionDate: string;
-  viaturaNaOficina: "Sim" | "Não";
-  checklist: VistoriaChecklist;
-  checklistNotes: VistoriaChecklistNotes;
-  createdAt: number;
-};
 
 export type ResolvedIssue = {
   id: string;
@@ -45,7 +29,7 @@ export type IssueControl = {
   printMarked: boolean;
 };
 
-export const INSPECTIONS_STORAGE_KEY = "sot_vistoria_inspections_v1";
+export { INSPECTIONS_STORAGE_KEY };
 export const RESOLVED_ISSUES_STORAGE_KEY = "sot_vistoria_resolved_issues_v1";
 export const ISSUE_CONTROLS_STORAGE_KEY = "sot_vistoria_issue_controls_v1";
 
@@ -65,63 +49,12 @@ export const CHECKLIST_ITEM_LABELS: Record<ChecklistKey, string> = {
 
 const CHECKLIST_KEYS = Object.keys(CHECKLIST_ITEM_LABELS) as ChecklistKey[];
 
-function emptyChecklist(): VistoriaChecklist {
-  return {
-    nivelOleo: "",
-    agua: "",
-    fluidosFreioDirecao: "",
-    calibragemEstadoPneus: "",
-    eletricaLuzes: "",
-    sireneLuzesSom: "",
-    documentacao: "",
-    trianguloMacacoChaveRoda: "",
-    limpezaInternaExterna: "",
-    lanternagemGeral: "",
-    outros: "",
-  };
-}
-
-function emptyChecklistNotes(): VistoriaChecklistNotes {
-  const o: Record<string, string> = {};
-  for (const k of CHECKLIST_KEYS) o[k] = "";
-  return o as VistoriaChecklistNotes;
-}
-
-function isoDateFromCreated(createdAt: number): string {
-  const d = new Date(createdAt);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 export function normalizeViaturaKey(v: string): string {
   return v.trim().toLowerCase();
 }
 
 function readInspections(): VistoriaInspection[] {
-  try {
-    const raw = localStorage.getItem(INSPECTIONS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as VistoriaInspection[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item) =>
-          item &&
-          typeof item.motorista === "string" &&
-          typeof item.viatura === "string" &&
-          (item.viaturaNaOficina === "Sim" || item.viaturaNaOficina === "Não"),
-      )
-      .map((item) => ({
-        ...item,
-        inspectionDate:
-          typeof item.inspectionDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.inspectionDate)
-            ? item.inspectionDate
-            : isoDateFromCreated(item.createdAt || Date.now()),
-        checklist: { ...emptyChecklist(), ...(item.checklist ?? {}) },
-        checklistNotes: { ...emptyChecklistNotes(), ...(item.checklistNotes ?? {}) },
-      }));
-  } catch {
-    return [];
-  }
+  return readVistoriaInspections();
 }
 
 function readResolvedIssues(): ResolvedIssue[] {

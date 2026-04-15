@@ -54,11 +54,6 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
     columnStyles: {
       4: { cellWidth: 62 },
     },
-    didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 4) {
-        data.cell.styles.fontStyle = "bold";
-      }
-    },
   });
 
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
