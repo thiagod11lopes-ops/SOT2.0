@@ -62,8 +62,8 @@ function monthLabelPtBr(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
-function issueRowKey(inspectionId: string, itemKey: ChecklistKey): string {
-  return `${inspectionId}:${itemKey}`;
+function issueRowKey(rowId: string): string {
+  return rowId;
 }
 
 function escapeHtml(s: string): string {
@@ -562,6 +562,13 @@ export function VistoriaPage() {
     for (const item of issueControls) map.set(`${item.inspectionId}:${item.itemKey}`, item);
     return map;
   }, [issueControls]);
+  function getRowIssueControl(row: VtrSituacaoPendenteRow): IssueControl | null {
+    for (const ref of row.relatedIssueRefs) {
+      const control = issueControlMap.get(`${ref.inspectionId}:${ref.itemKey}`);
+      if (control) return control;
+    }
+    return null;
+  }
   const inspectionById = useMemo(() => {
     const map = new Map<string, VistoriaInspection>();
     for (const ins of inspections) map.set(ins.id, ins);
@@ -570,13 +577,13 @@ export function VistoriaPage() {
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
-        (row) => issueControlMap.get(`${row.inspectionId}:${row.itemKey}`)?.priorityMarked === true,
+        (row) => getRowIssueControl(row)?.priorityMarked === true,
       ),
     [vtrSituacaoPendente, issueControlMap],
   );
 
   useEffect(() => {
-    const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.inspectionId, r.itemKey));
+    const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.rowId));
     const valid = new Set(pendingKeys);
     setPriorityOrderKeys((prev) => {
       const kept = prev.filter((k) => valid.has(k));
@@ -590,7 +597,7 @@ export function VistoriaPage() {
 
   const vtrPrioridadesOrdered = useMemo(() => {
     const map = new Map(
-      vtrPrioridades.map((r) => [issueRowKey(r.inspectionId, r.itemKey), r] as const),
+      vtrPrioridades.map((r) => [issueRowKey(r.rowId), r] as const),
     );
     const seen = new Set<string>();
     const ordered: typeof vtrPrioridades = [];
@@ -602,7 +609,7 @@ export function VistoriaPage() {
       }
     }
     for (const r of vtrPrioridades) {
-      const k = issueRowKey(r.inspectionId, r.itemKey);
+      const k = issueRowKey(r.rowId);
       if (!seen.has(k)) ordered.push(r);
     }
     return ordered;
@@ -731,28 +738,32 @@ export function VistoriaPage() {
     });
   }
 
-  function upsertIssueControl(inspectionId: string, itemKey: ChecklistKey, patch: Partial<IssueControl>) {
-    const key = `${inspectionId}:${itemKey}`;
-    const current = issueControlMap.get(key);
-    const next: IssueControl = {
-      id: current?.id ?? `issue-ctrl-${inspectionId}-${itemKey}`,
-      inspectionId,
-      itemKey,
-      problemMarked: patch.problemMarked ?? current?.problemMarked ?? true,
-      priorityMarked: patch.priorityMarked ?? current?.priorityMarked ?? false,
-      printMarked: patch.printMarked ?? current?.printMarked ?? false,
-    };
+  function upsertIssueControl(row: VtrSituacaoPendenteRow, patch: Partial<IssueControl>) {
+    const current = getRowIssueControl(row);
+    const problemMarked = patch.problemMarked ?? current?.problemMarked ?? true;
+    const priorityMarked = patch.priorityMarked ?? current?.priorityMarked ?? false;
+    const printMarked = patch.printMarked ?? current?.printMarked ?? false;
     setIssueControls((prev) => {
-      const idx = prev.findIndex((x) => x.inspectionId === inspectionId && x.itemKey === itemKey);
-      if (idx < 0) return [...prev, next];
       const clone = [...prev];
-      clone[idx] = next;
+      for (const ref of row.relatedIssueRefs) {
+        const idx = clone.findIndex((x) => x.inspectionId === ref.inspectionId && x.itemKey === ref.itemKey);
+        const next: IssueControl = {
+          id: idx >= 0 ? clone[idx].id : `issue-ctrl-${ref.inspectionId}-${ref.itemKey}`,
+          inspectionId: ref.inspectionId,
+          itemKey: ref.itemKey,
+          problemMarked,
+          priorityMarked,
+          printMarked,
+        };
+        if (idx < 0) clone.push(next);
+        else clone[idx] = next;
+      }
       return clone;
     });
   }
 
   function handlePrintIssue(row: VtrSituacaoPendenteRow) {
-    const control = issueControlMap.get(`${row.inspectionId}:${row.itemKey}`);
+    const control = getRowIssueControl(row);
     const dataHtml =
       row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
         ? `<span>${escapeHtml(formatIsoDatePtBr(row.prefillInspectionDate))}</span><br/><span style="font-size:0.85em;font-style:italic;font-weight:700;">(${escapeHtml(formatIsoDatePtBr(row.inspectionDate))})</span>`
@@ -793,7 +804,7 @@ export function VistoriaPage() {
 
   function handleGerarPdfSituacaoVtr() {
     const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
-      (row) => issueControlMap.get(`${row.inspectionId}:${row.itemKey}`)?.printMarked === true,
+      (row) => getRowIssueControl(row)?.printMarked === true,
     );
     if (rowsComImprimir.length === 0) {
       window.alert("Nenhuma linha com Imprimir marcado.");
@@ -1169,7 +1180,7 @@ export function VistoriaPage() {
                   </TableHeader>
                   <TableBody>
                     {vtrSituacaoPendenteFiltrado.map((row, index) => {
-                      const control = issueControlMap.get(`${row.inspectionId}:${row.itemKey}`);
+                      const control = getRowIssueControl(row);
                       const problemMarked = control?.problemMarked ?? true;
                       const priorityMarked = control?.priorityMarked ?? false;
                       const printMarked = control?.printMarked ?? false;
@@ -1229,7 +1240,7 @@ export function VistoriaPage() {
                                 type="checkbox"
                                 checked={problemMarked}
                                 onChange={(e) =>
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     problemMarked: e.target.checked,
                                   })
                                 }
@@ -1244,7 +1255,7 @@ export function VistoriaPage() {
                                 type="checkbox"
                                 checked={priorityMarked}
                                 onChange={(e) =>
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     priorityMarked: e.target.checked,
                                   })
                                 }
@@ -1260,7 +1271,7 @@ export function VistoriaPage() {
                                 checked={printMarked}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     printMarked: checked,
                                   });
                                   if (checked) handlePrintIssue(row);
@@ -1359,7 +1370,7 @@ export function VistoriaPage() {
             ) : (
               <ul className="space-y-2" role="list">
                 {vtrPrioridadesOrdered.map((row, index) => {
-                  const rk = issueRowKey(row.inspectionId, row.itemKey);
+                  const rk = issueRowKey(row.rowId);
                   const isDragging = draggingPriorityKey === rk;
                   return (
                     <li
