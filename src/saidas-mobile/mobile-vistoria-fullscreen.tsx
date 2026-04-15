@@ -9,6 +9,7 @@ import {
   checklistComOkPorDefeito,
   applySituacaoVtrPendingPrefillForViatura,
   autoResolveAdministrativeRedundanciesOnCommonSave,
+  autoResolveCommonRedundanciesOnAdministrativeSave,
   emptyChecklist,
   emptyChecklistNotes,
   formatIsoDatePtBr,
@@ -372,8 +373,14 @@ export function MobileVistoriaFullscreen({
       novo = { ...base, rubrica: rubricaTrim };
     }
     adminFormSnapshotRef.current = null;
-    appendVistoriaInspection(novo);
-    if (!isAdminSession) {
+    if (isAdminSession) {
+      autoResolveCommonRedundanciesOnAdministrativeSave({
+        inspections,
+        viatura: formViatura,
+        checklist: inspectionChecklist,
+        notes: inspectionChecklistNotes,
+      });
+    } else {
       autoResolveAdministrativeRedundanciesOnCommonSave({
         inspections,
         viatura: formViatura,
@@ -381,6 +388,7 @@ export function MobileVistoriaFullscreen({
         notes: inspectionChecklistNotes,
       });
     }
+    appendVistoriaInspection(novo);
     rubricaModalIntentRef.current = null;
     setRubricaOpen(false);
     setListRefresh((k) => k + 1);

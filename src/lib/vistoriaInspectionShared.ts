@@ -418,6 +418,53 @@ export function autoResolveAdministrativeRedundanciesOnCommonSave(args: {
 }
 
 /**
+ * Ao salvar uma vistoria administrativa, alinha pendências comuns na Situação das VTR:
+ * - se o item deixa de estar em «Alterações» (ex.: OK), resolve todas as pendências comuns desse item na viatura;
+ * - se mantém «Alterações» com o mesmo texto que uma vistoria comum pendente, resolve essa(s) linha(s).
+ */
+export function autoResolveCommonRedundanciesOnAdministrativeSave(args: {
+  inspections: VistoriaInspection[];
+  viatura: string;
+  checklist: VistoriaChecklist;
+  notes: VistoriaChecklistNotes;
+}): void {
+  const vNorm = args.viatura.trim().toLowerCase();
+  if (!vNorm) return;
+  const resolvedSet = readResolvedIssueKeySet();
+
+  const commonSorted = args.inspections
+    .filter((i) => i.vistoriaAdministrativa !== true && i.viatura.trim().toLowerCase() === vNorm)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  for (const { key } of CHECKLIST_ITEMS) {
+    if (args.checklist[key] !== "Alterações") {
+      /** Item retirado na vistoria administrativa (ex.: OK): resolve todas as pendências comuns deste item. */
+      for (const ins of commonSorted) {
+        if (ins.checklist[key] !== "Alterações") continue;
+        const k = `${ins.id}:${key}`;
+        if (resolvedSet.has(k)) continue;
+        appendResolvedIssue(ins.id, key);
+        resolvedSet.add(k);
+      }
+      continue;
+    }
+
+    const noteCur = String(args.notes[key] ?? "").trim();
+    if (!noteCur) continue;
+
+    for (const ins of commonSorted) {
+      if (ins.checklist[key] !== "Alterações") continue;
+      const k = `${ins.id}:${key}`;
+      if (resolvedSet.has(k)) continue;
+      if (String(ins.checklistNotes[key] ?? "").trim() === noteCur) {
+        appendResolvedIssue(ins.id, key);
+        resolvedSet.add(k);
+      }
+    }
+  }
+}
+
+/**
  * Viaturas para o nome exibido na escala, mesmo quando difere do texto do vínculo (ex.: posto + nome).
  */
 export function resolveViaturasParaMotoristaEscala(
