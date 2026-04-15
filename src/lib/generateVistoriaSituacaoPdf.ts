@@ -94,7 +94,7 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
             const c = String(r.rubricaComum ?? "").trim();
             const a = String(r.rubricaAdministrativa ?? "").trim();
             if (isRubricaImageDataUrl(c) || isRubricaImageDataUrl(a)) {
-              data.cell.styles.minCellHeight = 36;
+              data.cell.styles.minCellHeight = 28;
             }
           }
         }
@@ -157,49 +157,55 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
       }
 
       if (data.column.index === 4) {
-        const drawBlock = (raw: string, startY: number): number => {
+        const gapMm = 2;
+        const halfW = Math.max(10, (maxWidth - gapMm) / 2);
+        const leftX = left;
+        const rightX = left + halfW + gapMm;
+
+        const drawBlock = (
+          raw: string,
+          startX: number,
+          startY: number,
+          blockMaxW: number,
+        ): number => {
           let yy = startY;
           const content = String(raw ?? "").trim();
           if (!content) {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7);
-            doc.text("—", left, yy);
+            doc.text("—", startX, yy);
             return yy + lineGap;
           }
           if (isRubricaImageDataUrl(content)) {
-            const imgMaxW = Math.min(maxWidth, 32);
-            const imgH = 11;
+            const imgMaxW = Math.min(blockMaxW - 0.5, 34);
+            const imgH = Math.min(14, Math.max(9, imgMaxW * 0.52));
             try {
-              doc.addImage(content, "PNG", left, yy, imgMaxW, imgH);
+              doc.addImage(content, "PNG", startX, yy, imgMaxW, imgH);
             } catch {
               doc.setFont("helvetica", "italic");
               doc.setFontSize(6);
-              doc.text("(imagem)", left, yy);
+              doc.text("(imagem)", startX, yy);
             }
             return yy + imgH + 1.2;
           }
           doc.setFont("helvetica", "normal");
           doc.setFontSize(7);
-          const lines = doc.splitTextToSize(content, maxWidth) as string[];
+          const lines = doc.splitTextToSize(content, blockMaxW) as string[];
           for (const line of lines) {
-            doc.text(line, left, yy, { maxWidth });
+            doc.text(line, startX, yy, { maxWidth: blockMaxW });
             yy += lineGap;
           }
           return yy;
         };
 
-        let y = top;
+        const yLabel = top;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(6);
-        doc.text("Comum", left, y);
-        y += 2.5;
-        y = drawBlock(row.rubricaComum ?? "", y);
-        y += 2;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6);
-        doc.text("Administrativa", left, y);
-        y += 2.5;
-        drawBlock(row.rubricaAdministrativa ?? "", y);
+        doc.text("Comum", leftX, yLabel);
+        doc.text("Administrativa", rightX, yLabel);
+        const yContent = yLabel + 3.2;
+        drawBlock(row.rubricaComum ?? "", leftX, yContent, halfW);
+        drawBlock(row.rubricaAdministrativa ?? "", rightX, yContent, halfW);
       }
     },
   });

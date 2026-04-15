@@ -24,6 +24,24 @@ type Props = {
   motoristaLabel?: string | null;
 };
 
+/**
+ * Tamanho do texto do nome (px em coordenadas do canvas = dispositivo).
+ * Proporcional à largura do PNG para o nome não ficar irreconhecível quando a área de desenho é alta
+ * (faixa inferior fixa em px causava nome minúsculo na miniatura da Situação das VTR).
+ */
+function nomeMotoristaFontDevicePx(widthDevicePx: number, dpr: number): number {
+  const min = Math.round(40 * dpr);
+  const max = Math.round(160 * dpr);
+  const fromWidth = Math.round(widthDevicePx * 0.055);
+  return Math.min(max, Math.max(min, fromWidth));
+}
+
+/** Altura da faixa inferior (px dispositivo) para linha + nome + margens. */
+function footerBandHeightDevicePx(widthDevicePx: number, dpr: number): number {
+  const f = nomeMotoristaFontDevicePx(widthDevicePx, dpr);
+  return Math.ceil(f * 1.42 + 28 * dpr);
+}
+
 function drawFooterBand(
   ctx: CanvasRenderingContext2D,
   widthPx: number,
@@ -32,6 +50,7 @@ function drawFooterBand(
   nome: string,
   dpr: number,
 ): void {
+  const fontPx = nomeMotoristaFontDevicePx(widthPx, dpr);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, zoneTopPx, widthPx, zoneHeightPx);
   ctx.strokeStyle = "#e5e7eb";
@@ -41,7 +60,7 @@ function drawFooterBand(
   ctx.lineTo(widthPx, zoneTopPx + 0.5 * dpr);
   ctx.stroke();
   const padX = 10 * dpr;
-  const lineY = zoneTopPx + 10 * dpr;
+  const lineY = zoneTopPx + 12 * dpr;
   ctx.strokeStyle = "#9ca3af";
   ctx.lineWidth = Math.max(1, dpr);
   ctx.beginPath();
@@ -49,11 +68,10 @@ function drawFooterBand(
   ctx.lineTo(widthPx - padX, lineY);
   ctx.stroke();
   ctx.fillStyle = "#111827";
-  /** Tamanho do nome na Situação das VTR: ~150% face ao anterior (~42px CSS a 1×). */
-  ctx.font = `600 ${Math.round(63 * dpr)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.font = `600 ${fontPx}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText(nome, widthPx / 2, lineY + 10 * dpr);
+  ctx.fillText(nome, widthPx / 2, lineY + Math.round(0.12 * fontPx));
 }
 
 /**
@@ -70,8 +88,6 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
     const hasInkRef = useRef(false);
 
     const nomeTrim = motoristaLabel?.trim() ?? "";
-    /** Altura da faixa linha+nome no PNG (acompanha o nome em ~63px CSS a 1×). */
-    const FOOTER_EXPORT_CSS_PX = 126;
 
     function fillWhitePhysical(ctx: CanvasRenderingContext2D, cw: number, ch: number) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -196,7 +212,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
             return canvas.toDataURL("image/png");
           }
 
-          const footPx = Math.floor(FOOTER_EXPORT_CSS_PX * dpr);
+          const footPx = footerBandHeightDevicePx(canvas.width, dpr);
 
           const out = document.createElement("canvas");
           out.width = canvas.width;

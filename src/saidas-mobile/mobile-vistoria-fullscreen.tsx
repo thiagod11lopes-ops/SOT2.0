@@ -1012,15 +1012,14 @@ export function MobileVistoriaFullscreen({
             <div className="flex flex-col gap-2">
               <Button
                 type="button"
-                variant="outline"
-                className="min-h-11 w-full rounded-xl font-semibold"
+                className="min-h-11 w-full rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
                 onClick={() => setConfirmOkClearsNote(null)}
               >
                 Cancelar
               </Button>
               <Button
                 type="button"
-                className="min-h-11 w-full rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                className="min-h-11 w-full rounded-xl border border-red-600/90 bg-red-500 font-semibold text-white"
                 onClick={confirmProceedOkClearsNote}
               >
                 Continuar e apagar
