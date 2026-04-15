@@ -13,12 +13,11 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
-import { collectInspectionIdsToClearGreenDays } from "../lib/vistoriaCalendarTint";
 import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
   isVistoriaCloudStateHydrated,
-  updateVistoriaCloudState,
+  subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
@@ -30,6 +29,7 @@ import {
   parseFullBackupJson,
   restoreFullBackupToLocal,
 } from "../lib/firebase/systemBackup";
+import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -86,10 +86,15 @@ export function SettingsPage() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
-  const [vistoriaLimparVerdesBusy, setVistoriaLimparVerdesBusy] = useState(false);
+  const [vistoriaCloudTick, setVistoriaCloudTick] = useState(0);
+  const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
+
+  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
+    const unsub = subscribeVistoriaCloudStateChange(() => setVistoriaCloudTick((t) => t + 1));
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -234,48 +239,18 @@ export function SettingsPage() {
     reader.readAsText(file);
   }
 
-  function handleLimparVistoriasEmDiasVerdes() {
+  function handleAbrirModalLimparVistoriasCalendario() {
     if (!isVistoriaCloudStateHydrated()) {
       window.alert("Aguarde a sincronização dos dados da Vistoria (Firebase).");
       return;
     }
-    if (vistoriaLimparVerdesBusy) return;
     if (!detalheServicoBundle) {
       window.alert(
         "Ainda não foi possível carregar o detalhe de serviço (escala). Verifique a ligação à rede e tente de novo.",
       );
       return;
     }
-    const cloud = getVistoriaCloudState();
-    const ids = collectInspectionIdsToClearGreenDays(cloud.inspections, detalheServicoBundle, cloud.assignments);
-    if (ids.length === 0) {
-      window.alert(
-        "Não há vistorias a remover: não existem dias a verde com registos que contam para o calendário, ou não há dados nesses dias.",
-      );
-      return;
-    }
-    if (
-      !window.confirm(
-        `Serão eliminadas ${ids.length} vistoria(s) feitas em dias em que o calendário da Vistoria está verde (todas as viaturas com «S» já tinham vistoria nesse dia). Depois pode voltar a vistoriar esses dias. Continuar?`,
-      )
-    ) {
-      return;
-    }
-    const idSet = new Set(ids);
-    setVistoriaLimparVerdesBusy(true);
-    try {
-      updateVistoriaCloudState((prev) => ({
-        ...prev,
-        inspections: prev.inspections.filter((i) => !idSet.has(i.id)),
-        resolvedIssues: prev.resolvedIssues.filter((r) => !idSet.has(r.inspectionId)),
-        issueControls: prev.issueControls.filter((c) => !idSet.has(c.inspectionId)),
-      }));
-      window.alert(
-        `${ids.length} vistoria(s) removida(s). O calendário deve deixar de mostrar esses dias em verde até voltar a registar todas as viaturas.`,
-      );
-    } finally {
-      setVistoriaLimparVerdesBusy(false);
-    }
+    setVistoriaClearModalOpen(true);
   }
 
   function handleExcluirTodas() {
@@ -625,28 +600,38 @@ export function SettingsPage() {
         </section>
 
         <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
-          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Vistoria — calendário (dias verdes)</h3>
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Vistoria — calendário</h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
-            No calendário da aba <strong>Vistoriar</strong>, os dias <strong>verdes</strong> são aqueles em que todas
-            as viaturas com serviço marcado («S») na escala já têm vistoria registada. Use o botão abaixo para{" "}
-            <strong>apagar essas vistorias</strong> (escala + vínculos de viatura), permitindo voltar a vistoriar
-            nesses dias. Afeta os dados da Vistoria sincronizados no Firebase (mesmo fluxo da aba).
+            Abre um calendário com as mesmas cores da aba <strong>Vistoriar</strong> (verde = todas as viaturas
+            vistoriadas, laranja = parcial, vermelho = nenhuma). Escolha os dias e confirme para remover as vistorias
+            que contam nesse calendário (escala com «S» e vínculos de viatura), incluindo dias verdes e laranjas. Afeta o
+            Firebase como na própria aba Vistoria.
           </p>
           <Button
             type="button"
             variant="outline"
-            disabled={vistoriaLimparVerdesBusy || !detalheServicoBundle}
+            disabled={!detalheServicoBundle}
             className="border-amber-600/80 text-amber-900 hover:bg-amber-50 dark:text-amber-100 dark:hover:bg-amber-950/40"
-            onClick={handleLimparVistoriasEmDiasVerdes}
+            onClick={handleAbrirModalLimparVistoriasCalendario}
           >
-            {vistoriaLimparVerdesBusy ? "A processar…" : "Apagar vistorias dos dias verdes"}
+            Apagar vistorias por dia (calendário)
           </Button>
           {!detalheServicoBundle ? (
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              Aguarde o carregamento da escala (detalhe de serviço) para calcular os dias verdes.
+              Aguarde o carregamento da escala (detalhe de serviço) para usar o calendário.
             </p>
           ) : null}
         </section>
+
+        {detalheServicoBundle ? (
+          <SettingsVistoriaClearCalendarModal
+            open={vistoriaClearModalOpen}
+            onOpenChange={setVistoriaClearModalOpen}
+            detalheServicoBundle={detalheServicoBundle}
+            assignments={vistoriaCloudSnapshot.assignments}
+            inspections={vistoriaCloudSnapshot.inspections}
+          />
+        ) : null}
 
         <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Zona de risco</h3>

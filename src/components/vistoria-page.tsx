@@ -818,15 +818,41 @@ export function VistoriaPage() {
   function finalizeResolveIssue(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
     const unresolved = relatedIssueRefs.filter((ref) => !resolvedIssueSet.has(`${ref.inspectionId}:${ref.itemKey}`));
     if (unresolved.length === 0) return;
-    setResolvedIssues((prev) => [
-      ...prev,
-      ...unresolved.map((ref) => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        inspectionId: ref.inspectionId,
-        itemKey: ref.itemKey,
-        resolvedAt: Date.now(),
-      })),
-    ]);
+
+    updateVistoriaCloudState((prev) => {
+      const existing = new Set(prev.resolvedIssues.map((r) => `${r.inspectionId}:${r.itemKey}`));
+      const toAdd = unresolved.filter((ref) => !existing.has(`${ref.inspectionId}:${ref.itemKey}`));
+      if (toAdd.length === 0) return prev;
+      return {
+        ...prev,
+        resolvedIssues: [
+          ...prev.resolvedIssues,
+          ...toAdd.map((ref) => ({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            inspectionId: ref.inspectionId,
+            itemKey: ref.itemKey,
+            resolvedAt: Date.now(),
+          })),
+        ],
+      };
+    });
+
+    // Retirar da checklist aberta o eco do item resolvido (o pré-pende de pendências lê o cloud já atualizado).
+    if (!inspectionOpen) return;
+    const viaturaRef = inspectionViatura.trim();
+    if (!viaturaRef) return;
+    const motoristaRef = inspectionMotorista.trim();
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura: viaturaRef,
+      baseChecklist,
+      baseNotes,
+    });
+    setInspectionChecklist(nextChecklist);
+    setInspectionChecklistNotes(nextNotes);
   }
 
   function handleResolveIssue(row: VtrSituacaoPendenteRow) {

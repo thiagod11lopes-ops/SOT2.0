@@ -77,6 +77,71 @@ export function getVistoriaCalendarDayTintForIso(
 }
 
 /**
+ * Vistorias de um único dia que contam para o calendário (escala «S» + vínculo viatura).
+ */
+export function collectInspectionIdsMatchingCalendarForIso(
+  inspections: readonly VistoriaInspection[],
+  bundle: DetalheServicoBundle,
+  viaturasPorMotorista: ReadonlyMap<string, string[]>,
+  iso: string,
+): string[] {
+  const marcados = listMotoristasComServicoOuRotinaNoDia(bundle, iso);
+  const motoristasComSMap = new Map<string, string>();
+  for (const row of marcados) {
+    if (!row.servico) continue;
+    const name = row.motorista.trim();
+    if (!name) continue;
+    const nk = normalizeDriverKey(name);
+    if (!nk) continue;
+    if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
+  }
+  const relevant = [...motoristasComSMap.values()].filter(
+    (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
+  );
+  const ids: string[] = [];
+  for (const ins of inspections) {
+    if (ins.inspectionDate !== iso) continue;
+    let counted = false;
+    for (const motorista of relevant) {
+      if (!nomesMotoristaVistoriaEquivalentes(ins.motorista, motorista)) continue;
+      const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
+      if (vtrs.some((v) => v.trim() === ins.viatura.trim())) {
+        counted = true;
+        break;
+      }
+    }
+    if (counted) ids.push(ins.id);
+  }
+  return ids;
+}
+
+/**
+ * União das vistorias do calendário para as datas ISO escolhidas (ex.: vários dias verdes/laranjas/vermelhos).
+ */
+export function collectInspectionIdsForSelectedCalendarDates(
+  inspections: readonly VistoriaInspection[],
+  bundle: DetalheServicoBundle | null,
+  assignments: readonly VistoriaAssignment[],
+  selectedIsos: readonly string[],
+): string[] {
+  if (!bundle || selectedIsos.length === 0) return [];
+  const viaturasPorMotorista = buildViaturasPorMotoristaMap(assignments);
+  const idSet = new Set<string>();
+  for (const iso of selectedIsos) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    for (const id of collectInspectionIdsMatchingCalendarForIso(
+      inspections,
+      bundle,
+      viaturasPorMotorista,
+      iso,
+    )) {
+      idSet.add(id);
+    }
+  }
+  return [...idSet];
+}
+
+/**
  * IDs de vistorias a remover para «reabrir» dias atualmente verdes (permite nova vistoria no mesmo dia).
  * Só entram registos que contam para o cálculo do calendário (escala «S» + vínculo viatura).
  */
@@ -88,39 +153,8 @@ export function collectInspectionIdsToClearGreenDays(
   if (!bundle) return [];
   const viaturasPorMotorista = buildViaturasPorMotoristaMap(assignments);
   const dates = new Set(inspections.map((i) => i.inspectionDate));
-  const ids = new Set<string>();
-
-  for (const iso of dates) {
-    if (getVistoriaCalendarDayTintForIso(iso, bundle, viaturasPorMotorista, inspections) !== "green") continue;
-
-    const marcados = listMotoristasComServicoOuRotinaNoDia(bundle, iso);
-    const motoristasComSMap = new Map<string, string>();
-    for (const row of marcados) {
-      if (!row.servico) continue;
-      const name = row.motorista.trim();
-      if (!name) continue;
-      const nk = normalizeDriverKey(name);
-      if (!nk) continue;
-      if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
-    }
-    const relevant = [...motoristasComSMap.values()].filter(
-      (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
-    );
-
-    for (const ins of inspections) {
-      if (ins.inspectionDate !== iso) continue;
-      let counted = false;
-      for (const motorista of relevant) {
-        if (!nomesMotoristaVistoriaEquivalentes(ins.motorista, motorista)) continue;
-        const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
-        if (vtrs.some((v) => v.trim() === ins.viatura.trim())) {
-          counted = true;
-          break;
-        }
-      }
-      if (counted) ids.add(ins.id);
-    }
-  }
-
-  return [...ids];
+  const greenIsos = [...dates].filter(
+    (iso) => getVistoriaCalendarDayTintForIso(iso, bundle, viaturasPorMotorista, inspections) === "green",
+  );
+  return collectInspectionIdsForSelectedCalendarDates(inspections, bundle, assignments, greenIsos);
 }

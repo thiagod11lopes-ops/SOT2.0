@@ -893,7 +893,7 @@ export function MobileVistoriaFullscreen({
               Rubrica
             </h2>
             <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
-              O nome do motorista aparece por baixo da linha; desenhe a rubrica na área branca por cima. Confirmar grava
+              Na imagem guardada, o nome do motorista fica por baixo da linha; desenhe a rubrica na área branca. Confirmar grava
               a vistoria e regressa ao ecrã inicial. Preencha o checklist antes de confirmar (em «Na Oficina» ou
               «Destacada», use «Voltar ao formulário» se ainda faltar o checklist). Pode deixar o traço em branco se não
               for necessário.

@@ -19,8 +19,7 @@ type Props = {
   initialDataUrl?: string | null;
   className?: string;
   /**
-   * Nome do motorista impresso abaixo de uma linha — espaço livre por cima para o traço da rubrica.
-   * O PNG gravado inclui desenho + linha + nome.
+   * Nome do motorista — incluído na faixa inferior do PNG gravado (linha + nome), não duplicado na UI.
    */
   motoristaLabel?: string | null;
 };
@@ -59,19 +58,19 @@ function drawFooterBand(
 /**
  * Área só com ponteiro/toque — sem entrada de teclado.
  * Desenho livre para rubrica (armazenado como PNG data URL).
- * Com `motoristaLabel`, a parte inferior mostra linha + nome e entra no PNG exportado.
+ * Com `motoristaLabel`, a linha + nome entram só no PNG exportado (não é repetido texto na interface).
  */
 export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
   function RubricaSignaturePad({ initialDataUrl, className, motoristaLabel = null }, ref) {
     const canvasHostRef = useRef<HTMLDivElement>(null);
-    const footerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef(false);
     const lastRef = useRef({ x: 0, y: 0 });
     const hasInkRef = useRef(false);
 
     const nomeTrim = motoristaLabel?.trim() ?? "";
-    const showFooter = nomeTrim.length > 0;
+    /** Altura reservada no PNG para linha + nome (sem repetir texto abaixo da área de desenho no ecrã). */
+    const FOOTER_EXPORT_CSS_PX = 48;
 
     function fillWhitePhysical(ctx: CanvasRenderingContext2D, cw: number, ch: number) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -140,7 +139,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
         cancelAnimationFrame(raf1);
         cancelAnimationFrame(raf2);
       };
-    }, [initialDataUrl, showFooter]);
+    }, [initialDataUrl, nomeTrim]);
 
     function onPointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
       e.preventDefault();
@@ -196,8 +195,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
             return canvas.toDataURL("image/png");
           }
 
-          const footCss = footerRef.current?.getBoundingClientRect().height ?? 48;
-          const footPx = Math.max(Math.floor(footCss * dpr), Math.floor(36 * dpr));
+          const footPx = Math.floor(FOOTER_EXPORT_CSS_PX * dpr);
 
           const out = document.createElement("canvas");
           out.width = canvas.width;
@@ -229,10 +227,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
         <div ref={canvasHostRef} className="relative min-h-0 flex-1">
           <canvas
             ref={canvasRef}
-            className={cn(
-              "absolute inset-0 block h-full w-full touch-none cursor-crosshair",
-              showFooter ? "rounded-t-xl" : "rounded-xl",
-            )}
+            className="absolute inset-0 block h-full w-full touch-none cursor-crosshair rounded-xl"
             style={{ touchAction: "none" }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -244,23 +239,12 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
             tabIndex={-1}
             role="img"
             aria-label={
-              showFooter
-                ? `Área de rubrica por cima da linha; abaixo: ${nomeTrim}`
+              nomeTrim
+                ? `Área de rubrica — desenhe acima da área visível; o nome do motorista será incluído na imagem guardada (${nomeTrim})`
                 : "Área de rubrica — desenhe com o rato ou o dedo"
             }
           />
         </div>
-        {showFooter ? (
-          <div
-            ref={footerRef}
-            className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-3 pb-2.5 pt-2"
-          >
-            <div className="mx-auto mb-2 h-px w-[92%] bg-neutral-400" aria-hidden />
-            <p className="text-center text-sm font-semibold leading-tight text-[hsl(var(--foreground))]">
-              {nomeTrim}
-            </p>
-          </div>
-        ) : null}
       </div>
     );
   },

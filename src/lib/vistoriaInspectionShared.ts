@@ -349,9 +349,17 @@ export function applySituacaoVtrPendingPrefillForViatura(args: {
   const nextChecklist: VistoriaChecklist = { ...args.baseChecklist };
   const nextNotes: VistoriaChecklistNotes = { ...args.baseNotes };
 
-  const relevant = args.inspections
-    .filter((i) => i.viatura.trim().toLowerCase() === vNorm)
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const porViatura = args.inspections.filter((i) => i.viatura.trim().toLowerCase() === vNorm);
+  /** Tira do formulário o eco de itens já marcados «Resolver» na Situação das VTR (o registo na inspeção mantém-se, mas não pré-preenche). */
+  for (const ins of porViatura) {
+    for (const { key } of CHECKLIST_ITEMS) {
+      if (!resolvedSet.has(`${ins.id}:${key}`)) continue;
+      nextChecklist[key] = "OK";
+      nextNotes[key] = "";
+    }
+  }
+
+  const relevant = [...porViatura].sort((a, b) => b.createdAt - a.createdAt);
 
   const filled = new Set<ChecklistKey>();
   for (const ins of relevant) {
