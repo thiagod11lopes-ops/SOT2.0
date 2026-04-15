@@ -109,6 +109,8 @@ export function MobileVistoriaFullscreen({
 
   const [rubricaOpen, setRubricaOpen] = useState(false);
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const successCloseTimerRef = useRef<number | null>(null);
   const rubricaModalIntentRef = useRef<"captureNaoAbordo" | "finalizeAbordo" | null>(null);
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
@@ -179,6 +181,11 @@ export function MobileVistoriaFullscreen({
 
   useEffect(() => {
     if (!open) {
+      if (successCloseTimerRef.current) {
+        window.clearTimeout(successCloseTimerRef.current);
+        successCloseTimerRef.current = null;
+      }
+      setSaveSuccessOpen(false);
       setView("list");
       setRubricaOpen(false);
       setAvisoObservacaoItemLabel(null);
@@ -472,7 +479,13 @@ export function MobileVistoriaFullscreen({
     setRubricaOpen(false);
     setListRefresh((k) => k + 1);
     rubricaPadRef.current?.clearPad();
-    onOpenChange(false);
+    setSaveSuccessOpen(true);
+    if (successCloseTimerRef.current) window.clearTimeout(successCloseTimerRef.current);
+    successCloseTimerRef.current = window.setTimeout(() => {
+      successCloseTimerRef.current = null;
+      setSaveSuccessOpen(false);
+      onOpenChange(false);
+    }, 2000);
   }
 
   function commitRubricaESalvar() {
@@ -875,24 +888,26 @@ export function MobileVistoriaFullscreen({
             <div className="h-[min(40vh,280px)] w-full min-h-[200px] touch-none">
               <RubricaSignaturePad ref={rubricaPadRef} key={rubricaPadKey} />
             </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <div className="flex w-full max-w-sm justify-center gap-2">
+                <Button
+                  type="button"
+                  className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                  onClick={() => rubricaPadRef.current?.clearPad()}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  type="button"
+                  className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                  onClick={closeRubricaModalSemConfirmar}
+                >
+                  Voltar ao formulário
+                </Button>
+              </div>
               <Button
                 type="button"
-                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
-                onClick={() => rubricaPadRef.current?.clearPad()}
-              >
-                Limpar
-              </Button>
-              <Button
-                type="button"
-                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
-                onClick={closeRubricaModalSemConfirmar}
-              >
-                Voltar ao formulário
-              </Button>
-              <Button
-                type="button"
-                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                className="min-h-11 w-full rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
                 onClick={commitRubricaESalvar}
               >
                 Confirmar e guardar
@@ -933,6 +948,27 @@ export function MobileVistoriaFullscreen({
             >
               Entendi
             </Button>
+          </div>
+        </div>
+      ) : null}
+      {saveSuccessOpen ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[570]`}
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--primary))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Vistoria salva com sucesso
+            </h2>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              A vistoria foi registrada e já está disponível na tabela <strong>Situação das VTR</strong>.
+            </p>
           </div>
         </div>
       ) : null}
