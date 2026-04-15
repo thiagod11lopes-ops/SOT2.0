@@ -1,5 +1,6 @@
 import { addDays, addMonths, eachDayOfInterval, endOfMonth, startOfMonth } from "date-fns";
 import { idbGetJson, idbSetJson } from "./indexedDb";
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
 
 /** Meses de calendário cobertos pela distribuição (mês inicial + seguintes). */
 export const MESES_DISTRIBUICAO_INTEGRANTES = 12;
@@ -172,6 +173,7 @@ function normalizeEscala(raw: unknown): EscalaPaoStored {
 }
 
 function readLegacyEscalaFromLocalStorage(): EscalaPaoStored {
+  if (isFirebaseOnlyOnlineActive()) return {};
   try {
     if (typeof localStorage === "undefined") return {};
     const v2 = localStorage.getItem(LEGACY_LS_KEY);
@@ -183,6 +185,7 @@ function readLegacyEscalaFromLocalStorage(): EscalaPaoStored {
 }
 
 function clearLegacyEscalaLocalStorage(): void {
+  if (isFirebaseOnlyOnlineActive()) return;
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
   } catch {

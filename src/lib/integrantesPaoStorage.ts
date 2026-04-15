@@ -1,4 +1,5 @@
 import { idbGetJson, idbSetJson } from "./indexedDb";
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
 
 const IDB_KEY = "sot-escala-pao-integrantes-v1";
 const LEGACY_LS_KEY = "sot-escala-pao-integrantes-v1";
@@ -19,6 +20,7 @@ export function dedupeIntegrantesOrder(list: string[]): string[] {
 }
 
 function readLegacyLocalStorage(): string[] {
+  if (isFirebaseOnlyOnlineActive()) return [];
   try {
     if (typeof localStorage === "undefined") return [];
     const raw = localStorage.getItem(LEGACY_LS_KEY);
@@ -32,6 +34,7 @@ function readLegacyLocalStorage(): string[] {
 }
 
 function clearLegacyLocalStorage(): void {
+  if (isFirebaseOnlyOnlineActive()) return;
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
   } catch {

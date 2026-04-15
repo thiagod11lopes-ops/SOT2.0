@@ -1,3 +1,5 @@
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
+
 const DB_NAME = "sot_app_db";
 const DB_VERSION = 1;
 const KV_STORE = "kv";
@@ -24,6 +26,7 @@ async function getDb() {
 }
 
 export async function idbGetJson<T>(key: string): Promise<T | null> {
+  if (isFirebaseOnlyOnlineActive()) return null;
   try {
     const db = await getDb();
     return await new Promise<T | null>((resolve, reject) => {
@@ -51,6 +54,7 @@ export async function idbSetJson<T>(
   value: T,
   options?: { maxAttempts?: number },
 ): Promise<boolean> {
+  if (isFirebaseOnlyOnlineActive()) return true;
   const maxAttempts = options?.maxAttempts ?? 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
