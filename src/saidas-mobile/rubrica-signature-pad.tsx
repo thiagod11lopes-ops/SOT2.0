@@ -8,7 +8,7 @@ import {
 import { cn } from "../lib/utils";
 
 export type RubricaSignaturePadHandle = {
-  /** PNG em data URL, ou string vazia se não houver traço. */
+  /** PNG em data URL, ou string vazia se não houver traço (sem nome obrigatório). Com nome, exporta sempre o PNG (área + linha + nome). */
   getDataUrl: () => string;
   /** Limpa o desenho. */
   clearPad: () => void;
@@ -18,19 +18,60 @@ type Props = {
   /** Ao reabrir o modal, repõe um desenho já guardado (PNG). */
   initialDataUrl?: string | null;
   className?: string;
+  /**
+   * Nome do motorista impresso abaixo de uma linha — espaço livre por cima para o traço da rubrica.
+   * O PNG gravado inclui desenho + linha + nome.
+   */
+  motoristaLabel?: string | null;
 };
+
+function drawFooterBand(
+  ctx: CanvasRenderingContext2D,
+  widthPx: number,
+  zoneTopPx: number,
+  zoneHeightPx: number,
+  nome: string,
+  dpr: number,
+): void {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, zoneTopPx, widthPx, zoneHeightPx);
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.beginPath();
+  ctx.moveTo(0, zoneTopPx + 0.5 * dpr);
+  ctx.lineTo(widthPx, zoneTopPx + 0.5 * dpr);
+  ctx.stroke();
+  const padX = 10 * dpr;
+  const lineY = zoneTopPx + 10 * dpr;
+  ctx.strokeStyle = "#9ca3af";
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.beginPath();
+  ctx.moveTo(padX, lineY);
+  ctx.lineTo(widthPx - padX, lineY);
+  ctx.stroke();
+  ctx.fillStyle = "#111827";
+  ctx.font = `600 ${Math.round(14 * dpr)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(nome, widthPx / 2, lineY + 8 * dpr);
+}
 
 /**
  * Área só com ponteiro/toque — sem entrada de teclado.
  * Desenho livre para rubrica (armazenado como PNG data URL).
+ * Com `motoristaLabel`, a parte inferior mostra linha + nome e entra no PNG exportado.
  */
 export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
-  function RubricaSignaturePad({ initialDataUrl, className }, ref) {
-    const wrapRef = useRef<HTMLDivElement>(null);
+  function RubricaSignaturePad({ initialDataUrl, className, motoristaLabel = null }, ref) {
+    const canvasHostRef = useRef<HTMLDivElement>(null);
+    const footerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef(false);
     const lastRef = useRef({ x: 0, y: 0 });
     const hasInkRef = useRef(false);
+
+    const nomeTrim = motoristaLabel?.trim() ?? "";
+    const showFooter = nomeTrim.length > 0;
 
     function fillWhitePhysical(ctx: CanvasRenderingContext2D, cw: number, ch: number) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -39,12 +80,12 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
     }
 
     function sizeAndClear() {
-      const wrap = wrapRef.current;
+      const host = canvasHostRef.current;
       const canvas = canvasRef.current;
-      if (!wrap || !canvas) return;
+      if (!host || !canvas) return;
       const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-      const w = wrap.clientWidth;
-      const h = wrap.clientHeight;
+      const w = host.clientWidth;
+      const h = host.clientHeight;
       if (w < 8 || h < 8) return;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
@@ -99,7 +140,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
         cancelAnimationFrame(raf1);
         cancelAnimationFrame(raf2);
       };
-    }, [initialDataUrl]);
+    }, [initialDataUrl, showFooter]);
 
     function onPointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
       e.preventDefault();
@@ -142,40 +183,84 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
       }
     }
 
-    useImperativeHandle(ref, () => ({
-      getDataUrl: () => {
-        if (!hasInkRef.current) return "";
-        return canvasRef.current?.toDataURL("image/png") ?? "";
-      },
-      clearPad: () => {
-        hasInkRef.current = false;
-        sizeAndClear();
-      },
-    }));
+    useImperativeHandle(
+      ref,
+      () => ({
+        getDataUrl: () => {
+          const canvas = canvasRef.current;
+          if (!canvas) return "";
+          const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+
+          if (!nomeTrim) {
+            if (!hasInkRef.current) return "";
+            return canvas.toDataURL("image/png");
+          }
+
+          const footCss = footerRef.current?.getBoundingClientRect().height ?? 48;
+          const footPx = Math.max(Math.floor(footCss * dpr), Math.floor(36 * dpr));
+
+          const out = document.createElement("canvas");
+          out.width = canvas.width;
+          out.height = canvas.height + footPx;
+          const ctx = out.getContext("2d");
+          if (!ctx) return "";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, out.width, out.height);
+          ctx.drawImage(canvas, 0, 0);
+          drawFooterBand(ctx, out.width, canvas.height, footPx, nomeTrim, dpr);
+          return out.toDataURL("image/png");
+        },
+        clearPad: () => {
+          hasInkRef.current = false;
+          sizeAndClear();
+        },
+      }),
+      [nomeTrim],
+    );
 
     return (
       <div
-        ref={wrapRef}
         className={cn(
-          "relative h-[min(40vh,14rem)] w-full rounded-xl border border-[hsl(var(--border))] bg-white",
+          "flex w-full flex-col overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-white",
+          !(className?.includes("h-") || className?.includes("min-h")) ? "h-[min(40vh,14rem)]" : "min-h-0",
           className,
         )}
       >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 block h-full w-full touch-none cursor-crosshair rounded-xl"
-          style={{ touchAction: "none" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endStroke}
-          onPointerCancel={endStroke}
-          onPointerLeave={(e) => {
-            if (drawingRef.current) endStroke(e);
-          }}
-          tabIndex={-1}
-          role="img"
-          aria-label="Área de rubrica — desenhe com o rato ou o dedo"
-        />
+        <div ref={canvasHostRef} className="relative min-h-0 flex-1">
+          <canvas
+            ref={canvasRef}
+            className={cn(
+              "absolute inset-0 block h-full w-full touch-none cursor-crosshair",
+              showFooter ? "rounded-t-xl" : "rounded-xl",
+            )}
+            style={{ touchAction: "none" }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endStroke}
+            onPointerCancel={endStroke}
+            onPointerLeave={(e) => {
+              if (drawingRef.current) endStroke(e);
+            }}
+            tabIndex={-1}
+            role="img"
+            aria-label={
+              showFooter
+                ? `Área de rubrica por cima da linha; abaixo: ${nomeTrim}`
+                : "Área de rubrica — desenhe com o rato ou o dedo"
+            }
+          />
+        </div>
+        {showFooter ? (
+          <div
+            ref={footerRef}
+            className="shrink-0 border-t border-[hsl(var(--border))] bg-white px-3 pb-2.5 pt-2"
+          >
+            <div className="mx-auto mb-2 h-px w-[92%] bg-neutral-400" aria-hidden />
+            <p className="text-center text-sm font-semibold leading-tight text-[hsl(var(--foreground))]">
+              {nomeTrim}
+            </p>
+          </div>
+        ) : null}
       </div>
     );
   },

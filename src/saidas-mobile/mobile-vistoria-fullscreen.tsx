@@ -893,12 +893,18 @@ export function MobileVistoriaFullscreen({
               Rubrica
             </h2>
             <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
-              Desenhe a rubrica com o dedo no ecrã (Android/iOS). Confirmar grava a vistoria e regressa ao ecrã inicial.
-              Preencha o checklist antes de confirmar (em «Na Oficina» ou «Destacada», use «Voltar ao formulário» se
-              ainda faltar o checklist). Pode deixar o desenho em branco se não for necessário.
+              O nome do motorista aparece por baixo da linha; desenhe a rubrica na área branca por cima. Confirmar grava
+              a vistoria e regressa ao ecrã inicial. Preencha o checklist antes de confirmar (em «Na Oficina» ou
+              «Destacada», use «Voltar ao formulário» se ainda faltar o checklist). Pode deixar o traço em branco se não
+              for necessário.
             </p>
-            <div className="h-[min(40vh,280px)] w-full min-h-[200px] touch-none">
-              <RubricaSignaturePad ref={rubricaPadRef} key={rubricaPadKey} />
+            <div className="flex h-[min(40vh,280px)] w-full min-h-[200px] touch-none flex-col">
+              <RubricaSignaturePad
+                ref={rubricaPadRef}
+                key={rubricaPadKey}
+                motoristaLabel={formMotorista.trim()}
+                className="h-full min-h-0 w-full"
+              />
             </div>
             <div className="mt-4 flex flex-col items-center gap-2">
               <div className="flex w-full max-w-sm justify-center gap-2">

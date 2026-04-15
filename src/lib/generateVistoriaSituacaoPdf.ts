@@ -5,8 +5,6 @@ export type VistoriaSituacaoImprimirPdfRow = {
   inspectionDate: string;
   inspectionDateSecondary?: string;
   viatura: string;
-  motorista: string;
-  motoristaSecondary?: string;
   itemLabel: string;
   observacaoPlain: string;
   observacaoItalic?: string;
@@ -34,9 +32,7 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
   doc.text(`Gerado em: ${generated}`, margin, margin + 6);
   doc.setTextColor(0, 0, 0);
 
-  const head = [
-    ["Data da Vistoria", "Viatura", "Item com Anotação", "Anotação e motoristas"],
-  ];
+  const head = [["Data da Vistoria", "Viatura", "Item com Anotação", "Anotação"]];
 
   const body = rows.map((r) => [
     r.inspectionDateSecondary?.trim() ? `${r.inspectionDate}\n(${r.inspectionDateSecondary})` : r.inspectionDate,
@@ -122,42 +118,20 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
         if (!plain && !italic) {
           doc.setFont("helvetica", "normal");
           doc.text("—", left, y, { maxWidth });
-          y += lineGap * 2;
-        } else {
-          if (plain) {
-            doc.setFont("helvetica", "normal");
-            const plainLines = doc.splitTextToSize(plain, maxWidth) as string[];
-            for (const line of plainLines) {
-              doc.text(line, left, y, { maxWidth });
-              y += lineGap;
-            }
-          }
-          if (italic) {
-            doc.setFont("helvetica", "bolditalic");
-            const italicLines = doc.splitTextToSize(italic, maxWidth) as string[];
-            for (const line of italicLines) {
-              doc.text(line, left, y, { maxWidth });
-              y += lineGap;
-            }
+          return;
+        }
+        if (plain) {
+          doc.setFont("helvetica", "normal");
+          const plainLines = doc.splitTextToSize(plain, maxWidth) as string[];
+          for (const line of plainLines) {
+            doc.text(line, left, y, { maxWidth });
+            y += lineGap;
           }
         }
-
-        y += lineGap * 0.75;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.5);
-        doc.text("Motoristas", left, y, { maxWidth });
-        y += lineGap * 1.1;
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
-        const motPrim = doc.splitTextToSize(row.motorista || "—", maxWidth) as string[];
-        for (const line of motPrim) {
-          doc.text(line, left, y, { maxWidth });
-          y += lineGap;
-        }
-        if (row.motoristaSecondary?.trim()) {
+        if (italic) {
           doc.setFont("helvetica", "bolditalic");
-          const motSec = doc.splitTextToSize(row.motoristaSecondary, maxWidth) as string[];
-          for (const line of motSec) {
+          const italicLines = doc.splitTextToSize(italic, maxWidth) as string[];
+          for (const line of italicLines) {
             doc.text(line, left, y, { maxWidth });
             y += lineGap;
           }

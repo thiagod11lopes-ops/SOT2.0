@@ -47,6 +47,7 @@ import {
   type ResolvedIssue,
   updateVistoriaCloudState,
 } from "../lib/vistoriaCloudState";
+import { buildViaturasPorMotoristaMap, getVistoriaCalendarDayTintForIso } from "../lib/vistoriaCalendarTint";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -113,18 +114,6 @@ function renderDataSituacao(row: VtrSituacaoPendenteRow): ReactNode {
     );
   }
   return formatIsoDatePtBr(row.inspectionDate);
-}
-
-function renderMotoristaSituacao(row: VtrSituacaoPendenteRow): ReactNode {
-  if (row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()) {
-    return (
-      <div className="space-y-0.5">
-        <div>{row.prefillMotorista}</div>
-        <div className="text-[0.78em] font-bold italic leading-tight">{row.motorista}</div>
-      </div>
-    );
-  }
-  return row.motorista;
 }
 
 /** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
@@ -438,22 +427,7 @@ export function VistoriaPage() {
     rows.sort((a, b) => a.displayMotorista.localeCompare(b.displayMotorista, "pt-BR"));
     return rows;
   }, [assignments]);
-  const viaturasPorMotorista = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const a of assignments) {
-      const key = normalizeDriverKey(a.motorista);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(a.viatura);
-    }
-    for (const [key, viaturasMotorista] of map.entries()) {
-      map.set(
-        key,
-        [...new Set(viaturasMotorista.map((v) => v.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-      );
-    }
-    return map;
-  }, [assignments]);
+  const viaturasPorMotorista = useMemo(() => buildViaturasPorMotoristaMap(assignments), [assignments]);
   /** Cores do calendário por estado das placas no modal «Motoristas com S...». */
   const calendarDayStateByIso = useMemo(() => {
     const map = new Map<string, "neutral" | "green" | "orange" | "red">();
@@ -463,44 +437,7 @@ export function VistoriaPage() {
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     for (let day = 1; day <= daysInMonth; day++) {
       const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const marcados = listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, iso);
-      const motoristasComSMap = new Map<string, string>();
-      for (const row of marcados) {
-        if (!row.servico) continue;
-        const name = row.motorista.trim();
-        if (!name) continue;
-        const nk = normalizeDriverKey(name);
-        if (!nk) continue;
-        if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
-      }
-      const relevant = [...motoristasComSMap.values()].filter(
-        (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
-      );
-      if (relevant.length === 0) {
-        map.set(iso, "neutral");
-        continue;
-      }
-
-      let totalPlacas = 0;
-      let placasVistoriadas = 0;
-      for (const motorista of relevant) {
-        const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
-        for (const v of vtrs) {
-          totalPlacas++;
-          const ok = inspections.some(
-            (i) =>
-              i.inspectionDate === iso &&
-              nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
-              i.viatura.trim() === v.trim(),
-          );
-          if (ok) placasVistoriadas++;
-        }
-      }
-
-      if (totalPlacas === 0) map.set(iso, "neutral");
-      else if (placasVistoriadas === 0) map.set(iso, "red");
-      else if (placasVistoriadas === totalPlacas) map.set(iso, "green");
-      else map.set(iso, "orange");
+      map.set(iso, getVistoriaCalendarDayTintForIso(iso, detalheServicoBundle, viaturasPorMotorista, inspections));
     }
     return map;
   }, [detalheServicoBundle, calendarCursorMonth, viaturasPorMotorista, inspections]);
@@ -946,14 +883,6 @@ export function VistoriaPage() {
             ? formatIsoDatePtBr(row.inspectionDate)
             : undefined,
         viatura: row.viatura,
-        motorista:
-          row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-            ? row.prefillMotorista
-            : row.motorista,
-        motoristaSecondary:
-          row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-            ? row.motorista
-            : undefined,
         itemLabel: row.itemLabel,
         observacaoPlain:
           row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
@@ -1325,52 +1254,44 @@ export function VistoriaPage() {
                           <TableCell>{row.itemLabel}</TableCell>
                           <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
                           <TableCell colSpan={2} className="min-w-[16rem] max-w-[22rem] align-top">
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap gap-4">
-                                <div className="min-w-[6.5rem] flex-1">
-                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                                    Comum
-                                  </div>
-                                  {(() => {
-                                    const rubrica = getCommonRubricaForRow(row);
-                                    if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                                    if (isRubricaImageDataUrl(rubrica)) {
-                                      return (
-                                        <img
-                                          src={rubrica}
-                                          alt="Rubrica da vistoria comum"
-                                          className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                        />
-                                      );
-                                    }
-                                    return <span className="text-sm">{rubrica}</span>;
-                                  })()}
+                            <div className="flex flex-wrap gap-4">
+                              <div className="min-w-[6.5rem] flex-1">
+                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                  Comum
                                 </div>
-                                <div className="min-w-[6.5rem] flex-1">
-                                  <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                                    Administrativa
-                                  </div>
-                                  {(() => {
-                                    const rubrica = getAdministrativeRubricaForRow(row);
-                                    if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                                    if (isRubricaImageDataUrl(rubrica)) {
-                                      return (
-                                        <img
-                                          src={rubrica}
-                                          alt="Rubrica administrativa"
-                                          className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                        />
-                                      );
-                                    }
-                                    return <span className="text-sm">{rubrica}</span>;
-                                  })()}
-                                </div>
+                                {(() => {
+                                  const rubrica = getCommonRubricaForRow(row);
+                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                  if (isRubricaImageDataUrl(rubrica)) {
+                                    return (
+                                      <img
+                                        src={rubrica}
+                                        alt="Rubrica da vistoria comum"
+                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
+                                      />
+                                    );
+                                  }
+                                  return <span className="text-sm">{rubrica}</span>;
+                                })()}
                               </div>
-                              <div className="border-t border-[hsl(var(--border))] pt-2 text-sm">
-                                <div className="mb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                                  Motoristas
+                              <div className="min-w-[6.5rem] flex-1">
+                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                  Administrativa
                                 </div>
-                                {renderMotoristaSituacao(row)}
+                                {(() => {
+                                  const rubrica = getAdministrativeRubricaForRow(row);
+                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                  if (isRubricaImageDataUrl(rubrica)) {
+                                    return (
+                                      <img
+                                        src={rubrica}
+                                        alt="Rubrica administrativa"
+                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
+                                      />
+                                    );
+                                  }
+                                  return <span className="text-sm">{rubrica}</span>;
+                                })()}
                               </div>
                             </div>
                           </TableCell>

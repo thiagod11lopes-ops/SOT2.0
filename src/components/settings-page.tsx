@@ -4,7 +4,22 @@ import { useDeparturesReportEmail } from "../context/departures-report-email-con
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
+import { collectInspectionIdsToClearGreenDays } from "../lib/vistoriaCalendarTint";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
+  updateVistoriaCloudState,
+} from "../lib/vistoriaCloudState";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -67,6 +82,62 @@ export function SettingsPage() {
   const [fullBackupBusy, setFullBackupBusy] = useState(false);
   const [backupPreviewOpen, setBackupPreviewOpen] = useState(false);
   const [preparedBackup, setPreparedBackup] = useState<FirebaseFullBackup | null>(null);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
+  const [vistoriaLimparVerdesBusy, setVistoriaLimparVerdesBusy] = useState(false);
+
+  useEffect(() => {
+    ensureVistoriaCloudStateSyncStarted();
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
+            },
+            (err) => console.error("[SOT] Firestore detalhe serviço (settings):", err),
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço settings):", e);
+          if (cancelled) return;
+          void loadDetalheServicoBundleFromIdb().then((b) => {
+            if (!cancelled) setDetalheServicoBundle(b);
+          });
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((b) => {
+        if (!cancelled) setDetalheServicoBundle(b);
+      });
+    }
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOnline]);
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -161,6 +232,50 @@ export function SettingsPage() {
       }
     };
     reader.readAsText(file);
+  }
+
+  function handleLimparVistoriasEmDiasVerdes() {
+    if (!isVistoriaCloudStateHydrated()) {
+      window.alert("Aguarde a sincronização dos dados da Vistoria (Firebase).");
+      return;
+    }
+    if (vistoriaLimparVerdesBusy) return;
+    if (!detalheServicoBundle) {
+      window.alert(
+        "Ainda não foi possível carregar o detalhe de serviço (escala). Verifique a ligação à rede e tente de novo.",
+      );
+      return;
+    }
+    const cloud = getVistoriaCloudState();
+    const ids = collectInspectionIdsToClearGreenDays(cloud.inspections, detalheServicoBundle, cloud.assignments);
+    if (ids.length === 0) {
+      window.alert(
+        "Não há vistorias a remover: não existem dias a verde com registos que contam para o calendário, ou não há dados nesses dias.",
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Serão eliminadas ${ids.length} vistoria(s) feitas em dias em que o calendário da Vistoria está verde (todas as viaturas com «S» já tinham vistoria nesse dia). Depois pode voltar a vistoriar esses dias. Continuar?`,
+      )
+    ) {
+      return;
+    }
+    const idSet = new Set(ids);
+    setVistoriaLimparVerdesBusy(true);
+    try {
+      updateVistoriaCloudState((prev) => ({
+        ...prev,
+        inspections: prev.inspections.filter((i) => !idSet.has(i.id)),
+        resolvedIssues: prev.resolvedIssues.filter((r) => !idSet.has(r.inspectionId)),
+        issueControls: prev.issueControls.filter((c) => !idSet.has(c.inspectionId)),
+      }));
+      window.alert(
+        `${ids.length} vistoria(s) removida(s). O calendário deve deixar de mostrar esses dias em verde até voltar a registar todas as viaturas.`,
+      );
+    } finally {
+      setVistoriaLimparVerdesBusy(false);
+    }
   }
 
   function handleExcluirTodas() {
@@ -507,6 +622,30 @@ export function SettingsPage() {
               className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
             />
           </div>
+        </section>
+
+        <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Vistoria — calendário (dias verdes)</h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            No calendário da aba <strong>Vistoriar</strong>, os dias <strong>verdes</strong> são aqueles em que todas
+            as viaturas com serviço marcado («S») na escala já têm vistoria registada. Use o botão abaixo para{" "}
+            <strong>apagar essas vistorias</strong> (escala + vínculos de viatura), permitindo voltar a vistoriar
+            nesses dias. Afeta os dados da Vistoria sincronizados no Firebase (mesmo fluxo da aba).
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={vistoriaLimparVerdesBusy || !detalheServicoBundle}
+            className="border-amber-600/80 text-amber-900 hover:bg-amber-50 dark:text-amber-100 dark:hover:bg-amber-950/40"
+            onClick={handleLimparVistoriasEmDiasVerdes}
+          >
+            {vistoriaLimparVerdesBusy ? "A processar…" : "Apagar vistorias dos dias verdes"}
+          </Button>
+          {!detalheServicoBundle ? (
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Aguarde o carregamento da escala (detalhe de serviço) para calcular os dias verdes.
+            </p>
+          ) : null}
         </section>
 
         <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
