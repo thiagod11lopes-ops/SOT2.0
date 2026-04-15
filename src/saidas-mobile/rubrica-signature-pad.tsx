@@ -24,16 +24,20 @@ type Props = {
   motoristaLabel?: string | null;
 };
 
+/** Redução de 40% no tamanho do nome abaixo da linha (miniatura Situação das VTR / PDF). */
+const NOME_MOTORISTA_ESCALA = 0.6;
+
 /**
  * Tamanho do texto do nome (px em coordenadas do canvas = dispositivo).
- * Proporcional à largura do PNG para o nome não ficar irreconhecível quando a área de desenho é alta
- * (faixa inferior fixa em px causava nome minúsculo na miniatura da Situação das VTR).
+ * Proporcional à largura do PNG; depois aplica `NOME_MOTORISTA_ESCALA` (pedido de tamanho na tabela).
  */
 function nomeMotoristaFontDevicePx(widthDevicePx: number, dpr: number): number {
   const min = Math.round(40 * dpr);
   const max = Math.round(160 * dpr);
   const fromWidth = Math.round(widthDevicePx * 0.055);
-  return Math.min(max, Math.max(min, fromWidth));
+  const base = Math.min(max, Math.max(min, fromWidth));
+  const scaled = Math.round(base * NOME_MOTORISTA_ESCALA);
+  return Math.max(Math.round(16 * dpr), scaled);
 }
 
 /** Quebra o nome em linhas que cabem em `maxWidthDevicePx` (medido com a fonte já definida em `ctx`). */
