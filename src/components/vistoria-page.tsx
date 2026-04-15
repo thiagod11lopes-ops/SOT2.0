@@ -569,6 +569,44 @@ export function VistoriaPage() {
     for (const ins of inspections) map.set(ins.id, ins);
     return map;
   }, [inspections]);
+  const getRelatedInspections = useCallback(
+    (row: VtrSituacaoPendenteRow): VistoriaInspection[] =>
+      row.relatedIssueRefs
+        .map((ref) => inspectionById.get(ref.inspectionId))
+        .filter((ins): ins is VistoriaInspection => Boolean(ins)),
+    [inspectionById],
+  );
+  const getCommonRubricaForRow = useCallback(
+    (row: VtrSituacaoPendenteRow): string => {
+      const related = getRelatedInspections(row);
+      for (const ins of related) {
+        if (ins.vistoriaAdministrativa === true) continue;
+        const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+        if (rub) return rub;
+      }
+      for (const ins of related) {
+        if (ins.vistoriaAdministrativa !== true || !ins.prefillSourceInspectionId) continue;
+        const src = inspectionById.get(ins.prefillSourceInspectionId);
+        const rub = typeof src?.rubrica === "string" ? src.rubrica.trim() : "";
+        if (rub) return rub;
+      }
+      return "";
+    },
+    [getRelatedInspections, inspectionById],
+  );
+  const getAdministrativeRubricaForRow = useCallback(
+    (row: VtrSituacaoPendenteRow): string => {
+      const related = getRelatedInspections(row);
+      for (const ins of related) {
+        if (ins.vistoriaAdministrativa !== true) continue;
+        const rub = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+        if (!rub) continue;
+        if (ins.itensAlteradosAdministracao?.includes(row.itemKey) === true) return rub;
+      }
+      return "";
+    },
+    [getRelatedInspections],
+  );
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
@@ -649,9 +687,11 @@ export function VistoriaPage() {
   }
 
   function handleOpenInspection(motorista: string, viatura: string) {
-    setInspectionMotorista(motorista);
-    setInspectionViatura(viatura);
-    const existing = findLatestInspectionForFormPrefill(inspections, motorista, viatura);
+    const motoristaRef = motorista.trim();
+    const viaturaRef = viatura.trim();
+    setInspectionMotorista(motoristaRef);
+    setInspectionViatura(viaturaRef);
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
     setLocalizacaoViatura(
       isViaturaLocalizacao(existing?.localizacaoViatura) ? existing.localizacaoViatura : "A Bordo",
     );
@@ -659,7 +699,7 @@ export function VistoriaPage() {
     const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
     const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
       inspections,
-      viatura,
+      viatura: viaturaRef,
       baseChecklist,
       baseNotes,
     });
@@ -669,7 +709,9 @@ export function VistoriaPage() {
   }
 
   function handleSaveInspection() {
-    if (!inspectionOpen || !inspectionMotorista || !inspectionViatura) return;
+    const motoristaRef = inspectionMotorista.trim();
+    const viaturaRef = inspectionViatura.trim();
+    if (!inspectionOpen || !motoristaRef || !viaturaRef) return;
     if (!isViaturaLocalizacao(localizacaoViatura)) {
       window.alert("Marque uma opção em «Localização da Viatura».");
       return;
@@ -686,7 +728,7 @@ export function VistoriaPage() {
     }
     autoResolveAdministrativeRedundanciesOnCommonSave({
       inspections,
-      viatura: inspectionViatura,
+      viatura: viaturaRef,
       checklist: inspectionChecklist,
       notes: inspectionChecklistNotes,
     });
@@ -694,8 +736,8 @@ export function VistoriaPage() {
       ...prev,
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        motorista: inspectionMotorista,
-        viatura: inspectionViatura,
+        motorista: motoristaRef,
+        viatura: viaturaRef,
         inspectionDate: selectedInspectionDate,
         localizacaoViatura,
         checklist: inspectionChecklist,
@@ -1156,13 +1198,7 @@ export function VistoriaPage() {
                           <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
                           <TableCell className="max-w-[140px]">
                             {(() => {
-                              const ins = inspectionById.get(row.inspectionId);
-                              if (!ins) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              const rawComum =
-                                ins.vistoriaAdministrativa && ins.prefillSourceInspectionId
-                                  ? inspectionById.get(ins.prefillSourceInspectionId)?.rubrica
-                                  : ins.rubrica;
-                              const rubrica = typeof rawComum === "string" ? rawComum.trim() : "";
+                              const rubrica = getCommonRubricaForRow(row);
                               if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
                               if (isRubricaImageDataUrl(rubrica)) {
                                 return (
@@ -1178,13 +1214,8 @@ export function VistoriaPage() {
                           </TableCell>
                           <TableCell className="max-w-[140px]">
                             {(() => {
-                              const ins = inspectionById.get(row.inspectionId);
-                              const raw = ins?.rubricaAdministrativa;
-                              const rubrica = typeof raw === "string" ? raw.trim() : "";
-                              const mostrar =
-                                rubrica &&
-                                ins?.itensAlteradosAdministracao?.includes(row.itemKey) === true;
-                              if (!mostrar) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                              const rubrica = getAdministrativeRubricaForRow(row);
+                              if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
                               if (isRubricaImageDataUrl(rubrica)) {
                                 return (
                                   <img

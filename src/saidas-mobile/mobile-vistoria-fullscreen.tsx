@@ -313,14 +313,16 @@ export function MobileVistoriaFullscreen({
   }
 
   function openForm(motorista: string, viatura: string) {
-    setFormMotorista(motorista);
-    setFormViatura(viatura);
-    const existing = findLatestInspectionForFormPrefill(inspections, motorista, viatura);
+    const motoristaRef = motorista.trim();
+    const viaturaRef = viatura.trim();
+    setFormMotorista(motoristaRef);
+    setFormViatura(viaturaRef);
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
     const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
     const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
     const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
       inspections,
-      viatura,
+      viatura: viaturaRef,
       baseChecklist,
       baseNotes,
     });
@@ -385,6 +387,9 @@ export function MobileVistoriaFullscreen({
 
   function finalizeVistoria(rubricaDataUrl: string | undefined) {
     if (!isViaturaLocalizacao(localizacaoViatura)) return;
+    const motoristaRef = formMotorista.trim();
+    const viaturaRef = formViatura.trim();
+    if (!motoristaRef || !viaturaRef) return;
     const rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
     const createdAt = (() => {
       const parsed = parseIsoDate(selectedDate);
@@ -402,8 +407,8 @@ export function MobileVistoriaFullscreen({
       | "observacaoSegmentacaoAdmin"
     > = {
       id: newInspectionId(),
-      motorista: formMotorista,
-      viatura: formViatura,
+      motorista: motoristaRef,
+      viatura: viaturaRef,
       inspectionDate: selectedDate,
       localizacaoViatura,
       checklist: inspectionChecklist,
@@ -450,14 +455,14 @@ export function MobileVistoriaFullscreen({
     if (isAdminSession) {
       autoResolveCommonRedundanciesOnAdministrativeSave({
         inspections,
-        viatura: formViatura,
+        viatura: viaturaRef,
         checklist: inspectionChecklist,
         notes: inspectionChecklistNotes,
       });
     } else {
       autoResolveAdministrativeRedundanciesOnCommonSave({
         inspections,
-        viatura: formViatura,
+        viatura: viaturaRef,
         checklist: inspectionChecklist,
         notes: inspectionChecklistNotes,
       });
