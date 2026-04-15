@@ -55,6 +55,13 @@ type Props = {
   administrativeVistoriadorMotorista?: string | null;
 };
 
+function newInspectionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `vistoria-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 /**
  * Vista mobile (Android/iOS): fluxo alinhado à aba Vistoriar — dia, viaturas com S + responsabilidade.
  * «Na Oficina» / «Destacada»: modal de rubrica ao escolher a opção; «Confirmar e guardar» grava e fecha o painel.
@@ -327,6 +334,10 @@ export function MobileVistoriaFullscreen({
   function finalizeVistoria(rubricaDataUrl: string | undefined) {
     if (!isViaturaLocalizacao(localizacaoViatura)) return;
     const rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    const createdAt = (() => {
+      const parsed = parseIsoDate(selectedDate);
+      return parsed ? parsed.getTime() : 0;
+    })();
     const base: Omit<
       VistoriaInspection,
       | "rubrica"
@@ -338,14 +349,14 @@ export function MobileVistoriaFullscreen({
       | "itensAlteradosAdministracao"
       | "observacaoSegmentacaoAdmin"
     > = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: newInspectionId(),
       motorista: formMotorista,
       viatura: formViatura,
       inspectionDate: selectedDate,
       localizacaoViatura,
       checklist: inspectionChecklist,
       checklistNotes: inspectionChecklistNotes,
-      createdAt: Date.now(),
+      createdAt,
       origemMobile: true,
     };
     let novo: VistoriaInspection;
