@@ -1,12 +1,11 @@
 import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { buildVistoriaSituacaoImprimirPdf } from "../lib/generateVistoriaSituacaoPdf";
 import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import {
-  ASSIGNMENTS_STORAGE_KEY,
   CHECKLIST_ITEMS,
   checklistComOkPorDefeito,
   type ChecklistKey,
@@ -15,7 +14,6 @@ import {
   emptyChecklist,
   emptyChecklistNotes,
   formatIsoDatePtBr,
-  INSPECTIONS_STORAGE_KEY,
   isViaturaLocalizacao,
   isoDateFromDate,
   VIATURA_LOCALIZACAO_OPCOES,
@@ -33,29 +31,19 @@ import {
   type VistoriaChecklistNotes,
   type VistoriaInspection,
 } from "../lib/vistoriaInspectionShared";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  subscribeVistoriaCloudStateChange,
+  type IssueControl,
+  type ResolvedIssue,
+  updateVistoriaCloudState,
+} from "../lib/vistoriaCloudState";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { TabsList } from "./ui/tabs";
 
-type ResolvedIssue = {
-  id: string;
-  inspectionId: string;
-  itemKey: ChecklistKey;
-  resolvedAt: number;
-};
-type IssueControl = {
-  id: string;
-  inspectionId: string;
-  itemKey: ChecklistKey;
-  problemMarked: boolean;
-  priorityMarked: boolean;
-  printMarked: boolean;
-};
-
-const RESOLVED_ISSUES_STORAGE_KEY = "sot_vistoria_resolved_issues_v1";
-const ISSUE_CONTROLS_STORAGE_KEY = "sot_vistoria_issue_controls_v1";
-const PRIORITY_ORDER_STORAGE_KEY = "sot_vistoria_priority_order_v1";
 const vistoriaSubTabs = ["Vistoriar", "Situação das VTR", "Prioridades", "Responsabilidade de Vistoria"] as const;
 
 function startOfLocalMonth(d: Date): Date {
@@ -64,56 +52,6 @@ function startOfLocalMonth(d: Date): Date {
 
 function monthLabelPtBr(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-}
-
-function readResolvedIssues(): ResolvedIssue[] {
-  try {
-    const raw = localStorage.getItem(RESOLVED_ISSUES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ResolvedIssue[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.resolvedAt === "number",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function readIssueControls(): IssueControl[] {
-  try {
-    const raw = localStorage.getItem(ISSUE_CONTROLS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as IssueControl[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.problemMarked === "boolean" &&
-        typeof item.priorityMarked === "boolean" &&
-        typeof item.printMarked === "boolean",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function readPriorityOrderKeys(): string[] {
-  try {
-    const raw = localStorage.getItem(PRIORITY_ORDER_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as string[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((k) => typeof k === "string" && k.length > 0);
-  } catch {
-    return [];
-  }
 }
 
 function issueRowKey(inspectionId: string, itemKey: ChecklistKey): string {
@@ -189,14 +127,16 @@ function renderMotoristaSituacao(row: VtrSituacaoPendenteRow): ReactNode {
 
 export function VistoriaPage() {
   const { items } = useCatalogItems();
+  const applyingCloudRef = useRef(false);
+  const cloudReadyRef = useRef(false);
   const [activeSubTab, setActiveSubTab] = useState<string>(vistoriaSubTabs[0]);
   const [selectedMotorista, setSelectedMotorista] = useState("");
   const [selectedViatura, setSelectedViatura] = useState("");
   const [assignments, setAssignments] = useState<VistoriaAssignment[]>(() => readVistoriaAssignments());
   const [inspections, setInspections] = useState<VistoriaInspection[]>(() => readVistoriaInspections());
-  const [resolvedIssues, setResolvedIssues] = useState<ResolvedIssue[]>(() => readResolvedIssues());
-  const [issueControls, setIssueControls] = useState<IssueControl[]>(() => readIssueControls());
-  const [priorityOrderKeys, setPriorityOrderKeys] = useState<string[]>(() => readPriorityOrderKeys());
+  const [resolvedIssues, setResolvedIssues] = useState<ResolvedIssue[]>(() => getVistoriaCloudState().resolvedIssues);
+  const [issueControls, setIssueControls] = useState<IssueControl[]>(() => getVistoriaCloudState().issueControls);
+  const [priorityOrderKeys, setPriorityOrderKeys] = useState<string[]>(() => getVistoriaCloudState().priorityOrderKeys);
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const [selectedInspectionDate, setSelectedInspectionDate] = useState(() => isoDateFromDate(new Date()));
   const [calendarCursorMonth, setCalendarCursorMonth] = useState(() => startOfLocalMonth(new Date()));
@@ -232,68 +172,44 @@ export function VistoriaPage() {
   }, [items.viaturasAdministrativas, items.ambulancias]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(assignments));
-    } catch {
-      /* ignore */
-    }
-  }, [assignments]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(INSPECTIONS_STORAGE_KEY, JSON.stringify(inspections));
-    } catch {
-      /* ignore */
-    }
-  }, [inspections]);
+    ensureVistoriaCloudStateSyncStarted();
+    const syncFromCloud = () => {
+      const cloud = getVistoriaCloudState();
+      applyingCloudRef.current = true;
+      setAssignments(cloud.assignments);
+      setInspections(cloud.inspections);
+      setResolvedIssues(cloud.resolvedIssues);
+      setIssueControls(cloud.issueControls);
+      setPriorityOrderKeys(cloud.priorityOrderKeys);
+      cloudReadyRef.current = true;
+      queueMicrotask(() => {
+        applyingCloudRef.current = false;
+      });
+    };
+    syncFromCloud();
+    const unsub = subscribeVistoriaCloudStateChange(syncFromCloud);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
-    function syncFromStorage(): void {
-      setInspections(readVistoriaInspections());
-    }
-    function onStorage(e: StorageEvent): void {
-      if (e.key === INSPECTIONS_STORAGE_KEY || e.key === null) syncFromStorage();
-    }
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("sot-vistoria-inspections-changed", syncFromStorage);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("sot-vistoria-inspections-changed", syncFromStorage);
-    };
-  }, []);
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, assignments }));
+  }, [assignments]);
   useEffect(() => {
-    function syncResolved(): void {
-      setResolvedIssues(readResolvedIssues());
-    }
-    function onStorage(e: StorageEvent): void {
-      if (e.key === RESOLVED_ISSUES_STORAGE_KEY || e.key === null) syncResolved();
-    }
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("sot-vistoria-resolved-issues-changed", syncResolved);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("sot-vistoria-resolved-issues-changed", syncResolved);
-    };
-  }, []);
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, inspections }));
+  }, [inspections]);
   useEffect(() => {
-    try {
-      localStorage.setItem(RESOLVED_ISSUES_STORAGE_KEY, JSON.stringify(resolvedIssues));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, resolvedIssues }));
   }, [resolvedIssues]);
   useEffect(() => {
-    try {
-      localStorage.setItem(ISSUE_CONTROLS_STORAGE_KEY, JSON.stringify(issueControls));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, issueControls }));
   }, [issueControls]);
   useEffect(() => {
-    try {
-      localStorage.setItem(PRIORITY_ORDER_STORAGE_KEY, JSON.stringify(priorityOrderKeys));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, priorityOrderKeys }));
   }, [priorityOrderKeys]);
 
   /** Nem OK nem Anotações: assume OK. */

@@ -36,6 +36,10 @@ import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../cont
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  subscribeVistoriaCloudStateChange,
+} from "../lib/vistoriaCloudState";
 
 function addDaysToIso(iso: string, delta: number): string {
   const d = parseIsoDate(iso);
@@ -164,7 +168,14 @@ export function MobileVistoriaFullscreen({
       setAdminViaturaDraft("");
       return;
     }
+    ensureVistoriaCloudStateSyncStarted();
     setListRefresh((k) => k + 1);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const unsub = subscribeVistoriaCloudStateChange(() => setListRefresh((k) => k + 1));
+    return () => unsub();
   }, [open]);
 
   useEffect(() => {

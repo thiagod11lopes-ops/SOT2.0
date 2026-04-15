@@ -26,6 +26,8 @@ export const SOT_STATE_DOC = {
   alarmDismiss: "alarmDismiss",
   /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
   detalheServico: "detalheServico",
+  /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */
+  vistoria: "vistoria",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

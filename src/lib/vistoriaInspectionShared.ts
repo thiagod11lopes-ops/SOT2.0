@@ -1,6 +1,11 @@
 /** Tipos, checklist e persistência em localStorage partilhados entre desktop (Vistoria) e vista mobile. */
 
 import { isoDateToPtBr } from "./dateFormat";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  updateVistoriaCloudState,
+} from "./vistoriaCloudState";
 
 export type VistoriaAssignment = {
   id: string;
@@ -76,26 +81,20 @@ export type VistoriaInspection = {
 
 export const ASSIGNMENTS_STORAGE_KEY = "sot_vistoria_assignments_v1";
 export const INSPECTIONS_STORAGE_KEY = "sot_vistoria_inspections_v1";
-const RESOLVED_ISSUES_STORAGE_KEY = "sot_vistoria_resolved_issues_v1";
 
 type StoredResolvedIssue = { inspectionId?: unknown; itemKey?: unknown };
 
 function readResolvedIssueKeySet(): Set<string> {
-  try {
-    const raw = localStorage.getItem(RESOLVED_ISSUES_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as StoredResolvedIssue[];
-    if (!Array.isArray(parsed)) return new Set();
-    const set = new Set<string>();
-    for (const r of parsed) {
-      const inspectionId = typeof r?.inspectionId === "string" ? r.inspectionId : "";
-      const itemKey = isChecklistKey(r?.itemKey) ? r.itemKey : "";
-      if (inspectionId && itemKey) set.add(`${inspectionId}:${itemKey}`);
-    }
-    return set;
-  } catch {
-    return new Set();
+  ensureVistoriaCloudStateSyncStarted();
+  const parsed = getVistoriaCloudState().resolvedIssues as StoredResolvedIssue[];
+  if (!Array.isArray(parsed)) return new Set();
+  const set = new Set<string>();
+  for (const r of parsed) {
+    const inspectionId = typeof r?.inspectionId === "string" ? r.inspectionId : "";
+    const itemKey = isChecklistKey(r?.itemKey) ? r.itemKey : "";
+    if (inspectionId && itemKey) set.add(`${inspectionId}:${itemKey}`);
   }
+  return set;
 }
 
 function notifyResolvedIssuesChanged(): void {
@@ -110,24 +109,23 @@ export function appendResolvedIssue(inspectionId: string, itemKey: ChecklistKey)
   const id = String(inspectionId ?? "").trim();
   if (!id) return;
   if (!isChecklistKey(itemKey)) return;
+  ensureVistoriaCloudStateSyncStarted();
   const key = `${id}:${itemKey}`;
   const prevSet = readResolvedIssueKeySet();
   if (prevSet.has(key)) return;
-  try {
-    const raw = localStorage.getItem(RESOLVED_ISSUES_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    const list = Array.isArray(parsed) ? parsed : [];
-    list.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      inspectionId: id,
-      itemKey,
-      resolvedAt: Date.now(),
-    });
-    localStorage.setItem(RESOLVED_ISSUES_STORAGE_KEY, JSON.stringify(list));
-    notifyResolvedIssuesChanged();
-  } catch {
-    /* ignore */
-  }
+  updateVistoriaCloudState((prev) => ({
+    ...prev,
+    resolvedIssues: [
+      ...prev.resolvedIssues,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        inspectionId: id,
+        itemKey,
+        resolvedAt: Date.now(),
+      },
+    ],
+  }));
+  notifyResolvedIssuesChanged();
 }
 
 const CHECKLIST_KEY_SET = new Set<ChecklistKey>(
@@ -490,22 +488,16 @@ export function resolveViaturasParaMotoristaEscala(
 }
 
 export function readVistoriaAssignments(): VistoriaAssignment[] {
-  try {
-    const raw = localStorage.getItem(ASSIGNMENTS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as VistoriaAssignment[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item) => item && item.motorista && item.viatura);
-  } catch {
-    return [];
-  }
+  ensureVistoriaCloudStateSyncStarted();
+  const parsed = getVistoriaCloudState().assignments;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((item) => item && item.motorista && item.viatura);
 }
 
 export function readVistoriaInspections(): VistoriaInspection[] {
+  ensureVistoriaCloudStateSyncStarted();
   try {
-    const raw = localStorage.getItem(INSPECTIONS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as VistoriaInspection[];
+    const parsed = getVistoriaCloudState().inspections as VistoriaInspection[];
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item.motorista === "string" && typeof item.viatura === "string")
@@ -590,11 +582,8 @@ function notifyVistoriaInspectionsChanged(): void {
 
 /** Acrescenta uma vistoria (ex.: vista mobile) mantendo o mesmo formato que o desktop grava em massa. */
 export function appendVistoriaInspection(inspection: VistoriaInspection): void {
+  ensureVistoriaCloudStateSyncStarted();
   const prev = readVistoriaInspections();
-  try {
-    localStorage.setItem(INSPECTIONS_STORAGE_KEY, JSON.stringify([...prev, inspection]));
-    notifyVistoriaInspectionsChanged();
-  } catch {
-    /* ignore */
-  }
+  updateVistoriaCloudState((state) => ({ ...state, inspections: [...prev, inspection] }));
+  notifyVistoriaInspectionsChanged();
 }
