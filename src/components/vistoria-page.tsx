@@ -378,7 +378,7 @@ export function VistoriaPage() {
     }
     return map;
   }, [assignments]);
-  /** Cores do calendário: só motoristas com S e com vínculo em Responsabilidade de Vistoria. */
+  /** Cores do calendário por estado das placas no modal «Motoristas com S...». */
   const calendarDayStateByIso = useMemo(() => {
     const map = new Map<string, "neutral" | "green" | "orange" | "red">();
     if (!detalheServicoBundle) return map;
@@ -404,23 +404,27 @@ export function VistoriaPage() {
         map.set(iso, "neutral");
         continue;
       }
-      const motoristaFinalizouNoDia = (motorista: string): boolean => {
+
+      let totalPlacas = 0;
+      let placasVistoriadas = 0;
+      for (const motorista of relevant) {
         const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
         for (const v of vtrs) {
+          totalPlacas++;
           const ok = inspections.some(
             (i) =>
               i.inspectionDate === iso &&
               nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
               i.viatura.trim() === v.trim(),
           );
-          if (!ok) return false;
+          if (ok) placasVistoriadas++;
         }
-        return true;
-      };
-      const doneCount = relevant.filter(motoristaFinalizouNoDia).length;
-      if (doneCount === relevant.length) map.set(iso, "green");
-      else if (relevant.length > 1) map.set(iso, "orange");
-      else map.set(iso, "red");
+      }
+
+      if (totalPlacas === 0) map.set(iso, "neutral");
+      else if (placasVistoriadas === 0) map.set(iso, "red");
+      else if (placasVistoriadas === totalPlacas) map.set(iso, "green");
+      else map.set(iso, "orange");
     }
     return map;
   }, [detalheServicoBundle, calendarCursorMonth, viaturasPorMotorista, inspections]);
@@ -961,8 +965,8 @@ export function VistoriaPage() {
               </div>
               <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
                 Considera apenas motoristas com <strong>S</strong> no Detalhe de Serviço e com viatura em{" "}
-                <strong>Responsabilidade de Vistoria</strong>. Verde: todos fizeram vistoria nas viaturas; laranja: há
-                mais de um motorista com S e algum não finalizou; vermelho: um motorista com S e vistoria pendente.
+                <strong>Responsabilidade de Vistoria</strong>. Verde: todas as placas do modal foram vistoriadas;
+                laranja claro: pelo menos uma placa foi vistoriada; vermelho: nenhuma placa foi vistoriada.
               </p>
             </CardHeader>
             <CardContent className="space-y-4 p-5">
