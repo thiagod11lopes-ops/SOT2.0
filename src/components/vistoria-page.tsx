@@ -3,7 +3,14 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { buildVistoriaSituacaoImprimirPdf } from "../lib/generateVistoriaSituacaoPdf";
-import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import {
   CHECKLIST_ITEMS,
@@ -244,12 +251,38 @@ export function VistoriaPage() {
   useEffect(() => {
     if (activeSubTab !== "Vistoriar") return;
     let cancelled = false;
-    void loadDetalheServicoBundleFromIdb().then((bundle) => {
-      if (cancelled) return;
-      setDetalheServicoBundle(bundle);
-    });
+    let unsub: (() => void) | undefined;
+    if (isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
+            },
+            (err) => console.error("[SOT] Firestore detalhe serviço (vistoria):", err),
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço vistoria):", e);
+          if (cancelled) return;
+          const fallback = await loadDetalheServicoBundleFromIdb();
+          if (cancelled) return;
+          setDetalheServicoBundle(fallback);
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((bundle) => {
+        if (cancelled) return;
+        setDetalheServicoBundle(bundle);
+      });
+    }
     return () => {
       cancelled = true;
+      unsub?.();
     };
   }, [activeSubTab]);
 
