@@ -1,5 +1,5 @@
 import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { buildVistoriaSituacaoImprimirPdf } from "../lib/generateVistoriaSituacaoPdf";
@@ -562,13 +562,16 @@ export function VistoriaPage() {
     for (const item of issueControls) map.set(`${item.inspectionId}:${item.itemKey}`, item);
     return map;
   }, [issueControls]);
-  function getRowIssueControl(row: VtrSituacaoPendenteRow): IssueControl | null {
-    for (const ref of row.relatedIssueRefs) {
-      const control = issueControlMap.get(`${ref.inspectionId}:${ref.itemKey}`);
-      if (control) return control;
-    }
-    return null;
-  }
+  const getRowIssueControl = useCallback(
+    (row: VtrSituacaoPendenteRow): IssueControl | null => {
+      for (const ref of row.relatedIssueRefs) {
+        const control = issueControlMap.get(`${ref.inspectionId}:${ref.itemKey}`);
+        if (control) return control;
+      }
+      return null;
+    },
+    [issueControlMap],
+  );
   const inspectionById = useMemo(() => {
     const map = new Map<string, VistoriaInspection>();
     for (const ins of inspections) map.set(ins.id, ins);
@@ -579,7 +582,7 @@ export function VistoriaPage() {
       vtrSituacaoPendente.filter(
         (row) => getRowIssueControl(row)?.priorityMarked === true,
       ),
-    [vtrSituacaoPendente, issueControlMap],
+    [vtrSituacaoPendente, getRowIssueControl],
   );
 
   useEffect(() => {
