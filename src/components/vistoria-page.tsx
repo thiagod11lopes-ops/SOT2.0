@@ -66,14 +66,6 @@ function issueRowKey(rowId: string): string {
   return rowId;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 type VtrSituacaoPendenteRow = {
   rowId: string;
   inspectionId: string;
@@ -765,46 +757,6 @@ export function VistoriaPage() {
     });
   }
 
-  function handlePrintIssue(row: VtrSituacaoPendenteRow) {
-    const control = getRowIssueControl(row);
-    const dataHtml =
-      row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-        ? `<span>${escapeHtml(formatIsoDatePtBr(row.prefillInspectionDate))}</span><br/><span style="font-size:0.85em;font-style:italic;font-weight:700;">(${escapeHtml(formatIsoDatePtBr(row.inspectionDate))})</span>`
-        : escapeHtml(formatIsoDatePtBr(row.inspectionDate));
-    const motoristaHtml =
-      row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-        ? `<span>${escapeHtml(row.prefillMotorista)}</span><br/><span style="font-size:0.85em;font-style:italic;font-weight:700;">${escapeHtml(row.motorista)}</span>`
-        : escapeHtml(row.motorista);
-    const obsHtml =
-      row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-        ? `${escapeHtml(row.observacaoPlain ?? "")}<em style="font-style:italic;font-weight:700;">${escapeHtml(row.observacaoItalic ?? "")}</em>`
-        : row.observacao
-          ? escapeHtml(row.observacao)
-          : "—";
-    const html = `
-      <html>
-        <head><title>Situação da VTR</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 24px;">
-          <h2>Situação da VTR</h2>
-          <p><strong>Data da Vistoria:</strong> ${dataHtml}</p>
-          <p><strong>Viatura:</strong> ${escapeHtml(row.viatura)}</p>
-          <p><strong>Motorista:</strong> ${motoristaHtml}</p>
-          <p><strong>Item com Anotação:</strong> ${escapeHtml(row.itemLabel)}</p>
-          <p><strong>Anotação:</strong> ${obsHtml}</p>
-          <p><strong>Marcar Problema:</strong> ${control?.problemMarked ? "Sim" : "Não"}</p>
-          <p><strong>Prioridades:</strong> ${control?.priorityMarked ? "Marcado" : "Não"}</p>
-          <p><strong>Imprimir:</strong> ${control?.printMarked ? "Marcado" : "Não"}</p>
-        </body>
-      </html>
-    `;
-    const win = window.open("", "_blank", "width=800,height=700");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.print();
-  }
-
   function handleGerarPdfSituacaoVtr() {
     const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
       (row) => getRowIssueControl(row)?.printMarked === true,
@@ -814,24 +766,32 @@ export function VistoriaPage() {
       return;
     }
     const pdfRows = rowsComImprimir.map((row) => {
-      const dataText =
-        row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-          ? `${formatIsoDatePtBr(row.prefillInspectionDate)}\n(${formatIsoDatePtBr(row.inspectionDate)})`
-          : formatIsoDatePtBr(row.inspectionDate);
-      const motoristaText =
-        row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-          ? `${row.prefillMotorista}\n${row.motorista}`
-          : row.motorista;
-      const obsText =
-        row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-          ? `${row.observacaoPlain ?? ""}${row.observacaoItalic ?? ""}`
-          : row.observacao;
       return {
-        inspectionDate: dataText,
+        inspectionDate: row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
+          ? formatIsoDatePtBr(row.prefillInspectionDate)
+          : formatIsoDatePtBr(row.inspectionDate),
+        inspectionDateSecondary:
+          row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
+            ? formatIsoDatePtBr(row.inspectionDate)
+            : undefined,
         viatura: row.viatura,
-        motorista: motoristaText,
+        motorista:
+          row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
+            ? row.prefillMotorista
+            : row.motorista,
+        motoristaSecondary:
+          row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
+            ? row.motorista
+            : undefined,
         itemLabel: row.itemLabel,
-        observacao: obsText,
+        observacaoPlain:
+          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
+            ? row.observacaoPlain ?? ""
+            : row.observacao,
+        observacaoItalic:
+          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
+            ? row.observacaoItalic ?? ""
+            : undefined,
       };
     });
     const { doc, filename } = buildVistoriaSituacaoImprimirPdf(pdfRows);
@@ -1277,7 +1237,6 @@ export function VistoriaPage() {
                                   upsertIssueControl(row, {
                                     printMarked: checked,
                                   });
-                                  if (checked) handlePrintIssue(row);
                                 }}
                                 className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
                               />
