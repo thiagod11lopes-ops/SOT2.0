@@ -846,12 +846,24 @@ export function MobileVistoriaFullscreen({
             >
               <Button
                 type="button"
-                className="min-h-12 flex-1 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-base font-semibold text-[hsl(var(--primary-foreground))]"
+                className={`min-h-12 flex-1 rounded-xl text-base font-semibold ${
+                  isAdminSession
+                    ? "border border-red-600/90 bg-red-500 text-white"
+                    : "border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                }`}
                 onClick={() => setView(isAdminSession ? "adminViatura" : "list")}
               >
                 Cancelar
               </Button>
-              <Button type="button" className="min-h-12 flex-1 rounded-xl text-base font-semibold" onClick={handlePedirSalvar}>
+              <Button
+                type="button"
+                className={`min-h-12 flex-1 rounded-xl text-base font-semibold ${
+                  isAdminSession
+                    ? "border border-emerald-600/90 bg-emerald-500 text-white"
+                    : ""
+                }`}
+                onClick={handlePedirSalvar}
+              >
                 Salvar vistoria
               </Button>
             </div>

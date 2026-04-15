@@ -127,6 +127,120 @@ function renderMotoristaSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   return row.motorista;
 }
 
+/** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
+function parseVtrSituacaoGroupKey(groupKey: string): { vNorm: string; itemKey: ChecklistKey } | null {
+  for (const { key } of CHECKLIST_ITEMS) {
+    const suffix = `::${key}`;
+    if (groupKey.endsWith(suffix)) {
+      return { vNorm: groupKey.slice(0, -suffix.length), itemKey: key };
+    }
+  }
+  return null;
+}
+
+/**
+ * Situação das VTR: cada linha usa sempre o texto do último formulário comum e do último administrativo
+ * para o item (sem um apagar o outro). Referências antigas continuam ligadas em `relatedIssueRefs` para Resolver.
+ */
+function buildVtrSituacaoPendenteRow(args: {
+  groupKey: string;
+  viatura: string;
+  itemKey: ChecklistKey;
+  itemLabel: string;
+  latestCommon: VistoriaInspection | undefined;
+  latestAdmin: VistoriaInspection | undefined;
+  relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
+}): VtrSituacaoPendenteRow {
+  const lc = args.latestCommon;
+  const la = args.latestAdmin;
+  const { itemKey } = args;
+
+  if (!lc && !la) {
+    throw new Error("Situação das VTR: linha sem vistoria comum nem administrativa.");
+  }
+
+  const newestOverall =
+    lc && la ? (lc.createdAt >= la.createdAt ? lc : la) : lc ?? la!;
+
+  const exibirBlocoAdminDataMotorista =
+    la != null && la.itensAlteradosAdministracao?.includes(itemKey) === true;
+
+  let motorista: string;
+  let inspectionDate: string;
+  let prefillMotorista: string | undefined;
+  let prefillInspectionDate: string | undefined;
+  let observacao = "";
+  let observacaoPlain: string | undefined;
+  let observacaoItalic: string | undefined;
+
+  if (lc && la) {
+    const commonNote = String(lc.checklistNotes[itemKey] ?? "").trim();
+    const adminNote = String(la.checklistNotes[itemKey] ?? "").trim();
+    const seg = la.observacaoSegmentacaoAdmin?.[itemKey];
+
+    prefillMotorista = lc.motorista;
+    prefillInspectionDate = lc.inspectionDate;
+
+    if (exibirBlocoAdminDataMotorista) {
+      inspectionDate = la.inspectionDate;
+      motorista = la.motorista;
+    } else {
+      inspectionDate = newestOverall.inspectionDate;
+      motorista = newestOverall.motorista;
+      prefillMotorista = undefined;
+      prefillInspectionDate = undefined;
+    }
+
+    if (seg && (seg.plain !== undefined || seg.italic !== undefined)) {
+      observacaoPlain = (seg.plain ?? "").trim() || commonNote;
+      observacaoItalic = (seg.italic ?? "").trim();
+    } else if (exibirBlocoAdminDataMotorista) {
+      observacaoPlain = commonNote;
+      observacaoItalic = adminNote;
+    } else if (commonNote !== adminNote) {
+      observacaoPlain = commonNote;
+      observacaoItalic = adminNote;
+    } else {
+      observacao = commonNote;
+    }
+  } else if (lc) {
+    motorista = lc.motorista;
+    inspectionDate = lc.inspectionDate;
+    observacao = String(lc.checklistNotes[itemKey] ?? "").trim();
+  } else {
+    const ins = la!;
+    motorista = ins.motorista;
+    inspectionDate = ins.inspectionDate;
+    prefillMotorista = ins.prefillMotorista;
+    prefillInspectionDate = ins.prefillInspectionDate;
+    const seg = ins.observacaoSegmentacaoAdmin?.[itemKey];
+    if (seg && (seg.plain !== undefined || seg.italic !== undefined)) {
+      observacaoPlain = (seg.plain ?? "").trim();
+      observacaoItalic = (seg.italic ?? "").trim();
+    } else {
+      observacao = String(ins.checklistNotes[itemKey] ?? "").trim();
+    }
+  }
+
+  return {
+    rowId: args.groupKey,
+    inspectionId: newestOverall.id,
+    viatura: args.viatura,
+    motorista,
+    inspectionDate,
+    itemKey,
+    itemLabel: args.itemLabel,
+    observacao,
+    vistoriaAdministrativa: Boolean(la && (!lc || la.createdAt > lc.createdAt)),
+    prefillMotorista,
+    prefillInspectionDate,
+    observacaoPlain,
+    observacaoItalic,
+    exibirBlocoAdminDataMotorista: Boolean(lc && la && exibirBlocoAdminDataMotorista),
+    relatedIssueRefs: args.relatedIssueRefs,
+  };
+}
+
 export function VistoriaPage() {
   const { items } = useCatalogItems();
   const applyingCloudRef = useRef(false);
@@ -443,54 +557,65 @@ export function VistoriaPage() {
     [resolvedIssues],
   );
   const vtrSituacaoPendente = useMemo(() => {
-    const grouped = new Map<string, VtrSituacaoPendenteRow>();
     const sorted = [...inspections].sort((a, b) => b.createdAt - a.createdAt);
+    const latestCommonByGk = new Map<string, VistoriaInspection>();
+    const latestAdminByGk = new Map<string, VistoriaInspection>();
+    const allGroupKeys = new Set<string>();
+
+    for (const ins of sorted) {
+      const vNorm = ins.viatura.trim().toLowerCase();
+      if (!vNorm) continue;
+      for (const { key } of CHECKLIST_ITEMS) {
+        if (ins.checklist[key] !== "Alterações") continue;
+        if (resolvedIssueSet.has(`${ins.id}:${key}`)) continue;
+        const gk = `${vNorm}::${key}`;
+        allGroupKeys.add(gk);
+        const isAdmin = ins.vistoriaAdministrativa === true;
+        if (!isAdmin && !latestCommonByGk.has(gk)) latestCommonByGk.set(gk, ins);
+        if (isAdmin && !latestAdminByGk.has(gk)) latestAdminByGk.set(gk, ins);
+      }
+    }
+
+    const grouped = new Map<string, VtrSituacaoPendenteRow>();
+
+    for (const gk of allGroupKeys) {
+      const parsed = parseVtrSituacaoGroupKey(gk);
+      if (!parsed) continue;
+      const { vNorm, itemKey } = parsed;
+      const lc = latestCommonByGk.get(gk);
+      const la = latestAdminByGk.get(gk);
+      if (!lc && !la) continue;
+
+      const label =
+        CHECKLIST_ITEMS.find((x) => x.key === itemKey)?.label ??
+        itemKey;
+      const viatura = (lc ?? la!).viatura;
+
+      const relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }> = [];
+      for (const inspection of inspections) {
+        if (inspection.viatura.trim().toLowerCase() !== vNorm) continue;
+        if (inspection.checklist[itemKey] !== "Alterações") continue;
+        if (resolvedIssueSet.has(`${inspection.id}:${itemKey}`)) continue;
+        relatedIssueRefs.push({ inspectionId: inspection.id, itemKey });
+      }
+
+      grouped.set(
+        gk,
+        buildVtrSituacaoPendenteRow({
+          groupKey: gk,
+          viatura,
+          itemKey,
+          itemLabel: label,
+          latestCommon: lc,
+          latestAdmin: la,
+          relatedIssueRefs,
+        }),
+      );
+    }
+
     for (const inspection of sorted) {
       const vistoriaAdministrativa = inspection.vistoriaAdministrativa === true;
       const temAlgumItemAlteracoes = CHECKLIST_ITEMS.some(({ key }) => inspection.checklist[key] === "Alterações");
-
-      for (const { key, label } of CHECKLIST_ITEMS) {
-        if (inspection.checklist[key] !== "Alterações") continue;
-        if (resolvedIssueSet.has(`${inspection.id}:${key}`)) continue;
-        const seg = inspection.observacaoSegmentacaoAdmin?.[key];
-        const exibirBlocoAdminDataMotorista =
-          vistoriaAdministrativa && inspection.itensAlteradosAdministracao?.includes(key) === true;
-        const groupKey = `${inspection.viatura.trim().toLowerCase()}::${key}`;
-        const existing = grouped.get(groupKey);
-        const candidateBase: VtrSituacaoPendenteRow = {
-          rowId: groupKey,
-          inspectionId: inspection.id,
-          viatura: inspection.viatura,
-          motorista: inspection.motorista,
-          inspectionDate: inspection.inspectionDate,
-          itemKey: key,
-          itemLabel: label,
-          observacao: inspection.checklistNotes[key].trim(),
-          vistoriaAdministrativa,
-          prefillMotorista: inspection.prefillMotorista,
-          prefillInspectionDate: inspection.prefillInspectionDate,
-          observacaoPlain: seg?.plain,
-          observacaoItalic: seg?.italic,
-          exibirBlocoAdminDataMotorista,
-          relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: key }],
-        };
-        if (!existing) {
-          grouped.set(groupKey, candidateBase);
-          continue;
-        }
-        const merged = { ...existing };
-        merged.relatedIssueRefs = [...existing.relatedIssueRefs, { inspectionId: inspection.id, itemKey: key }];
-        if (!existing.vistoriaAdministrativa && vistoriaAdministrativa) {
-          merged.vistoriaAdministrativa = true;
-          merged.prefillMotorista = inspection.prefillMotorista ?? merged.prefillMotorista;
-          merged.prefillInspectionDate = inspection.prefillInspectionDate ?? merged.prefillInspectionDate;
-          merged.observacaoPlain = seg?.plain ?? merged.observacaoPlain;
-          merged.observacaoItalic = seg?.italic ?? merged.observacaoItalic;
-          merged.exibirBlocoAdminDataMotorista =
-            exibirBlocoAdminDataMotorista || merged.exibirBlocoAdminDataMotorista;
-        }
-        grouped.set(groupKey, merged);
-      }
 
       /** Vistoria só mobile, sem nenhum item em «Anotações»: entra na aba com linha de registo (chave «outros»). */
       if (
@@ -578,15 +703,18 @@ export function VistoriaPage() {
   );
   const getCommonRubricaForRow = useCallback(
     (row: VtrSituacaoPendenteRow): string => {
-      const related = getRelatedInspections(row);
+      const related = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa !== true)
+        .sort((a, b) => b.createdAt - a.createdAt);
       for (const ins of related) {
-        if (ins.vistoriaAdministrativa === true) continue;
         const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
         if (rub) return rub;
       }
-      for (const ins of related) {
-        if (ins.vistoriaAdministrativa !== true || !ins.prefillSourceInspectionId) continue;
-        const src = inspectionById.get(ins.prefillSourceInspectionId);
+      const adminsComOrigem = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa === true && ins.prefillSourceInspectionId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const ins of adminsComOrigem) {
+        const src = inspectionById.get(ins.prefillSourceInspectionId!);
         const rub = typeof src?.rubrica === "string" ? src.rubrica.trim() : "";
         if (rub) return rub;
       }
@@ -596,9 +724,10 @@ export function VistoriaPage() {
   );
   const getAdministrativeRubricaForRow = useCallback(
     (row: VtrSituacaoPendenteRow): string => {
-      const related = getRelatedInspections(row);
+      const related = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa === true)
+        .sort((a, b) => b.createdAt - a.createdAt);
       for (const ins of related) {
-        if (ins.vistoriaAdministrativa !== true) continue;
         const rub = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
         if (!rub) continue;
         if (ins.itensAlteradosAdministracao?.includes(row.itemKey) === true) return rub;
