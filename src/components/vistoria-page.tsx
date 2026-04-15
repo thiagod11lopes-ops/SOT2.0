@@ -32,6 +32,7 @@ import {
   resolveViaturasParaMotoristaEscala,
   readVistoriaInspections,
   primeiroLabelAnotacoesSemObservacao,
+  segmentarObservacaoAdmin,
   findLatestInspectionForFormPrefill,
   type VistoriaAssignment,
   type VistoriaChecklist,
@@ -163,9 +164,10 @@ function buildVtrSituacaoPendenteRow(args: {
   let observacaoItalic: string | undefined;
 
   if (lc && la) {
-    const commonNote = String(lc.checklistNotes[itemKey] ?? "").trim();
-    const adminNote = String(la.checklistNotes[itemKey] ?? "").trim();
-    const seg = la.observacaoSegmentacaoAdmin?.[itemKey];
+    const commonRaw = String(lc.checklistNotes[itemKey] ?? "");
+    const adminRaw = String(la.checklistNotes[itemKey] ?? "");
+    /** Mesma regra da gravação administrativa: prefixo comum + acrescento; evita «AAA» + itálico «AAA BBB». */
+    const split = segmentarObservacaoAdmin(commonRaw, adminRaw);
 
     prefillMotorista = lc.motorista;
     prefillInspectionDate = lc.inspectionDate;
@@ -180,18 +182,9 @@ function buildVtrSituacaoPendenteRow(args: {
       prefillInspectionDate = undefined;
     }
 
-    if (seg && (seg.plain !== undefined || seg.italic !== undefined)) {
-      observacaoPlain = (seg.plain ?? "").trim() || commonNote;
-      observacaoItalic = (seg.italic ?? "").trim();
-    } else if (exibirBlocoAdminDataMotorista) {
-      observacaoPlain = commonNote;
-      observacaoItalic = adminNote;
-    } else if (commonNote !== adminNote) {
-      observacaoPlain = commonNote;
-      observacaoItalic = adminNote;
-    } else {
-      observacao = commonNote;
-    }
+    observacaoPlain = split.plain;
+    observacaoItalic = split.italic;
+    observacao = "";
   } else if (lc) {
     motorista = lc.motorista;
     inspectionDate = lc.inspectionDate;
@@ -264,6 +257,8 @@ export function VistoriaPage() {
   const [situacaoVtrFiltroViatura, setSituacaoVtrFiltroViatura] = useState("");
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
   const avisoObservacaoTitleId = useId();
+  const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
+  const confirmOkClearsNoteTitleId = useId();
   const [confirmResolve, setConfirmResolve] = useState<{
     inspectionId: string;
     itemKey: ChecklistKey;
@@ -813,6 +808,24 @@ export function VistoriaPage() {
       },
     ]);
     setInspectionOpen(false);
+  }
+
+  function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
+    const note = String(inspectionChecklistNotes[itemKey] ?? "").trim();
+    if (note !== "") {
+      setConfirmOkClearsNote({ key: itemKey, label: itemLabel });
+      return;
+    }
+    setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
+  }
+
+  function confirmProceedOkClearsNote() {
+    if (!confirmOkClearsNote) return;
+    const k = confirmOkClearsNote.key;
+    setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    setConfirmOkClearsNote(null);
   }
 
   function finalizeResolveIssue(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
@@ -1553,12 +1566,7 @@ export function VistoriaPage() {
                             name={`vistoria-${item.key}`}
                             value="OK"
                             checked={inspectionChecklist[item.key] === "OK"}
-                            onChange={() =>
-                              setInspectionChecklist((prev) => ({
-                                ...prev,
-                                [item.key]: "OK",
-                              }))
-                            }
+                            onChange={() => handleSelectChecklistOk(item.key, item.label)}
                           />
                           OK
                         </label>
@@ -1589,8 +1597,9 @@ export function VistoriaPage() {
                               [item.key]: e.target.value,
                             }))
                           }
+                          disabled={inspectionChecklist[item.key] === "OK"}
                           placeholder="Escreva observações deste item..."
-                          className="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                          className={`h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-60`}
                         />
                       </div>
                     </div>
@@ -1634,6 +1643,39 @@ export function VistoriaPage() {
               <Button type="button" className="w-full" onClick={() => setAvisoObservacaoItemLabel(null)}>
                 Entendi
               </Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {inspectionOpen && confirmOkClearsNote ? (
+        <div
+          className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmOkClearsNoteTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+        >
+          <Card className="w-full max-w-md border-[hsl(var(--border))] shadow-2xl">
+            <CardHeader>
+              <CardTitle id={confirmOkClearsNoteTitleId} className="text-lg">
+                Apagar observações?
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Ao escolher <strong>OK</strong>, o texto em <strong>Observações do item</strong> para «
+                {confirmOkClearsNote.label}» será apagado. Deseja continuar?
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmOkClearsNote(null)}>
+                  Cancelar
+                </Button>
+                <Button type="button" className="flex-1" onClick={confirmProceedOkClearsNote}>
+                  Continuar e apagar
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

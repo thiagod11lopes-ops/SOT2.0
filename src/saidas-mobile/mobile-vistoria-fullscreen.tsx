@@ -115,6 +115,8 @@ export function MobileVistoriaFullscreen({
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
   const avisoObservacaoTitleId = useId();
+  const confirmOkClearsNoteTitleId = useId();
+  const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const adminFormSnapshotRef = useRef<{
     checklist: VistoriaChecklist;
     notes: VistoriaChecklistNotes;
@@ -348,6 +350,24 @@ export function MobileVistoriaFullscreen({
     setInspectionChecklist(nextChecklist);
     setInspectionChecklistNotes(nextNotes);
     setView("form");
+  }
+
+  function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
+    const note = String(inspectionChecklistNotes[itemKey] ?? "").trim();
+    if (note !== "") {
+      setConfirmOkClearsNote({ key: itemKey, label: itemLabel });
+      return;
+    }
+    setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
+  }
+
+  function confirmProceedOkClearsNote() {
+    if (!confirmOkClearsNote) return;
+    const k = confirmOkClearsNote.key;
+    setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    setConfirmOkClearsNote(null);
   }
 
   function handleLocalizacaoChange(opt: ViaturaLocalizacao) {
@@ -794,12 +814,7 @@ export function MobileVistoriaFullscreen({
                         type="radio"
                         name={`mobile-vistoria-${item.key}`}
                         checked={inspectionChecklist[item.key] === "OK"}
-                        onChange={() =>
-                          setInspectionChecklist((prev) => ({
-                            ...prev,
-                            [item.key]: "OK",
-                          }))
-                        }
+                        onChange={() => handleSelectChecklistOk(item.key, item.label)}
                         className="h-5 w-5 accent-[hsl(var(--primary))]"
                       />
                       OK
@@ -832,8 +847,9 @@ export function MobileVistoriaFullscreen({
                         [item.key]: e.target.value,
                       }))
                     }
+                    disabled={inspectionChecklist[item.key] === "OK"}
                     placeholder="Opcional"
-                    className="mt-1 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+                    className="mt-1 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               ))}
@@ -966,6 +982,50 @@ export function MobileVistoriaFullscreen({
             >
               Entendi
             </Button>
+          </div>
+        </div>
+      ) : null}
+      {confirmOkClearsNote ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[565]`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmOkClearsNoteTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id={confirmOkClearsNoteTitleId} className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Apagar observações?
+            </h2>
+            <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+              Ao escolher <strong>OK</strong>, o texto em <strong>Observações do item</strong> para «
+              {confirmOkClearsNote.label}» será apagado. Deseja continuar?
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 w-full rounded-xl font-semibold"
+                onClick={() => setConfirmOkClearsNote(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                onClick={confirmProceedOkClearsNote}
+              >
+                Continuar e apagar
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

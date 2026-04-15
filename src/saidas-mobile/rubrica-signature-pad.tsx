@@ -49,10 +49,11 @@ function drawFooterBand(
   ctx.lineTo(widthPx - padX, lineY);
   ctx.stroke();
   ctx.fillStyle = "#111827";
-  ctx.font = `600 ${Math.round(14 * dpr)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  /** ~14px×3 no ecrã — legível na Situação das VTR (miniatura da rubrica). */
+  ctx.font = `600 ${Math.round(42 * dpr)}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText(nome, widthPx / 2, lineY + 8 * dpr);
+  ctx.fillText(nome, widthPx / 2, lineY + 10 * dpr);
 }
 
 /**
@@ -69,8 +70,8 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
     const hasInkRef = useRef(false);
 
     const nomeTrim = motoristaLabel?.trim() ?? "";
-    /** Altura reservada no PNG para linha + nome (sem repetir texto abaixo da área de desenho no ecrã). */
-    const FOOTER_EXPORT_CSS_PX = 48;
+    /** Altura reservada no PNG para linha + nome (nome em ~3× o tamanho anterior). */
+    const FOOTER_EXPORT_CSS_PX = 84;
 
     function fillWhitePhysical(ctx: CanvasRenderingContext2D, cw: number, ch: number) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
