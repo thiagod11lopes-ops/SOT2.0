@@ -95,6 +95,9 @@ export function MobileVistoriaFullscreen({
   const [rubricaPadKey, setRubricaPadKey] = useState(0);
   const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
   const [bundleLoading, setBundleLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
 
   const [formMotorista, setFormMotorista] = useState("");
   const [formViatura, setFormViatura] = useState("");
@@ -202,11 +205,22 @@ export function MobileVistoriaFullscreen({
   }, [open, administrativeVistoriadorMotorista, viaturasPorMotorista, view]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
     setBundleLoading(true);
-    if (isFirebaseOnlyOnlineActive()) {
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
       void (async () => {
         try {
           await ensureFirebaseAuth();
@@ -244,7 +258,7 @@ export function MobileVistoriaFullscreen({
       cancelled = true;
       unsub?.();
     };
-  }, [open]);
+  }, [open, isOnline]);
 
   useEffect(() => {
     if (!open) return;

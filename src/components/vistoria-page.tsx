@@ -75,6 +75,7 @@ function escapeHtml(s: string): string {
 }
 
 type VtrSituacaoPendenteRow = {
+  rowId: string;
   inspectionId: string;
   viatura: string;
   motorista: string;
@@ -89,6 +90,7 @@ type VtrSituacaoPendenteRow = {
   observacaoItalic?: string;
   /** Só na Situação das VTR: mostrar data/nome da administrativa em baixo quando este item foi alterado na administrativa. */
   exibirBlocoAdminDataMotorista?: boolean;
+  relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
 };
 
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
@@ -138,6 +140,9 @@ export function VistoriaPage() {
   const applyingCloudRef = useRef(false);
   const cloudReadyRef = useRef(false);
   const [activeSubTab, setActiveSubTab] = useState<string>(vistoriaSubTabs[0]);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const [selectedMotorista, setSelectedMotorista] = useState("");
   const [selectedViatura, setSelectedViatura] = useState("");
   const [assignments, setAssignments] = useState<VistoriaAssignment[]>(() => readVistoriaAssignments());
@@ -171,6 +176,7 @@ export function VistoriaPage() {
     viatura: string;
     motorista: string;
     inspectionDate: string;
+    relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
   } | null>(null);
   const confirmResolveTitleId = useId();
 
@@ -243,16 +249,27 @@ export function VistoriaPage() {
   }, [inspectionOpen]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeSubTab !== "Vistoriar") return;
     const parsed = parseIsoDate(selectedInspectionDate);
     if (parsed) setCalendarCursorMonth(startOfLocalMonth(parsed));
-  }, [activeSubTab]);
+  }, [activeSubTab, selectedInspectionDate]);
 
   useEffect(() => {
     if (activeSubTab !== "Vistoriar") return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
-    if (isFirebaseOnlyOnlineActive()) {
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
       void (async () => {
         try {
           await ensureFirebaseAuth();
@@ -284,7 +301,7 @@ export function VistoriaPage() {
       cancelled = true;
       unsub?.();
     };
-  }, [activeSubTab]);
+  }, [activeSubTab, isOnline]);
 
   useEffect(() => {
     if (activeSubTab !== "Vistoriar" || !detalheServicoBundle) return;
@@ -434,7 +451,7 @@ export function VistoriaPage() {
     [resolvedIssues],
   );
   const vtrSituacaoPendente = useMemo(() => {
-    const rows: VtrSituacaoPendenteRow[] = [];
+    const grouped = new Map<string, VtrSituacaoPendenteRow>();
     const sorted = [...inspections].sort((a, b) => b.createdAt - a.createdAt);
     for (const inspection of sorted) {
       const vistoriaAdministrativa = inspection.vistoriaAdministrativa === true;
@@ -446,7 +463,10 @@ export function VistoriaPage() {
         const seg = inspection.observacaoSegmentacaoAdmin?.[key];
         const exibirBlocoAdminDataMotorista =
           vistoriaAdministrativa && inspection.itensAlteradosAdministracao?.includes(key) === true;
-        rows.push({
+        const groupKey = `${inspection.viatura.trim().toLowerCase()}::${key}`;
+        const existing = grouped.get(groupKey);
+        const candidateBase: VtrSituacaoPendenteRow = {
+          rowId: groupKey,
           inspectionId: inspection.id,
           viatura: inspection.viatura,
           motorista: inspection.motorista,
@@ -460,7 +480,24 @@ export function VistoriaPage() {
           observacaoPlain: seg?.plain,
           observacaoItalic: seg?.italic,
           exibirBlocoAdminDataMotorista,
-        });
+          relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: key }],
+        };
+        if (!existing) {
+          grouped.set(groupKey, candidateBase);
+          continue;
+        }
+        const merged = { ...existing };
+        merged.relatedIssueRefs = [...existing.relatedIssueRefs, { inspectionId: inspection.id, itemKey: key }];
+        if (!existing.vistoriaAdministrativa && vistoriaAdministrativa) {
+          merged.vistoriaAdministrativa = true;
+          merged.prefillMotorista = inspection.prefillMotorista ?? merged.prefillMotorista;
+          merged.prefillInspectionDate = inspection.prefillInspectionDate ?? merged.prefillInspectionDate;
+          merged.observacaoPlain = seg?.plain ?? merged.observacaoPlain;
+          merged.observacaoItalic = seg?.italic ?? merged.observacaoItalic;
+          merged.exibirBlocoAdminDataMotorista =
+            exibirBlocoAdminDataMotorista || merged.exibirBlocoAdminDataMotorista;
+        }
+        grouped.set(groupKey, merged);
       }
 
       /** Vistoria só mobile, sem nenhum item em «Anotações»: entra na aba com linha de registo (chave «outros»). */
@@ -469,18 +506,24 @@ export function VistoriaPage() {
         !temAlgumItemAlteracoes &&
         !resolvedIssueSet.has(`${inspection.id}:outros`)
       ) {
-        rows.push({
-          inspectionId: inspection.id,
-          viatura: inspection.viatura,
-          motorista: inspection.motorista,
-          inspectionDate: inspection.inspectionDate,
-          itemKey: "outros",
-          itemLabel: "Registo de vistoria (mobile)",
-          observacao: "Sem itens com anotações (todos OK).",
-          vistoriaAdministrativa,
-        });
+        const groupKey = `${inspection.viatura.trim().toLowerCase()}::outros`;
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            rowId: groupKey,
+            inspectionId: inspection.id,
+            viatura: inspection.viatura,
+            motorista: inspection.motorista,
+            inspectionDate: inspection.inspectionDate,
+            itemKey: "outros",
+            itemLabel: "Registo de vistoria (mobile)",
+            observacao: "Sem itens com anotações (todos OK).",
+            vistoriaAdministrativa,
+            relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: "outros" }],
+          });
+        }
       }
     }
+    const rows = [...grouped.values()];
     rows.sort((a, b) => {
       const byViatura = a.viatura.localeCompare(b.viatura, "pt-BR");
       if (byViatura !== 0) return byViatura;
@@ -662,29 +705,29 @@ export function VistoriaPage() {
     setInspectionOpen(false);
   }
 
-  function finalizeResolveIssue(inspectionId: string, itemKey: ChecklistKey) {
-    const k = `${inspectionId}:${itemKey}`;
-    if (resolvedIssueSet.has(k)) return;
+  function finalizeResolveIssue(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
+    const unresolved = relatedIssueRefs.filter((ref) => !resolvedIssueSet.has(`${ref.inspectionId}:${ref.itemKey}`));
+    if (unresolved.length === 0) return;
     setResolvedIssues((prev) => [
       ...prev,
-      {
+      ...unresolved.map((ref) => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        inspectionId,
-        itemKey,
+        inspectionId: ref.inspectionId,
+        itemKey: ref.itemKey,
         resolvedAt: Date.now(),
-      },
+      })),
     ]);
   }
 
-  function handleResolveIssue(inspectionId: string, itemKey: ChecklistKey) {
-    const row = vtrSituacaoPendenteFiltrado.find((r) => r.inspectionId === inspectionId && r.itemKey === itemKey);
+  function handleResolveIssue(row: VtrSituacaoPendenteRow) {
     setConfirmResolve({
-      inspectionId,
-      itemKey,
-      itemLabel: row?.itemLabel ?? itemKey,
-      viatura: row?.viatura ?? "",
-      motorista: row?.motorista ?? "",
-      inspectionDate: row?.inspectionDate ?? "",
+      inspectionId: row.inspectionId,
+      itemKey: row.itemKey,
+      itemLabel: row.itemLabel,
+      viatura: row.viatura,
+      motorista: row.motorista,
+      inspectionDate: row.inspectionDate,
+      relatedIssueRefs: row.relatedIssueRefs,
     });
   }
 
@@ -1131,7 +1174,7 @@ export function VistoriaPage() {
                       const priorityMarked = control?.priorityMarked ?? false;
                       const printMarked = control?.printMarked ?? false;
                       return (
-                        <TableRow key={`${row.inspectionId}-${row.itemKey}`} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                        <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                           <TableCell>{renderDataSituacao(row)}</TableCell>
                           <TableCell className="font-semibold">{row.viatura}</TableCell>
                           <TableCell>{renderMotoristaSituacao(row)}</TableCell>
@@ -1231,7 +1274,7 @@ export function VistoriaPage() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => handleResolveIssue(row.inspectionId, row.itemKey)}
+                                onClick={() => handleResolveIssue(row)}
                             >
                               Resolver
                             </Button>
@@ -1288,7 +1331,7 @@ export function VistoriaPage() {
                   type="button"
                   className="flex-1"
                   onClick={() => {
-                    finalizeResolveIssue(confirmResolve.inspectionId, confirmResolve.itemKey);
+                    finalizeResolveIssue(confirmResolve.relatedIssueRefs);
                     setConfirmResolve(null);
                   }}
                 >
