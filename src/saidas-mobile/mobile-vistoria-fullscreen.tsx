@@ -828,7 +828,7 @@ export function MobileVistoriaFullscreen({
             >
               <Button
                 type="button"
-                className="min-h-12 flex-1 rounded-xl text-base font-semibold"
+                className="min-h-12 flex-1 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-base font-semibold text-[hsl(var(--primary-foreground))]"
                 onClick={() => setView(isAdminSession ? "adminViatura" : "list")}
               >
                 Cancelar
