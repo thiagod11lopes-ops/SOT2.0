@@ -2,7 +2,14 @@ import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { isCompleteDatePtBr, isoDateToPtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import {
   appendVistoriaInspection,
   CHECKLIST_ITEMS,
@@ -197,14 +204,45 @@ export function MobileVistoriaFullscreen({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    let unsub: (() => void) | undefined;
     setBundleLoading(true);
-    void loadDetalheServicoBundleFromIdb().then((b) => {
-      if (cancelled) return;
-      setBundle(b);
-      setBundleLoading(false);
-    });
+    if (isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setBundle(normalizeDetalheServicoBundle(payload));
+              setBundleLoading(false);
+            },
+            (err) => {
+              console.error("[SOT] Firestore detalhe serviço (vistoria mobile):", err);
+              if (!cancelled) setBundleLoading(false);
+            },
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço vistoria mobile):", e);
+          if (cancelled) return;
+          const b = await loadDetalheServicoBundleFromIdb();
+          if (cancelled) return;
+          setBundle(b);
+          setBundleLoading(false);
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((b) => {
+        if (cancelled) return;
+        setBundle(b);
+        setBundleLoading(false);
+      });
+    }
     return () => {
       cancelled = true;
+      unsub?.();
     };
   }, [open]);
 
