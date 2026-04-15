@@ -6,6 +6,8 @@ import { isRubricaImageDataUrl } from "./rubricaDrawing";
 const RUBRICA_UI_MAX_W_MM = (148 * 25.4) / 96;
 /** Alinha com `max-h-28` (112px se 1rem=16px → 7rem). */
 const RUBRICA_UI_MAX_H_MM = (112 * 25.4) / 96;
+/** No PDF, a imagem da rubrica é desenhada a 50% da caixa lógica do ecrã. */
+const RUBRICA_PDF_DISPLAY_SCALE = 0.5;
 
 function fitRubricaImageMm(
   naturalW: number,
@@ -73,7 +75,7 @@ export type VistoriaSituacaoImprimirPdfRow = {
 
 /**
  * PDF com as linhas da Situação das VTR em que a coluna Imprimir está marcada.
- * Rubricas PNG: mesma caixa lógica que no ecrã (`max-w-[148px]` × `max-h-28`) para o nome sob a linha com tamanho aparente igual.
+ * Rubricas PNG: caixa base alinhada ao ecrã (`max-w-[148px]` × `max-h-28`), com escala `RUBRICA_PDF_DISPLAY_SCALE` no PDF.
  */
 export async function buildVistoriaSituacaoImprimirPdf(
   rows: VistoriaSituacaoImprimirPdfRow[],
@@ -155,7 +157,7 @@ export async function buildVistoriaSituacaoImprimirPdf(
             const c = String(r.rubricaComum ?? "").trim();
             const a = String(r.rubricaAdministrativa ?? "").trim();
             if (isRubricaImageDataUrl(c) || isRubricaImageDataUrl(a)) {
-              data.cell.styles.minCellHeight = 36;
+              data.cell.styles.minCellHeight = 22;
             }
           }
         }
@@ -222,8 +224,8 @@ export async function buildVistoriaSituacaoImprimirPdf(
         const halfW = Math.max(10, (maxWidth - gapMm) / 2);
         const leftX = left;
         const rightX = left + halfW + gapMm;
-        const boxMaxW = Math.min(halfW - 0.5, RUBRICA_UI_MAX_W_MM);
-        const boxMaxH = RUBRICA_UI_MAX_H_MM;
+        const boxMaxW = Math.min(halfW - 0.5, RUBRICA_UI_MAX_W_MM) * RUBRICA_PDF_DISPLAY_SCALE;
+        const boxMaxH = RUBRICA_UI_MAX_H_MM * RUBRICA_PDF_DISPLAY_SCALE;
         const layout = rubricaLayouts[data.row.index];
 
         const drawBlock = (

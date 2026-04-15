@@ -20,6 +20,9 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const TABLE_TOTAL_WIDTH_MM =
   26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28 + 30;
 
+/** Imagens de rubrica no PDF (coluna da tabela e miniatura no bloco de assinatura): 50% do tamanho anterior. */
+const PDF_RUBRICA_IMAGE_SCALE = 0.5;
+
 /** No PDF, rubrica de saída cancelada (texto) — antecede o nome; evita duplicar se já existir no registo. */
 const PDF_RUBRICA_CANCEL_PREFIX = "Cancelado por: ";
 
@@ -70,8 +73,9 @@ function drawSignatureBlock(
 
   let nameStartY = lineY + 6;
   if (rubricaPngDataUrl) {
-    const imgH = 10;
-    const imgW = Math.min(blockWidth - 6, Math.max(38, lineW + 6));
+    const baseW = Math.min(blockWidth - 6, Math.max(38, lineW + 6));
+    const imgH = 10 * PDF_RUBRICA_IMAGE_SCALE;
+    const imgW = baseW * PDF_RUBRICA_IMAGE_SCALE;
     const ix = centerX - imgW / 2;
     const iy = lineY - imgH;
     try {
@@ -228,7 +232,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       const raw = (row.rubrica ?? "").trim();
       if (isRubricaImageDataUrl(raw)) {
         data.cell.text = [];
-        data.cell.styles.minCellHeight = 20;
+        data.cell.styles.minCellHeight = 12;
       }
     },
     didDrawCell: (data) => {
@@ -239,11 +243,11 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       if (!row) return;
       const raw = (row.rubrica ?? "").trim();
       if (!isRubricaImageDataUrl(raw)) return;
-      /** Área útil da célula; a rubrica usa 64% da área (≈ 20% menor que os 80% anteriores) e fica centrada. */
+      /** Área útil da célula; a rubrica usa 64% da área, centrada; `PDF_RUBRICA_IMAGE_SCALE` reduz o desenho em 50%. */
       const pad = 0.25;
       const innerW = Math.max(0.5, data.cell.width - pad * 2);
       const innerH = Math.max(0.5, data.cell.height - pad * 2);
-      const scale = 0.8 * 0.8;
+      const scale = 0.8 * 0.8 * PDF_RUBRICA_IMAGE_SCALE;
       const iw = innerW * scale;
       const ih = innerH * scale;
       const ix = data.cell.x + pad + (innerW - iw) / 2;
