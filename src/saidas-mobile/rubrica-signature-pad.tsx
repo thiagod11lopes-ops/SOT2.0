@@ -36,10 +36,76 @@ function nomeMotoristaFontDevicePx(widthDevicePx: number, dpr: number): number {
   return Math.min(max, Math.max(min, fromWidth));
 }
 
-/** Altura da faixa inferior (px dispositivo) para linha + nome + margens. */
-function footerBandHeightDevicePx(widthDevicePx: number, dpr: number): number {
-  const f = nomeMotoristaFontDevicePx(widthDevicePx, dpr);
-  return Math.ceil(f * 1.42 + 28 * dpr);
+/** Quebra o nome em linhas que cabem em `maxWidthDevicePx` (medido com a fonte já definida em `ctx`). */
+function wrapNomeEmLinhas(
+  ctx: CanvasRenderingContext2D,
+  nome: string,
+  maxWidthDevicePx: number,
+): string[] {
+  const t = nome.trim();
+  if (!t) return [];
+  const words = t.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const trial = line ? `${line} ${word}` : word;
+    if (ctx.measureText(trial).width <= maxWidthDevicePx) {
+      line = trial;
+      continue;
+    }
+    if (line) {
+      out.push(line);
+      line = "";
+    }
+    if (ctx.measureText(word).width <= maxWidthDevicePx) {
+      line = word;
+      continue;
+    }
+    let chunk = "";
+    for (const ch of word) {
+      const next = chunk + ch;
+      if (ctx.measureText(next).width <= maxWidthDevicePx) {
+        chunk = next;
+      } else {
+        if (chunk) out.push(chunk);
+        chunk = ch;
+      }
+    }
+    if (chunk) line = chunk;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [t];
+}
+
+function computeNomeFooterMetrics(
+  widthPx: number,
+  dpr: number,
+  nome: string,
+): { footPx: number; lines: string[]; fontPx: number } {
+  const padX = 10 * dpr;
+  const maxTextW = Math.max(20, widthPx - 2 * padX);
+  const fontPx = nomeMotoristaFontDevicePx(widthPx, dpr);
+
+  const measureCtx =
+    typeof document !== "undefined"
+      ? document.createElement("canvas").getContext("2d")
+      : null;
+  if (!measureCtx) {
+    const lineH = Math.ceil(fontPx * 1.22);
+    return {
+      footPx: Math.ceil(12 * dpr + 0.15 * fontPx + lineH + 14 * dpr),
+      lines: [nome.trim() || ""],
+      fontPx,
+    };
+  }
+  measureCtx.font = `600 ${fontPx}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const lines = wrapNomeEmLinhas(measureCtx, nome, maxTextW);
+  const lineHeight = Math.ceil(fontPx * 1.22);
+  const textStartFromZoneTop = 12 * dpr + Math.round(0.15 * fontPx);
+  const textBlockH = lines.length * lineHeight;
+  const bottomPad = 12 * dpr;
+  const footPx = Math.ceil(textStartFromZoneTop + textBlockH + bottomPad);
+  return { footPx, lines, fontPx };
 }
 
 function drawFooterBand(
@@ -47,10 +113,10 @@ function drawFooterBand(
   widthPx: number,
   zoneTopPx: number,
   zoneHeightPx: number,
-  nome: string,
+  nomeLines: string[],
+  fontPx: number,
   dpr: number,
 ): void {
-  const fontPx = nomeMotoristaFontDevicePx(widthPx, dpr);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, zoneTopPx, widthPx, zoneHeightPx);
   ctx.strokeStyle = "#e5e7eb";
@@ -71,7 +137,13 @@ function drawFooterBand(
   ctx.font = `600 ${fontPx}px system-ui, -apple-system, "Segoe UI", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText(nome, widthPx / 2, lineY + Math.round(0.12 * fontPx));
+  const lineHeight = Math.ceil(fontPx * 1.22);
+  let y = lineY + Math.round(0.15 * fontPx);
+  const cx = widthPx / 2;
+  for (const ln of nomeLines) {
+    ctx.fillText(ln, cx, y);
+    y += lineHeight;
+  }
 }
 
 /**
@@ -212,7 +284,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
             return canvas.toDataURL("image/png");
           }
 
-          const footPx = footerBandHeightDevicePx(canvas.width, dpr);
+          const { footPx, lines: nomeLines, fontPx } = computeNomeFooterMetrics(canvas.width, dpr, nomeTrim);
 
           const out = document.createElement("canvas");
           out.width = canvas.width;
@@ -222,7 +294,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, out.width, out.height);
           ctx.drawImage(canvas, 0, 0);
-          drawFooterBand(ctx, out.width, canvas.height, footPx, nomeTrim, dpr);
+          drawFooterBand(ctx, out.width, canvas.height, footPx, nomeLines, fontPx, dpr);
           return out.toDataURL("image/png");
         },
         clearPad: () => {

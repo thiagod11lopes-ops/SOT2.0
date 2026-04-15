@@ -904,7 +904,7 @@ export function VistoriaPage() {
     });
   }
 
-  function handleGerarPdfSituacaoVtr() {
+  async function handleGerarPdfSituacaoVtr() {
     const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
       (row) => getRowIssueControl(row)?.printMarked === true,
     );
@@ -935,7 +935,7 @@ export function VistoriaPage() {
         rubricaAdministrativa: getAdministrativeRubricaForRow(row),
       };
     });
-    const { doc, filename } = buildVistoriaSituacaoImprimirPdf(pdfRows);
+    const { doc, filename } = await buildVistoriaSituacaoImprimirPdf(pdfRows);
     doc.save(filename);
   }
 

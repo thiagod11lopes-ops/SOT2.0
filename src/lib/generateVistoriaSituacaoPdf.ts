@@ -2,6 +2,62 @@ import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import { isRubricaImageDataUrl } from "./rubricaDrawing";
 
+/** Alinha com `max-w-[148px]` na tabela Situação das VTR (96 CSS px → mm). */
+const RUBRICA_UI_MAX_W_MM = (148 * 25.4) / 96;
+/** Alinha com `max-h-28` (112px se 1rem=16px → 7rem). */
+const RUBRICA_UI_MAX_H_MM = (112 * 25.4) / 96;
+
+function fitRubricaImageMm(
+  naturalW: number,
+  naturalH: number,
+  maxW: number,
+  maxH: number,
+): { iw: number; ih: number } {
+  if (naturalW <= 0 || naturalH <= 0) {
+    return { iw: maxW, ih: Math.min(maxH, maxW * 0.6) };
+  }
+  const scale = Math.min(maxW / naturalW, maxH / naturalH);
+  return { iw: naturalW * scale, ih: naturalH * scale };
+}
+
+function loadImageNaturalSize(dataUrl: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    if (typeof Image === "undefined") {
+      resolve({ w: 400, h: 280 });
+      return;
+    }
+    const img = new Image();
+    img.onload = () =>
+      resolve({
+        w: Math.max(1, img.naturalWidth),
+        h: Math.max(1, img.naturalHeight),
+      });
+    img.onerror = () => resolve({ w: 400, h: 280 });
+    img.src = dataUrl;
+  });
+}
+
+async function buildRubricaImageLayouts(
+  rows: VistoriaSituacaoImprimirPdfRow[],
+): Promise<
+  Array<{
+    comum: { w: number; h: number } | null;
+    admin: { w: number; h: number } | null;
+  }>
+> {
+  return Promise.all(
+    rows.map(async (r) => {
+      const c = String(r.rubricaComum ?? "").trim();
+      const a = String(r.rubricaAdministrativa ?? "").trim();
+      const [comum, admin] = await Promise.all([
+        isRubricaImageDataUrl(c) ? loadImageNaturalSize(c) : Promise.resolve(null),
+        isRubricaImageDataUrl(a) ? loadImageNaturalSize(a) : Promise.resolve(null),
+      ]);
+      return { comum, admin };
+    }),
+  );
+}
+
 export type VistoriaSituacaoImprimirPdfRow = {
   inspectionDate: string;
   inspectionDateSecondary?: string;
@@ -17,11 +73,16 @@ export type VistoriaSituacaoImprimirPdfRow = {
 
 /**
  * PDF com as linhas da Situação das VTR em que a coluna Imprimir está marcada.
+ * Rubricas PNG: mesma caixa lógica que no ecrã (`max-w-[148px]` × `max-h-28`) para o nome sob a linha com tamanho aparente igual.
  */
-export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirPdfRow[]): {
+export async function buildVistoriaSituacaoImprimirPdf(
+  rows: VistoriaSituacaoImprimirPdfRow[],
+): Promise<{
   doc: jsPDF;
   filename: string;
-} {
+}> {
+  const rubricaLayouts = await buildRubricaImageLayouts(rows);
+
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const margin = 10;
   const pageW = doc.internal.pageSize.getWidth();
@@ -94,7 +155,7 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
             const c = String(r.rubricaComum ?? "").trim();
             const a = String(r.rubricaAdministrativa ?? "").trim();
             if (isRubricaImageDataUrl(c) || isRubricaImageDataUrl(a)) {
-              data.cell.styles.minCellHeight = 28;
+              data.cell.styles.minCellHeight = 36;
             }
           }
         }
@@ -161,12 +222,15 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
         const halfW = Math.max(10, (maxWidth - gapMm) / 2);
         const leftX = left;
         const rightX = left + halfW + gapMm;
+        const boxMaxW = Math.min(halfW - 0.5, RUBRICA_UI_MAX_W_MM);
+        const boxMaxH = RUBRICA_UI_MAX_H_MM;
+        const layout = rubricaLayouts[data.row.index];
 
         const drawBlock = (
           raw: string,
           startX: number,
           startY: number,
-          blockMaxW: number,
+          natural: { w: number; h: number } | null | undefined,
         ): number => {
           let yy = startY;
           const content = String(raw ?? "").trim();
@@ -177,22 +241,23 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
             return yy + lineGap;
           }
           if (isRubricaImageDataUrl(content)) {
-            const imgMaxW = Math.min(blockMaxW - 0.5, 34);
-            const imgH = Math.min(14, Math.max(9, imgMaxW * 0.52));
+            const nw = natural?.w ?? 400;
+            const nh = natural?.h ?? 280;
+            const { iw, ih } = fitRubricaImageMm(nw, nh, boxMaxW, boxMaxH);
             try {
-              doc.addImage(content, "PNG", startX, yy, imgMaxW, imgH);
+              doc.addImage(content, "PNG", startX, yy, iw, ih);
             } catch {
               doc.setFont("helvetica", "italic");
               doc.setFontSize(6);
               doc.text("(imagem)", startX, yy);
             }
-            return yy + imgH + 1.2;
+            return yy + ih + 1.2;
           }
           doc.setFont("helvetica", "normal");
           doc.setFontSize(7);
-          const lines = doc.splitTextToSize(content, blockMaxW) as string[];
+          const lines = doc.splitTextToSize(content, halfW - 0.5) as string[];
           for (const line of lines) {
-            doc.text(line, startX, yy, { maxWidth: blockMaxW });
+            doc.text(line, startX, yy, { maxWidth: halfW - 0.5 });
             yy += lineGap;
           }
           return yy;
@@ -204,8 +269,8 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
         doc.text("Comum", leftX, yLabel);
         doc.text("Administrativa", rightX, yLabel);
         const yContent = yLabel + 3.2;
-        drawBlock(row.rubricaComum ?? "", leftX, yContent, halfW);
-        drawBlock(row.rubricaAdministrativa ?? "", rightX, yContent, halfW);
+        drawBlock(row.rubricaComum ?? "", leftX, yContent, layout?.comum);
+        drawBlock(row.rubricaAdministrativa ?? "", rightX, yContent, layout?.admin);
       }
     },
   });
