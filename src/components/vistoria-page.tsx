@@ -931,6 +931,8 @@ export function VistoriaPage() {
           row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
             ? row.observacaoItalic ?? ""
             : undefined,
+        rubricaComum: getCommonRubricaForRow(row),
+        rubricaAdministrativa: getAdministrativeRubricaForRow(row),
       };
     });
     const { doc, filename } = buildVistoriaSituacaoImprimirPdf(pdfRows);

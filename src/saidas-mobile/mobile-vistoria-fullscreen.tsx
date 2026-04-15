@@ -1003,11 +1003,11 @@ export function MobileVistoriaFullscreen({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <h2 id={confirmOkClearsNoteTitleId} className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
-              Apagar observações?
+              Aviso
             </h2>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-              Ao escolher <strong>OK</strong>, o texto em <strong>Observações do item</strong> para «
-              {confirmOkClearsNote.label}» será apagado. Deseja continuar?
+              Ao marcar <strong>OK</strong> no item «{confirmOkClearsNote.label}», o conteúdo que introduziu em{" "}
+              <strong>Observações do item</strong> será apagado. Deseja continuar?
             </p>
             <div className="flex flex-col gap-2">
               <Button

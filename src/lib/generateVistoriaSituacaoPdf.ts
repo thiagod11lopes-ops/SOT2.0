@@ -1,5 +1,6 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
+import { isRubricaImageDataUrl } from "./rubricaDrawing";
 
 export type VistoriaSituacaoImprimirPdfRow = {
   inspectionDate: string;
@@ -8,6 +9,10 @@ export type VistoriaSituacaoImprimirPdfRow = {
   itemLabel: string;
   observacaoPlain: string;
   observacaoItalic?: string;
+  /** PNG data URL ou texto — rubrica da vistoria comum (quando existir). */
+  rubricaComum?: string;
+  /** PNG data URL ou texto — rubrica da vistoria administrativa (quando existir). */
+  rubricaAdministrativa?: string;
 };
 
 /**
@@ -32,13 +37,14 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
   doc.text(`Gerado em: ${generated}`, margin, margin + 6);
   doc.setTextColor(0, 0, 0);
 
-  const head = [["Data da Vistoria", "Viatura", "Item com Anotação", "Anotação"]];
+  const head = [["Data da Vistoria", "Viatura", "Item com Anotação", "Anotação", "Rubricas"]];
 
   const body = rows.map((r) => [
     r.inspectionDateSecondary?.trim() ? `${r.inspectionDate}\n(${r.inspectionDateSecondary})` : r.inspectionDate,
     r.viatura,
     r.itemLabel,
     `${r.observacaoPlain ?? ""}${r.observacaoItalic ?? ""}`.trim() || "—",
+    " ",
   ]);
 
   autoTable(doc, {
@@ -68,10 +74,11 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
     margin: { left: margin, right: margin },
     tableWidth: pageW - 2 * margin,
     columnStyles: {
-      0: { cellWidth: 36 },
-      1: { cellWidth: 36 },
-      2: { cellWidth: 52 },
-      3: { cellWidth: 108 },
+      0: { cellWidth: 32 },
+      1: { cellWidth: 32 },
+      2: { cellWidth: 46 },
+      3: { cellWidth: 94 },
+      4: { cellWidth: 73 },
     },
     didParseCell: (data) => {
       if (data.section === "head") {
@@ -81,11 +88,21 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
       if (data.section === "body") {
         data.cell.styles.halign = "left";
         data.cell.styles.valign = "top";
+        if (data.column.index === 4) {
+          const r = rows[data.row.index];
+          if (r) {
+            const c = String(r.rubricaComum ?? "").trim();
+            const a = String(r.rubricaAdministrativa ?? "").trim();
+            if (isRubricaImageDataUrl(c) || isRubricaImageDataUrl(a)) {
+              data.cell.styles.minCellHeight = 36;
+            }
+          }
+        }
       }
     },
     willDrawCell: (data) => {
       if (data.section !== "body") return;
-      if (data.column.index === 0 || data.column.index === 3) {
+      if (data.column.index === 0 || data.column.index === 3 || data.column.index === 4) {
         data.cell.text = [];
       }
     },
@@ -136,6 +153,53 @@ export function buildVistoriaSituacaoImprimirPdf(rows: VistoriaSituacaoImprimirP
             y += lineGap;
           }
         }
+        return;
+      }
+
+      if (data.column.index === 4) {
+        const drawBlock = (raw: string, startY: number): number => {
+          let yy = startY;
+          const content = String(raw ?? "").trim();
+          if (!content) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7);
+            doc.text("—", left, yy);
+            return yy + lineGap;
+          }
+          if (isRubricaImageDataUrl(content)) {
+            const imgMaxW = Math.min(maxWidth, 32);
+            const imgH = 11;
+            try {
+              doc.addImage(content, "PNG", left, yy, imgMaxW, imgH);
+            } catch {
+              doc.setFont("helvetica", "italic");
+              doc.setFontSize(6);
+              doc.text("(imagem)", left, yy);
+            }
+            return yy + imgH + 1.2;
+          }
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          const lines = doc.splitTextToSize(content, maxWidth) as string[];
+          for (const line of lines) {
+            doc.text(line, left, yy, { maxWidth });
+            yy += lineGap;
+          }
+          return yy;
+        };
+
+        let y = top;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6);
+        doc.text("Comum", left, y);
+        y += 2.5;
+        y = drawBlock(row.rubricaComum ?? "", y);
+        y += 2;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6);
+        doc.text("Administrativa", left, y);
+        y += 2.5;
+        drawBlock(row.rubricaAdministrativa ?? "", y);
       }
     },
   });
