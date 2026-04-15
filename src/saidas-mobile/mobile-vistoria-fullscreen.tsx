@@ -39,6 +39,7 @@ import {
   type VistoriaInspection,
 } from "../lib/vistoriaInspectionShared";
 import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
@@ -560,10 +561,16 @@ export function MobileVistoriaFullscreen({
 
   if (!open) return null;
 
+  const modalStackObscuresMain =
+    rubricaOpen || Boolean(avisoObservacaoItemLabel) || Boolean(confirmOkClearsNote) || saveSuccessOpen;
+
   return (
     <>
       <div
-        className="pointer-events-auto fixed inset-0 z-[500] flex justify-center bg-black/50 px-3 backdrop-blur-[2px] min-[480px]:px-4"
+        className={cn(
+          "fixed inset-0 z-[500] flex justify-center bg-black/50 px-3 backdrop-blur-[2px] min-[480px]:px-4",
+          modalStackObscuresMain ? "pointer-events-none" : "pointer-events-auto",
+        )}
         role="dialog"
         aria-modal="true"
         aria-label={isAdminSession ? "Vistoria administrativa" : "Vistoria"}
@@ -576,7 +583,7 @@ export function MobileVistoriaFullscreen({
         }}
       >
         <div
-          className="flex h-full min-h-0 w-full max-w-lg min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-2xl"
+          className="pointer-events-auto flex h-full min-h-0 w-full max-w-lg min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-2xl"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[hsl(var(--border))] px-3 pb-2 pt-1 min-[480px]:px-4">
@@ -1010,22 +1017,22 @@ export function MobileVistoriaFullscreen({
               <strong>Observações do item</strong> será apagado. Deseja continuar?
             </p>
             <div className="flex flex-col gap-2">
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                className="min-h-11 w-full rounded-xl border-emerald-600/90 !bg-emerald-500 font-semibold !text-white shadow-sm hover:!bg-emerald-600 hover:!text-white"
+                className="min-h-11 w-full rounded-xl border-2 border-emerald-700 bg-emerald-500 px-4 text-base font-semibold text-white shadow-sm active:bg-emerald-700"
+                style={{ WebkitTapHighlightColor: "transparent" }}
                 onClick={() => setConfirmOkClearsNote(null)}
               >
                 Cancelar
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant="outline"
-                className="min-h-11 w-full rounded-xl border-red-600/90 !bg-red-500 font-semibold !text-white shadow-sm hover:!bg-red-600 hover:!text-white"
+                className="min-h-11 w-full rounded-xl border-2 border-red-700 bg-red-500 px-4 text-base font-semibold text-white shadow-sm active:bg-red-700"
+                style={{ WebkitTapHighlightColor: "transparent" }}
                 onClick={confirmProceedOkClearsNote}
               >
                 Continuar e apagar
-              </Button>
+              </button>
             </div>
           </div>
         </div>

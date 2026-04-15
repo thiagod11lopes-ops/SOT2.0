@@ -528,7 +528,7 @@ export function DepartureCard({
 
       {rubricaModalOpen ? (
         <div
-          className={MOBILE_MODAL_OVERLAY_CLASS}
+          className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[500]")}
           role="dialog"
           aria-modal="true"
           aria-labelledby={rubricaTitleId}

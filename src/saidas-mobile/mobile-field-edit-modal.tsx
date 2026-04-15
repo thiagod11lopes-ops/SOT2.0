@@ -129,7 +129,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
 
   return (
     <div
-      className={cn(MOBILE_MODAL_OVERLAY_CLASS, "p-3 sm:p-4")}
+      className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[500] p-3 sm:p-4")}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

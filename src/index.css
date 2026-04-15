@@ -16,6 +16,15 @@
   --ring: 204 58% 40%;
   --input: 0 0% 100%;
   --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.85);
+
+  /*
+   * Nome do motorista por baixo da linha na rubrica (PNG gerado no mobile).
+   * Afeta a miniatura na Situação das VTR e o PDF. Sem unidade: número puro.
+   * --sot-rubrica-nome-font-scale: multiplica o tamanho base (ex.: 1 = maior, 0.5 = metade).
+   * --sot-rubrica-nome-font-width-ratio: fração da largura do PNG antes do clamp min/max (ex.: 0.055).
+   */
+  --sot-rubrica-nome-font-scale: 0.6;
+  --sot-rubrica-nome-font-width-ratio: 0.055;
 }
 
 html[data-appearance="dark"] {

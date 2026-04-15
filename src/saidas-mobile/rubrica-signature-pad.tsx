@@ -24,19 +24,32 @@ type Props = {
   motoristaLabel?: string | null;
 };
 
-/** Redução de 40% no tamanho do nome abaixo da linha (miniatura Situação das VTR / PDF). */
-const NOME_MOTORISTA_ESCALA = 0.6;
+const CSS_VAR_NOME_FONT_SCALE = "--sot-rubrica-nome-font-scale";
+const CSS_VAR_NOME_WIDTH_RATIO = "--sot-rubrica-nome-font-width-ratio";
+
+const FALLBACK_NOME_FONT_SCALE = 0.6;
+const FALLBACK_NOME_WIDTH_RATIO = 0.055;
+
+function readCssNumberVar(varName: string, fallback: number): number {
+  if (typeof window === "undefined" || typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  if (!raw) return fallback;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 /**
  * Tamanho do texto do nome (px em coordenadas do canvas = dispositivo).
- * Proporcional à largura do PNG; depois aplica `NOME_MOTORISTA_ESCALA` (pedido de tamanho na tabela).
+ * Proporcional à largura do PNG; escala e ratio vêm de CSS (`:root` em `index.css`).
  */
 function nomeMotoristaFontDevicePx(widthDevicePx: number, dpr: number): number {
+  const widthRatio = readCssNumberVar(CSS_VAR_NOME_WIDTH_RATIO, FALLBACK_NOME_WIDTH_RATIO);
+  const fontScale = readCssNumberVar(CSS_VAR_NOME_FONT_SCALE, FALLBACK_NOME_FONT_SCALE);
   const min = Math.round(40 * dpr);
   const max = Math.round(160 * dpr);
-  const fromWidth = Math.round(widthDevicePx * 0.055);
+  const fromWidth = Math.round(widthDevicePx * widthRatio);
   const base = Math.min(max, Math.max(min, fromWidth));
-  const scaled = Math.round(base * NOME_MOTORISTA_ESCALA);
+  const scaled = Math.round(base * fontScale);
   return Math.max(Math.round(16 * dpr), scaled);
 }
 
