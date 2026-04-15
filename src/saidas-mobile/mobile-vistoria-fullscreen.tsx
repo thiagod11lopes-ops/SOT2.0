@@ -556,7 +556,7 @@ export function MobileVistoriaFullscreen({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 active:scale-[0.98]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.98]"
             aria-label="Fechar vistoria"
             onClick={() => onOpenChange(false)}
           >
@@ -571,7 +571,7 @@ export function MobileVistoriaFullscreen({
               <button
                 type="button"
                 aria-label="Dia anterior"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 active:scale-[0.97]"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, -1))}
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -596,12 +596,12 @@ export function MobileVistoriaFullscreen({
               <button
                 type="button"
                 aria-label="Dia seguinte"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 active:scale-[0.97]"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, 1))}
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
-              <label className="relative flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">
+              <label className="relative flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm">
                 <Calendar className="h-5 w-5" aria-hidden />
                 <input
                   type="date"
@@ -873,15 +873,23 @@ export function MobileVistoriaFullscreen({
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
-                className="min-h-11 rounded-xl font-semibold"
+                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
                 onClick={() => rubricaPadRef.current?.clearPad()}
               >
                 Limpar
               </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={closeRubricaModalSemConfirmar}>
+              <Button
+                type="button"
+                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                onClick={closeRubricaModalSemConfirmar}
+              >
                 Voltar ao formulário
               </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubricaESalvar}>
+              <Button
+                type="button"
+                className="min-h-11 rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                onClick={commitRubricaESalvar}
+              >
                 Confirmar e guardar
               </Button>
             </div>
@@ -915,7 +923,7 @@ export function MobileVistoriaFullscreen({
             </p>
             <Button
               type="button"
-              className="min-h-11 w-full rounded-xl font-semibold"
+              className="min-h-11 w-full rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
               onClick={() => setAvisoObservacaoItemLabel(null)}
             >
               Entendi
