@@ -137,6 +137,7 @@ export function ensureVistoriaCloudStateSyncStarted(): void {
     (err) => {
       console.warn("[SOT] Vistoria: falha ao sincronizar do Firebase", err);
     },
+    { ignoreCachedSnapshotWhenOnline: true },
   );
 }
 

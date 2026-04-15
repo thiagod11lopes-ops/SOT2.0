@@ -103,6 +103,7 @@ export function DeparturesReportEmailProvider({ children }: { children: ReactNod
             })();
           },
           (err) => console.error("[SOT] Firestore email relatório saídas:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (email relatório):", e);

@@ -245,6 +245,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
             })();
           },
           (err) => console.error("[SOT] Firestore catálogo:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (catálogo):", e);

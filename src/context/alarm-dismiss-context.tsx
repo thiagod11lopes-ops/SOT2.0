@@ -102,6 +102,7 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
             })();
           },
           (err) => console.error("[SOT] Firestore dismiss alarmes:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (dismiss alarmes):", e);

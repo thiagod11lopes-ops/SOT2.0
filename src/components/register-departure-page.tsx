@@ -382,6 +382,7 @@ export function RegisterDeparturePage() {
             })();
           },
           (err) => console.error("[SOT] Firestore cidades/bairros extras:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (cidades extras):", e);

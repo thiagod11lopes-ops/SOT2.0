@@ -137,6 +137,7 @@ export function OficinaVisitasProvider({ children }: { children: ReactNode }) {
             })();
           },
           (err) => console.error("[SOT] Firestore oficina:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (oficina):", e);

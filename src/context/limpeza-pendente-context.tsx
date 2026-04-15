@@ -96,6 +96,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
             })();
           },
           (err) => console.error("[SOT] Firestore limpeza pendente:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (limpeza):", e);

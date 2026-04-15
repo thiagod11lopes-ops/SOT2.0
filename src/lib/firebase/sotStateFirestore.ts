@@ -50,6 +50,7 @@ export function subscribeSotStateDoc(
   docId: SotStateDocId,
   onPayload: (payload: unknown | null) => void,
   onError: (err: Error) => void,
+  options?: { ignoreCachedSnapshotWhenOnline?: boolean },
 ): Unsubscribe {
   let unsub: Unsubscribe | undefined;
   let cancelled = false;
@@ -59,6 +60,15 @@ export function subscribeSotStateDoc(
       unsub = onSnapshot(
         docRef(docId),
         (snap) => {
+          if (
+            options?.ignoreCachedSnapshotWhenOnline === true &&
+            typeof navigator !== "undefined" &&
+            navigator.onLine &&
+            snap.metadata.fromCache &&
+            !snap.metadata.hasPendingWrites
+          ) {
+            return;
+          }
           if (import.meta.env.DEV && (snap.metadata.fromCache || snap.metadata.hasPendingWrites)) {
             console.debug("[SOT] sot_state snapshot meta", docId, {
               fromCache: snap.metadata.fromCache,

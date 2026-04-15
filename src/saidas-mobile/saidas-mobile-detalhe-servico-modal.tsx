@@ -87,6 +87,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
             console.error("[SOT] Firestore detalhe serviço (mobile):", err);
             if (!cancelled) setLoading(false);
           },
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Carregar detalhe serviço (mobile):", e);
