@@ -22,6 +22,30 @@ function fitRubricaImageMm(
   return { iw: naturalW * scale, ih: naturalH * scale };
 }
 
+/** Altura do bloco de rubrica (texto ou PNG) a partir de `startY`, em mm (alinhado com `didDrawCell`). */
+function measureRubricaBlockHeightMm(
+  raw: string,
+  natural: { w: number; h: number } | null | undefined,
+  halfW: number,
+  boxMaxW: number,
+  boxMaxH: number,
+  doc: jsPDF,
+  lineGap: number,
+): number {
+  const content = String(raw ?? "").trim();
+  if (!content) return lineGap;
+  if (isRubricaImageDataUrl(content)) {
+    const nw = natural?.w ?? 400;
+    const nh = natural?.h ?? 280;
+    const { ih } = fitRubricaImageMm(nw, nh, boxMaxW, boxMaxH);
+    return ih + 1.2;
+  }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  const lines = doc.splitTextToSize(content, halfW - 0.5) as string[];
+  return Math.max(lineGap, lines.length * lineGap);
+}
+
 function loadImageNaturalSize(dataUrl: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve) => {
     if (typeof Image === "undefined") {
@@ -118,7 +142,7 @@ export async function buildVistoriaSituacaoImprimirPdf(
       fontSize: 7,
       cellPadding: 1.6,
       overflow: "linebreak",
-      valign: "top",
+      valign: "middle",
       minCellHeight: 8.4,
       lineColor: [170, 170, 170],
       lineWidth: 0.1,
@@ -150,7 +174,7 @@ export async function buildVistoriaSituacaoImprimirPdf(
       }
       if (data.section === "body") {
         data.cell.styles.halign = "left";
-        data.cell.styles.valign = "top";
+        data.cell.styles.valign = "middle";
         if (data.column.index === 4) {
           const r = rows[data.row.index];
           if (r) {
@@ -174,32 +198,51 @@ export async function buildVistoriaSituacaoImprimirPdf(
       const row = rows[data.row.index];
       if (!row) return;
       const left = data.cell.x + 1.6;
-      const top = data.cell.y + 3.4;
       const maxWidth = Math.max(5, data.cell.width - 3.2);
       const lineGap = 2.75;
+      const cellH = data.cell.height;
 
       if (data.column.index === 0) {
         doc.setFont("helvetica", "normal");
         const primary = doc.splitTextToSize(row.inspectionDate || "—", maxWidth) as string[];
-        doc.text(primary, left, top, { maxWidth });
         const primaryHeight = Math.max(1, primary.length) * lineGap;
+        let totalH = primaryHeight;
+        let secondary: string[] | null = null;
         if (row.inspectionDateSecondary?.trim()) {
           doc.setFont("helvetica", "bolditalic");
-          const secondary = doc.splitTextToSize(`(${row.inspectionDateSecondary})`, maxWidth) as string[];
+          secondary = doc.splitTextToSize(`(${row.inspectionDateSecondary})`, maxWidth) as string[];
+          totalH += secondary.length * lineGap;
+        }
+        doc.setFont("helvetica", "normal");
+        const top = data.cell.y + (cellH - totalH) / 2 + lineGap * 0.72;
+        doc.text(primary, left, top, { maxWidth });
+        if (secondary?.length) {
+          doc.setFont("helvetica", "bolditalic");
           doc.text(secondary, left, top + primaryHeight, { maxWidth });
         }
         return;
       }
 
       if (data.column.index === 3) {
-        let y = top;
         const plain = (row.observacaoPlain ?? "").trim();
         const italic = (row.observacaoItalic ?? "").trim();
         if (!plain && !italic) {
           doc.setFont("helvetica", "normal");
-          doc.text("—", left, y, { maxWidth });
+          const top = data.cell.y + cellH / 2 + lineGap * 0.22;
+          doc.text("—", left, top, { maxWidth });
           return;
         }
+        let nLines = 0;
+        if (plain) {
+          doc.setFont("helvetica", "normal");
+          nLines += (doc.splitTextToSize(plain, maxWidth) as string[]).length;
+        }
+        if (italic) {
+          doc.setFont("helvetica", "bolditalic");
+          nLines += (doc.splitTextToSize(italic, maxWidth) as string[]).length;
+        }
+        const totalH = Math.max(lineGap, nLines * lineGap);
+        let y = data.cell.y + (cellH - totalH) / 2 + lineGap * 0.72;
         if (plain) {
           doc.setFont("helvetica", "normal");
           const plainLines = doc.splitTextToSize(plain, maxWidth) as string[];
@@ -227,6 +270,29 @@ export async function buildVistoriaSituacaoImprimirPdf(
         const boxMaxW = Math.min(halfW - 0.5, RUBRICA_UI_MAX_W_MM) * RUBRICA_PDF_DISPLAY_SCALE;
         const boxMaxH = RUBRICA_UI_MAX_H_MM * RUBRICA_PDF_DISPLAY_SCALE;
         const layout = rubricaLayouts[data.row.index];
+        const LABEL_GAP_MM = 3.2;
+
+        const hL = measureRubricaBlockHeightMm(
+          row.rubricaComum ?? "",
+          layout?.comum,
+          halfW,
+          boxMaxW,
+          boxMaxH,
+          doc,
+          lineGap,
+        );
+        const hR = measureRubricaBlockHeightMm(
+          row.rubricaAdministrativa ?? "",
+          layout?.admin,
+          halfW,
+          boxMaxW,
+          boxMaxH,
+          doc,
+          lineGap,
+        );
+        const contentMax = Math.max(hL, hR);
+        const blockH = LABEL_GAP_MM + contentMax;
+        const yLabel = data.cell.y + (cellH - blockH) / 2 + 1.35;
 
         const drawBlock = (
           raw: string,
@@ -265,12 +331,11 @@ export async function buildVistoriaSituacaoImprimirPdf(
           return yy;
         };
 
-        const yLabel = top;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(6);
         doc.text("Comum", leftX, yLabel);
         doc.text("Administrativa", rightX, yLabel);
-        const yContent = yLabel + 3.2;
+        const yContent = yLabel + LABEL_GAP_MM;
         drawBlock(row.rubricaComum ?? "", leftX, yContent, layout?.comum);
         drawBlock(row.rubricaAdministrativa ?? "", rightX, yContent, layout?.admin);
       }
