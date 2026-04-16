@@ -9,6 +9,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useAlarmDismiss } from "../context/alarm-dismiss-context";
 import { useAvisos } from "../context/avisos-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -227,6 +228,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
   const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
+  const { isDismissedTodayForAlarm } = useAlarmDismiss();
   const { placas: placasInoperantes } = useViaturasInoperantes();
 
   const { mapaOficina } = useOficinaVisitas();
@@ -271,7 +273,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     return new Date();
   }, [relogio]);
 
-  /** Só mostra alarmes ativos na home a partir do horário configurado (não antes). */
+  /**
+   * Só mostra alarmes ativos na home a partir do horário configurado (não antes).
+   * Se o utilizador cancelou o alarme na própria home hoje, não volta a aparecer até amanhã.
+   */
   const alarmesNaHome = useMemo(
     () =>
       alarmesDiarios.filter(
@@ -279,9 +284,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           a.ativo &&
           a.nome.trim().length > 0 &&
           parseHhMm(a.hora) !== null &&
-          alarmeJaDisparouNesteDia(agoraDashboard, a.hora),
+          alarmeJaDisparouNesteDia(agoraDashboard, a.hora) &&
+          !isDismissedTodayForAlarm(a.id),
       ),
-    [alarmesDiarios, agoraDashboard],
+    [alarmesDiarios, agoraDashboard, isDismissedTodayForAlarm],
   );
   /** Enquanto um alarme estiver «ativo» na home (após a hora, antes de desativar), esconde oficina/óleo/limpeza/fainas. */
   const alarmeBloqueiaSecoesOperacionais = alarmesNaHome.length > 0;
