@@ -1,6 +1,5 @@
 import {
   Building2,
-  CarFront,
   ClipboardList,
   ClockAlert,
   Droplets,
@@ -56,15 +55,6 @@ function alarmeJaDisparouNesteDia(agora: Date, horaAlarme: string): boolean {
   return minutosRelogioLocal(agora) >= parsed.h * 60 + parsed.m;
 }
 
-/** KM saída, KM chegada e hora de chegada preenchidos → saída tratada como finalizada (fora do card). */
-function saidaFinalizadaKmEChegada(r: DepartureRecord): boolean {
-  return (
-    r.kmSaida.trim().length > 0 &&
-    r.kmChegada.trim().length > 0 &&
-    r.chegada.trim().length > 0
-  );
-}
-
 /** KM saída preenchido, KM chegada e chegada vazios → mesmo critério do card Saídas em Andamento. */
 function saidaEmAndamento(r: DepartureRecord): boolean {
   return (
@@ -72,45 +62,6 @@ function saidaEmAndamento(r: DepartureRecord): boolean {
     r.kmChegada.trim().length === 0 &&
     r.chegada.trim().length === 0
   );
-}
-
-/**
- * Próxima saída **prevista** a partir de agora (hoje): administrativa ou ambulância;
- * data com tolerância dd/mm/aaaa e yyyy-mm-dd; hora inválida/vazia não entra.
- * Saídas com KM saída, KM chegada e chegada preenchidos não entram (finalizadas).
- * Saídas em andamento (KM saída preenchido, retorno ainda vazio) não entram — ficam só no card correspondente.
- * Só entram horários ≥ hora atual; o menor desses é a “próxima”; empate no mesmo HH:MM → linhas distintas;
- * registros com todos os campos de cadastro iguais contam como um só.
- */
-function proximaSaidaHoje(
-  rows: DepartureRecord[],
-  hojeDdMmYyyy: string,
-  agora: Date,
-): DepartureRecord[] {
-  const agoraMin = minutosRelogioLocal(agora);
-
-  const candidatas = rows
-    .filter((r) => !saidaFinalizadaKmEChegada(r))
-    .filter((r) => !saidaEmAndamento(r))
-    .filter((r) => isDepartureDateSameLocalDay(r.dataSaida, hojeDdMmYyyy))
-    .filter((r) => {
-      const k = sortKeyHoraSaida(r.horaSaida);
-      if (k === Number.POSITIVE_INFINITY) return false;
-      return k >= agoraMin;
-    });
-
-  candidatas.sort((a, b) => {
-    const ka = sortKeyHoraSaida(a.horaSaida);
-    const kb = sortKeyHoraSaida(b.horaSaida);
-    if (ka !== kb) return ka - kb;
-    return a.id.localeCompare(b.id);
-  });
-
-  if (candidatas.length === 0) return [];
-
-  const primeiroHorario = sortKeyHoraSaida(candidatas[0].horaSaida);
-  const mesmoHorario = candidatas.filter((r) => sortKeyHoraSaida(r.horaSaida) === primeiroHorario);
-  return mesmoHorario;
 }
 
 /**
@@ -163,7 +114,7 @@ const homeTableHeadClass =
 /** Mesmo conteúdo de célula (corpo da tabela). */
 const homeTableCellClass = "font-bold text-[hsl(var(--primary))]";
 
-/** Tabela compacta (card resumo à esquerda da Próxima Saída em `lg`). */
+/** Tabela compacta no card Saídas administrativas (home). */
 const homeCompactHeadClass =
   "h-7 px-1 py-0.5 text-[0.65rem] font-bold leading-tight text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] sm:text-xs";
 const homeCompactCellClass =
@@ -190,7 +141,7 @@ function sortKeyHoraSaida(hora: string): number {
   return parsed.h * 60 + parsed.m;
 }
 
-/** Últimos 10 min (incl.) antes da hora agendada, ainda sem KM saída → alerta laranja na Próxima Saída. */
+/** Últimos 10 min (incl.) antes da hora agendada, ainda sem KM saída → alerta laranja na linha (Saídas administrativas). */
 function shouldBlinkProximaSaidaRow(r: DepartureRecord, agora: Date): boolean {
   if (r.kmSaida.trim().length > 0) return false;
   const saidaMin = sortKeyHoraSaida(r.horaSaida);
@@ -247,7 +198,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       .sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
   }, [placasCatalogo, departuresAtivas, mapaOleo]);
   const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
-  /** Atualiza próxima saída, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
+  /** Atualiza saídas administrativas, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
@@ -267,7 +218,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
-  /** Mesmo instante para Próxima Saída, atraso, alarmes e alerta de piscar. */
+  /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
   const agoraDashboard = useMemo(() => {
     void relogio;
     return new Date();
@@ -291,11 +242,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
   /** Enquanto um alarme estiver «ativo» na home (após a hora, antes de desativar), esconde oficina/óleo/limpeza/fainas. */
   const alarmeBloqueiaSecoesOperacionais = alarmesNaHome.length > 0;
-  const proximas = useMemo(() => {
-    const hoje = getCurrentDatePtBr();
-    const rows = proximaSaidaHoje(departuresAtivas, hoje, agoraDashboard);
-    return groupDeparturesForListDisplay(rows);
-  }, [departuresAtivas, agoraDashboard]);
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
@@ -331,8 +277,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
 
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-          <Card className={cn("flex h-full min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
+        <Card className={cn("flex min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
             <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]")}>
@@ -344,7 +289,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
                   )}
                 >
-                  Dia atual · resumo
+                  {formatDataHojeLongaPtBr()}
                 </p>
               </div>
               <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
@@ -353,14 +298,14 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
               {saidasAdministrativasHoje.length === 0 ? (
-                <div className="flex flex-1 flex-col justify-center">
+                <div className="flex min-h-[12rem] flex-1 flex-col justify-center sm:min-h-[16rem]">
                   <p className={cn("text-sm", homeBodyEmphasisClass)}>
                     Nenhuma saída administrativa para hoje.
                   </p>
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="max-h-[min(42vh,22rem)] min-h-0 flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
+                  <div className="min-h-[min(48vh,26rem)] max-h-[min(72vh,42rem)] flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
                     <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -376,13 +321,20 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                         const r = group.primary;
                         const lr = listRowFromRecord(r);
                         const destino = group.destinoDisplay;
+                        const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
                         const viaturaKey = normalizeViaturaKey(lr.viatura);
                         const viaturaComProblemaMarcado =
                           lr.viatura.trim().length > 0 &&
                           lr.viatura !== "—" &&
                           viaturasComProblema.has(viaturaKey);
                         return (
-                          <TableRow key={group.records.map((x) => x.id).join("|")}>
+                          <TableRow
+                            key={group.records.map((x) => x.id).join("|")}
+                            className={cn(alertaProxima && "home-proxima-saida-blink")}
+                            aria-label={
+                              alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined
+                            }
+                          >
                             <TableCell
                               className={cn(
                                 homeCompactCellClass,
@@ -423,78 +375,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               )}
             </CardContent>
           </Card>
-
-          <Card className={cn("flex h-full min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
-            <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
-              <div className="min-w-0 space-y-1 pr-2">
-                <CardTitle className={homeCardTitleClass}>Próxima Saída</CardTitle>
-                <p
-                  className={cn(
-                    "text-xs font-bold text-[hsl(var(--primary))]",
-                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
-                  )}
-                >
-                  {formatDataHojeLongaPtBr()}
-                </p>
-              </div>
-              <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
-                <CarFront className="h-5 w-5 text-slate-600" />
-              </div>
-            </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
-              {proximas.length === 0 ? (
-                <div className="flex flex-1 flex-col justify-center">
-                  <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma saída prevista a partir de agora para hoje.
-                  </p>
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className={cn("min-w-[7rem]", homeTableHeadClass)}>Viatura</TableHead>
-                        <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Motorista</TableHead>
-                        <TableHead className={cn("w-[5.5rem] whitespace-nowrap", homeTableHeadClass)}>
-                          Saída
-                        </TableHead>
-                        <TableHead className={cn("min-w-[8rem]", homeTableHeadClass)}>Destino</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {proximas.map((group) => {
-                        const r = group.primary;
-                        const hora = r.horaSaida.trim() || "—";
-                        const destino = group.destinoDisplay;
-                        const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
-                        return (
-                          <TableRow
-                            key={group.records.map((x) => x.id).join("|")}
-                            className={cn(alertaProxima && "home-proxima-saida-blink")}
-                            aria-label={alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined}
-                          >
-                            <TableCell className={cn("max-w-[14rem] truncate", homeTableCellClass)}>
-                              {r.viaturas.trim() || "—"}
-                            </TableCell>
-                            <TableCell className={cn("max-w-[16rem] truncate", homeTableCellClass)}>
-                              {r.motoristas.trim() || "—"}
-                            </TableCell>
-                            <TableCell className={cn("whitespace-nowrap tabular-nums", homeTableCellClass)}>
-                              {hora}
-                            </TableCell>
-                            <TableCell className={cn("max-w-[18rem] truncate", homeTableCellClass)}>
-                              {destino}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className={cn("min-w-0", departuresTableShadowClass)}>

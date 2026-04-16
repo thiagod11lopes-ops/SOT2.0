@@ -33,8 +33,9 @@ export function HomeNewsTicker() {
         <div
           className={cn(
             "flex w-full min-w-0 items-stretch",
-            showPrincipal && hasGerais ? "min-h-[5rem]" : "min-h-[3rem]",
-            showPrincipal && !hasGerais ? "min-h-[4rem] sm:min-h-[4.25rem]" : null,
+            showPrincipal && hasGerais && "min-h-[5.5rem] sm:min-h-[5.75rem]",
+            !showPrincipal && hasGerais && "min-h-[4.25rem] sm:min-h-[4.5rem]",
+            showPrincipal && !hasGerais && "min-h-[4rem] sm:min-h-[4.25rem]",
           )}
         >
           {/* Frame à esquerda — brasão em public/brasao.ico (BASE_URL para GitHub Pages) */}
@@ -74,14 +75,14 @@ export function HomeNewsTicker() {
             ) : null}
 
             {hasGerais ? (
-              <div className="flex min-h-[2.75rem] flex-1 items-center bg-gradient-to-b from-[#0f172a] via-[#0c1322] to-[#020617] sm:min-h-[2.75rem]">
+              <div className="flex min-h-[3.25rem] flex-1 items-center bg-gradient-to-b from-[#0f172a] via-[#0c1322] to-[#020617] sm:min-h-[3.5rem]">
                 <div className="home-marquee-viewport relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                  <div className="flex h-full min-h-[2.75rem] items-center overflow-hidden">
+                  <div className="flex h-full min-h-[3.25rem] items-center overflow-hidden sm:min-h-[3.5rem]">
                     <div
                       className="home-marquee-track flex w-max max-w-none items-center"
                       style={{ animationDuration: `${marqueeDurationSec}s` }}
                     >
-                      <span className="inline-block shrink-0 px-5 py-1.5 text-xs font-medium leading-snug text-slate-100 md:text-[13px]">
+                      <span className="inline-block shrink-0 px-5 py-2 text-left text-[22px] font-semibold leading-snug tracking-wide text-slate-100 sm:text-[24px] md:text-[26px]">
                         {marqueeText}
                       </span>
                     </div>
