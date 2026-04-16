@@ -18,11 +18,7 @@ import { useOficinaVisitas } from "../context/oficina-visits-context";
 import { useViaturasInoperantes } from "../context/viaturas-inoperantes-context";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
-import {
-  frasePendenciaLimpezaViatura,
-  fraseProximaTrocaOleo,
-  rotuloViaturaPlaca,
-} from "../lib/homeTickerStrings";
+import { fraseProximaTrocaOleo, rotuloViaturaPlaca } from "../lib/homeTickerStrings";
 import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import {
@@ -114,15 +110,15 @@ const homeTableHeadClass =
 /** Mesmo conteúdo de célula (corpo da tabela). */
 const homeTableCellClass = "font-bold text-[hsl(var(--primary))]";
 
-/** Tabela compacta no card Saídas administrativas (home). */
+/** Tabela compacta no card Saídas administrativas (home). Tamanho do texto: `.home-dashboard-departures-panel` em index.css. */
 const homeCompactHeadClass =
-  "h-7 px-1 py-0.5 text-[0.65rem] font-bold leading-tight text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] sm:text-xs";
+  "min-h-7 px-1 py-0.5 font-bold leading-tight text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]";
 const homeCompactCellClass =
-  "max-w-[8rem] truncate px-1 py-0.5 text-[0.65rem] font-bold leading-tight text-[hsl(var(--primary))] sm:max-w-none sm:text-xs";
+  "max-w-[8rem] truncate px-1 py-0.5 font-bold leading-tight text-[hsl(var(--primary))] sm:max-w-none";
 
-/** Títulos dos cards menores (grade): mesma lógica dos `<th>`. */
-const homeSectionTitleClass =
-  "text-sm font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
+/** Títulos nos cards com `.home-dashboard-fluid-card` — tamanho fluido em `index.css`. */
+const homeFluidCardTitleClass =
+  "home-dashboard-fluid-card-title font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
 
 /** Textos de corpo / listas / vazios: mesma cor e peso das células. */
 const homeBodyEmphasisClass = "font-bold text-[hsl(var(--primary))]";
@@ -305,7 +301,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="min-h-[min(48vh,26rem)] max-h-[min(72vh,42rem)] flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
+                  <div className="home-dashboard-departures-panel min-h-[min(48vh,26rem)] max-h-[min(72vh,42rem)] flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
                     <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -400,7 +396,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   Nenhuma saída com atraso para hoje.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -464,7 +460,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   Nenhuma saída em andamento para hoje.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -517,11 +513,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           {!alarmeBloqueiaSecoesOperacionais ? (
             <Card className={departuresTableShadowClass}>
               <CardContent className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-4">
+                <div className="home-dashboard-fluid-card min-w-0 flex-1 space-y-4">
                   <div>
-                    <p className={homeSectionTitleClass}>Viaturas na Oficina</p>
+                    <p className={homeFluidCardTitleClass}>Viaturas na Oficina</p>
                     {placasNaOficina.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Nenhuma viatura com entrada na oficina sem data de saída.
                       </p>
                     ) : (
@@ -530,7 +526,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           <li
                             key={placa}
                             className={cn(
-                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
                               homeBodyEmphasisClass,
                             )}
                           >
@@ -542,9 +538,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </div>
 
                   <div className="border-t border-[hsl(var(--border))] pt-3">
-                    <p className={homeSectionTitleClass}>Viaturas Inoperantes</p>
+                    <p className={homeFluidCardTitleClass}>Viaturas Inoperantes</p>
                     {placasInoperantes.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Nenhuma viatura inoperante cadastrada.
                       </p>
                     ) : (
@@ -553,7 +549,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           <li
                             key={placa}
                             className={cn(
-                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-sm",
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
                               homeBodyEmphasisClass,
                             )}
                           >
@@ -581,14 +577,14 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             <>
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={homeSectionTitleClass}>Próximas Trocas de Óleo</p>
+                  <div className="home-dashboard-fluid-card min-w-0 flex-1">
+                    <p className={homeFluidCardTitleClass}>Próximas Trocas de Óleo</p>
                     {placasCatalogo.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Cadastre viaturas em <strong>Frota e Pessoal</strong> para acompanhar trocas de óleo.
                       </p>
                     ) : linhasProximasTrocasOleo.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Nenhuma viatura está próxima do prazo de troca de óleo.
                       </p>
                     ) : (
@@ -598,10 +594,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                             key={placa}
                             className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
                           >
-                            <span className={cn("shrink-0 font-mono text-sm", homeBodyEmphasisClass)}>
+                            <span className={cn("shrink-0 font-mono", homeBodyEmphasisClass)}>
                               {rotuloViaturaPlaca(placa)}
                             </span>
-                            <span className={cn("min-w-0 text-sm", homeBodyEmphasisClass)}>
+                            <span className={cn("min-w-0", homeBodyEmphasisClass)}>
                               {fraseProximaTrocaOleo(st)}
                             </span>
                           </li>
@@ -623,23 +619,23 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={homeSectionTitleClass}>Viaturas com pendência de limpeza.</p>
+                  <div className="home-dashboard-fluid-card min-w-0 flex-1">
+                    <p className={homeFluidCardTitleClass}>Viaturas com pendência de limpeza.</p>
                     {placasPendenciaLimpeza.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Nenhuma viatura marcada em Frota e Pessoal → Cadastrar Viatura.
                       </p>
                     ) : (
-                      <ul className="mt-2 space-y-2">
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
                         {placasPendenciaLimpeza.map((placa) => (
                           <li
                             key={placa}
                             className={cn(
-                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
                               homeBodyEmphasisClass,
                             )}
                           >
-                            {frasePendenciaLimpezaViatura(placa)}
+                            {placa}
                           </li>
                         ))}
                       </ul>
@@ -659,10 +655,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={homeSectionTitleClass}>Fainas Gerais</p>
+                  <div className="home-dashboard-fluid-card min-w-0 flex-1">
+                    <p className={homeFluidCardTitleClass}>Fainas Gerais</p>
                     {fainasLinhas.length === 0 ? (
-                      <p className={cn("mt-2 text-sm", homeBodyEmphasisClass)}>
+                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
                         Nenhuma faina cadastrada. Use a aba <strong>Avisos</strong>.
                       </p>
                     ) : (
@@ -671,7 +667,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           <li
                             key={`${i}-${linha.slice(0, 24)}`}
                             className={cn(
-                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 text-sm leading-snug",
+                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 leading-snug",
                               homeBodyEmphasisClass,
                             )}
                           >

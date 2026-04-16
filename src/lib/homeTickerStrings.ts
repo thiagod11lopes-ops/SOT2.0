@@ -24,9 +24,3 @@ export function fraseProximaTrocaOleo(st: StatusTrocaOleo): string {
   }
   return "—";
 }
-
-/** Aviso de limpeza no telão e no painel: placa + frase fixa. */
-export function frasePendenciaLimpezaViatura(placa: string): string {
-  const p = placa.trim();
-  return `Viatura ${p} pendência de limpeza.`;
-}
