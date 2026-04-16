@@ -212,6 +212,30 @@ body {
   }
 }
 
+/* Modal senha KM — título como se estivesse a ser escrito */
+@keyframes km-edit-modal-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.km-edit-modal-title-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.1em;
+  border-radius: 1px;
+  background-color: #ff1414;
+  box-shadow: 0 0 6px rgba(255, 20, 20, 0.9);
+  animation: km-edit-modal-caret-blink 0.9s steps(1, end) infinite;
+}
+
 .home-marquee-viewport {
   container-type: inline-size;
 }

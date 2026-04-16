@@ -3,6 +3,9 @@ import { verifyKmEditPassword } from "../lib/kmEditPassword";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
+const KM_EDIT_MODAL_TITLE =
+  "Os dados da saída devem ser editados no aplicativo do celular";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -14,12 +17,31 @@ export function KmEditPasswordModal({ open, onOpenChange, onSuccess }: Props) {
   const inputId = useId();
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [titleTypedLen, setTitleTypedLen] = useState(0);
 
   useEffect(() => {
     if (!open) {
       setSenha("");
       setErro(null);
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setTitleTypedLen(0);
+      return;
+    }
+    setTitleTypedLen(0);
+    let n = 0;
+    const tickMs = 42;
+    const id = window.setInterval(() => {
+      n += 1;
+      setTitleTypedLen(n);
+      if (n >= KM_EDIT_MODAL_TITLE.length) {
+        window.clearInterval(id);
+      }
+    }, tickMs);
+    return () => window.clearInterval(id);
   }, [open]);
 
   if (!open) return null;
@@ -58,8 +80,18 @@ export function KmEditPasswordModal({ open, onOpenChange, onSuccess }: Props) {
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 id={titleId} className="text-lg font-semibold text-[hsl(var(--foreground))]">
-          Os dados da saída devem ser editados no aplicativo do celular
+        <h2
+          id={titleId}
+          className="text-lg font-semibold leading-snug"
+          aria-label={KM_EDIT_MODAL_TITLE}
+        >
+          <span
+            className="inline text-[#ff1414] [text-shadow:0_0_14px_rgba(255,30,30,0.55),0_1px_0_rgba(140,0,0,0.35)]"
+            aria-hidden
+          >
+            {KM_EDIT_MODAL_TITLE.slice(0, titleTypedLen)}
+          </span>
+          <span className="km-edit-modal-title-caret" aria-hidden />
         </h2>
         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Digite a senha para editar aqui</p>
         <label htmlFor={inputId} className="mt-4 block text-sm font-medium text-[hsl(var(--foreground))]">
