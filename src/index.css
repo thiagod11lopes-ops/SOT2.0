@@ -190,13 +190,14 @@ body {
   container-type: inline-size;
 }
 
+/* +15% face aos valores base (oficina, óleo, limpeza, fainas). */
 .home-dashboard-fluid-card .home-dashboard-fluid-card-title {
-  font-size: clamp(0.8125rem, 0.48rem + 1.2cqi, 1.125rem);
+  font-size: clamp(0.935rem, 0.552rem + 1.38cqi, 1.294rem);
   line-height: 1.25;
 }
 
 .home-dashboard-fluid-card :is(p:not(.home-dashboard-fluid-card-title), li, span) {
-  font-size: clamp(0.6875rem, 0.4rem + 1.25cqi, 1.0625rem);
+  font-size: clamp(0.791rem, 0.46rem + 1.4375cqi, 1.222rem);
   line-height: 1.32;
 }
 
