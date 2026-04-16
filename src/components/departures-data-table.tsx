@@ -1,6 +1,10 @@
 import { ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDepartures, type DepartureKmFieldsPatch } from "../context/departures-context";
+import {
+  isKmEditSessionUnlocked,
+  setKmEditSessionUnlocked,
+} from "../lib/kmEditPassword";
 import type { DepartureRecord } from "../types/departure";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
@@ -10,6 +14,7 @@ import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { cn } from "../lib/utils";
 import { DepartureDetailModal } from "./departure-detail-modal";
 import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
+import { KmEditPasswordModal } from "./km-edit-password-modal";
 import {
   MergedDeparturePickRecordModal,
   type MergedPickAction,
@@ -110,6 +115,12 @@ export function DeparturesDataTable({
   onEdit,
 }: DeparturesDataTableProps) {
   const { updateDeparture } = useDepartures();
+  const [kmUnlocked, setKmUnlocked] = useState(() => isKmEditSessionUnlocked());
+  const [kmPasswordOpen, setKmPasswordOpen] = useState(false);
+  const [pendingKmPatch, setPendingKmPatch] = useState<{
+    id: string;
+    patch: DepartureKmFieldsPatch;
+  } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [ocorrenciasModalId, setOcorrenciasModalId] = useState<string | null>(null);
   const [pickModal, setPickModal] = useState<{
@@ -117,6 +128,31 @@ export function DeparturesDataTable({
     action: MergedPickAction;
   } | null>(null);
   const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
+
+  useEffect(() => {
+    const sync = () => setKmUnlocked(isKmEditSessionUnlocked());
+    window.addEventListener("sot-km-edit-password-changed", sync);
+    return () => window.removeEventListener("sot-km-edit-password-changed", sync);
+  }, []);
+
+  function applyKmFieldsPatch(id: string, patch: DepartureKmFieldsPatch) {
+    if (!onUpdateKmFields) return;
+    if (kmUnlocked) {
+      onUpdateKmFields(id, patch);
+      return;
+    }
+    setPendingKmPatch({ id, patch });
+    setKmPasswordOpen(true);
+  }
+
+  function handleKmPasswordSuccess() {
+    setKmEditSessionUnlocked(true);
+    setKmUnlocked(true);
+    if (pendingKmPatch && onUpdateKmFields) {
+      onUpdateKmFields(pendingKmPatch.id, pendingKmPatch.patch);
+      setPendingKmPatch(null);
+    }
+  }
 
   function applyPickedAction(record: DepartureRecord, action: MergedPickAction) {
     switch (action) {
@@ -174,6 +210,14 @@ export function DeparturesDataTable({
 
   return (
     <>
+      <KmEditPasswordModal
+        open={kmPasswordOpen}
+        onOpenChange={(o) => {
+          setKmPasswordOpen(o);
+          if (!o) setPendingKmPatch(null);
+        }}
+        onSuccess={handleKmPasswordSuccess}
+      />
       {pickModal ? (
         <MergedDeparturePickRecordModal
           open
@@ -288,7 +332,7 @@ export function DeparturesDataTable({
                       aria-label="KM saída"
                       value={formatKmThousandsPtBr(row.kmSaida)}
                       onChange={(e) =>
-                        onUpdateKmFields!(row.id, {
+                        applyKmFieldsPatch(row.id, {
                           kmSaida: formatKmThousandsPtBr(e.target.value),
                         })
                       }
@@ -307,7 +351,7 @@ export function DeparturesDataTable({
                       aria-label="KM chegada"
                       value={formatKmThousandsPtBr(row.kmChegada)}
                       onChange={(e) =>
-                        onUpdateKmFields!(row.id, {
+                        applyKmFieldsPatch(row.id, {
                           kmChegada: formatKmThousandsPtBr(e.target.value),
                         })
                       }
@@ -321,7 +365,7 @@ export function DeparturesDataTable({
                   {kmEditavel ? (
                     <ChegadaTimeInput
                       value={row.chegada}
-                      onApply={(next) => onUpdateKmFields!(row.id, { chegada: next })}
+                      onApply={(next) => applyKmFieldsPatch(row.id, { chegada: next })}
                       className={cn(inputCls, "max-w-[5rem]")}
                     />
                   ) : (

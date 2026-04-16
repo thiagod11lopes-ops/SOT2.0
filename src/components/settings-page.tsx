@@ -14,6 +14,11 @@ import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFir
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import {
+  DEFAULT_KM_EDIT_PASSWORD,
+  notifyKmEditPasswordChangedExternally,
+  setKmEditPassword,
+} from "../lib/kmEditPassword";
+import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
   isVistoriaCloudStateHydrated,
@@ -88,6 +93,8 @@ export function SettingsPage() {
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const [vistoriaCloudTick, setVistoriaCloudTick] = useState(0);
   const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
+  const [kmSenhaNova, setKmSenhaNova] = useState("");
+  const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -298,6 +305,26 @@ export function SettingsPage() {
     fullBackupFileInputRef.current?.click();
   }
 
+  function handleSalvarSenhaKmListas() {
+    const a = kmSenhaNova.trim();
+    const b = kmSenhaConfirm.trim();
+    if (a.length < 4) {
+      window.alert("A senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+    if (a !== b) {
+      window.alert("A confirmação não coincide com a nova senha.");
+      return;
+    }
+    setKmEditPassword(a);
+    notifyKmEditPasswordChangedExternally();
+    setKmSenhaNova("");
+    setKmSenhaConfirm("");
+    window.alert(
+      "Senha guardada. Será pedida ao alterar KM saída, KM chegada ou hora de chegada nas abas Saídas Administrativas e Ambulância.",
+    );
+  }
+
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -460,6 +487,45 @@ export function SettingsPage() {
             </div>
           </div>
         ) : null}
+
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">
+            Senha — edição de KM e hora de chegada (listas)
+          </h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Nas abas <strong>Saídas Administrativas</strong> e <strong>Ambulância</strong>, os campos{" "}
+            <strong>KM saída</strong>, <strong>KM chegada</strong> e <strong>Chegada</strong> (hora) só podem ser
+            alterados após introduzir esta senha (válida até fechar o separador do navegador). Valor inicial:{" "}
+            <code className="rounded bg-[hsl(var(--muted))]/50 px-1 font-mono">{DEFAULT_KM_EDIT_PASSWORD}</code>.
+          </p>
+          <div className="flex max-w-md flex-col gap-2">
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="km-senha-nova">
+              Nova senha
+            </label>
+            <input
+              id="km-senha-nova"
+              type="password"
+              autoComplete="new-password"
+              value={kmSenhaNova}
+              onChange={(e) => setKmSenhaNova(e.target.value)}
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 font-mono text-sm"
+            />
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="km-senha-confirm">
+              Confirmar senha
+            </label>
+            <input
+              id="km-senha-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={kmSenhaConfirm}
+              onChange={(e) => setKmSenhaConfirm(e.target.value)}
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 font-mono text-sm"
+            />
+            <Button type="button" variant="default" className="mt-1 w-fit" onClick={handleSalvarSenhaKmListas}>
+              Guardar senha
+            </Button>
+          </div>
+        </section>
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Saídas</h3>
