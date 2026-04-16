@@ -59,13 +59,9 @@ export function KmEditPasswordModal({ open, onOpenChange, onSuccess }: Props) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="text-lg font-semibold text-[hsl(var(--foreground))]">
-          Senha para editar KM e hora de chegada
+          Os dados da saída devem ser editados no aplicativo do celular
         </h2>
-        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-          Introduza a senha configurada em <strong className="text-[hsl(var(--foreground))]">Configurações</strong> (por
-          defeito <span className="font-mono">1234</span>) para alterar KM saída, KM chegada e hora de chegada nas listas
-          de saídas.
-        </p>
+        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Digite a senha para editar aqui</p>
         <label htmlFor={inputId} className="mt-4 block text-sm font-medium text-[hsl(var(--foreground))]">
           Senha
         </label>
