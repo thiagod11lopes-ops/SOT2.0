@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 import { fullRowCells, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -73,6 +74,53 @@ export function RegisteredFullDeparturesTable({
   onEdit,
   highlightTerm = "",
 }: Props) {
+  const highlightTokens = useMemo(
+    () =>
+      highlightTerm
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 0),
+    [highlightTerm],
+  );
+
+  const rowsToRender = useMemo(() => {
+    if (highlightTokens.length === 0) return rows;
+
+    return rows.filter((row) => {
+      const c = fullRowCells(row);
+      const cancelada = row.cancelada === true;
+
+      const omOrHospital = row.tipo === "Ambulância" ? c.hospitalDestino : c.om;
+      const hospitalIfAdmin = row.tipo === "Administrativa" ? c.hospitalDestino : "";
+
+      const haystack = [
+        c.tipo,
+        `${c.dataPedido} ${c.horaPedido}`.trim(),
+        `${c.dataSaida} ${c.horaSaida}`.trim(),
+        c.setor,
+        c.ramal,
+        c.objetivoSaida,
+        c.numeroPassageiros,
+        c.responsavelPedido,
+        omOrHospital,
+        c.viaturas,
+        c.motoristas,
+        hospitalIfAdmin,
+        `${c.kmSaida} / ${c.kmChegada}`,
+        c.chegada,
+        c.cidade,
+        c.bairro,
+        // Rubrica só é exibida (e portanto recebe negrito) quando cancelada.
+        cancelada ? c.rubrica : "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return highlightTokens.some((t) => haystack.includes(t));
+    });
+  }, [rows, highlightTokens]);
+
   return (
     <div className="max-h-[min(70vh,720px)] w-full max-w-full overflow-y-auto overflow-x-hidden rounded-lg border border-[hsl(var(--border))]">
       <table className="w-full table-fixed border-collapse text-[10px] leading-snug sm:text-[11px]">
@@ -103,7 +151,7 @@ export function RegisteredFullDeparturesTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length === 0 ? (
+          {rowsToRender.length === 0 ? (
             <TableRow>
               <TableCell
                 colSpan={COLS}
@@ -113,7 +161,7 @@ export function RegisteredFullDeparturesTable({
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((row) => {
+            rowsToRender.map((row) => {
               const c = fullRowCells(row);
               const cancelada = row.cancelada === true;
               return (

@@ -282,6 +282,7 @@ export function RegisterDeparturePage() {
     const v = saidaFiltroViatura.trim().toLowerCase();
     const m = saidaFiltroMotorista.trim().toLowerCase();
     let list = departures;
+
     if (saidaFiltroTipo !== "Todos") {
       list = list.filter((d) => d.tipo === saidaFiltroTipo);
     }
@@ -300,9 +301,10 @@ export function RegisterDeparturePage() {
     const hasFilters =
       saidaFiltroViatura.trim().length > 0 ||
       saidaFiltroMotorista.trim().length > 0 ||
-      saidaFiltroTipo !== "Todos";
+      saidaFiltroTipo !== "Todos" ||
+      saidaLupaBusca.trim().length > 0;
     return hasFilters ? "Nenhuma saída encontrada com os filtros atuais." : base;
-  }, [departures.length, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura]);
+  }, [departures.length, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura, saidaLupaBusca]);
 
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
