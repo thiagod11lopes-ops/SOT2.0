@@ -273,7 +273,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
 
-        <Card className={cn("flex min-h-0 min-w-0 flex-col", departuresTableShadowClass)}>
+        <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>
             <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]")}>
@@ -292,16 +292,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 <Building2 className="h-5 w-5 text-slate-600" />
               </div>
             </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+            <CardContent className="flex flex-col pt-0">
               {saidasAdministrativasHoje.length === 0 ? (
-                <div className="flex min-h-[12rem] flex-1 flex-col justify-center sm:min-h-[16rem]">
+                <div className="py-4">
                   <p className={cn("text-sm", homeBodyEmphasisClass)}>
                     Nenhuma saída administrativa para hoje.
                   </p>
                 </div>
               ) : (
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="home-dashboard-departures-panel min-h-[min(48vh,26rem)] max-h-[min(72vh,42rem)] flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel max-h-[min(72vh,42rem)] w-full overflow-auto rounded-md border border-[hsl(var(--border))]">
                     <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -366,7 +365,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                       })}
                     </TableBody>
                   </Table>
-                  </div>
                 </div>
               )}
             </CardContent>
