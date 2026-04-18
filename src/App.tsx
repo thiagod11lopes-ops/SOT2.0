@@ -11,6 +11,7 @@ import { SettingsPage } from "./components/settings-page";
 import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { RelatorioDiarioViaturasPage } from "./components/relatorio-diario-viaturas-page";
 import { useAvisos } from "./context/avisos-context";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
@@ -111,9 +112,13 @@ function App() {
   const handleIdleReturnHome = useCallback(() => {
     setActiveTab(null);
     setHomeRemountKey((k) => k + 1);
+    if (window.location.hash.replace(/^#/, "") === "/carro-quebrado") {
+      window.location.hash = "";
+    }
   }, [setActiveTab]);
 
   const isMobileRoute = hash.startsWith("#/saidas");
+  const isCarroQuebradoRoute = hash.replace(/^#/, "") === "/carro-quebrado";
   useIdleResetToHome(!isMobileRoute, handleIdleReturnHome);
 
   useEffect(() => {
@@ -165,6 +170,7 @@ function App() {
   }
 
   const content = useMemo(() => {
+    if (isCarroQuebradoRoute) return <RelatorioDiarioViaturasPage />;
     if (!activeTab) return <Dashboard key={homeRemountKey} mapaOleo={mapaOleo} />;
     if (activeTab === "Cadastrar Saída") return <RegisterDeparturePage />;
     if (activeTab === "Saídas Administrativas")
@@ -191,9 +197,16 @@ function App() {
     if (activeTab === "Estatística") return <StatisticsPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
-  }, [activeTab, homeRemountKey, mapaOleo, pendingDeparturesFilterDatePtBr, departuresListMountKey]);
+  }, [
+    activeTab,
+    homeRemountKey,
+    mapaOleo,
+    pendingDeparturesFilterDatePtBr,
+    departuresListMountKey,
+    isCarroQuebradoRoute,
+  ]);
 
-  const isHome = !activeTab;
+  const isHome = !activeTab && !isCarroQuebradoRoute;
   const showHomeAvisosTicker =
     isHome && (Boolean(avisoPrincipal.trim()) || avisosGeraisLinhas.length > 0);
 

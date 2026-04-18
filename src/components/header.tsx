@@ -1,9 +1,14 @@
-import { Bell, LogOut } from "lucide-react";
 import { HeaderDateTime } from "./header-datetime";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
 import { CloudSyncIndicator } from "./cloud-sync-indicator";
+import { BrokenCarIcon } from "./icons/broken-car-icon";
 import { Button } from "./ui/button";
 import { TabsList } from "./ui/tabs";
+
+function openCarroQuebradoInNewTab() {
+  const base = window.location.href.split("#")[0];
+  window.open(`${base}#/carro-quebrado`, "_blank", "noopener,noreferrer");
+}
 
 interface HeaderProps {
   tabs: string[];
@@ -30,12 +35,14 @@ export function Header({ tabs, activeTab, onTabChange }: HeaderProps) {
 
         <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
           <HeaderPaoMotorista />
-          <Button variant="ghost" size="icon" aria-label="Notificações">
-            <Bell className="h-5 w-5" />
-          </Button>
-          <Button variant="outline" size="sm">
-            <LogOut className="h-4 w-4" />
-            Sair
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Abrir Relatório Diário de Viaturas (RDV)"
+            onClick={openCarroQuebradoInNewTab}
+          >
+            <BrokenCarIcon />
           </Button>
         </div>
       </div>
