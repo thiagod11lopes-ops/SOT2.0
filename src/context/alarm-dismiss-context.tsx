@@ -56,20 +56,23 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   const [map, setMap] = useState<Record<string, string>>({});
   const [idbReady, setIdbReady] = useState(false);
   const applyingRemoteRef = useRef(false);
-  const hydratedRef = useRef(true);
   const suppressRemoteUntilRef = useRef(0);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
+  /** Com Firebase: só gravar na nuvem depois do 1.º snapshot (evita `{}` sobrescrever dismiss noutros PCs). */
+  const remoteDismissSyncedRef = useRef(!useCloud);
   const bumpLocalMutation = useCallback(() => {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
   }, []);
 
   useEffect(() => {
     if (useCloud) {
+      remoteDismissSyncedRef.current = false;
       // Modo estrito Firebase: ignora hidratação inicial por cache local.
       setIdbReady(true);
       return;
     }
+    remoteDismissSyncedRef.current = true;
     void loadDismissMapFromIdb().then((m) => {
       setMap(m);
       setIdbReady(true);
@@ -89,19 +92,23 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
           (payload) => {
             if (cancelled) return;
             void (async () => {
-              if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
-                return;
-              }
-              if (Date.now() < suppressRemoteUntilRef.current) return;
+              // Primeira hidratação ignora supressão local (evita ficar preso sem snapshot).
+              const pastFirstSync = remoteDismissSyncedRef.current;
+              if (pastFirstSync && Date.now() < suppressRemoteUntilRef.current) return;
               applyingRemoteRef.current = true;
-              const next = normalizeAlarmDismissMap(payload);
-              setMap(next);
-              void saveDismissMapToIdb(next);
-              hydratedRef.current = true;
+              if (payload === null) {
+                setMap({});
+                void saveDismissMapToIdb({});
+              } else {
+                const next = normalizeAlarmDismissMap(payload);
+                setMap(next);
+                void saveDismissMapToIdb(next);
+              }
+              remoteDismissSyncedRef.current = true;
             })();
           },
           (err) => console.error("[SOT] Firestore dismiss alarmes:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (dismiss alarmes):", e);
@@ -119,7 +126,8 @@ export function AlarmDismissProvider({ children }: { children: ReactNode }) {
   }, [map, idbReady]);
 
   useEffect(() => {
-    if (!idbReady || !hydratedRef.current || !useCloud) return;
+    if (!idbReady || !useCloud) return;
+    if (!remoteDismissSyncedRef.current) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;

@@ -85,6 +85,7 @@ export function useOilMaintenanceMap() {
             })();
           },
           (err) => console.error("[SOT] Firestore óleo (mapa):", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (óleo mapa):", e);

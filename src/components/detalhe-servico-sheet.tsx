@@ -307,6 +307,7 @@ export function DetalheServicoSheet() {
             })();
           },
           (err) => console.error("[SOT] Firestore detalhe serviço:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (detalhe serviço):", e);

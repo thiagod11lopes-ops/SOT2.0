@@ -140,6 +140,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
             })();
           },
           (err) => console.error("[SOT] Firestore troca de óleo:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (óleo):", e);

@@ -87,6 +87,7 @@ export function ViaturasInoperantesProvider({ children }: { children: ReactNode 
             );
           },
           (err) => console.error("[SOT] Firestore viaturas inoperantes:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (inoperantes):", e);

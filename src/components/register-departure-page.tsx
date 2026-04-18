@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { CalendarDays, CheckCircle2, Loader2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Loader2, Search } from "lucide-react";
 import {
   isValueInCatalog,
   mergeViaturasCatalog,
@@ -37,7 +37,7 @@ import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
 import { cn } from "../lib/utils";
-import type { DepartureRecord } from "../types/departure";
+import type { DepartureRecord, DepartureType } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
 import { CatalogComboField } from "./catalog-select";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
@@ -273,6 +273,39 @@ export function RegisterDeparturePage() {
   const { items: catalogItems, addItem: addCatalogItem } = useCatalogItems();
   const { estaNaOficina } = useOficinaVisitas();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
+  const [saidaFiltroViatura, setSaidaFiltroViatura] = useState("");
+  const [saidaFiltroMotorista, setSaidaFiltroMotorista] = useState("");
+  const [saidaFiltroTipo, setSaidaFiltroTipo] = useState<"Todos" | DepartureType>("Todos");
+  const [saidaLupaBusca, setSaidaLupaBusca] = useState("");
+
+  const saidasCadastradasFiltradas = useMemo(() => {
+    const v = saidaFiltroViatura.trim().toLowerCase();
+    const m = saidaFiltroMotorista.trim().toLowerCase();
+    let list = departures;
+
+    if (saidaFiltroTipo !== "Todos") {
+      list = list.filter((d) => d.tipo === saidaFiltroTipo);
+    }
+    if (v) {
+      list = list.filter((d) => d.viaturas.trim().toLowerCase().includes(v));
+    }
+    if (m) {
+      list = list.filter((d) => d.motoristas.trim().toLowerCase().includes(m));
+    }
+    return list;
+  }, [departures, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura]);
+
+  const emptyLabelSaidasCadastradas = useMemo(() => {
+    const base = "Nenhuma saída cadastrada ainda. Use Cadastrar Nova Saída para incluir.";
+    if (departures.length === 0) return base;
+    const hasFilters =
+      saidaFiltroViatura.trim().length > 0 ||
+      saidaFiltroMotorista.trim().length > 0 ||
+      saidaFiltroTipo !== "Todos" ||
+      saidaLupaBusca.trim().length > 0;
+    return hasFilters ? "Nenhuma saída encontrada com os filtros atuais." : base;
+  }, [departures.length, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura, saidaLupaBusca]);
+
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -382,6 +415,7 @@ export function RegisterDeparturePage() {
             })();
           },
           (err) => console.error("[SOT] Firestore cidades/bairros extras:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (cidades extras):", e);
@@ -1087,6 +1121,77 @@ export function RegisterDeparturePage() {
         <CardContent>
           {activeSubTab === "Saídas Cadastradas" ? (
             <>
+              <div className="mb-4 grid gap-3 md:grid-cols-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-viatura">
+                    Viatura
+                  </label>
+                  <input
+                    id="saida-filter-viatura"
+                    type="text"
+                    autoComplete="off"
+                    value={saidaFiltroViatura}
+                    onChange={(e) => setSaidaFiltroViatura(e.target.value)}
+                    placeholder="Filtrar por viatura…"
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-motorista">
+                    Motorista
+                  </label>
+                  <input
+                    id="saida-filter-motorista"
+                    type="text"
+                    autoComplete="off"
+                    value={saidaFiltroMotorista}
+                    onChange={(e) => setSaidaFiltroMotorista(e.target.value)}
+                    placeholder="Filtrar por motorista…"
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-tipo">
+                    Tipo de saída
+                  </label>
+                  <select
+                    id="saida-filter-tipo"
+                    value={saidaFiltroTipo}
+                    onChange={(e) => setSaidaFiltroTipo(e.target.value as "Todos" | DepartureType)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="Administrativa">Administrativa</option>
+                    <option value="Ambulância">Ambulância</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2 md:col-span-1 md:row-span-1">
+                  <label className="text-sm font-medium" htmlFor="saida-lupa-busca">
+                    Lupa
+                  </label>
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]"
+                      aria-hidden
+                    />
+                    <input
+                      id="saida-lupa-busca"
+                      type="search"
+                      autoComplete="off"
+                      value={saidaLupaBusca}
+                      onChange={(e) => setSaidaLupaBusca(e.target.value)}
+                      placeholder="Buscar na tabela…"
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white py-2 pl-9 pr-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      aria-label="Buscar e destacar na tabela de saídas"
+                    />
+                  </div>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">O texto é destacado em negrito.</p>
+                </div>
+              </div>
+
               <DepartureDeleteOrCancelModal
                 open={deleteModalId !== null && deleteModalRecord !== null}
                 onOpenChange={(o) => {
@@ -1097,8 +1202,9 @@ export function RegisterDeparturePage() {
                 onConfirmarCancelamento={handleConfirmarCancelamentoCadastro}
               />
               <RegisteredFullDeparturesTable
-                rows={departures}
-                emptyLabel="Nenhuma saída cadastrada ainda. Use Cadastrar Nova Saída para incluir."
+                rows={saidasCadastradasFiltradas}
+                emptyLabel={emptyLabelSaidasCadastradas}
+                highlightTerm={saidaLupaBusca}
                 onTrashClick={(id) => setDeleteModalId(id)}
                 onEdit={beginEditDeparture}
               />

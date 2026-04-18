@@ -16,6 +16,15 @@
   --ring: 204 58% 40%;
   --input: 0 0% 100%;
   --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.85);
+
+  /*
+   * Nome do motorista por baixo da linha na rubrica (PNG gerado no mobile).
+   * Afeta a miniatura na Situação das VTR e o PDF. Sem unidade: número puro.
+   * --sot-rubrica-nome-font-scale: multiplica o tamanho base (ex.: 1 = maior, 0.5 = metade).
+   * --sot-rubrica-nome-font-width-ratio: fração da largura do PNG antes do clamp min/max (ex.: 0.055).
+   */
+  --sot-rubrica-nome-font-scale: 0.6;
+  --sot-rubrica-nome-font-width-ratio: 0.055;
 }
 
 html[data-appearance="dark"] {
@@ -156,6 +165,42 @@ body {
   animation: home-proxima-saida-blink 1.1s ease-in-out infinite;
 }
 
+/*
+ * Página principal — Saídas administrativas / com atraso / em andamento:
+ * texto das células escala com a largura do painel (container query).
+ */
+.home-dashboard-departures-panel {
+  container-type: inline-size;
+}
+
+.home-dashboard-departures-panel table {
+  font-size: unset;
+}
+
+.home-dashboard-departures-panel :is(th, td) {
+  font-size: clamp(0.625rem, 0.38rem + 1.45cqi, 1.0625rem);
+  line-height: 1.22;
+}
+
+/*
+ * Página principal — cards de oficina, óleo, limpeza, fainas:
+ * texto escala com a largura do cartão (container query).
+ */
+.home-dashboard-fluid-card {
+  container-type: inline-size;
+}
+
+/* +20% face aos valores base (oficina, óleo, limpeza, fainas). */
+.home-dashboard-fluid-card .home-dashboard-fluid-card-title {
+  font-size: clamp(0.975rem, 0.576rem + 1.44cqi, 1.35rem);
+  line-height: 1.25;
+}
+
+.home-dashboard-fluid-card :is(p:not(.home-dashboard-fluid-card-title), li, span) {
+  font-size: clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem);
+  line-height: 1.32;
+}
+
 /* Telão inferior: uma linha entra pela direita (100cqw), atravessa a faixa e sai por completo à esquerda
    (−100% = largura do trilho). Ao repetir, volta a iniciar à direita. Requer .home-marquee-viewport (cqw). */
 @keyframes home-marquee-scroll {
@@ -165,6 +210,30 @@ body {
   100% {
     transform: translateX(-100%);
   }
+}
+
+/* Modal senha KM — título como se estivesse a ser escrito */
+@keyframes km-edit-modal-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.km-edit-modal-title-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.1em;
+  border-radius: 1px;
+  background-color: #ff1414;
+  box-shadow: 0 0 6px rgba(255, 20, 20, 0.9);
+  animation: km-edit-modal-caret-blink 0.9s steps(1, end) infinite;
 }
 
 .home-marquee-viewport {

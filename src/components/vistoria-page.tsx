@@ -1,12 +1,18 @@
 import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { buildVistoriaSituacaoImprimirPdf } from "../lib/generateVistoriaSituacaoPdf";
-import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import {
-  ASSIGNMENTS_STORAGE_KEY,
   CHECKLIST_ITEMS,
   checklistComOkPorDefeito,
   type ChecklistKey,
@@ -15,7 +21,6 @@ import {
   emptyChecklist,
   emptyChecklistNotes,
   formatIsoDatePtBr,
-  INSPECTIONS_STORAGE_KEY,
   isViaturaLocalizacao,
   isoDateFromDate,
   VIATURA_LOCALIZACAO_OPCOES,
@@ -27,35 +32,28 @@ import {
   resolveViaturasParaMotoristaEscala,
   readVistoriaInspections,
   primeiroLabelAnotacoesSemObservacao,
+  segmentarObservacaoAdmin,
   findLatestInspectionForFormPrefill,
   type VistoriaAssignment,
   type VistoriaChecklist,
   type VistoriaChecklistNotes,
   type VistoriaInspection,
 } from "../lib/vistoriaInspectionShared";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
+  subscribeVistoriaCloudStateChange,
+  type IssueControl,
+  type ResolvedIssue,
+  updateVistoriaCloudState,
+} from "../lib/vistoriaCloudState";
+import { buildViaturasPorMotoristaMap, getVistoriaCalendarDayTintForIso } from "../lib/vistoriaCalendarTint";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { TabsList } from "./ui/tabs";
 
-type ResolvedIssue = {
-  id: string;
-  inspectionId: string;
-  itemKey: ChecklistKey;
-  resolvedAt: number;
-};
-type IssueControl = {
-  id: string;
-  inspectionId: string;
-  itemKey: ChecklistKey;
-  problemMarked: boolean;
-  priorityMarked: boolean;
-  printMarked: boolean;
-};
-
-const RESOLVED_ISSUES_STORAGE_KEY = "sot_vistoria_resolved_issues_v1";
-const ISSUE_CONTROLS_STORAGE_KEY = "sot_vistoria_issue_controls_v1";
-const PRIORITY_ORDER_STORAGE_KEY = "sot_vistoria_priority_order_v1";
 const vistoriaSubTabs = ["Vistoriar", "Situação das VTR", "Prioridades", "Responsabilidade de Vistoria"] as const;
 
 function startOfLocalMonth(d: Date): Date {
@@ -66,69 +64,12 @@ function monthLabelPtBr(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
-function readResolvedIssues(): ResolvedIssue[] {
-  try {
-    const raw = localStorage.getItem(RESOLVED_ISSUES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ResolvedIssue[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.resolvedAt === "number",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function readIssueControls(): IssueControl[] {
-  try {
-    const raw = localStorage.getItem(ISSUE_CONTROLS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as IssueControl[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.problemMarked === "boolean" &&
-        typeof item.priorityMarked === "boolean" &&
-        typeof item.printMarked === "boolean",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function readPriorityOrderKeys(): string[] {
-  try {
-    const raw = localStorage.getItem(PRIORITY_ORDER_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as string[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((k) => typeof k === "string" && k.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function issueRowKey(inspectionId: string, itemKey: ChecklistKey): string {
-  return `${inspectionId}:${itemKey}`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function issueRowKey(rowId: string): string {
+  return rowId;
 }
 
 type VtrSituacaoPendenteRow = {
+  rowId: string;
   inspectionId: string;
   viatura: string;
   motorista: string;
@@ -143,6 +84,7 @@ type VtrSituacaoPendenteRow = {
   observacaoItalic?: string;
   /** Só na Situação das VTR: mostrar data/nome da administrativa em baixo quando este item foi alterado na administrativa. */
   exibirBlocoAdminDataMotorista?: boolean;
+  relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
 };
 
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
@@ -175,28 +117,127 @@ function renderDataSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   return formatIsoDatePtBr(row.inspectionDate);
 }
 
-function renderMotoristaSituacao(row: VtrSituacaoPendenteRow): ReactNode {
-  if (row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()) {
-    return (
-      <div className="space-y-0.5">
-        <div>{row.prefillMotorista}</div>
-        <div className="text-[0.78em] font-bold italic leading-tight">{row.motorista}</div>
-      </div>
-    );
+/** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
+function parseVtrSituacaoGroupKey(groupKey: string): { vNorm: string; itemKey: ChecklistKey } | null {
+  for (const { key } of CHECKLIST_ITEMS) {
+    const suffix = `::${key}`;
+    if (groupKey.endsWith(suffix)) {
+      return { vNorm: groupKey.slice(0, -suffix.length), itemKey: key };
+    }
   }
-  return row.motorista;
+  return null;
+}
+
+/**
+ * Situação das VTR: cada linha usa sempre o texto do último formulário comum e do último administrativo
+ * para o item (sem um apagar o outro). Referências antigas continuam ligadas em `relatedIssueRefs` para Resolver.
+ */
+function buildVtrSituacaoPendenteRow(args: {
+  groupKey: string;
+  viatura: string;
+  itemKey: ChecklistKey;
+  itemLabel: string;
+  latestCommon: VistoriaInspection | undefined;
+  latestAdmin: VistoriaInspection | undefined;
+  relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
+}): VtrSituacaoPendenteRow {
+  const lc = args.latestCommon;
+  const la = args.latestAdmin;
+  const { itemKey } = args;
+
+  if (!lc && !la) {
+    throw new Error("Situação das VTR: linha sem vistoria comum nem administrativa.");
+  }
+
+  const newestOverall =
+    lc && la ? (lc.createdAt >= la.createdAt ? lc : la) : lc ?? la!;
+
+  const exibirBlocoAdminDataMotorista =
+    la != null && la.itensAlteradosAdministracao?.includes(itemKey) === true;
+
+  let motorista: string;
+  let inspectionDate: string;
+  let prefillMotorista: string | undefined;
+  let prefillInspectionDate: string | undefined;
+  let observacao = "";
+  let observacaoPlain: string | undefined;
+  let observacaoItalic: string | undefined;
+
+  if (lc && la) {
+    const commonRaw = String(lc.checklistNotes[itemKey] ?? "");
+    const adminRaw = String(la.checklistNotes[itemKey] ?? "");
+    /** Mesma regra da gravação administrativa: prefixo comum + acrescento; evita «AAA» + itálico «AAA BBB». */
+    const split = segmentarObservacaoAdmin(commonRaw, adminRaw);
+
+    prefillMotorista = lc.motorista;
+    prefillInspectionDate = lc.inspectionDate;
+
+    if (exibirBlocoAdminDataMotorista) {
+      inspectionDate = la.inspectionDate;
+      motorista = la.motorista;
+    } else {
+      inspectionDate = newestOverall.inspectionDate;
+      motorista = newestOverall.motorista;
+      prefillMotorista = undefined;
+      prefillInspectionDate = undefined;
+    }
+
+    observacaoPlain = split.plain;
+    observacaoItalic = split.italic;
+    observacao = "";
+  } else if (lc) {
+    motorista = lc.motorista;
+    inspectionDate = lc.inspectionDate;
+    observacao = String(lc.checklistNotes[itemKey] ?? "").trim();
+  } else {
+    const ins = la!;
+    motorista = ins.motorista;
+    inspectionDate = ins.inspectionDate;
+    prefillMotorista = ins.prefillMotorista;
+    prefillInspectionDate = ins.prefillInspectionDate;
+    const seg = ins.observacaoSegmentacaoAdmin?.[itemKey];
+    if (seg && (seg.plain !== undefined || seg.italic !== undefined)) {
+      observacaoPlain = (seg.plain ?? "").trim();
+      observacaoItalic = (seg.italic ?? "").trim();
+    } else {
+      observacao = String(ins.checklistNotes[itemKey] ?? "").trim();
+    }
+  }
+
+  return {
+    rowId: args.groupKey,
+    inspectionId: newestOverall.id,
+    viatura: args.viatura,
+    motorista,
+    inspectionDate,
+    itemKey,
+    itemLabel: args.itemLabel,
+    observacao,
+    vistoriaAdministrativa: Boolean(la && (!lc || la.createdAt > lc.createdAt)),
+    prefillMotorista,
+    prefillInspectionDate,
+    observacaoPlain,
+    observacaoItalic,
+    exibirBlocoAdminDataMotorista: Boolean(lc && la && exibirBlocoAdminDataMotorista),
+    relatedIssueRefs: args.relatedIssueRefs,
+  };
 }
 
 export function VistoriaPage() {
   const { items } = useCatalogItems();
+  const applyingCloudRef = useRef(false);
+  const cloudReadyRef = useRef(false);
   const [activeSubTab, setActiveSubTab] = useState<string>(vistoriaSubTabs[0]);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const [selectedMotorista, setSelectedMotorista] = useState("");
   const [selectedViatura, setSelectedViatura] = useState("");
   const [assignments, setAssignments] = useState<VistoriaAssignment[]>(() => readVistoriaAssignments());
   const [inspections, setInspections] = useState<VistoriaInspection[]>(() => readVistoriaInspections());
-  const [resolvedIssues, setResolvedIssues] = useState<ResolvedIssue[]>(() => readResolvedIssues());
-  const [issueControls, setIssueControls] = useState<IssueControl[]>(() => readIssueControls());
-  const [priorityOrderKeys, setPriorityOrderKeys] = useState<string[]>(() => readPriorityOrderKeys());
+  const [resolvedIssues, setResolvedIssues] = useState<ResolvedIssue[]>(() => getVistoriaCloudState().resolvedIssues);
+  const [issueControls, setIssueControls] = useState<IssueControl[]>(() => getVistoriaCloudState().issueControls);
+  const [priorityOrderKeys, setPriorityOrderKeys] = useState<string[]>(() => getVistoriaCloudState().priorityOrderKeys);
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const [selectedInspectionDate, setSelectedInspectionDate] = useState(() => isoDateFromDate(new Date()));
   const [calendarCursorMonth, setCalendarCursorMonth] = useState(() => startOfLocalMonth(new Date()));
@@ -216,6 +257,8 @@ export function VistoriaPage() {
   const [situacaoVtrFiltroViatura, setSituacaoVtrFiltroViatura] = useState("");
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
   const avisoObservacaoTitleId = useId();
+  const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
+  const confirmOkClearsNoteTitleId = useId();
   const [confirmResolve, setConfirmResolve] = useState<{
     inspectionId: string;
     itemKey: ChecklistKey;
@@ -223,6 +266,7 @@ export function VistoriaPage() {
     viatura: string;
     motorista: string;
     inspectionDate: string;
+    relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
   } | null>(null);
   const confirmResolveTitleId = useId();
 
@@ -232,68 +276,47 @@ export function VistoriaPage() {
   }, [items.viaturasAdministrativas, items.ambulancias]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(assignments));
-    } catch {
-      /* ignore */
+    ensureVistoriaCloudStateSyncStarted();
+    const syncFromCloud = () => {
+      if (!isVistoriaCloudStateHydrated()) return;
+      const cloud = getVistoriaCloudState();
+      applyingCloudRef.current = true;
+      setAssignments(cloud.assignments);
+      setInspections(cloud.inspections);
+      setResolvedIssues(cloud.resolvedIssues);
+      setIssueControls(cloud.issueControls);
+      setPriorityOrderKeys(cloud.priorityOrderKeys);
+      cloudReadyRef.current = true;
+      queueMicrotask(() => {
+        applyingCloudRef.current = false;
+      });
+    };
+    if (isVistoriaCloudStateHydrated()) {
+      syncFromCloud();
     }
-  }, [assignments]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(INSPECTIONS_STORAGE_KEY, JSON.stringify(inspections));
-    } catch {
-      /* ignore */
-    }
-  }, [inspections]);
+    const unsub = subscribeVistoriaCloudStateChange(syncFromCloud);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
-    function syncFromStorage(): void {
-      setInspections(readVistoriaInspections());
-    }
-    function onStorage(e: StorageEvent): void {
-      if (e.key === INSPECTIONS_STORAGE_KEY || e.key === null) syncFromStorage();
-    }
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("sot-vistoria-inspections-changed", syncFromStorage);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("sot-vistoria-inspections-changed", syncFromStorage);
-    };
-  }, []);
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, assignments }));
+  }, [assignments]);
   useEffect(() => {
-    function syncResolved(): void {
-      setResolvedIssues(readResolvedIssues());
-    }
-    function onStorage(e: StorageEvent): void {
-      if (e.key === RESOLVED_ISSUES_STORAGE_KEY || e.key === null) syncResolved();
-    }
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("sot-vistoria-resolved-issues-changed", syncResolved);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("sot-vistoria-resolved-issues-changed", syncResolved);
-    };
-  }, []);
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, inspections }));
+  }, [inspections]);
   useEffect(() => {
-    try {
-      localStorage.setItem(RESOLVED_ISSUES_STORAGE_KEY, JSON.stringify(resolvedIssues));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, resolvedIssues }));
   }, [resolvedIssues]);
   useEffect(() => {
-    try {
-      localStorage.setItem(ISSUE_CONTROLS_STORAGE_KEY, JSON.stringify(issueControls));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, issueControls }));
   }, [issueControls]);
   useEffect(() => {
-    try {
-      localStorage.setItem(PRIORITY_ORDER_STORAGE_KEY, JSON.stringify(priorityOrderKeys));
-    } catch {
-      /* ignore */
-    }
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    updateVistoriaCloudState((prev) => ({ ...prev, priorityOrderKeys }));
   }, [priorityOrderKeys]);
 
   /** Nem OK nem Anotações: assume OK. */
@@ -316,22 +339,59 @@ export function VistoriaPage() {
   }, [inspectionOpen]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeSubTab !== "Vistoriar") return;
     const parsed = parseIsoDate(selectedInspectionDate);
     if (parsed) setCalendarCursorMonth(startOfLocalMonth(parsed));
-  }, [activeSubTab]);
+  }, [activeSubTab, selectedInspectionDate]);
 
   useEffect(() => {
     if (activeSubTab !== "Vistoriar") return;
     let cancelled = false;
-    void loadDetalheServicoBundleFromIdb().then((bundle) => {
-      if (cancelled) return;
-      setDetalheServicoBundle(bundle);
-    });
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
+            },
+            (err) => console.error("[SOT] Firestore detalhe serviço (vistoria):", err),
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço vistoria):", e);
+          if (cancelled) return;
+          const fallback = await loadDetalheServicoBundleFromIdb();
+          if (cancelled) return;
+          setDetalheServicoBundle(fallback);
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((bundle) => {
+        if (cancelled) return;
+        setDetalheServicoBundle(bundle);
+      });
+    }
     return () => {
       cancelled = true;
+      unsub?.();
     };
-  }, [activeSubTab]);
+  }, [activeSubTab, isOnline]);
 
   useEffect(() => {
     if (activeSubTab !== "Vistoriar" || !detalheServicoBundle) return;
@@ -362,22 +422,7 @@ export function VistoriaPage() {
     rows.sort((a, b) => a.displayMotorista.localeCompare(b.displayMotorista, "pt-BR"));
     return rows;
   }, [assignments]);
-  const viaturasPorMotorista = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const a of assignments) {
-      const key = normalizeDriverKey(a.motorista);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(a.viatura);
-    }
-    for (const [key, viaturasMotorista] of map.entries()) {
-      map.set(
-        key,
-        [...new Set(viaturasMotorista.map((v) => v.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-      );
-    }
-    return map;
-  }, [assignments]);
+  const viaturasPorMotorista = useMemo(() => buildViaturasPorMotoristaMap(assignments), [assignments]);
   /** Cores do calendário por estado das placas no modal «Motoristas com S...». */
   const calendarDayStateByIso = useMemo(() => {
     const map = new Map<string, "neutral" | "green" | "orange" | "red">();
@@ -387,44 +432,7 @@ export function VistoriaPage() {
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     for (let day = 1; day <= daysInMonth; day++) {
       const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const marcados = listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, iso);
-      const motoristasComSMap = new Map<string, string>();
-      for (const row of marcados) {
-        if (!row.servico) continue;
-        const name = row.motorista.trim();
-        if (!name) continue;
-        const nk = normalizeDriverKey(name);
-        if (!nk) continue;
-        if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
-      }
-      const relevant = [...motoristasComSMap.values()].filter(
-        (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
-      );
-      if (relevant.length === 0) {
-        map.set(iso, "neutral");
-        continue;
-      }
-
-      let totalPlacas = 0;
-      let placasVistoriadas = 0;
-      for (const motorista of relevant) {
-        const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
-        for (const v of vtrs) {
-          totalPlacas++;
-          const ok = inspections.some(
-            (i) =>
-              i.inspectionDate === iso &&
-              nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
-              i.viatura.trim() === v.trim(),
-          );
-          if (ok) placasVistoriadas++;
-        }
-      }
-
-      if (totalPlacas === 0) map.set(iso, "neutral");
-      else if (placasVistoriadas === 0) map.set(iso, "red");
-      else if (placasVistoriadas === totalPlacas) map.set(iso, "green");
-      else map.set(iso, "orange");
+      map.set(iso, getVistoriaCalendarDayTintForIso(iso, detalheServicoBundle, viaturasPorMotorista, inspections));
     }
     return map;
   }, [detalheServicoBundle, calendarCursorMonth, viaturasPorMotorista, inspections]);
@@ -481,34 +489,65 @@ export function VistoriaPage() {
     [resolvedIssues],
   );
   const vtrSituacaoPendente = useMemo(() => {
-    const rows: VtrSituacaoPendenteRow[] = [];
     const sorted = [...inspections].sort((a, b) => b.createdAt - a.createdAt);
+    const latestCommonByGk = new Map<string, VistoriaInspection>();
+    const latestAdminByGk = new Map<string, VistoriaInspection>();
+    const allGroupKeys = new Set<string>();
+
+    for (const ins of sorted) {
+      const vNorm = ins.viatura.trim().toLowerCase();
+      if (!vNorm) continue;
+      for (const { key } of CHECKLIST_ITEMS) {
+        if (ins.checklist[key] !== "Alterações") continue;
+        if (resolvedIssueSet.has(`${ins.id}:${key}`)) continue;
+        const gk = `${vNorm}::${key}`;
+        allGroupKeys.add(gk);
+        const isAdmin = ins.vistoriaAdministrativa === true;
+        if (!isAdmin && !latestCommonByGk.has(gk)) latestCommonByGk.set(gk, ins);
+        if (isAdmin && !latestAdminByGk.has(gk)) latestAdminByGk.set(gk, ins);
+      }
+    }
+
+    const grouped = new Map<string, VtrSituacaoPendenteRow>();
+
+    for (const gk of allGroupKeys) {
+      const parsed = parseVtrSituacaoGroupKey(gk);
+      if (!parsed) continue;
+      const { vNorm, itemKey } = parsed;
+      const lc = latestCommonByGk.get(gk);
+      const la = latestAdminByGk.get(gk);
+      if (!lc && !la) continue;
+
+      const label =
+        CHECKLIST_ITEMS.find((x) => x.key === itemKey)?.label ??
+        itemKey;
+      const viatura = (lc ?? la!).viatura;
+
+      const relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }> = [];
+      for (const inspection of inspections) {
+        if (inspection.viatura.trim().toLowerCase() !== vNorm) continue;
+        if (inspection.checklist[itemKey] !== "Alterações") continue;
+        if (resolvedIssueSet.has(`${inspection.id}:${itemKey}`)) continue;
+        relatedIssueRefs.push({ inspectionId: inspection.id, itemKey });
+      }
+
+      grouped.set(
+        gk,
+        buildVtrSituacaoPendenteRow({
+          groupKey: gk,
+          viatura,
+          itemKey,
+          itemLabel: label,
+          latestCommon: lc,
+          latestAdmin: la,
+          relatedIssueRefs,
+        }),
+      );
+    }
+
     for (const inspection of sorted) {
       const vistoriaAdministrativa = inspection.vistoriaAdministrativa === true;
       const temAlgumItemAlteracoes = CHECKLIST_ITEMS.some(({ key }) => inspection.checklist[key] === "Alterações");
-
-      for (const { key, label } of CHECKLIST_ITEMS) {
-        if (inspection.checklist[key] !== "Alterações") continue;
-        if (resolvedIssueSet.has(`${inspection.id}:${key}`)) continue;
-        const seg = inspection.observacaoSegmentacaoAdmin?.[key];
-        const exibirBlocoAdminDataMotorista =
-          vistoriaAdministrativa && inspection.itensAlteradosAdministracao?.includes(key) === true;
-        rows.push({
-          inspectionId: inspection.id,
-          viatura: inspection.viatura,
-          motorista: inspection.motorista,
-          inspectionDate: inspection.inspectionDate,
-          itemKey: key,
-          itemLabel: label,
-          observacao: inspection.checklistNotes[key].trim(),
-          vistoriaAdministrativa,
-          prefillMotorista: inspection.prefillMotorista,
-          prefillInspectionDate: inspection.prefillInspectionDate,
-          observacaoPlain: seg?.plain,
-          observacaoItalic: seg?.italic,
-          exibirBlocoAdminDataMotorista,
-        });
-      }
 
       /** Vistoria só mobile, sem nenhum item em «Anotações»: entra na aba com linha de registo (chave «outros»). */
       if (
@@ -516,18 +555,24 @@ export function VistoriaPage() {
         !temAlgumItemAlteracoes &&
         !resolvedIssueSet.has(`${inspection.id}:outros`)
       ) {
-        rows.push({
-          inspectionId: inspection.id,
-          viatura: inspection.viatura,
-          motorista: inspection.motorista,
-          inspectionDate: inspection.inspectionDate,
-          itemKey: "outros",
-          itemLabel: "Registo de vistoria (mobile)",
-          observacao: "Sem itens com anotações (todos OK).",
-          vistoriaAdministrativa,
-        });
+        const groupKey = `${inspection.viatura.trim().toLowerCase()}::outros`;
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            rowId: groupKey,
+            inspectionId: inspection.id,
+            viatura: inspection.viatura,
+            motorista: inspection.motorista,
+            inspectionDate: inspection.inspectionDate,
+            itemKey: "outros",
+            itemLabel: "Registo de vistoria (mobile)",
+            observacao: "Sem itens com anotações (todos OK).",
+            vistoriaAdministrativa,
+            relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: "outros" }],
+          });
+        }
       }
     }
+    const rows = [...grouped.values()];
     rows.sort((a, b) => {
       const byViatura = a.viatura.localeCompare(b.viatura, "pt-BR");
       if (byViatura !== 0) return byViatura;
@@ -566,21 +611,73 @@ export function VistoriaPage() {
     for (const item of issueControls) map.set(`${item.inspectionId}:${item.itemKey}`, item);
     return map;
   }, [issueControls]);
+  const getRowIssueControl = useCallback(
+    (row: VtrSituacaoPendenteRow): IssueControl | null => {
+      for (const ref of row.relatedIssueRefs) {
+        const control = issueControlMap.get(`${ref.inspectionId}:${ref.itemKey}`);
+        if (control) return control;
+      }
+      return null;
+    },
+    [issueControlMap],
+  );
   const inspectionById = useMemo(() => {
     const map = new Map<string, VistoriaInspection>();
     for (const ins of inspections) map.set(ins.id, ins);
     return map;
   }, [inspections]);
+  const getRelatedInspections = useCallback(
+    (row: VtrSituacaoPendenteRow): VistoriaInspection[] =>
+      row.relatedIssueRefs
+        .map((ref) => inspectionById.get(ref.inspectionId))
+        .filter((ins): ins is VistoriaInspection => Boolean(ins)),
+    [inspectionById],
+  );
+  const getCommonRubricaForRow = useCallback(
+    (row: VtrSituacaoPendenteRow): string => {
+      const related = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa !== true)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const ins of related) {
+        const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+        if (rub) return rub;
+      }
+      const adminsComOrigem = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa === true && ins.prefillSourceInspectionId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const ins of adminsComOrigem) {
+        const src = inspectionById.get(ins.prefillSourceInspectionId!);
+        const rub = typeof src?.rubrica === "string" ? src.rubrica.trim() : "";
+        if (rub) return rub;
+      }
+      return "";
+    },
+    [getRelatedInspections, inspectionById],
+  );
+  const getAdministrativeRubricaForRow = useCallback(
+    (row: VtrSituacaoPendenteRow): string => {
+      const related = getRelatedInspections(row)
+        .filter((ins) => ins.vistoriaAdministrativa === true)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const ins of related) {
+        const rub = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+        if (!rub) continue;
+        if (ins.itensAlteradosAdministracao?.includes(row.itemKey) === true) return rub;
+      }
+      return "";
+    },
+    [getRelatedInspections],
+  );
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
-        (row) => issueControlMap.get(`${row.inspectionId}:${row.itemKey}`)?.priorityMarked === true,
+        (row) => getRowIssueControl(row)?.priorityMarked === true,
       ),
-    [vtrSituacaoPendente, issueControlMap],
+    [vtrSituacaoPendente, getRowIssueControl],
   );
 
   useEffect(() => {
-    const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.inspectionId, r.itemKey));
+    const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.rowId));
     const valid = new Set(pendingKeys);
     setPriorityOrderKeys((prev) => {
       const kept = prev.filter((k) => valid.has(k));
@@ -594,7 +691,7 @@ export function VistoriaPage() {
 
   const vtrPrioridadesOrdered = useMemo(() => {
     const map = new Map(
-      vtrPrioridades.map((r) => [issueRowKey(r.inspectionId, r.itemKey), r] as const),
+      vtrPrioridades.map((r) => [issueRowKey(r.rowId), r] as const),
     );
     const seen = new Set<string>();
     const ordered: typeof vtrPrioridades = [];
@@ -606,7 +703,7 @@ export function VistoriaPage() {
       }
     }
     for (const r of vtrPrioridades) {
-      const k = issueRowKey(r.inspectionId, r.itemKey);
+      const k = issueRowKey(r.rowId);
       if (!seen.has(k)) ordered.push(r);
     }
     return ordered;
@@ -651,9 +748,11 @@ export function VistoriaPage() {
   }
 
   function handleOpenInspection(motorista: string, viatura: string) {
-    setInspectionMotorista(motorista);
-    setInspectionViatura(viatura);
-    const existing = findLatestInspectionForFormPrefill(inspections, motorista, viatura);
+    const motoristaRef = motorista.trim();
+    const viaturaRef = viatura.trim();
+    setInspectionMotorista(motoristaRef);
+    setInspectionViatura(viaturaRef);
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
     setLocalizacaoViatura(
       isViaturaLocalizacao(existing?.localizacaoViatura) ? existing.localizacaoViatura : "A Bordo",
     );
@@ -661,7 +760,7 @@ export function VistoriaPage() {
     const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
     const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
       inspections,
-      viatura,
+      viatura: viaturaRef,
       baseChecklist,
       baseNotes,
     });
@@ -671,7 +770,9 @@ export function VistoriaPage() {
   }
 
   function handleSaveInspection() {
-    if (!inspectionOpen || !inspectionMotorista || !inspectionViatura) return;
+    const motoristaRef = inspectionMotorista.trim();
+    const viaturaRef = inspectionViatura.trim();
+    if (!inspectionOpen || !motoristaRef || !viaturaRef) return;
     if (!isViaturaLocalizacao(localizacaoViatura)) {
       window.alert("Marque uma opção em «Localização da Viatura».");
       return;
@@ -688,7 +789,7 @@ export function VistoriaPage() {
     }
     autoResolveAdministrativeRedundanciesOnCommonSave({
       inspections,
-      viatura: inspectionViatura,
+      viatura: viaturaRef,
       checklist: inspectionChecklist,
       notes: inspectionChecklistNotes,
     });
@@ -696,8 +797,8 @@ export function VistoriaPage() {
       ...prev,
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        motorista: inspectionMotorista,
-        viatura: inspectionViatura,
+        motorista: motoristaRef,
+        viatura: viaturaRef,
         inspectionDate: selectedInspectionDate,
         localizacaoViatura,
         checklist: inspectionChecklist,
@@ -709,122 +810,132 @@ export function VistoriaPage() {
     setInspectionOpen(false);
   }
 
-  function finalizeResolveIssue(inspectionId: string, itemKey: ChecklistKey) {
-    const k = `${inspectionId}:${itemKey}`;
-    if (resolvedIssueSet.has(k)) return;
-    setResolvedIssues((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        inspectionId,
-        itemKey,
-        resolvedAt: Date.now(),
-      },
-    ]);
+  function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
+    const note = String(inspectionChecklistNotes[itemKey] ?? "").trim();
+    if (note !== "") {
+      setConfirmOkClearsNote({ key: itemKey, label: itemLabel });
+      return;
+    }
+    setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
   }
 
-  function handleResolveIssue(inspectionId: string, itemKey: ChecklistKey) {
-    const row = vtrSituacaoPendenteFiltrado.find((r) => r.inspectionId === inspectionId && r.itemKey === itemKey);
+  function confirmProceedOkClearsNote() {
+    if (!confirmOkClearsNote) return;
+    const k = confirmOkClearsNote.key;
+    setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    setConfirmOkClearsNote(null);
+  }
+
+  function finalizeResolveIssue(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
+    const unresolved = relatedIssueRefs.filter((ref) => !resolvedIssueSet.has(`${ref.inspectionId}:${ref.itemKey}`));
+    if (unresolved.length === 0) return;
+
+    updateVistoriaCloudState((prev) => {
+      const existing = new Set(prev.resolvedIssues.map((r) => `${r.inspectionId}:${r.itemKey}`));
+      const toAdd = unresolved.filter((ref) => !existing.has(`${ref.inspectionId}:${ref.itemKey}`));
+      if (toAdd.length === 0) return prev;
+      return {
+        ...prev,
+        resolvedIssues: [
+          ...prev.resolvedIssues,
+          ...toAdd.map((ref) => ({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            inspectionId: ref.inspectionId,
+            itemKey: ref.itemKey,
+            resolvedAt: Date.now(),
+          })),
+        ],
+      };
+    });
+
+    // Retirar da checklist aberta o eco do item resolvido (o pré-pende de pendências lê o cloud já atualizado).
+    if (!inspectionOpen) return;
+    const viaturaRef = inspectionViatura.trim();
+    if (!viaturaRef) return;
+    const motoristaRef = inspectionMotorista.trim();
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura: viaturaRef,
+      baseChecklist,
+      baseNotes,
+    });
+    setInspectionChecklist(nextChecklist);
+    setInspectionChecklistNotes(nextNotes);
+  }
+
+  function handleResolveIssue(row: VtrSituacaoPendenteRow) {
     setConfirmResolve({
-      inspectionId,
-      itemKey,
-      itemLabel: row?.itemLabel ?? itemKey,
-      viatura: row?.viatura ?? "",
-      motorista: row?.motorista ?? "",
-      inspectionDate: row?.inspectionDate ?? "",
+      inspectionId: row.inspectionId,
+      itemKey: row.itemKey,
+      itemLabel: row.itemLabel,
+      viatura: row.viatura,
+      motorista: row.motorista,
+      inspectionDate: row.inspectionDate,
+      relatedIssueRefs: row.relatedIssueRefs,
     });
   }
 
-  function upsertIssueControl(inspectionId: string, itemKey: ChecklistKey, patch: Partial<IssueControl>) {
-    const key = `${inspectionId}:${itemKey}`;
-    const current = issueControlMap.get(key);
-    const next: IssueControl = {
-      id: current?.id ?? `issue-ctrl-${inspectionId}-${itemKey}`,
-      inspectionId,
-      itemKey,
-      problemMarked: patch.problemMarked ?? current?.problemMarked ?? true,
-      priorityMarked: patch.priorityMarked ?? current?.priorityMarked ?? false,
-      printMarked: patch.printMarked ?? current?.printMarked ?? false,
-    };
+  function upsertIssueControl(row: VtrSituacaoPendenteRow, patch: Partial<IssueControl>) {
+    const current = getRowIssueControl(row);
+    const problemMarked = patch.problemMarked ?? current?.problemMarked ?? true;
+    const priorityMarked = patch.priorityMarked ?? current?.priorityMarked ?? false;
+    const printMarked = patch.printMarked ?? current?.printMarked ?? false;
     setIssueControls((prev) => {
-      const idx = prev.findIndex((x) => x.inspectionId === inspectionId && x.itemKey === itemKey);
-      if (idx < 0) return [...prev, next];
       const clone = [...prev];
-      clone[idx] = next;
+      for (const ref of row.relatedIssueRefs) {
+        const idx = clone.findIndex((x) => x.inspectionId === ref.inspectionId && x.itemKey === ref.itemKey);
+        const next: IssueControl = {
+          id: idx >= 0 ? clone[idx].id : `issue-ctrl-${ref.inspectionId}-${ref.itemKey}`,
+          inspectionId: ref.inspectionId,
+          itemKey: ref.itemKey,
+          problemMarked,
+          priorityMarked,
+          printMarked,
+        };
+        if (idx < 0) clone.push(next);
+        else clone[idx] = next;
+      }
       return clone;
     });
   }
 
-  function handlePrintIssue(row: VtrSituacaoPendenteRow) {
-    const control = issueControlMap.get(`${row.inspectionId}:${row.itemKey}`);
-    const dataHtml =
-      row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-        ? `<span>${escapeHtml(formatIsoDatePtBr(row.prefillInspectionDate))}</span><br/><span style="font-size:0.85em;font-style:italic;font-weight:700;">(${escapeHtml(formatIsoDatePtBr(row.inspectionDate))})</span>`
-        : escapeHtml(formatIsoDatePtBr(row.inspectionDate));
-    const motoristaHtml =
-      row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-        ? `<span>${escapeHtml(row.prefillMotorista)}</span><br/><span style="font-size:0.85em;font-style:italic;font-weight:700;">${escapeHtml(row.motorista)}</span>`
-        : escapeHtml(row.motorista);
-    const obsHtml =
-      row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-        ? `${escapeHtml(row.observacaoPlain ?? "")}<em style="font-style:italic;font-weight:700;">${escapeHtml(row.observacaoItalic ?? "")}</em>`
-        : row.observacao
-          ? escapeHtml(row.observacao)
-          : "—";
-    const html = `
-      <html>
-        <head><title>Situação da VTR</title></head>
-        <body style="font-family: Arial, sans-serif; padding: 24px;">
-          <h2>Situação da VTR</h2>
-          <p><strong>Data da Vistoria:</strong> ${dataHtml}</p>
-          <p><strong>Viatura:</strong> ${escapeHtml(row.viatura)}</p>
-          <p><strong>Motorista:</strong> ${motoristaHtml}</p>
-          <p><strong>Item com Anotação:</strong> ${escapeHtml(row.itemLabel)}</p>
-          <p><strong>Anotação:</strong> ${obsHtml}</p>
-          <p><strong>Marcar Problema:</strong> ${control?.problemMarked ? "Sim" : "Não"}</p>
-          <p><strong>Prioridades:</strong> ${control?.priorityMarked ? "Marcado" : "Não"}</p>
-          <p><strong>Imprimir:</strong> ${control?.printMarked ? "Marcado" : "Não"}</p>
-        </body>
-      </html>
-    `;
-    const win = window.open("", "_blank", "width=800,height=700");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.print();
-  }
-
-  function handleGerarPdfSituacaoVtr() {
+  async function handleGerarPdfSituacaoVtr() {
     const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
-      (row) => issueControlMap.get(`${row.inspectionId}:${row.itemKey}`)?.printMarked === true,
+      (row) => getRowIssueControl(row)?.printMarked === true,
     );
     if (rowsComImprimir.length === 0) {
       window.alert("Nenhuma linha com Imprimir marcado.");
       return;
     }
     const pdfRows = rowsComImprimir.map((row) => {
-      const dataText =
-        row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-          ? `${formatIsoDatePtBr(row.prefillInspectionDate)}\n(${formatIsoDatePtBr(row.inspectionDate)})`
-          : formatIsoDatePtBr(row.inspectionDate);
-      const motoristaText =
-        row.exibirBlocoAdminDataMotorista && row.prefillMotorista?.trim()
-          ? `${row.prefillMotorista}\n${row.motorista}`
-          : row.motorista;
-      const obsText =
-        row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-          ? `${row.observacaoPlain ?? ""}${row.observacaoItalic ?? ""}`
-          : row.observacao;
       return {
-        inspectionDate: dataText,
+        inspectionDate: row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
+          ? formatIsoDatePtBr(row.prefillInspectionDate)
+          : formatIsoDatePtBr(row.inspectionDate),
+        inspectionDateSecondary:
+          row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
+            ? formatIsoDatePtBr(row.inspectionDate)
+            : undefined,
         viatura: row.viatura,
-        motorista: motoristaText,
         itemLabel: row.itemLabel,
-        observacao: obsText,
+        observacaoPlain:
+          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
+            ? row.observacaoPlain ?? ""
+            : row.observacao,
+        observacaoItalic:
+          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
+            ? row.observacaoItalic ?? ""
+            : undefined,
+        rubricaComum: getCommonRubricaForRow(row),
+        rubricaAdministrativa: getAdministrativeRubricaForRow(row),
       };
     });
-    const { doc, filename } = buildVistoriaSituacaoImprimirPdf(pdfRows);
+    const { doc, filename } = await buildVistoriaSituacaoImprimirPdf(pdfRows);
     doc.save(filename);
   }
 
@@ -1160,11 +1271,11 @@ export function VistoriaPage() {
                     <TableRow>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Data da Vistoria</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Motorista</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica Administrativa</TableHead>
+                      <TableHead colSpan={2} className="text-center font-bold text-[hsl(var(--primary))]">
+                        Rubricas
+                      </TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Marcar Problema</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Prioridades</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Imprimir</TableHead>
@@ -1173,59 +1284,57 @@ export function VistoriaPage() {
                   </TableHeader>
                   <TableBody>
                     {vtrSituacaoPendenteFiltrado.map((row, index) => {
-                      const control = issueControlMap.get(`${row.inspectionId}:${row.itemKey}`);
+                      const control = getRowIssueControl(row);
                       const problemMarked = control?.problemMarked ?? true;
                       const priorityMarked = control?.priorityMarked ?? false;
                       const printMarked = control?.printMarked ?? false;
                       return (
-                        <TableRow key={`${row.inspectionId}-${row.itemKey}`} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                        <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                           <TableCell>{renderDataSituacao(row)}</TableCell>
                           <TableCell className="font-semibold">{row.viatura}</TableCell>
-                          <TableCell>{renderMotoristaSituacao(row)}</TableCell>
                           <TableCell>{row.itemLabel}</TableCell>
                           <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
-                          <TableCell className="max-w-[140px]">
-                            {(() => {
-                              const ins = inspectionById.get(row.inspectionId);
-                              if (!ins) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              const rawComum =
-                                ins.vistoriaAdministrativa && ins.prefillSourceInspectionId
-                                  ? inspectionById.get(ins.prefillSourceInspectionId)?.rubrica
-                                  : ins.rubrica;
-                              const rubrica = typeof rawComum === "string" ? rawComum.trim() : "";
-                              if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              if (isRubricaImageDataUrl(rubrica)) {
-                                return (
-                                  <img
-                                    src={rubrica}
-                                    alt="Rubrica da vistoria comum"
-                                    className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                  />
-                                );
-                              }
-                              return <span className="text-sm">{rubrica}</span>;
-                            })()}
-                          </TableCell>
-                          <TableCell className="max-w-[140px]">
-                            {(() => {
-                              const ins = inspectionById.get(row.inspectionId);
-                              const raw = ins?.rubricaAdministrativa;
-                              const rubrica = typeof raw === "string" ? raw.trim() : "";
-                              const mostrar =
-                                rubrica &&
-                                ins?.itensAlteradosAdministracao?.includes(row.itemKey) === true;
-                              if (!mostrar) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                              if (isRubricaImageDataUrl(rubrica)) {
-                                return (
-                                  <img
-                                    src={rubrica}
-                                    alt="Rubrica administrativa"
-                                    className="max-h-20 max-w-[128px] rounded border border-[hsl(var(--border))] object-contain bg-white"
-                                  />
-                                );
-                              }
-                              return <span className="text-sm">{rubrica}</span>;
-                            })()}
+                          <TableCell colSpan={2} className="min-w-[16rem] max-w-[22rem] align-top">
+                            <div className="flex flex-wrap gap-4">
+                              <div className="min-w-[6.5rem] flex-1">
+                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                  Comum
+                                </div>
+                                {(() => {
+                                  const rubrica = getCommonRubricaForRow(row);
+                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                  if (isRubricaImageDataUrl(rubrica)) {
+                                    return (
+                                      <img
+                                        src={rubrica}
+                                        alt="Rubrica da vistoria comum"
+                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
+                                      />
+                                    );
+                                  }
+                                  return <span className="text-sm">{rubrica}</span>;
+                                })()}
+                              </div>
+                              <div className="min-w-[6.5rem] flex-1">
+                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                                  Administrativa
+                                </div>
+                                {(() => {
+                                  const rubrica = getAdministrativeRubricaForRow(row);
+                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+                                  if (isRubricaImageDataUrl(rubrica)) {
+                                    return (
+                                      <img
+                                        src={rubrica}
+                                        alt="Rubrica administrativa"
+                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
+                                      />
+                                    );
+                                  }
+                                  return <span className="text-sm">{rubrica}</span>;
+                                })()}
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <label className="flex items-center gap-2 text-sm">
@@ -1233,7 +1342,7 @@ export function VistoriaPage() {
                                 type="checkbox"
                                 checked={problemMarked}
                                 onChange={(e) =>
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     problemMarked: e.target.checked,
                                   })
                                 }
@@ -1248,7 +1357,7 @@ export function VistoriaPage() {
                                 type="checkbox"
                                 checked={priorityMarked}
                                 onChange={(e) =>
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     priorityMarked: e.target.checked,
                                   })
                                 }
@@ -1264,10 +1373,9 @@ export function VistoriaPage() {
                                 checked={printMarked}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-                                  upsertIssueControl(row.inspectionId, row.itemKey, {
+                                  upsertIssueControl(row, {
                                     printMarked: checked,
                                   });
-                                  if (checked) handlePrintIssue(row);
                                 }}
                                 className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
                               />
@@ -1278,7 +1386,7 @@ export function VistoriaPage() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => handleResolveIssue(row.inspectionId, row.itemKey)}
+                                onClick={() => handleResolveIssue(row)}
                             >
                               Resolver
                             </Button>
@@ -1335,7 +1443,7 @@ export function VistoriaPage() {
                   type="button"
                   className="flex-1"
                   onClick={() => {
-                    finalizeResolveIssue(confirmResolve.inspectionId, confirmResolve.itemKey);
+                    finalizeResolveIssue(confirmResolve.relatedIssueRefs);
                     setConfirmResolve(null);
                   }}
                 >
@@ -1363,7 +1471,7 @@ export function VistoriaPage() {
             ) : (
               <ul className="space-y-2" role="list">
                 {vtrPrioridadesOrdered.map((row, index) => {
-                  const rk = issueRowKey(row.inspectionId, row.itemKey);
+                  const rk = issueRowKey(row.rowId);
                   const isDragging = draggingPriorityKey === rk;
                   return (
                     <li
@@ -1460,12 +1568,7 @@ export function VistoriaPage() {
                             name={`vistoria-${item.key}`}
                             value="OK"
                             checked={inspectionChecklist[item.key] === "OK"}
-                            onChange={() =>
-                              setInspectionChecklist((prev) => ({
-                                ...prev,
-                                [item.key]: "OK",
-                              }))
-                            }
+                            onChange={() => handleSelectChecklistOk(item.key, item.label)}
                           />
                           OK
                         </label>
@@ -1496,8 +1599,9 @@ export function VistoriaPage() {
                               [item.key]: e.target.value,
                             }))
                           }
+                          disabled={inspectionChecklist[item.key] === "OK"}
                           placeholder="Escreva observações deste item..."
-                          className="h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                          className={`h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-60`}
                         />
                       </div>
                     </div>
@@ -1541,6 +1645,39 @@ export function VistoriaPage() {
               <Button type="button" className="w-full" onClick={() => setAvisoObservacaoItemLabel(null)}>
                 Entendi
               </Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {inspectionOpen && confirmOkClearsNote ? (
+        <div
+          className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmOkClearsNoteTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+        >
+          <Card className="w-full max-w-md border-[hsl(var(--border))] shadow-2xl">
+            <CardHeader>
+              <CardTitle id={confirmOkClearsNoteTitleId} className="text-lg">
+                Apagar observações?
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Ao escolher <strong>OK</strong>, o texto em <strong>Observações do item</strong> para «
+                {confirmOkClearsNote.label}» será apagado. Deseja continuar?
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmOkClearsNote(null)}>
+                  Cancelar
+                </Button>
+                <Button type="button" className="flex-1" onClick={confirmProceedOkClearsNote}>
+                  Continuar e apagar
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -5,6 +5,7 @@ import {
   type ChecklistKey,
   type VistoriaInspection,
 } from "./vistoriaInspectionShared";
+import { ensureVistoriaCloudStateSyncStarted, getVistoriaCloudState } from "./vistoriaCloudState";
 
 /** Estado persistido da aba Vistoria — Situação das VTR (localStorage). */
 
@@ -54,45 +55,18 @@ export function normalizeViaturaKey(v: string): string {
 }
 
 function readInspections(): VistoriaInspection[] {
+  ensureVistoriaCloudStateSyncStarted();
   return readVistoriaInspections();
 }
 
 function readResolvedIssues(): ResolvedIssue[] {
-  try {
-    const raw = localStorage.getItem(RESOLVED_ISSUES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ResolvedIssue[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.resolvedAt === "number",
-    );
-  } catch {
-    return [];
-  }
+  ensureVistoriaCloudStateSyncStarted();
+  return getVistoriaCloudState().resolvedIssues;
 }
 
 function readIssueControls(): IssueControl[] {
-  try {
-    const raw = localStorage.getItem(ISSUE_CONTROLS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as IssueControl[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item.inspectionId === "string" &&
-        typeof item.itemKey === "string" &&
-        typeof item.problemMarked === "boolean" &&
-        typeof item.priorityMarked === "boolean" &&
-        typeof item.printMarked === "boolean",
-    );
-  } catch {
-    return [];
-  }
+  ensureVistoriaCloudStateSyncStarted();
+  return getVistoriaCloudState().issueControls;
 }
 
 function latestInspectionByVehicle(inspections: VistoriaInspection[]): Map<string, VistoriaInspection> {

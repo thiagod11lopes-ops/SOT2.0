@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { SOT_SYNC_FIREBASE_ONLY_PREF_KEY } from "../lib/firebaseOnlyOnlinePolicy";
 
-const SYNC_PREF_KEY = "sot_sync_firebase_only_v1";
+const SYNC_PREF_KEY = SOT_SYNC_FIREBASE_ONLY_PREF_KEY;
 
 type SyncPreferenceContextValue = {
   firebaseOnlyEnabled: boolean;

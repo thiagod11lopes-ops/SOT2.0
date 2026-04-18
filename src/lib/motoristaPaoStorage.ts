@@ -1,9 +1,11 @@
 import { idbGetJson, idbSetJson } from "./indexedDb";
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
 
 const IDB_KEY = "sot-motorista-pao-v1";
 const LEGACY_LS_KEY = "sot-motorista-pao-v1";
 
 function readLegacyLocalStorage(): string {
+  if (isFirebaseOnlyOnlineActive()) return "";
   try {
     if (typeof localStorage === "undefined") return "";
     const v = localStorage.getItem(LEGACY_LS_KEY);
@@ -14,6 +16,7 @@ function readLegacyLocalStorage(): string {
 }
 
 function clearLegacyLocalStorage(): void {
+  if (isFirebaseOnlyOnlineActive()) return;
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
   } catch {

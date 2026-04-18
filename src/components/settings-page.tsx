@@ -4,7 +4,26 @@ import { useDeparturesReportEmail } from "../context/departures-report-email-con
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
+import {
+  DEFAULT_KM_EDIT_PASSWORD,
+  notifyKmEditPasswordChangedExternally,
+  setKmEditPassword,
+} from "../lib/kmEditPassword";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
+  subscribeVistoriaCloudStateChange,
+} from "../lib/vistoriaCloudState";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -15,6 +34,7 @@ import {
   parseFullBackupJson,
   restoreFullBackupToLocal,
 } from "../lib/firebase/systemBackup";
+import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -67,6 +87,69 @@ export function SettingsPage() {
   const [fullBackupBusy, setFullBackupBusy] = useState(false);
   const [backupPreviewOpen, setBackupPreviewOpen] = useState(false);
   const [preparedBackup, setPreparedBackup] = useState<FirebaseFullBackup | null>(null);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
+  const [vistoriaCloudTick, setVistoriaCloudTick] = useState(0);
+  const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
+  const [kmSenhaNova, setKmSenhaNova] = useState("");
+  const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
+
+  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
+
+  useEffect(() => {
+    ensureVistoriaCloudStateSyncStarted();
+    const unsub = subscribeVistoriaCloudStateChange(() => setVistoriaCloudTick((t) => t + 1));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
+            },
+            (err) => console.error("[SOT] Firestore detalhe serviço (settings):", err),
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço settings):", e);
+          if (cancelled) return;
+          void loadDetalheServicoBundleFromIdb().then((b) => {
+            if (!cancelled) setDetalheServicoBundle(b);
+          });
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((b) => {
+        if (!cancelled) setDetalheServicoBundle(b);
+      });
+    }
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOnline]);
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -163,6 +246,20 @@ export function SettingsPage() {
     reader.readAsText(file);
   }
 
+  function handleAbrirModalLimparVistoriasCalendario() {
+    if (!isVistoriaCloudStateHydrated()) {
+      window.alert("Aguarde a sincronização dos dados da Vistoria (Firebase).");
+      return;
+    }
+    if (!detalheServicoBundle) {
+      window.alert(
+        "Ainda não foi possível carregar o detalhe de serviço (escala). Verifique a ligação à rede e tente de novo.",
+      );
+      return;
+    }
+    setVistoriaClearModalOpen(true);
+  }
+
   function handleExcluirTodas() {
     if (
       !window.confirm(
@@ -206,6 +303,26 @@ export function SettingsPage() {
       return;
     }
     fullBackupFileInputRef.current?.click();
+  }
+
+  function handleSalvarSenhaKmListas() {
+    const a = kmSenhaNova.trim();
+    const b = kmSenhaConfirm.trim();
+    if (a.length < 4) {
+      window.alert("A senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+    if (a !== b) {
+      window.alert("A confirmação não coincide com a nova senha.");
+      return;
+    }
+    setKmEditPassword(a);
+    notifyKmEditPasswordChangedExternally();
+    setKmSenhaNova("");
+    setKmSenhaConfirm("");
+    window.alert(
+      "Senha guardada. Será pedida ao alterar KM saída, KM chegada ou hora de chegada nas abas Saídas Administrativas e Ambulância.",
+    );
   }
 
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -372,6 +489,45 @@ export function SettingsPage() {
         ) : null}
 
         <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">
+            Senha — edição de KM e hora de chegada (listas)
+          </h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Nas abas <strong>Saídas Administrativas</strong> e <strong>Ambulância</strong>, os campos{" "}
+            <strong>KM saída</strong>, <strong>KM chegada</strong> e <strong>Chegada</strong> (hora) só podem ser
+            alterados após introduzir esta senha (válida até fechar o separador do navegador). Valor inicial:{" "}
+            <code className="rounded bg-[hsl(var(--muted))]/50 px-1 font-mono">{DEFAULT_KM_EDIT_PASSWORD}</code>.
+          </p>
+          <div className="flex max-w-md flex-col gap-2">
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="km-senha-nova">
+              Nova senha
+            </label>
+            <input
+              id="km-senha-nova"
+              type="password"
+              autoComplete="new-password"
+              value={kmSenhaNova}
+              onChange={(e) => setKmSenhaNova(e.target.value)}
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 font-mono text-sm"
+            />
+            <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="km-senha-confirm">
+              Confirmar senha
+            </label>
+            <input
+              id="km-senha-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={kmSenhaConfirm}
+              onChange={(e) => setKmSenhaConfirm(e.target.value)}
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 font-mono text-sm"
+            />
+            <Button type="button" variant="default" className="mt-1 w-fit" onClick={handleSalvarSenhaKmListas}>
+              Guardar senha
+            </Button>
+          </div>
+        </section>
+
+        <section className="space-y-3">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Saídas</h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             <strong>Salvar</strong> gera um arquivo JSON com as saídas (administrativas e ambulância) conforme o{" "}
@@ -508,6 +664,40 @@ export function SettingsPage() {
             />
           </div>
         </section>
+
+        <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Vistoria — calendário</h3>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Abre um calendário com as mesmas cores da aba <strong>Vistoriar</strong> (verde = todas as viaturas
+            vistoriadas, laranja = parcial, vermelho = nenhuma). Escolha os dias e confirme para remover as vistorias
+            que contam nesse calendário (escala com «S» e vínculos de viatura), incluindo dias verdes e laranjas. Afeta o
+            Firebase como na própria aba Vistoria.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!detalheServicoBundle}
+            className="border-amber-600/80 text-amber-900 hover:bg-amber-50 dark:text-amber-100 dark:hover:bg-amber-950/40"
+            onClick={handleAbrirModalLimparVistoriasCalendario}
+          >
+            Apagar vistorias por dia (calendário)
+          </Button>
+          {!detalheServicoBundle ? (
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              Aguarde o carregamento da escala (detalhe de serviço) para usar o calendário.
+            </p>
+          ) : null}
+        </section>
+
+        {detalheServicoBundle ? (
+          <SettingsVistoriaClearCalendarModal
+            open={vistoriaClearModalOpen}
+            onOpenChange={setVistoriaClearModalOpen}
+            detalheServicoBundle={detalheServicoBundle}
+            assignments={vistoriaCloudSnapshot.assignments}
+            inspections={vistoriaCloudSnapshot.inspections}
+          />
+        ) : null}
 
         <section className="space-y-3 border-t border-[hsl(var(--border))] pt-6">
           <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Zona de risco</h3>

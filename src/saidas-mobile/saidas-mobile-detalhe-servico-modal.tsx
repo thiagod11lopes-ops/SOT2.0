@@ -13,6 +13,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
 
@@ -87,6 +88,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
             console.error("[SOT] Firestore detalhe serviço (mobile):", err);
             if (!cancelled) setLoading(false);
           },
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Carregar detalhe serviço (mobile):", e);
@@ -111,7 +113,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
 
   return (
     <div
-      className={MOBILE_MODAL_OVERLAY_CLASS}
+      className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[500]")}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

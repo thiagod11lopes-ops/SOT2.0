@@ -2,7 +2,14 @@ import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { isCompleteDatePtBr, isoDateToPtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import {
   appendVistoriaInspection,
   CHECKLIST_ITEMS,
@@ -32,10 +39,15 @@ import {
   type VistoriaInspection,
 } from "../lib/vistoriaInspectionShared";
 import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  subscribeVistoriaCloudStateChange,
+} from "../lib/vistoriaCloudState";
 
 function addDaysToIso(iso: string, delta: number): string {
   const d = parseIsoDate(iso);
@@ -50,6 +62,13 @@ type Props = {
   /** Fluxo avulso: após senha no layout, escolhe-se viatura e abre-se o formulário para este motorista (sem exigir «S» na escala). */
   administrativeVistoriadorMotorista?: string | null;
 };
+
+function newInspectionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `vistoria-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 /**
  * Vista mobile (Android/iOS): fluxo alinhado à aba Vistoriar — dia, viaturas com S + responsabilidade.
@@ -77,6 +96,9 @@ export function MobileVistoriaFullscreen({
   const [rubricaPadKey, setRubricaPadKey] = useState(0);
   const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
   const [bundleLoading, setBundleLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
 
   const [formMotorista, setFormMotorista] = useState("");
   const [formViatura, setFormViatura] = useState("");
@@ -88,10 +110,14 @@ export function MobileVistoriaFullscreen({
 
   const [rubricaOpen, setRubricaOpen] = useState(false);
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const successCloseTimerRef = useRef<number | null>(null);
   const rubricaModalIntentRef = useRef<"captureNaoAbordo" | "finalizeAbordo" | null>(null);
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
   const avisoObservacaoTitleId = useId();
+  const confirmOkClearsNoteTitleId = useId();
+  const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const adminFormSnapshotRef = useRef<{
     checklist: VistoriaChecklist;
     notes: VistoriaChecklistNotes;
@@ -158,13 +184,25 @@ export function MobileVistoriaFullscreen({
 
   useEffect(() => {
     if (!open) {
+      if (successCloseTimerRef.current) {
+        window.clearTimeout(successCloseTimerRef.current);
+        successCloseTimerRef.current = null;
+      }
+      setSaveSuccessOpen(false);
       setView("list");
       setRubricaOpen(false);
       setAvisoObservacaoItemLabel(null);
       setAdminViaturaDraft("");
       return;
     }
+    ensureVistoriaCloudStateSyncStarted();
     setListRefresh((k) => k + 1);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const unsub = subscribeVistoriaCloudStateChange(() => setListRefresh((k) => k + 1));
+    return () => unsub();
   }, [open]);
 
   useEffect(() => {
@@ -177,18 +215,60 @@ export function MobileVistoriaFullscreen({
   }, [open, administrativeVistoriadorMotorista, viaturasPorMotorista, view]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    let unsub: (() => void) | undefined;
     setBundleLoading(true);
-    void loadDetalheServicoBundleFromIdb().then((b) => {
-      if (cancelled) return;
-      setBundle(b);
-      setBundleLoading(false);
-    });
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setBundle(normalizeDetalheServicoBundle(payload));
+              setBundleLoading(false);
+            },
+            (err) => {
+              console.error("[SOT] Firestore detalhe serviço (vistoria mobile):", err);
+              if (!cancelled) setBundleLoading(false);
+            },
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço vistoria mobile):", e);
+          if (cancelled) return;
+          const b = await loadDetalheServicoBundleFromIdb();
+          if (cancelled) return;
+          setBundle(b);
+          setBundleLoading(false);
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((b) => {
+        if (cancelled) return;
+        setBundle(b);
+        setBundleLoading(false);
+      });
+    }
     return () => {
       cancelled = true;
+      unsub?.();
     };
-  }, [open]);
+  }, [open, isOnline]);
 
   useEffect(() => {
     if (!open) return;
@@ -243,14 +323,16 @@ export function MobileVistoriaFullscreen({
   }
 
   function openForm(motorista: string, viatura: string) {
-    setFormMotorista(motorista);
-    setFormViatura(viatura);
-    const existing = findLatestInspectionForFormPrefill(inspections, motorista, viatura);
+    const motoristaRef = motorista.trim();
+    const viaturaRef = viatura.trim();
+    setFormMotorista(motoristaRef);
+    setFormViatura(viaturaRef);
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
     const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
     const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
     const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
       inspections,
-      viatura,
+      viatura: viaturaRef,
       baseChecklist,
       baseNotes,
     });
@@ -269,6 +351,24 @@ export function MobileVistoriaFullscreen({
     setInspectionChecklist(nextChecklist);
     setInspectionChecklistNotes(nextNotes);
     setView("form");
+  }
+
+  function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
+    const note = String(inspectionChecklistNotes[itemKey] ?? "").trim();
+    if (note !== "") {
+      setConfirmOkClearsNote({ key: itemKey, label: itemLabel });
+      return;
+    }
+    setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
+  }
+
+  function confirmProceedOkClearsNote() {
+    if (!confirmOkClearsNote) return;
+    const k = confirmOkClearsNote.key;
+    setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
+    setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    setConfirmOkClearsNote(null);
   }
 
   function handleLocalizacaoChange(opt: ViaturaLocalizacao) {
@@ -315,7 +415,14 @@ export function MobileVistoriaFullscreen({
 
   function finalizeVistoria(rubricaDataUrl: string | undefined) {
     if (!isViaturaLocalizacao(localizacaoViatura)) return;
+    const motoristaRef = formMotorista.trim();
+    const viaturaRef = formViatura.trim();
+    if (!motoristaRef || !viaturaRef) return;
     const rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    const createdAt = (() => {
+      const parsed = parseIsoDate(selectedDate);
+      return parsed ? parsed.getTime() : 0;
+    })();
     const base: Omit<
       VistoriaInspection,
       | "rubrica"
@@ -327,14 +434,14 @@ export function MobileVistoriaFullscreen({
       | "itensAlteradosAdministracao"
       | "observacaoSegmentacaoAdmin"
     > = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      motorista: formMotorista,
-      viatura: formViatura,
+      id: newInspectionId(),
+      motorista: motoristaRef,
+      viatura: viaturaRef,
       inspectionDate: selectedDate,
       localizacaoViatura,
       checklist: inspectionChecklist,
       checklistNotes: inspectionChecklistNotes,
-      createdAt: Date.now(),
+      createdAt,
       origemMobile: true,
     };
     let novo: VistoriaInspection;
@@ -376,14 +483,14 @@ export function MobileVistoriaFullscreen({
     if (isAdminSession) {
       autoResolveCommonRedundanciesOnAdministrativeSave({
         inspections,
-        viatura: formViatura,
+        viatura: viaturaRef,
         checklist: inspectionChecklist,
         notes: inspectionChecklistNotes,
       });
     } else {
       autoResolveAdministrativeRedundanciesOnCommonSave({
         inspections,
-        viatura: formViatura,
+        viatura: viaturaRef,
         checklist: inspectionChecklist,
         notes: inspectionChecklistNotes,
       });
@@ -393,7 +500,13 @@ export function MobileVistoriaFullscreen({
     setRubricaOpen(false);
     setListRefresh((k) => k + 1);
     rubricaPadRef.current?.clearPad();
-    onOpenChange(false);
+    setSaveSuccessOpen(true);
+    if (successCloseTimerRef.current) window.clearTimeout(successCloseTimerRef.current);
+    successCloseTimerRef.current = window.setTimeout(() => {
+      successCloseTimerRef.current = null;
+      setSaveSuccessOpen(false);
+      onOpenChange(false);
+    }, 2000);
   }
 
   function commitRubricaESalvar() {
@@ -448,10 +561,16 @@ export function MobileVistoriaFullscreen({
 
   if (!open) return null;
 
+  const modalStackObscuresMain =
+    rubricaOpen || Boolean(avisoObservacaoItemLabel) || Boolean(confirmOkClearsNote) || saveSuccessOpen;
+
   return (
     <>
       <div
-        className="pointer-events-auto fixed inset-0 z-[500] flex justify-center bg-black/50 px-3 backdrop-blur-[2px] min-[480px]:px-4"
+        className={cn(
+          "fixed inset-0 z-[500] flex justify-center bg-black/50 px-3 backdrop-blur-[2px] min-[480px]:px-4",
+          modalStackObscuresMain ? "pointer-events-none" : "pointer-events-auto",
+        )}
         role="dialog"
         aria-modal="true"
         aria-label={isAdminSession ? "Vistoria administrativa" : "Vistoria"}
@@ -464,7 +583,7 @@ export function MobileVistoriaFullscreen({
         }}
       >
         <div
-          className="flex h-full min-h-0 w-full max-w-lg min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-2xl"
+          className="pointer-events-auto flex h-full min-h-0 w-full max-w-lg min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-2xl"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[hsl(var(--border))] px-3 pb-2 pt-1 min-[480px]:px-4">
@@ -482,7 +601,7 @@ export function MobileVistoriaFullscreen({
           </div>
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 active:scale-[0.98]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.98]"
             aria-label="Fechar vistoria"
             onClick={() => onOpenChange(false)}
           >
@@ -497,7 +616,7 @@ export function MobileVistoriaFullscreen({
               <button
                 type="button"
                 aria-label="Dia anterior"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 active:scale-[0.97]"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, -1))}
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -522,12 +641,12 @@ export function MobileVistoriaFullscreen({
               <button
                 type="button"
                 aria-label="Dia seguinte"
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 active:scale-[0.97]"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, 1))}
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
-              <label className="relative flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]">
+              <label className="relative flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm">
                 <Calendar className="h-5 w-5" aria-hidden />
                 <input
                   type="date"
@@ -702,12 +821,7 @@ export function MobileVistoriaFullscreen({
                         type="radio"
                         name={`mobile-vistoria-${item.key}`}
                         checked={inspectionChecklist[item.key] === "OK"}
-                        onChange={() =>
-                          setInspectionChecklist((prev) => ({
-                            ...prev,
-                            [item.key]: "OK",
-                          }))
-                        }
+                        onChange={() => handleSelectChecklistOk(item.key, item.label)}
                         className="h-5 w-5 accent-[hsl(var(--primary))]"
                       />
                       OK
@@ -740,8 +854,9 @@ export function MobileVistoriaFullscreen({
                         [item.key]: e.target.value,
                       }))
                     }
+                    disabled={inspectionChecklist[item.key] === "OK"}
                     placeholder="Opcional"
-                    className="mt-1 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+                    className="mt-1 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               ))}
@@ -754,12 +869,24 @@ export function MobileVistoriaFullscreen({
             >
               <Button
                 type="button"
-                className="min-h-12 flex-1 rounded-xl text-base font-semibold"
+                className={`min-h-12 flex-1 rounded-xl text-base font-semibold ${
+                  isAdminSession
+                    ? "border border-red-600/90 bg-red-500 text-white"
+                    : "border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                }`}
                 onClick={() => setView(isAdminSession ? "adminViatura" : "list")}
               >
                 Cancelar
               </Button>
-              <Button type="button" className="min-h-12 flex-1 rounded-xl text-base font-semibold" onClick={handlePedirSalvar}>
+              <Button
+                type="button"
+                className={`min-h-12 flex-1 rounded-xl text-base font-semibold ${
+                  isAdminSession
+                    ? "border border-emerald-600/90 bg-emerald-500 text-white"
+                    : ""
+                }`}
+                onClick={handlePedirSalvar}
+              >
                 Salvar vistoria
               </Button>
             </div>
@@ -789,25 +916,41 @@ export function MobileVistoriaFullscreen({
               Rubrica
             </h2>
             <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
-              Desenhe a rubrica com o dedo no ecrã (Android/iOS). Confirmar grava a vistoria e regressa ao ecrã inicial.
-              Preencha o checklist antes de confirmar (em «Na Oficina» ou «Destacada», use «Voltar ao formulário» se
-              ainda faltar o checklist). Pode deixar o desenho em branco se não for necessário.
+              Na imagem guardada, o nome do motorista fica por baixo da linha; desenhe a rubrica na área branca. Confirmar grava
+              a vistoria e regressa ao ecrã inicial. Preencha o checklist antes de confirmar (em «Na Oficina» ou
+              «Destacada», use «Voltar ao formulário» se ainda faltar o checklist). Pode deixar o traço em branco se não
+              for necessário.
             </p>
-            <div className="h-[min(40vh,280px)] w-full min-h-[200px] touch-none">
-              <RubricaSignaturePad ref={rubricaPadRef} key={rubricaPadKey} />
+            <div className="flex h-[min(40vh,280px)] w-full min-h-[200px] touch-none flex-col">
+              <RubricaSignaturePad
+                ref={rubricaPadRef}
+                key={rubricaPadKey}
+                motoristaLabel={formMotorista.trim()}
+                className="h-full min-h-0 w-full"
+              />
             </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <div className="flex w-full max-w-sm justify-center gap-2">
+                <Button
+                  type="button"
+                  className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                  onClick={() => rubricaPadRef.current?.clearPad()}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  type="button"
+                  className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
+                  onClick={closeRubricaModalSemConfirmar}
+                >
+                  Voltar ao formulário
+                </Button>
+              </div>
               <Button
                 type="button"
-                className="min-h-11 rounded-xl font-semibold"
-                onClick={() => rubricaPadRef.current?.clearPad()}
+                className="min-h-11 w-full rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
+                onClick={commitRubricaESalvar}
               >
-                Limpar
-              </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={closeRubricaModalSemConfirmar}>
-                Voltar ao formulário
-              </Button>
-              <Button type="button" className="min-h-11 rounded-xl font-semibold" onClick={commitRubricaESalvar}>
                 Confirmar e guardar
               </Button>
             </div>
@@ -841,11 +984,77 @@ export function MobileVistoriaFullscreen({
             </p>
             <Button
               type="button"
-              className="min-h-11 w-full rounded-xl font-semibold"
+              className="min-h-11 w-full rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
               onClick={() => setAvisoObservacaoItemLabel(null)}
             >
               Entendi
             </Button>
+          </div>
+        </div>
+      ) : null}
+      {confirmOkClearsNote ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[565]`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmOkClearsNoteTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) setConfirmOkClearsNote(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id={confirmOkClearsNoteTitleId} className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Aviso
+            </h2>
+            <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+              Ao marcar <strong>OK</strong> no item «{confirmOkClearsNote.label}», o conteúdo que introduziu em{" "}
+              <strong>Observações do item</strong> será apagado. Deseja continuar?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                className="min-h-11 w-full rounded-xl border-2 border-emerald-700 bg-emerald-500 px-4 text-base font-semibold text-white shadow-sm active:bg-emerald-700"
+                style={{ WebkitTapHighlightColor: "transparent" }}
+                onClick={() => setConfirmOkClearsNote(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="min-h-11 w-full rounded-xl border-2 border-red-700 bg-red-500 px-4 text-base font-semibold text-white shadow-sm active:bg-red-700"
+                style={{ WebkitTapHighlightColor: "transparent" }}
+                onClick={confirmProceedOkClearsNote}
+              >
+                Continuar e apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {saveSuccessOpen ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[570]`}
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--primary))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
+              Vistoria salva com sucesso
+            </h2>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              A vistoria foi registrada e já está disponível na tabela <strong>Situação das VTR</strong>.
+            </p>
           </div>
         </div>
       ) : null}

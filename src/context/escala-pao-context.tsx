@@ -203,6 +203,7 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
             })();
           },
           (err) => console.error("[SOT] Firestore escala pão:", err),
+          { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (escala pão):", e);

@@ -1,4 +1,5 @@
 import { idbGetJson, idbSetJson } from "./indexedDb";
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
 import type {
   DetalheServicoRodapeAssinatura,
   DetalheServicoSheetSnapshot,
@@ -99,6 +100,7 @@ export function isDetalheServicoBundleEmpty(b: DetalheServicoBundle): boolean {
 }
 
 function migrateLegacyLocalStorageToBundle(): DetalheServicoBundle | null {
+  if (isFirebaseOnlyOnlineActive()) return null;
   if (typeof localStorage === "undefined") return null;
   const sheets: Record<string, DetalheServicoSheetSnapshot> = {};
   const rodapes: Record<string, DetalheServicoRodapeAssinatura> = {};
@@ -137,6 +139,7 @@ function migrateLegacyLocalStorageToBundle(): DetalheServicoBundle | null {
 }
 
 function clearLegacyLocalStorageKeys(bundleKey: string): void {
+  if (isFirebaseOnlyOnlineActive()) return;
   try {
     localStorage.removeItem(bundleKey);
     const toRemove: string[] = [];
@@ -157,6 +160,9 @@ export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoB
   const fromIdb = await idbGetJson<unknown>(IDB_KEY);
   if (fromIdb && typeof fromIdb === "object") {
     return normalizeDetalheServicoBundle(fromIdb);
+  }
+  if (isFirebaseOnlyOnlineActive()) {
+    return emptyDetalheServicoBundle();
   }
   try {
     if (typeof localStorage !== "undefined") {

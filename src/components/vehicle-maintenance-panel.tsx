@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useVehicleMaintenance } from "../context/vehicle-maintenance-context";
 import { useViaturasInoperantes } from "../context/viaturas-inoperantes-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
+import { downloadVehicleMaintenancePdf } from "../lib/generateVehicleMaintenancePdf";
 import { maiorKmChegadaPorViatura, statusTrocaOleo } from "../lib/oilMaintenance";
 import { viaturaEstaNaOficina } from "../lib/oficinaVisits";
 import { cn } from "../lib/utils";
@@ -18,6 +20,7 @@ export function VehicleMaintenancePanel() {
   const { mapa, mapaOficina, departures, placas, setOficinaPlacaAberta, setTrocaOleoPlaca } =
     useVehicleMaintenance();
   const { isInoperante, setInoperante } = useViaturasInoperantes();
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   if (placas.length === 0) {
     return (
@@ -29,12 +32,38 @@ export function VehicleMaintenancePanel() {
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
       <p className="text-sm text-[hsl(var(--muted-foreground))]">
         O KM atual é o maior valor de <strong>KM chegada</strong> registrado nas abas Saídas Administrativas e
         Saídas de Ambulância. A troca de óleo é considerada devida a cada{" "}
         <strong>10.000 km</strong> ou a cada <strong>6 meses</strong>, o que ocorrer primeiro após a última
         troca registrada.
       </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="default"
+          className="shrink-0"
+          disabled={pdfBusy}
+          onClick={() => {
+            if (pdfBusy) return;
+            setPdfBusy(true);
+            void downloadVehicleMaintenancePdf({
+              placas,
+              departures,
+              mapaTrocaOleo: mapa,
+              mapaOficina,
+              isInoperante,
+            })
+              .catch(() => {
+                window.alert("Não foi possível gerar o PDF. Tente novamente.");
+              })
+              .finally(() => setPdfBusy(false));
+          }}
+        >
+          {pdfBusy ? "Gerando…" : "Gerar PDF"}
+        </Button>
+      </div>
       <div className="overflow-x-auto rounded-lg border border-[hsl(var(--border))]">
         <Table>
           <TableHeader>

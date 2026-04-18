@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 import { fullRowCells, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -9,19 +10,117 @@ interface Props {
   emptyLabel: string;
   onTrashClick: (id: string) => void;
   onEdit: (id: string) => void;
+  /** Texto digitado na lupa: os termos correspondentes aparecem em negrito na tabela. */
+  highlightTerm?: string;
 }
 
 const COLS = 8;
 
-function FieldLine({ label, value }: { label: string; value: string }) {
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function HighlightText({ text, highlight }: { text: string; highlight: string }) {
+  const palavras = highlight.trim().split(/\s+/).filter((w) => w.length > 0);
+  if (palavras.length === 0 || !text) {
+    return <span className="whitespace-pre-wrap">{text}</span>;
+  }
+  const pattern = palavras.map(escapeRegExp).join("|");
+  const re = new RegExp(`(${pattern})`, "gi");
+  const partes = text.split(re);
+  return (
+    <span className="whitespace-pre-wrap">
+      {partes.map((parte, i) => {
+        const ehTrecho = palavras.some((p) => p.toLowerCase() === parte.toLowerCase());
+        return (
+          <span key={i}>
+            {ehTrecho ? (
+              <strong className="font-bold text-[hsl(var(--foreground))]">{parte}</strong>
+            ) : (
+              parte
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function FieldLine({
+  label,
+  value,
+  highlightTerm,
+}: {
+  label: string;
+  value: string;
+  highlightTerm?: string;
+}) {
   return (
     <p className="break-words [word-break:break-word]">
-      <span className="text-[hsl(var(--muted-foreground))]">{label}</span> {value}
+      <span className="text-[hsl(var(--muted-foreground))]">{label}</span>{" "}
+      {highlightTerm && highlightTerm.trim().length > 0 ? (
+        <HighlightText text={value} highlight={highlightTerm} />
+      ) : (
+        value
+      )}
     </p>
   );
 }
 
-export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, onEdit }: Props) {
+export function RegisteredFullDeparturesTable({
+  rows,
+  emptyLabel,
+  onTrashClick,
+  onEdit,
+  highlightTerm = "",
+}: Props) {
+  const highlightTokens = useMemo(
+    () =>
+      highlightTerm
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 0),
+    [highlightTerm],
+  );
+
+  const rowsToRender = useMemo(() => {
+    if (highlightTokens.length === 0) return rows;
+
+    return rows.filter((row) => {
+      const c = fullRowCells(row);
+      const cancelada = row.cancelada === true;
+
+      const omOrHospital = row.tipo === "Ambulância" ? c.hospitalDestino : c.om;
+      const hospitalIfAdmin = row.tipo === "Administrativa" ? c.hospitalDestino : "";
+
+      const haystack = [
+        c.tipo,
+        `${c.dataPedido} ${c.horaPedido}`.trim(),
+        `${c.dataSaida} ${c.horaSaida}`.trim(),
+        c.setor,
+        c.ramal,
+        c.objetivoSaida,
+        c.numeroPassageiros,
+        c.responsavelPedido,
+        omOrHospital,
+        c.viaturas,
+        c.motoristas,
+        hospitalIfAdmin,
+        `${c.kmSaida} / ${c.kmChegada}`,
+        c.chegada,
+        c.cidade,
+        c.bairro,
+        // Rubrica só é exibida (e portanto recebe negrito) quando cancelada.
+        cancelada ? c.rubrica : "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return highlightTokens.some((t) => haystack.includes(t));
+    });
+  }, [rows, highlightTokens]);
+
   return (
     <div className="max-h-[min(70vh,720px)] w-full max-w-full overflow-y-auto overflow-x-hidden rounded-lg border border-[hsl(var(--border))]">
       <table className="w-full table-fixed border-collapse text-[10px] leading-snug sm:text-[11px]">
@@ -52,7 +151,7 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, 
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length === 0 ? (
+          {rowsToRender.length === 0 ? (
             <TableRow>
               <TableCell
                 colSpan={COLS}
@@ -62,7 +161,7 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, 
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((row) => {
+            rowsToRender.map((row) => {
               const c = fullRowCells(row);
               const cancelada = row.cancelada === true;
               return (
@@ -71,44 +170,64 @@ export function RegisteredFullDeparturesTable({ rows, emptyLabel, onTrashClick, 
                   className={cn("align-top", cancelada && "bg-red-950/[0.08] opacity-50")}
                   title={cancelada ? "Saída cancelada" : undefined}
                 >
-                  <TableCell className="p-1.5 font-medium sm:p-2">{c.tipo}</TableCell>
-                  <TableCell className="p-1.5 font-mono sm:p-2">
-                    <FieldLine label="Ped.:" value={`${c.dataPedido} ${c.horaPedido}`.trim()} />
-                    <FieldLine label="Saí.:" value={`${c.dataSaida} ${c.horaSaida}`.trim()} />
-                  </TableCell>
-                  <TableCell className="p-1.5 sm:p-2">
-                    <FieldLine label="Setor:" value={c.setor} />
-                    <FieldLine label="Ramal:" value={c.ramal} />
-                    <FieldLine label="Obj.:" value={c.objetivoSaida} />
-                  </TableCell>
-                  <TableCell className="p-1.5 sm:p-2">
-                    <FieldLine label="Pass.:" value={c.numeroPassageiros} />
-                    <FieldLine label="Resp.:" value={c.responsavelPedido} />
-                    {row.tipo === "Ambulância" ? (
-                      <FieldLine label="Hospital:" value={c.hospitalDestino} />
+                  <TableCell className="p-1.5 font-medium sm:p-2">
+                    {highlightTerm.trim().length > 0 ? (
+                      <HighlightText text={c.tipo} highlight={highlightTerm} />
                     ) : (
-                      <FieldLine label="OM:" value={c.om} />
+                      c.tipo
+                    )}
+                  </TableCell>
+                  <TableCell className="p-1.5 font-mono sm:p-2">
+                    <FieldLine
+                      label="Ped.:"
+                      value={`${c.dataPedido} ${c.horaPedido}`.trim()}
+                      highlightTerm={highlightTerm}
+                    />
+                    <FieldLine
+                      label="Saí.:"
+                      value={`${c.dataSaida} ${c.horaSaida}`.trim()}
+                      highlightTerm={highlightTerm}
+                    />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Setor:" value={c.setor} highlightTerm={highlightTerm} />
+                    <FieldLine label="Ramal:" value={c.ramal} highlightTerm={highlightTerm} />
+                    <FieldLine label="Obj.:" value={c.objetivoSaida} highlightTerm={highlightTerm} />
+                  </TableCell>
+                  <TableCell className="p-1.5 sm:p-2">
+                    <FieldLine label="Pass.:" value={c.numeroPassageiros} highlightTerm={highlightTerm} />
+                    <FieldLine label="Resp.:" value={c.responsavelPedido} highlightTerm={highlightTerm} />
+                    {row.tipo === "Ambulância" ? (
+                      <FieldLine label="Hospital:" value={c.hospitalDestino} highlightTerm={highlightTerm} />
+                    ) : (
+                      <FieldLine label="OM:" value={c.om} highlightTerm={highlightTerm} />
                     )}
                   </TableCell>
                   <TableCell className="p-1.5 sm:p-2">
-                    <FieldLine label="Viaturas:" value={c.viaturas} />
-                    <FieldLine label="Mot.:" value={c.motoristas} />
+                    <FieldLine label="Viaturas:" value={c.viaturas} highlightTerm={highlightTerm} />
+                    <FieldLine label="Mot.:" value={c.motoristas} highlightTerm={highlightTerm} />
                   </TableCell>
                   <TableCell className="p-1.5 font-mono sm:p-2">
                     {row.tipo === "Administrativa" ? (
-                      <FieldLine label="Hosp.:" value={c.hospitalDestino} />
+                      <FieldLine label="Hosp.:" value={c.hospitalDestino} highlightTerm={highlightTerm} />
                     ) : null}
-                    <FieldLine label="KM s/c:" value={`${c.kmSaida} / ${c.kmChegada}`} />
-                    <FieldLine label="Cheg.:" value={c.chegada} />
+                    <FieldLine label="KM s/c:" value={`${c.kmSaida} / ${c.kmChegada}`} highlightTerm={highlightTerm} />
+                    <FieldLine label="Cheg.:" value={c.chegada} highlightTerm={highlightTerm} />
                   </TableCell>
                   <TableCell className="p-1.5 sm:p-2">
-                    <FieldLine label="Cid.:" value={c.cidade} />
-                    <FieldLine label="Bairro:" value={c.bairro} />
+                    <FieldLine label="Cid.:" value={c.cidade} highlightTerm={highlightTerm} />
+                    <FieldLine label="Bairro:" value={c.bairro} highlightTerm={highlightTerm} />
                     {cancelada ? (
                       <div className="relative mt-1.5 min-h-[2.75rem] overflow-hidden rounded border border-red-600/25 bg-[hsl(var(--muted))]/10 px-1 py-1">
                         <p className="break-words [word-break:break-word]">
                           <span className="text-[hsl(var(--muted-foreground))]">Rubrica: </span>
-                          <span className="opacity-80">{c.rubrica}</span>
+                          <span className="opacity-80">
+                            {highlightTerm && highlightTerm.trim().length > 0 ? (
+                              <HighlightText text={c.rubrica} highlight={highlightTerm} />
+                            ) : (
+                              c.rubrica
+                            )}
+                          </span>
                         </p>
                         <span
                           className="pointer-events-none absolute inset-0 flex items-center justify-center"

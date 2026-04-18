@@ -1,5 +1,6 @@
 import {
   doc,
+  getDocFromServer,
   getFirestore,
   onSnapshot,
   setDoc,
@@ -26,6 +27,8 @@ export const SOT_STATE_DOC = {
   alarmDismiss: "alarmDismiss",
   /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
   detalheServico: "detalheServico",
+  /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */
+  vistoria: "vistoria",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];
@@ -48,15 +51,54 @@ export function subscribeSotStateDoc(
   docId: SotStateDocId,
   onPayload: (payload: unknown | null) => void,
   onError: (err: Error) => void,
+  options?: { ignoreCachedSnapshotWhenOnline?: boolean },
 ): Unsubscribe {
   let unsub: Unsubscribe | undefined;
   let cancelled = false;
+  let hasDeliveredServerSnapshot = false;
+  let serverBackfillInFlight = false;
   void ensureFirebaseAuth()
     .then(() => {
       if (cancelled) return;
       unsub = onSnapshot(
         docRef(docId),
         (snap) => {
+          const ignoreCachedOnline =
+            options?.ignoreCachedSnapshotWhenOnline === true &&
+            typeof navigator !== "undefined" &&
+            navigator.onLine &&
+            snap.metadata.fromCache &&
+            !snap.metadata.hasPendingWrites;
+          if (ignoreCachedOnline) {
+            if (!hasDeliveredServerSnapshot && !serverBackfillInFlight) {
+              serverBackfillInFlight = true;
+              void getDocFromServer(docRef(docId))
+                .then((serverSnap) => {
+                  if (cancelled) return;
+                  hasDeliveredServerSnapshot = true;
+                  if (!serverSnap.exists()) {
+                    onPayload(null);
+                    return;
+                  }
+                  const data = serverSnap.data();
+                  const p =
+                    data && typeof data === "object" && "payload" in data
+                      ? (data as { payload: unknown }).payload
+                      : null;
+                  onPayload(p ?? null);
+                })
+                .catch((err) => {
+                  if (!cancelled) onError(err instanceof Error ? err : new Error(String(err)));
+                })
+                .finally(() => {
+                  serverBackfillInFlight = false;
+                });
+            }
+            return;
+          }
+          if (!snap.metadata.fromCache) {
+            hasDeliveredServerSnapshot = true;
+          }
           if (import.meta.env.DEV && (snap.metadata.fromCache || snap.metadata.hasPendingWrites)) {
             console.debug("[SOT] sot_state snapshot meta", docId, {
               fromCache: snap.metadata.fromCache,
