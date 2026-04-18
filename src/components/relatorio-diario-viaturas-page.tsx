@@ -28,26 +28,36 @@ function todayIsoLocal(): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Cores só em hex/rgb — evita oklch no html2canvas ao gerar PDF. */
 const tableFrame = cn(
-  "w-full border-collapse border border-slate-900 text-[9pt]",
-  "[&_th]:border [&_td]:border [&_th]:border-slate-900 [&_td]:border-slate-900",
-  "[&_th]:bg-[#e2f0d9]/90 [&_th]:p-1 [&_td]:p-1",
+  "w-full border-collapse border border-[#0f172a] text-[9pt]",
+  "[&_th]:border [&_td]:border [&_th]:border-[#0f172a] [&_td]:border-[#0f172a]",
+  "[&_th]:bg-[rgba(226,240,217,0.9)] [&_th]:p-1 [&_td]:p-1",
 );
 
-const sectionBar =
-  "mt-4 border border-b-0 border-slate-900 bg-[#e2f0d9] px-2 py-1 text-left text-[9pt] font-bold";
+const sectionBar = cn(
+  "rdv-section-bar",
+  "mt-4 border border-b-0 border-[#0f172a] bg-[#e2f0d9] px-2 py-1 text-left text-[9pt] font-bold",
+);
+
+/** Remove fundos com `hsl(var(--muted))` dos componentes de tabela (oklch no tema). */
+const rdvTableHeaderClass =
+  "!border-0 !border-b-0 !bg-transparent [&_tr]:!bg-transparent [&_tr:hover]:!bg-transparent";
+const rdvTableBodyClass =
+  "[&_tr:nth-child(odd)]:!bg-white [&_tr:nth-child(even)]:!bg-[#f1f5f9] [&_tr:hover]:!bg-inherit";
+const rdvTableRowClass = "hover:!bg-inherit";
 
 const cellInput = cn(
   "w-full min-w-0 border-0 bg-transparent p-0.5 text-center text-[9pt] text-inherit outline-none",
-  "focus:ring-1 focus:ring-blue-500/50",
+  "focus:ring-1 focus:ring-[#3b82f6]/50",
 );
 
 const cellInputLeft = cn(cellInput, "text-left");
 
 function situacaoCellClass(s: RdvStatus): string {
-  if (s === "Operando") return "text-green-700 font-bold";
-  if (s === "Inoperante") return "text-red-600 font-bold";
-  if (s === "Destacada") return "text-orange-600 font-bold";
+  if (s === "Operando") return "font-bold text-[#15803d]";
+  if (s === "Inoperante") return "font-bold text-[#dc2626]";
+  if (s === "Destacada") return "font-bold text-[#ea580c]";
   return "";
 }
 
@@ -140,13 +150,13 @@ export function RelatorioDiarioViaturasPage() {
       <div
         id="rdv-conteudo-pdf"
         ref={pdfRef}
-        className="mx-auto max-w-[210mm] rounded-sm border border-slate-300 bg-white p-3 text-slate-900 shadow-sm sm:p-4 md:p-6"
+        className="mx-auto max-w-[210mm] rounded-sm border border-[#cbd5e1] bg-white p-3 text-[#0f172a] shadow-sm sm:p-4 md:p-6"
       >
         <div className="mb-3 text-center text-[10pt] leading-tight">
           <h1 className="m-0 text-[11pt] font-bold">MARINHA DO BRASIL</h1>
           <h2 className="m-0 text-[10pt] font-normal">HOSPITAL NAVAL MARCÍLIO DIAS</h2>
           <h2 className="m-0 text-[10pt] font-normal">DIVISÃO DE TRANSPORTE</h2>
-          <h3 className="mx-auto mt-2 flex flex-wrap items-center justify-center gap-1 border border-slate-900 bg-[#e2f0d9] px-2 py-1 text-[10pt] font-bold">
+          <h3 className="mx-auto mt-2 flex flex-wrap items-center justify-center gap-1 border border-[#0f172a] bg-[#e2f0d9] px-2 py-1 text-[10pt] font-bold">
             <span>RELATÓRIO DIÁRIO DE VIATURAS DE</span>
             <input
               type="date"
@@ -166,31 +176,31 @@ export function RelatorioDiarioViaturasPage() {
         </div>
 
         <Table className={tableFrame}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead rowSpan={2} className="w-[15%] align-middle">
+          <TableHeader className={rdvTableHeaderClass}>
+            <TableRow className={cn("hover:bg-transparent", rdvTableRowClass)}>
+              <TableHead rowSpan={2} className="w-[15%] align-middle text-[#334155]">
                 TIPO
               </TableHead>
-              <TableHead rowSpan={2} className="align-middle">
+              <TableHead rowSpan={2} className="align-middle text-[#334155]">
                 EFETIVO
               </TableHead>
-              <TableHead colSpan={3} className="text-center">
+              <TableHead colSpan={3} className="text-center text-[#334155]">
                 SITUAÇÃO GERAL DAS VIATURAS DOTADAS NO HNMD
               </TableHead>
-              <TableHead colSpan={2} className="text-center">
+              <TableHead colSpan={2} className="text-center text-[#334155]">
                 OUTROS
               </TableHead>
             </TableRow>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>OPERANDO</TableHead>
-              <TableHead>INOPERANTE</TableHead>
-              <TableHead>DESTACADA</TableHead>
-              <TableHead>UTI MÓVEL</TableHead>
-              <TableHead>USB</TableHead>
+            <TableRow className={cn("hover:bg-transparent", rdvTableRowClass)}>
+              <TableHead className="text-[#334155]">OPERANDO</TableHead>
+              <TableHead className="text-[#334155]">INOPERANTE</TableHead>
+              <TableHead className="text-[#334155]">DESTACADA</TableHead>
+              <TableHead className="text-[#334155]">UTI MÓVEL</TableHead>
+              <TableHead className="text-[#334155]">USB</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            <TableRow>
+          <TableBody className={rdvTableBodyClass}>
+            <TableRow className={rdvTableRowClass}>
               <TableCell className="text-left font-bold">AMBULÂNCIA(S)</TableCell>
               <TableCell>
                 <input
@@ -229,7 +239,7 @@ export function RelatorioDiarioViaturasPage() {
                 />
               </TableCell>
             </TableRow>
-            <TableRow>
+            <TableRow className={rdvTableRowClass}>
               <TableCell className="text-left font-bold">ADMINISTRATIVA</TableCell>
               <TableCell>
                 <input
@@ -249,9 +259,9 @@ export function RelatorioDiarioViaturasPage() {
               <TableCell>
                 <input type="text" readOnly className={cellInput} value={countAdm.Destacada} />
               </TableCell>
-              <TableCell colSpan={2} className="bg-slate-100" />
+              <TableCell colSpan={2} className="rdv-summary-merged bg-[#f1f5f9]" />
             </TableRow>
-            <TableRow className="font-bold">
+            <TableRow className={cn("font-bold", rdvTableRowClass)}>
               <TableCell className="text-left">TOTAL</TableCell>
               <TableCell>
                 <input type="text" readOnly className={cellInput} value={efetivoTotal} />
@@ -265,29 +275,29 @@ export function RelatorioDiarioViaturasPage() {
               <TableCell>
                 <input type="text" readOnly className={cellInput} value={totalDestacada} />
               </TableCell>
-              <TableCell colSpan={2} className="bg-slate-100" />
+              <TableCell colSpan={2} className="rdv-summary-merged bg-[#f1f5f9]" />
             </TableRow>
           </TableBody>
         </Table>
 
         <div className={sectionBar}>AMBULÂNCIAS:</div>
         <Table id="rdv-tabela-ambulancias" className={cn(tableFrame, "table-fixed border-t-0")}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-8">#</TableHead>
-              <TableHead className="w-[80px]">TIPO</TableHead>
-              <TableHead className="w-[70px]">PLACA</TableHead>
-              <TableHead className="w-[50px]">ANO</TableHead>
-              <TableHead className="w-[80px]">SITUAÇÃO</TableHead>
-              <TableHead className="w-[70px]">VIDA ÚTIL</TableHead>
-              <TableHead className="w-[100px]">ESPECIFICAÇÃO</TableHead>
-              <TableHead className="min-w-0">OBSERVAÇÃO</TableHead>
-              <TableHead className="w-[50px]">AÇÃO</TableHead>
+          <TableHeader className={rdvTableHeaderClass}>
+            <TableRow className={cn("hover:bg-transparent", rdvTableRowClass)}>
+              <TableHead className="w-8 text-[#334155]">#</TableHead>
+              <TableHead className="w-[80px] text-[#334155]">TIPO</TableHead>
+              <TableHead className="w-[70px] text-[#334155]">PLACA</TableHead>
+              <TableHead className="w-[50px] text-[#334155]">ANO</TableHead>
+              <TableHead className="w-[80px] text-[#334155]">SITUAÇÃO</TableHead>
+              <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
+              <TableHead className="w-[100px] text-[#334155]">ESPECIFICAÇÃO</TableHead>
+              <TableHead className="min-w-0 text-[#334155]">OBSERVAÇÃO</TableHead>
+              <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className={rdvTableBodyClass}>
             {rowsAmb.map((row, idx) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} className={rdvTableRowClass}>
                 <TableCell>
                   <input type="text" readOnly className={cellInput} value={idx + 1} />
                 </TableCell>
@@ -314,7 +324,7 @@ export function RelatorioDiarioViaturasPage() {
                     onChange={(e) => patchAmb(row.id, { ano: e.target.value })}
                   />
                 </TableCell>
-                <TableCell className={situacaoCellClass(row.situacao)}>
+                <TableCell className={situacaoCellClass(row.situacao)} data-rdv-sit={row.situacao}>
                   <select
                     className={cn(
                       "w-full min-w-0 border-0 bg-transparent p-0.5 text-center text-[9pt] font-bold outline-none",
@@ -380,21 +390,23 @@ export function RelatorioDiarioViaturasPage() {
 
         <div className={cn(sectionBar, "mt-4")}>ADMINISTRATIVAS:</div>
         <Table id="rdv-tabela-administrativas" className={cn(tableFrame, "table-fixed border-t-0")}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-8">#</TableHead>
-              <TableHead className="w-[80px]">TIPO</TableHead>
-              <TableHead className="w-[70px]">PLACA</TableHead>
-              <TableHead className="w-[50px]">ANO</TableHead>
-              <TableHead className="w-[80px]">SITUAÇÃO</TableHead>
-              <TableHead className="w-[70px]">VIDA ÚTIL</TableHead>
-              <TableHead colSpan={2}>OBSERVAÇÃO</TableHead>
-              <TableHead className="w-[50px]">AÇÃO</TableHead>
+          <TableHeader className={rdvTableHeaderClass}>
+            <TableRow className={cn("hover:bg-transparent", rdvTableRowClass)}>
+              <TableHead className="w-8 text-[#334155]">#</TableHead>
+              <TableHead className="w-[80px] text-[#334155]">TIPO</TableHead>
+              <TableHead className="w-[70px] text-[#334155]">PLACA</TableHead>
+              <TableHead className="w-[50px] text-[#334155]">ANO</TableHead>
+              <TableHead className="w-[80px] text-[#334155]">SITUAÇÃO</TableHead>
+              <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
+              <TableHead colSpan={2} className="text-[#334155]">
+                OBSERVAÇÃO
+              </TableHead>
+              <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className={rdvTableBodyClass}>
             {rowsAdm.map((row, idx) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} className={rdvTableRowClass}>
                 <TableCell>
                   <input type="text" readOnly className={cellInput} value={idx + 1} />
                 </TableCell>
@@ -421,7 +433,7 @@ export function RelatorioDiarioViaturasPage() {
                     onChange={(e) => patchAdm(row.id, { ano: e.target.value })}
                   />
                 </TableCell>
-                <TableCell className={situacaoCellClass(row.situacao)}>
+                <TableCell className={situacaoCellClass(row.situacao)} data-rdv-sit={row.situacao}>
                   <select
                     className={cn(
                       "w-full min-w-0 border-0 bg-transparent p-0.5 text-center text-[9pt] font-bold outline-none",
