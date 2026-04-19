@@ -68,7 +68,7 @@ export function StatisticsTimeSeriesCharts({ evolution }: { evolution: Statistic
         className="space-y-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
         data-pdf-chart="evolucao-tipo"
         data-pdf-chart-title="Saídas por tipo (Administrativa e Ambulância)"
-        data-pdf-order="8"
+        data-pdf-order="9"
       >
         <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">
           Saídas por tipo (Administrativa e Ambulância)
@@ -123,7 +123,7 @@ export function StatisticsTimeSeriesCharts({ evolution }: { evolution: Statistic
         className="space-y-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
         data-pdf-chart="evolucao-fora-prazo"
         data-pdf-chart-title="Pedidos fora do prazo por mês"
-        data-pdf-order="9"
+        data-pdf-order="10"
       >
         <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedidos fora do prazo por mês</h4>
         <ChartContainer config={chartLateConfig} className={chartShell}>
@@ -161,7 +161,7 @@ export function StatisticsTimeSeriesCharts({ evolution }: { evolution: Statistic
         className="space-y-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
         data-pdf-chart="evolucao-pct-fora"
         data-pdf-chart-title="Percentagem fora do prazo por mês"
-        data-pdf-order="10"
+        data-pdf-order="11"
       >
         <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">Percentagem fora do prazo por mês</h4>
         <ChartContainer config={chartPctConfig} className={chartShell}>

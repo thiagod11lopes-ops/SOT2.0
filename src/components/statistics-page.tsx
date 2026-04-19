@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  Building2,
   CarFront,
   ChartColumnBig,
   ChevronDown,
   ClipboardList,
   FileDown,
   LineChart,
-  MapPin,
   Siren,
   TriangleAlert,
   UserRound,
@@ -397,6 +397,15 @@ export function StatisticsPage() {
   const maxMonthlyLate = monthlyLateStats.reduce((max, row) => Math.max(max, row.total), 1);
   const lateSectorsTotal = lateSectors.reduce((acc, entry) => acc + entry.total, 0);
 
+  const departuresAdministrativas = useMemo(
+    () => filteredDepartures.filter((row) => row.tipo === "Administrativa"),
+    [filteredDepartures],
+  );
+  const departuresAmbulancia = useMemo(
+    () => filteredDepartures.filter((row) => row.tipo === "Ambulância"),
+    [filteredDepartures],
+  );
+
   /** Todas as saídas do período filtrado, por bairro de destino (não só fora do prazo). */
   const requestedDestinations = useMemo(
     () =>
@@ -408,7 +417,28 @@ export function StatisticsPage() {
   );
   const requestedDestinationsTotal = requestedDestinations.reduce((acc, entry) => acc + entry.total, 0);
 
-  const rankingDestinos = useMemo(() => requestedDestinations.slice(0, 3), [requestedDestinations]);
+  const requestedDestinationsAdmin = useMemo(
+    () =>
+      toTopRanking(
+        toCountMap(departuresAdministrativas, (row) => normalizeBairroDestinoEstatistica(row.bairro)),
+        Number.POSITIVE_INFINITY,
+      ),
+    [departuresAdministrativas],
+  );
+  const requestedDestinationsAmbulance = useMemo(
+    () =>
+      toTopRanking(
+        toCountMap(departuresAmbulancia, (row) => normalizeBairroDestinoEstatistica(row.bairro)),
+        Number.POSITIVE_INFINITY,
+      ),
+    [departuresAmbulancia],
+  );
+
+  const rankingDestinosAdmin = useMemo(() => requestedDestinationsAdmin.slice(0, 3), [requestedDestinationsAdmin]);
+  const rankingDestinosAmbulance = useMemo(
+    () => requestedDestinationsAmbulance.slice(0, 3),
+    [requestedDestinationsAmbulance],
+  );
 
   const monthlyEvolution = useMemo(
     () => buildMonthlyEvolution(filteredDepartures),
@@ -607,12 +637,43 @@ export function StatisticsPage() {
 
       <StatisticsDepartureTypeDonut admin={totals.admin} ambulance={totals.ambulance} total={totals.total} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div
+          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
+          data-pdf-chart="podium-destino-administrativa"
+          data-pdf-chart-title="Pódio por destino — saídas administrativas"
+          data-pdf-order="2"
+        >
+          <PodiumCard
+            title="Pódio por destino (Administrativa)"
+            icon={<Building2 size={22} />}
+            ranking={rankingDestinosAdmin}
+            fullRanking={requestedDestinationsAdmin}
+            entityColumnLabel="Destino"
+          />
+        </div>
+        <div
+          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
+          data-pdf-chart="podium-destino-ambulancia"
+          data-pdf-chart-title="Pódio por destino — ambulância"
+          data-pdf-order="3"
+        >
+          <PodiumCard
+            title="Pódio por destino (Ambulância)"
+            icon={<Siren size={22} />}
+            ranking={rankingDestinosAmbulance}
+            fullRanking={requestedDestinationsAmbulance}
+            entityColumnLabel="Destino"
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         <div
           className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
           data-pdf-chart="podium-viatura"
           data-pdf-chart-title="Pódio de saídas por viatura"
-          data-pdf-order="2"
+          data-pdf-order="4"
         >
           <PodiumCard
             title="Pódio de saídas por viatura"
@@ -626,7 +687,7 @@ export function StatisticsPage() {
           className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
           data-pdf-chart="podium-motorista"
           data-pdf-chart-title="Pódio de saídas por motorista"
-          data-pdf-order="3"
+          data-pdf-order="5"
         >
           <PodiumCard
             title="Pódio de saídas por motorista"
@@ -634,20 +695,6 @@ export function StatisticsPage() {
             ranking={rankingMotoristas}
             fullRanking={rankingMotoristasFull}
             entityColumnLabel="Motorista"
-          />
-        </div>
-        <div
-          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
-          data-pdf-chart="podium-destino"
-          data-pdf-chart-title="Pódio de saídas por destino"
-          data-pdf-order="4"
-        >
-          <PodiumCard
-            title="Pódio de saídas por destino"
-            icon={<MapPin size={22} />}
-            ranking={rankingDestinos}
-            fullRanking={requestedDestinations}
-            entityColumnLabel="Destino"
           />
         </div>
       </div>
@@ -689,7 +736,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="destinos-mais-solicitados"
                 data-pdf-chart-title="Destinos mais solicitados"
-                data-pdf-order="5"
+                data-pdf-order="6"
               >
                 {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -751,7 +798,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="setores-fora-prazo"
                 data-pdf-chart-title="Setores com pedidos fora do prazo"
-                data-pdf-order="6"
+                data-pdf-order="7"
               >
                 {lateSectors.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -809,7 +856,7 @@ export function StatisticsPage() {
                 className="mt-4 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="grafico-mensal-fora-prazo"
                 data-pdf-chart-title="Gráfico mensal de saídas fora do prazo"
-                data-pdf-order="7"
+                data-pdf-order="8"
               >
                 {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
