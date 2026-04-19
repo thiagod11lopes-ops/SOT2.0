@@ -60,10 +60,10 @@ function normalizeBairroDestinoEstatistica(raw: string): string {
   const t = raw.trim();
   if (!t) return "";
   const f = foldBairroDestinoKey(t);
-  if (/\bdicamp\w*\b/i.test(f) || /di\s*[\-]?\s*camp\b/i.test(f)) {
+  if (/\bdicamp\w*\b/i.test(f) || /di\s*-?\s*camp\b/i.test(f)) {
     return "Campo Grande";
   }
-  if (/\bcemeru\w*\b/i.test(f) || /ce\s*[\-]?\s*meru\b/i.test(f)) {
+  if (/\bcemeru\w*\b/i.test(f) || /ce\s*-?\s*meru\b/i.test(f)) {
     return "Santa Cruz";
   }
   if (f === "campo grande" || f.startsWith("campo grande ")) {
