@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CarFront, ChartColumnBig, ChevronDown, ClipboardList, Siren, TriangleAlert, UserRound } from "lucide-react";
+import {
+  CarFront,
+  ChartColumnBig,
+  ChevronDown,
+  ClipboardList,
+  LineChart,
+  Siren,
+  TriangleAlert,
+  UserRound,
+} from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import { parseIsoDateToDate, parsePtBrToDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
@@ -7,6 +16,7 @@ import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { StatisticsLineChart } from "./statistics-line-chart";
 
 type RankEntry = { label: string; total: number };
 type MonthlyLateEntry = { monthLabel: string; total: number };
@@ -122,6 +132,49 @@ function byMonthLateRequests(rows: DepartureRecord[]): MonthlyLateEntry[] {
     .map(([key, total]) => {
       const [year, month] = key.split("-");
       return { monthLabel: `${month}/${year}`, total };
+    });
+}
+
+type MonthlyEvolutionBucket = {
+  key: string;
+  label: string;
+  admin: number;
+  ambulance: number;
+  total: number;
+  late: number;
+  pctLate: number;
+};
+
+/** Saídas por mês (data de saída), alinhado aos filtros da página. */
+function buildMonthlyEvolution(rows: DepartureRecord[]): MonthlyEvolutionBucket[] {
+  const map = new Map<string, { admin: number; ambulance: number; late: number; total: number }>();
+  for (const row of rows) {
+    const d = parseDepartureDate(row.dataSaida);
+    if (!d) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const cur = map.get(key) ?? { admin: 0, ambulance: 0, late: 0, total: 0 };
+    cur.total += 1;
+    if (row.tipo === "Administrativa") cur.admin += 1;
+    if (row.tipo === "Ambulância") cur.ambulance += 1;
+    if (isLateRequested(row) && !EXCLUDED_LATE_SECTORS.has(normalizeSectorKey(row.setor))) {
+      cur.late += 1;
+    }
+    map.set(key, cur);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, v]) => {
+      const [y, m] = key.split("-");
+      const pctLate = v.total > 0 ? Math.round((v.late / v.total) * 100) : 0;
+      return {
+        key,
+        label: `${m}/${y}`,
+        admin: v.admin,
+        ambulance: v.ambulance,
+        total: v.total,
+        late: v.late,
+        pctLate,
+      };
     });
 }
 
@@ -349,6 +402,11 @@ export function StatisticsPage() {
   );
   const requestedDestinationsTotal = requestedDestinations.reduce((acc, entry) => acc + entry.total, 0);
 
+  const monthlyEvolution = useMemo(
+    () => buildMonthlyEvolution(filteredDepartures),
+    [filteredDepartures],
+  );
+
   return (
     <div className="space-y-5">
       <Card>
@@ -442,6 +500,74 @@ export function StatisticsPage() {
         <MetricCard label="Saídas de Ambulância" value={totals.ambulance} icon={<Siren size={24} />} />
       </div>
 
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-2">
+          <div>
+            <CardTitle>Evolução mensal (gráficos de linhas)</CardTitle>
+            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+              Tendência por mês com base na data de saída, respeitando os filtros acima. Comparativo entre
+              saídas administrativas e de ambulância; volume e percentagem de pedidos fora do prazo.
+            </p>
+          </div>
+          <span className="shrink-0 text-[hsl(var(--primary))]">
+            <LineChart size={22} aria-hidden />
+          </span>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">
+              Saídas por tipo (Administrativa e Ambulância)
+            </h3>
+            <StatisticsLineChart
+              ariaLabel="Gráfico de linhas: saídas administrativas e de ambulância por mês."
+              labels={monthlyEvolution.map((m) => m.label)}
+              series={[
+                {
+                  name: "Administrativa",
+                  values: monthlyEvolution.map((m) => m.admin),
+                  color: "hsl(var(--primary))",
+                },
+                {
+                  name: "Ambulância",
+                  values: monthlyEvolution.map((m) => m.ambulance),
+                  color: "hsl(199 70% 40%)",
+                },
+              ]}
+            />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedidos fora do prazo por mês</h3>
+            <StatisticsLineChart
+              ariaLabel="Gráfico de linhas: quantidade de pedidos fora do prazo por mês."
+              labels={monthlyEvolution.map((m) => m.label)}
+              series={[
+                {
+                  name: "Fora do prazo",
+                  values: monthlyEvolution.map((m) => m.late),
+                  color: "hsl(25 88% 48%)",
+                },
+              ]}
+            />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Percentagem fora do prazo por mês</h3>
+            <StatisticsLineChart
+              ariaLabel="Gráfico de linhas: percentagem de pedidos fora do prazo por mês."
+              labels={monthlyEvolution.map((m) => m.label)}
+              series={[
+                {
+                  name: "% fora do prazo",
+                  values: monthlyEvolution.map((m) => m.pctLate),
+                  color: "hsl(280 55% 45%)",
+                },
+              ]}
+              yMax={100}
+              yAxisFormat={(n) => `${n}%`}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2">
         <PodiumCard
           title="Pódio de saídas por viatura"
@@ -481,38 +607,54 @@ export function StatisticsPage() {
           <div className="rounded-lg border border-[hsl(var(--border))] p-4">
             <button
               type="button"
-              onClick={() => setMonthlyLateChartExpanded((prev) => !prev)}
+              onClick={() => setLateDestinationsExpanded((prev) => !prev)}
               className="flex w-full items-center justify-between text-left"
-              aria-expanded={monthlyLateChartExpanded}
+              aria-expanded={lateDestinationsExpanded}
             >
-              <span className="text-sm font-semibold text-[hsl(var(--primary))]">
-                Gráfico mensal de saídas fora do prazo
-              </span>
+              <span className="text-sm font-semibold text-[hsl(var(--primary))]">Destinos mais solicitados</span>
               <ChevronDown
                 size={18}
-                className={`shrink-0 text-[hsl(var(--primary))] transition-transform ${monthlyLateChartExpanded ? "rotate-180" : "rotate-0"}`}
+                className={`text-[hsl(var(--primary))] transition-transform ${lateDestinationsExpanded ? "rotate-180" : "rotate-0"}`}
               />
             </button>
-            {monthlyLateChartExpanded ? (
-              <div className="mt-4">
-                {monthlyLateStats.length === 0 ? (
+            {lateDestinationsExpanded ? (
+              <div className="mt-3">
+                {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    Não há registros fora do prazo para montar o gráfico.
+                    Não há saídas com bairro de destino indicado no período atual.
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {monthlyLateStats.map((row) => {
-                      const widthPct = Math.max(6, Math.round((row.total / maxMonthlyLate) * 100));
-                      return (
-                        <div key={row.monthLabel} className="grid grid-cols-[80px_1fr_40px] items-center gap-3">
-                          <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))]">{row.monthLabel}</span>
-                          <div className="h-3 rounded-full bg-[hsl(var(--muted))/0.45]">
-                            <div className="h-3 rounded-full bg-[hsl(var(--primary))]" style={{ width: `${widthPct}%` }} />
-                          </div>
-                          <span className="text-right text-xs font-bold text-[hsl(var(--primary))]">{row.total}</span>
-                        </div>
-                      );
-                    })}
+                  <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
+                    <p className="mb-3 text-xs text-[hsl(var(--muted-foreground))]">
+                      Contagem de todas as saídas no período filtrado, agrupadas por bairro de destino (cadastro).
+                    </p>
+                    <Table>
+                      <TableHeader className="bg-[hsl(var(--muted))/0.35]">
+                        <TableRow>
+                          <TableHead className="font-bold text-[hsl(var(--primary))]">Destino</TableHead>
+                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Quantidade</TableHead>
+                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Participação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {requestedDestinations.map((entry, index) => {
+                          const percent =
+                            requestedDestinationsTotal > 0
+                              ? Math.round((entry.total / requestedDestinationsTotal) * 100)
+                              : 0;
+                          return (
+                            <TableRow
+                              key={entry.label}
+                              className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}
+                            >
+                              <TableCell className="font-semibold text-[hsl(var(--foreground))]">{entry.label}</TableCell>
+                              <TableCell className="text-right font-semibold text-[hsl(var(--primary))]">{entry.total}</TableCell>
+                              <TableCell className="text-right text-[hsl(var(--muted-foreground))]">{percent}%</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
               </div>
@@ -573,54 +715,38 @@ export function StatisticsPage() {
           <div className="rounded-lg border border-[hsl(var(--border))] p-4">
             <button
               type="button"
-              onClick={() => setLateDestinationsExpanded((prev) => !prev)}
+              onClick={() => setMonthlyLateChartExpanded((prev) => !prev)}
               className="flex w-full items-center justify-between text-left"
-              aria-expanded={lateDestinationsExpanded}
+              aria-expanded={monthlyLateChartExpanded}
             >
-              <span className="text-sm font-semibold text-[hsl(var(--primary))]">Destinos mais solicitados</span>
+              <span className="text-sm font-semibold text-[hsl(var(--primary))]">
+                Gráfico mensal de saídas fora do prazo
+              </span>
               <ChevronDown
                 size={18}
-                className={`text-[hsl(var(--primary))] transition-transform ${lateDestinationsExpanded ? "rotate-180" : "rotate-0"}`}
+                className={`shrink-0 text-[hsl(var(--primary))] transition-transform ${monthlyLateChartExpanded ? "rotate-180" : "rotate-0"}`}
               />
             </button>
-            {lateDestinationsExpanded ? (
-              <div className="mt-3">
-                {requestedDestinations.length === 0 ? (
+            {monthlyLateChartExpanded ? (
+              <div className="mt-4">
+                {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    Não há saídas com bairro de destino indicado no período atual.
+                    Não há registros fora do prazo para montar o gráfico.
                   </p>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
-                    <p className="mb-3 text-xs text-[hsl(var(--muted-foreground))]">
-                      Contagem de todas as saídas no período filtrado, agrupadas por bairro de destino (cadastro).
-                    </p>
-                    <Table>
-                      <TableHeader className="bg-[hsl(var(--muted))/0.35]">
-                        <TableRow>
-                          <TableHead className="font-bold text-[hsl(var(--primary))]">Destino</TableHead>
-                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Quantidade</TableHead>
-                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Participação</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {requestedDestinations.map((entry, index) => {
-                          const percent =
-                            requestedDestinationsTotal > 0
-                              ? Math.round((entry.total / requestedDestinationsTotal) * 100)
-                              : 0;
-                          return (
-                            <TableRow
-                              key={entry.label}
-                              className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}
-                            >
-                              <TableCell className="font-semibold text-[hsl(var(--foreground))]">{entry.label}</TableCell>
-                              <TableCell className="text-right font-semibold text-[hsl(var(--primary))]">{entry.total}</TableCell>
-                              <TableCell className="text-right text-[hsl(var(--muted-foreground))]">{percent}%</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                  <div className="space-y-3">
+                    {monthlyLateStats.map((row) => {
+                      const widthPct = Math.max(6, Math.round((row.total / maxMonthlyLate) * 100));
+                      return (
+                        <div key={row.monthLabel} className="grid grid-cols-[80px_1fr_40px] items-center gap-3">
+                          <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))]">{row.monthLabel}</span>
+                          <div className="h-3 rounded-full bg-[hsl(var(--muted))/0.45]">
+                            <div className="h-3 rounded-full bg-[hsl(var(--primary))]" style={{ width: `${widthPct}%` }} />
+                          </div>
+                          <span className="text-right text-xs font-bold text-[hsl(var(--primary))]">{row.total}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
