@@ -108,9 +108,7 @@ export function StatisticsDepartureTypeDonut({
               cornerRadius={8}
               stroke="hsl(var(--background))"
               strokeWidth={3}
-              isAnimationActive
-              animationDuration={900}
-              animationEasing="ease-out"
+              isAnimationActive={false}
             >
               {data.map((entry) => (
                 <Cell

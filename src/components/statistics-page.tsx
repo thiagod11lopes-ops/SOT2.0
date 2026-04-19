@@ -89,11 +89,22 @@ function normalizeBairroDestinoEstatistica(raw: string): string {
   return t;
 }
 
-/** Registos com «ASD» no motorista ou na viatura não entram nas estatísticas. */
-function rowHasAsdDriverOrVehicle(row: DepartureRecord): boolean {
-  const motor = row.motoristas.trim().toUpperCase();
-  const viat = row.viaturas.trim().toUpperCase();
-  return motor.includes("ASD") || viat.includes("ASD");
+/** Registos com «ASD» em qualquer campo relevante do cadastro não entram nas estatísticas (marcador de exemplo / placeholder). */
+function rowHasAsdPlaceholder(row: DepartureRecord): boolean {
+  const has = (s: string) => s.trim().toUpperCase().includes("ASD");
+  return (
+    has(row.viaturas) ||
+    has(row.motoristas) ||
+    has(row.bairro) ||
+    has(row.cidade) ||
+    has(row.hospitalDestino) ||
+    has(row.setor) ||
+    has(row.ramal) ||
+    has(row.objetivoSaida) ||
+    has(row.numeroPassageiros) ||
+    has(row.responsavelPedido) ||
+    has(row.om)
+  );
 }
 
 function toCountMap(rows: DepartureRecord[], pickValue: (row: DepartureRecord) => string): Map<string, number> {
@@ -111,6 +122,46 @@ function toTopRanking(entriesMap: Map<string, number>, limit = 3): RankEntry[] {
     .map(([label, total]) => ({ label, total }))
     .sort((a, b) => (b.total !== a.total ? b.total - a.total : a.label.localeCompare(b.label, "pt-BR")))
     .slice(0, limit);
+}
+
+/** Uma falha num gráfico não deve anular os restantes; html2canvas + SVG/Recharts exige opções explícitas. */
+async function captureStatisticsPdfChartElement(
+  el: HTMLElement,
+  html2canvas: (typeof import("html2canvas"))["default"],
+): Promise<string | null> {
+  el.scrollIntoView({ block: "center", inline: "nearest" });
+  await new Promise((r) => window.setTimeout(r, 120));
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  void el.offsetHeight;
+
+  const w = Math.ceil(Math.max(el.scrollWidth, el.offsetWidth, el.clientWidth, 1));
+  const h = Math.ceil(Math.max(el.scrollHeight, el.offsetHeight, el.clientHeight, 1));
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      width: w,
+      height: h,
+      windowWidth: w,
+      windowHeight: h,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      foreignObjectRendering: false,
+      scrollX: 0,
+      scrollY: 0,
+      onclone: (clonedDoc) => {
+        const style = clonedDoc.createElement("style");
+        style.textContent =
+          "*,*::before,*::after{animation:none!important;transition:none!important}";
+        clonedDoc.head.appendChild(style);
+      },
+    });
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
 }
 
 function isLateRequested(row: DepartureRecord): boolean {
@@ -312,7 +363,7 @@ export function StatisticsPage() {
 
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
   const departuresForStatistics = useMemo(
-    () => departuresActive.filter((row) => !rowHasAsdDriverOrVehicle(row)),
+    () => departuresActive.filter((row) => !rowHasAsdPlaceholder(row)),
     [departuresActive],
   );
   const filteredDepartures = useMemo(() => {
@@ -360,11 +411,8 @@ export function StatisticsPage() {
     return { total, admin, ambulance };
   }, [filteredDepartures]);
 
-  const countMapViaturas = useMemo(() => toCountMap(filteredDepartures, (row) => row.viaturas), [filteredDepartures]);
   const countMapMotoristas = useMemo(() => toCountMap(filteredDepartures, (row) => row.motoristas), [filteredDepartures]);
-  const rankingViaturas = useMemo(() => toTopRanking(countMapViaturas), [countMapViaturas]);
   const rankingMotoristas = useMemo(() => toTopRanking(countMapMotoristas), [countMapMotoristas]);
-  const rankingViaturasFull = useMemo(() => toTopRanking(countMapViaturas, Number.POSITIVE_INFINITY), [countMapViaturas]);
   const rankingMotoristasFull = useMemo(() => toTopRanking(countMapMotoristas, Number.POSITIVE_INFINITY), [countMapMotoristas]);
 
   const lateRequestedDepartures = useMemo(
@@ -404,6 +452,25 @@ export function StatisticsPage() {
   const departuresAmbulancia = useMemo(
     () => filteredDepartures.filter((row) => row.tipo === "Ambulância"),
     [filteredDepartures],
+  );
+
+  const countMapViaturasAdmin = useMemo(
+    () => toCountMap(departuresAdministrativas, (row) => row.viaturas),
+    [departuresAdministrativas],
+  );
+  const countMapViaturasAmbulance = useMemo(
+    () => toCountMap(departuresAmbulancia, (row) => row.viaturas),
+    [departuresAmbulancia],
+  );
+  const rankingViaturasAdmin = useMemo(() => toTopRanking(countMapViaturasAdmin), [countMapViaturasAdmin]);
+  const rankingViaturasAmbulance = useMemo(() => toTopRanking(countMapViaturasAmbulance), [countMapViaturasAmbulance]);
+  const rankingViaturasAdminFull = useMemo(
+    () => toTopRanking(countMapViaturasAdmin, Number.POSITIVE_INFINITY),
+    [countMapViaturasAdmin],
+  );
+  const rankingViaturasAmbulanceFull = useMemo(
+    () => toTopRanking(countMapViaturasAmbulance, Number.POSITIVE_INFINITY),
+    [countMapViaturasAmbulance],
   );
 
   /** Todas as saídas do período filtrado, por bairro de destino (não só fora do prazo). */
@@ -472,31 +539,20 @@ export function StatisticsPage() {
     setLateSectorsExpanded(true);
     setMonthlyLateChartExpanded(true);
     setEvolutionChartsExpanded(true);
-    await new Promise((r) => window.setTimeout(r, 950));
-    window.scrollTo(0, 0);
+    await new Promise((r) => window.setTimeout(r, 1200));
+    await (document.fonts?.ready ?? Promise.resolve()).catch(() => {});
 
     const chartImages: { title: string; dataUrl: string }[] = [];
-    try {
-      const html2canvas = (await import("html2canvas")).default;
-      const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-pdf-chart]")).sort((a, b) => {
-        const oa = Number.parseInt(a.getAttribute("data-pdf-order") ?? "999", 10);
-        const ob = Number.parseInt(b.getAttribute("data-pdf-order") ?? "999", 10);
-        return oa - ob;
-      });
-      for (const el of nodes) {
-        const title = el.getAttribute("data-pdf-chart-title") ?? "Gráfico";
-        const canvas = await html2canvas(el, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-          scrollX: 0,
-          scrollY: -window.scrollY,
-        });
-        chartImages.push({ title, dataUrl: canvas.toDataURL("image/jpeg", 0.92) });
-      }
-    } catch {
-      /* PDF só com resumo se a captura falhar */
+    const html2canvas = (await import("html2canvas")).default;
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-pdf-chart]")).sort((a, b) => {
+      const oa = Number.parseInt(a.getAttribute("data-pdf-order") ?? "999", 10);
+      const ob = Number.parseInt(b.getAttribute("data-pdf-order") ?? "999", 10);
+      return oa - ob;
+    });
+    for (const el of nodes) {
+      const title = el.getAttribute("data-pdf-chart-title") ?? "Gráfico";
+      const dataUrl = await captureStatisticsPdfChartElement(el, html2canvas);
+      if (dataUrl) chartImages.push({ title, dataUrl });
     }
 
     try {
@@ -671,31 +727,47 @@ export function StatisticsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <div
           className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
-          data-pdf-chart="podium-viatura"
-          data-pdf-chart-title="Pódio de saídas por viatura"
+          data-pdf-chart="podium-viatura-administrativa"
+          data-pdf-chart-title="Pódio por viatura — saídas administrativas"
           data-pdf-order="4"
         >
           <PodiumCard
-            title="Pódio de saídas por viatura"
+            title="Pódio por viatura (Administrativa)"
             icon={<CarFront size={22} />}
-            ranking={rankingViaturas}
-            fullRanking={rankingViaturasFull}
+            ranking={rankingViaturasAdmin}
+            fullRanking={rankingViaturasAdminFull}
             entityColumnLabel="Viatura"
           />
         </div>
         <div
           className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
-          data-pdf-chart="podium-motorista"
-          data-pdf-chart-title="Pódio de saídas por motorista"
+          data-pdf-chart="podium-viatura-ambulancia"
+          data-pdf-chart-title="Pódio por viatura — ambulância"
           data-pdf-order="5"
         >
           <PodiumCard
-            title="Pódio de saídas por motorista"
-            icon={<UserRound size={22} />}
-            ranking={rankingMotoristas}
-            fullRanking={rankingMotoristasFull}
-            entityColumnLabel="Motorista"
+            title="Pódio por viatura (Ambulância)"
+            icon={<CarFront size={22} />}
+            ranking={rankingViaturasAmbulance}
+            fullRanking={rankingViaturasAmbulanceFull}
+            entityColumnLabel="Viatura"
           />
+        </div>
+        <div className="flex justify-center md:col-span-2">
+          <div
+            className="w-full max-w-md rounded-xl bg-white dark:bg-[hsl(var(--card))] md:max-w-lg"
+            data-pdf-chart="podium-motorista"
+            data-pdf-chart-title="Pódio de saídas por motorista"
+            data-pdf-order="6"
+          >
+            <PodiumCard
+              title="Pódio de saídas por motorista"
+              icon={<UserRound size={22} />}
+              ranking={rankingMotoristas}
+              fullRanking={rankingMotoristasFull}
+              entityColumnLabel="Motorista"
+            />
+          </div>
         </div>
       </div>
 
@@ -736,7 +808,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="destinos-mais-solicitados"
                 data-pdf-chart-title="Destinos mais solicitados"
-                data-pdf-order="6"
+                data-pdf-order="7"
               >
                 {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -798,7 +870,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="setores-fora-prazo"
                 data-pdf-chart-title="Setores com pedidos fora do prazo"
-                data-pdf-order="7"
+                data-pdf-order="8"
               >
                 {lateSectors.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -856,7 +928,7 @@ export function StatisticsPage() {
                 className="mt-4 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="grafico-mensal-fora-prazo"
                 data-pdf-chart-title="Gráfico mensal de saídas fora do prazo"
-                data-pdf-order="8"
+                data-pdf-order="9"
               >
                 {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">

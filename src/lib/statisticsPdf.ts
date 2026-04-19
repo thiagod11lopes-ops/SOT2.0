@@ -41,7 +41,8 @@ function addChartImagePageLandscape(
   const w = props.width * ratio;
   const h = props.height * ratio;
   const x = marginMm + (maxW - w) / 2;
-  doc.addImage(dataUrl, "JPEG", x, titleBottom, w, h);
+  const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+  doc.addImage(dataUrl, format, x, titleBottom, w, h);
   doc.setTextColor(0, 0, 0);
 }
 
@@ -90,7 +91,7 @@ function renderStatisticsSummaryPage(doc: jsPDF, params: StatisticsPdfParams, ma
   doc.setFontSize(7.5);
   doc.setTextColor(95, 95, 95);
   const nota = doc.splitTextToSize(
-    "As páginas anteriores mostram os gráficos do painel (composição por tipo, pódios e demais visualizações). Excluídos registos ASD e, nas métricas de fora do prazo, os setores SIAD, SECOM e Emergência.",
+    "As páginas anteriores mostram os gráficos do painel (composição por tipo, pódios e demais visualizações). Excluídos registos com «ASD» nos campos de cadastro e, nas métricas de fora do prazo, os setores SIAD, SECOM e Emergência.",
     pageW - 2 * margin,
   );
   doc.text(nota, margin, y);
