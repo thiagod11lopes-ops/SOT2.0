@@ -29,6 +29,8 @@ export const SOT_STATE_DOC = {
   detalheServico: "detalheServico",
   /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */
   vistoria: "vistoria",
+  /** Relatório Diário de Viaturas (carro-quebrado): mapa ISO data → relatório gravado. */
+  rdvByDate: "rdvByDate",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

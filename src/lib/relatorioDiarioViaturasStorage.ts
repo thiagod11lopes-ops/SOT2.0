@@ -4,10 +4,7 @@ import {
   type RdvRowAdm,
   type RdvRowAmb,
 } from "./relatorioDiarioViaturasModel";
-
-const STORAGE_KEY = "sot_rdv_by_date_v1";
-
-export const RDV_STORAGE_EVENT = "sot-rdv-storage";
+import { SOT_STATE_DOC, setSotStateDocWithRetry } from "./firebase/sotStateFirestore";
 
 export type RdvDayPersisted = {
   v: 1;
@@ -24,7 +21,57 @@ export type RdvDayPersisted = {
 
 export type RdvDayHydrated = Omit<RdvDayPersisted, "v">;
 
-function readAll(): Record<string, RdvDayPersisted> {
+const STORAGE_KEY = "sot_rdv_by_date_v1";
+/** Export para backup / restauro. */
+export const RDV_LOCAL_STORAGE_KEY = STORAGE_KEY;
+
+export const RDV_STORAGE_EVENT = "sot-rdv-storage";
+
+let rdvFirebaseSyncActive = false;
+let rdvFirebaseMap: Record<string, RdvDayPersisted> = {};
+let suppressRemoteUntilMs = 0;
+const SUPPRESS_REMOTE_MS = 5000;
+
+function bumpRdvSuppressRemote(): void {
+  suppressRemoteUntilMs = Date.now() + SUPPRESS_REMOTE_MS;
+}
+
+function isValidRdvDayPersisted(v: unknown): v is RdvDayPersisted {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return o.v === 1 && Array.isArray(o.rowsAmb) && Array.isArray(o.rowsAdm);
+}
+
+function normalizeRdvFirestorePayload(raw: unknown): Record<string, RdvDayPersisted> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, RdvDayPersisted> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+    if (!isValidRdvDayPersisted(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** Ativado pelo `RdvFirebaseSyncProvider` quando o modo só-Firebase está ligado. */
+export function setRdvFirebaseSyncActive(active: boolean): void {
+  rdvFirebaseSyncActive = active;
+  if (active) {
+    rdvFirebaseMap = {};
+  } else {
+    rdvFirebaseMap = {};
+  }
+}
+
+/** Snapshot remoto (listener Firestore). */
+export function applyRdvFirebaseRemotePayload(payload: unknown | null): void {
+  if (!rdvFirebaseSyncActive) return;
+  if (Date.now() < suppressRemoteUntilMs) return;
+  rdvFirebaseMap = normalizeRdvFirestorePayload(payload);
+  window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
+}
+
+function readAllLocal(): Record<string, RdvDayPersisted> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
@@ -36,7 +83,23 @@ function readAll(): Record<string, RdvDayPersisted> {
   }
 }
 
+function readAll(): Record<string, RdvDayPersisted> {
+  if (rdvFirebaseSyncActive) {
+    return rdvFirebaseMap;
+  }
+  return readAllLocal();
+}
+
 function writeAll(map: Record<string, RdvDayPersisted>): void {
+  if (rdvFirebaseSyncActive) {
+    rdvFirebaseMap = { ...map };
+    bumpRdvSuppressRemote();
+    window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
+    void setSotStateDocWithRetry(SOT_STATE_DOC.rdvByDate, rdvFirebaseMap).catch((e) => {
+      console.error("[SOT] Gravar RDV na nuvem:", e);
+    });
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {

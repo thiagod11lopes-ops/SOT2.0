@@ -11,6 +11,7 @@ import { AvisosProvider } from "./context/avisos-context";
 import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
 import { MotoristaPaoProvider } from "./context/motorista-pao-context";
+import { RdvFirebaseSyncProvider } from "./context/rdv-firebase-sync-provider";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
 import { ViaturasInoperantesProvider } from "./context/viaturas-inoperantes-context";
 import { VehicleMaintenanceProvider } from "./context/vehicle-maintenance-context";
@@ -29,6 +30,7 @@ createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
       <SyncPreferenceProvider>
+        <RdvFirebaseSyncProvider>
         <AppearanceProvider>
           <DeparturesReportEmailProvider>
             <AlarmDismissProvider>
@@ -58,6 +60,7 @@ createRoot(rootEl).render(
             </AlarmDismissProvider>
           </DeparturesReportEmailProvider>
         </AppearanceProvider>
+        </RdvFirebaseSyncProvider>
       </SyncPreferenceProvider>
     </RootErrorBoundary>
   </StrictMode>,

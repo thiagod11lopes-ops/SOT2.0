@@ -248,6 +248,7 @@ export function StatisticsPage() {
   const [vehicleFilter, setVehicleFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("todos");
   const [lateSectorsExpanded, setLateSectorsExpanded] = useState(false);
+  const [monthlyLateChartExpanded, setMonthlyLateChartExpanded] = useState(true);
   const [lateDestinationsExpanded, setLateDestinationsExpanded] = useState(false);
 
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
@@ -479,27 +480,44 @@ export function StatisticsPage() {
           </div>
 
           <div className="rounded-lg border border-[hsl(var(--border))] p-4">
-            <p className="mb-4 text-sm font-semibold text-[hsl(var(--primary))]">Gráfico mensal de saídas fora do prazo</p>
-            {monthlyLateStats.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Não há registros fora do prazo para montar o gráfico.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {monthlyLateStats.map((row) => {
-                  const widthPct = Math.max(6, Math.round((row.total / maxMonthlyLate) * 100));
-                  return (
-                    <div key={row.monthLabel} className="grid grid-cols-[80px_1fr_40px] items-center gap-3">
-                      <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))]">{row.monthLabel}</span>
-                      <div className="h-3 rounded-full bg-[hsl(var(--muted))/0.45]">
-                        <div className="h-3 rounded-full bg-[hsl(var(--primary))]" style={{ width: `${widthPct}%` }} />
-                      </div>
-                      <span className="text-right text-xs font-bold text-[hsl(var(--primary))]">{row.total}</span>
-                    </div>
-                  );
-                })}
+            <button
+              type="button"
+              onClick={() => setMonthlyLateChartExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between text-left"
+              aria-expanded={monthlyLateChartExpanded}
+            >
+              <span className="text-sm font-semibold text-[hsl(var(--primary))]">
+                Gráfico mensal de saídas fora do prazo
+              </span>
+              <ChevronDown
+                size={18}
+                className={`shrink-0 text-[hsl(var(--primary))] transition-transform ${monthlyLateChartExpanded ? "rotate-180" : "rotate-0"}`}
+              />
+            </button>
+            {monthlyLateChartExpanded ? (
+              <div className="mt-4">
+                {monthlyLateStats.length === 0 ? (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Não há registros fora do prazo para montar o gráfico.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {monthlyLateStats.map((row) => {
+                      const widthPct = Math.max(6, Math.round((row.total / maxMonthlyLate) * 100));
+                      return (
+                        <div key={row.monthLabel} className="grid grid-cols-[80px_1fr_40px] items-center gap-3">
+                          <span className="text-xs font-semibold text-[hsl(var(--muted-foreground))]">{row.monthLabel}</span>
+                          <div className="h-3 rounded-full bg-[hsl(var(--muted))/0.45]">
+                            <div className="h-3 rounded-full bg-[hsl(var(--primary))]" style={{ width: `${widthPct}%` }} />
+                          </div>
+                          <span className="text-right text-xs font-bold text-[hsl(var(--primary))]">{row.total}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-[hsl(var(--border))] p-4">

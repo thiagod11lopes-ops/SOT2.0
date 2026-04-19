@@ -6,6 +6,7 @@ import { normalizeDepartureRows } from "../normalizeDepartures";
 import { idbSetJson } from "../indexedDb";
 import { CUSTOM_LOCATIONS_STORAGE_KEY } from "../customLocationsStorage";
 import type { DepartureRecord } from "../../types/departure";
+import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
 
 const DEPARTURES_IDB_KEY = "sot-departures-v1";
 const CATALOG_IDB_KEY = "sot-catalog-items-v1";
@@ -143,6 +144,15 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
 
   await idbSetJson(ALARM_DISMISS_IDB_KEY, sot.alarmDismiss ?? {}, { maxAttempts: 6 });
   await idbSetJson(DETALHE_SERVICO_IDB_KEY, sot.detalheServico ?? {}, { maxAttempts: 6 });
+
+  const rdvByDate = sot.rdvByDate;
+  if (rdvByDate && typeof rdvByDate === "object") {
+    try {
+      localStorage.setItem(RDV_LOCAL_STORAGE_KEY, JSON.stringify(rdvByDate));
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function parseFullBackupJson(raw: unknown): FirebaseFullBackup {
@@ -163,6 +173,7 @@ export function buildBackupPreviewItems(backup: FirebaseFullBackup): BackupPrevi
   const customLocations = toRecordMap(sot.customLocations);
   const escalaBundle = toRecordMap(sot.escalaPaoBundle);
   const detalheServico = toRecordMap(sot.detalheServico);
+  const rdvByDate = toRecordMap(sot.rdvByDate);
 
   const catalogTotal = [
     "setores",
@@ -187,6 +198,8 @@ export function buildBackupPreviewItems(backup: FirebaseFullBackup): BackupPrevi
     Object.keys(toRecordMap(detalheServico.rodapes)).length +
     Object.keys(toRecordMap(detalheServico.columnGrayByMonth)).length;
 
+  const rdvDiasTotal = Object.keys(rdvByDate).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).length;
+
   return [
     { aba: "Cadastrar Saída / Listas", descricao: "Saídas completas (coleção departures)", quantidade: backup.departures.length },
     { aba: "Frota e Pessoal", descricao: "Catálogos (motoristas, viaturas, setores, etc.)", quantidade: catalogTotal },
@@ -199,5 +212,6 @@ export function buildBackupPreviewItems(backup: FirebaseFullBackup): BackupPrevi
     { aba: "Configurações", descricao: "Aparência e e-mail do relatório", quantidade: Object.keys(toRecordMap(sot.appearance)).length + Object.keys(toRecordMap(sot.departuresReportEmail)).length },
     { aba: "Avisos", descricao: "Dismiss de alarmes", quantidade: Object.keys(toRecordMap(sot.alarmDismiss)).length },
     { aba: "Detalhe de Serviço", descricao: "Planilhas, rodapés e colunas cinza", quantidade: detalheTotal },
+    { aba: "Carro quebrado / RDV", descricao: "Relatórios diários por data", quantidade: rdvDiasTotal },
   ];
 }
