@@ -4,6 +4,7 @@ import { useDepartures } from "../context/departures-context";
 import { parseIsoDateToDate, parsePtBrToDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import type { DepartureRecord } from "../types/departure";
+import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
@@ -38,6 +39,13 @@ function normalizeSectorKey(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/~/g, "")
     .toLowerCase();
+}
+
+/** Registos com «ASD» no motorista ou na viatura não entram nas estatísticas. */
+function rowHasAsdDriverOrVehicle(row: DepartureRecord): boolean {
+  const motor = row.motoristas.trim().toUpperCase();
+  const viat = row.viaturas.trim().toUpperCase();
+  return motor.includes("ASD") || viat.includes("ASD");
 }
 
 function toCountMap(rows: DepartureRecord[], pickValue: (row: DepartureRecord) => string): Map<string, number> {
@@ -83,8 +91,21 @@ function byMonthLateRequests(rows: DepartureRecord[]): MonthlyLateEntry[] {
     });
 }
 
-function PodiumCard({ title, icon, ranking }: { title: string; icon: ReactNode; ranking: RankEntry[] }) {
+function PodiumCard({
+  title,
+  icon,
+  ranking,
+  fullRanking,
+  entityColumnLabel,
+}: {
+  title: string;
+  icon: ReactNode;
+  ranking: RankEntry[];
+  fullRanking: RankEntry[];
+  entityColumnLabel: string;
+}) {
   const [animateIn, setAnimateIn] = useState(false);
+  const [showGeral, setShowGeral] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => setAnimateIn(true), 60);
@@ -96,12 +117,52 @@ function PodiumCard({ title, icon, ranking }: { title: string; icon: ReactNode; 
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>{title}</CardTitle>
-        <span className="text-[hsl(var(--primary))]">{icon}</span>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+        <CardTitle className="min-w-0 flex-1">{title}</CardTitle>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            variant={showGeral ? "default" : "outline"}
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setShowGeral((v) => !v)}
+            aria-pressed={showGeral}
+          >
+            Geral
+          </Button>
+          <span className="text-[hsl(var(--primary))]">{icon}</span>
+        </div>
       </CardHeader>
       <CardContent>
-        {ranking.length === 0 ? (
+        {showGeral ? (
+          fullRanking.length === 0 ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Sem dados para listar.</p>
+          ) : (
+            <div className="max-h-80 overflow-auto rounded-xl border border-[hsl(var(--border))]">
+              <Table>
+                <TableHeader className="sticky top-0 z-[1] bg-[hsl(var(--muted))/0.35]">
+                  <TableRow>
+                    <TableHead className="w-24 font-bold text-[hsl(var(--primary))]">Colocação</TableHead>
+                    <TableHead className="font-bold text-[hsl(var(--primary))]">{entityColumnLabel}</TableHead>
+                    <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Saídas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fullRanking.map((entry, index) => (
+                    <TableRow
+                      key={entry.label}
+                      className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}
+                    >
+                      <TableCell className="font-semibold text-[hsl(var(--primary))]">{index + 1}º</TableCell>
+                      <TableCell className="font-semibold text-[hsl(var(--foreground))]">{entry.label}</TableCell>
+                      <TableCell className="text-right font-semibold text-[hsl(var(--primary))]">{entry.total}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )
+        ) : ranking.length === 0 ? (
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Sem dados suficientes para montar o pódio.</p>
         ) : (
           <div className="flex min-h-56 items-end justify-center gap-3">
@@ -153,10 +214,15 @@ export function StatisticsPage() {
   const [vehicleFilter, setVehicleFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("todos");
   const [lateSectorsExpanded, setLateSectorsExpanded] = useState(false);
+  const [lateDestinationsExpanded, setLateDestinationsExpanded] = useState(false);
 
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
+  const departuresForStatistics = useMemo(
+    () => departuresActive.filter((row) => !rowHasAsdDriverOrVehicle(row)),
+    [departuresActive],
+  );
   const filteredDepartures = useMemo(() => {
-    return departuresActive.filter((row) => {
+    return departuresForStatistics.filter((row) => {
       const departureDate = parseDepartureDate(row.dataSaida);
       const rowYear = departureDate ? String(departureDate.getFullYear()) : "";
       const rowMonth = departureDate ? String(departureDate.getMonth() + 1) : "";
@@ -170,28 +236,28 @@ export function StatisticsPage() {
       if (typeFilter !== "todos" && rowType !== typeFilter) return false;
       return true;
     });
-  }, [departuresActive, yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
+  }, [departuresForStatistics, yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
-    for (const row of departuresActive) {
+    for (const row of departuresForStatistics) {
       const d = parseDepartureDate(row.dataSaida);
       if (d) years.add(String(d.getFullYear()));
     }
     return [...years].sort((a, b) => Number(b) - Number(a));
-  }, [departuresActive]);
+  }, [departuresForStatistics]);
 
   const availableDrivers = useMemo(() => {
-    return [...new Set(departuresActive.map((row) => row.motoristas.trim()).filter(Boolean))].sort((a, b) =>
+    return [...new Set(departuresForStatistics.map((row) => row.motoristas.trim()).filter(Boolean))].sort((a, b) =>
       a.localeCompare(b, "pt-BR"),
     );
-  }, [departuresActive]);
+  }, [departuresForStatistics]);
 
   const availableVehicles = useMemo(() => {
-    return [...new Set(departuresActive.map((row) => row.viaturas.trim()).filter(Boolean))].sort((a, b) =>
+    return [...new Set(departuresForStatistics.map((row) => row.viaturas.trim()).filter(Boolean))].sort((a, b) =>
       a.localeCompare(b, "pt-BR"),
     );
-  }, [departuresActive]);
+  }, [departuresForStatistics]);
 
   const totals = useMemo(() => {
     const total = filteredDepartures.length;
@@ -200,14 +266,12 @@ export function StatisticsPage() {
     return { total, admin, ambulance };
   }, [filteredDepartures]);
 
-  const rankingViaturas = useMemo(
-    () => toTopRanking(toCountMap(filteredDepartures, (row) => row.viaturas)),
-    [filteredDepartures],
-  );
-  const rankingMotoristas = useMemo(
-    () => toTopRanking(toCountMap(filteredDepartures, (row) => row.motoristas)),
-    [filteredDepartures],
-  );
+  const countMapViaturas = useMemo(() => toCountMap(filteredDepartures, (row) => row.viaturas), [filteredDepartures]);
+  const countMapMotoristas = useMemo(() => toCountMap(filteredDepartures, (row) => row.motoristas), [filteredDepartures]);
+  const rankingViaturas = useMemo(() => toTopRanking(countMapViaturas), [countMapViaturas]);
+  const rankingMotoristas = useMemo(() => toTopRanking(countMapMotoristas), [countMapMotoristas]);
+  const rankingViaturasFull = useMemo(() => toTopRanking(countMapViaturas, Number.POSITIVE_INFINITY), [countMapViaturas]);
+  const rankingMotoristasFull = useMemo(() => toTopRanking(countMapMotoristas, Number.POSITIVE_INFINITY), [countMapMotoristas]);
 
   const lateRequestedDepartures = useMemo(
     () => filteredDepartures.filter((row) => isLateRequested(row)),
@@ -238,6 +302,16 @@ export function StatisticsPage() {
   const latePercent = filteredDepartures.length > 0 ? Math.round((lateTotal / filteredDepartures.length) * 100) : 0;
   const maxMonthlyLate = monthlyLateStats.reduce((max, row) => Math.max(max, row.total), 1);
   const lateSectorsTotal = lateSectors.reduce((acc, entry) => acc + entry.total, 0);
+
+  const lateDestinations = useMemo(
+    () =>
+      toTopRanking(
+        toCountMap(lateRequestedDeparturesFilteredBySector, (row) => row.bairro),
+        Number.POSITIVE_INFINITY,
+      ),
+    [lateRequestedDeparturesFilteredBySector],
+  );
+  const lateDestinationsTotal = lateDestinations.reduce((acc, entry) => acc + entry.total, 0);
 
   return (
     <div className="space-y-5">
@@ -333,8 +407,20 @@ export function StatisticsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <PodiumCard title="Pódio de saídas por viatura" icon={<CarFront size={22} />} ranking={rankingViaturas} />
-        <PodiumCard title="Pódio de saídas por motorista" icon={<UserRound size={22} />} ranking={rankingMotoristas} />
+        <PodiumCard
+          title="Pódio de saídas por viatura"
+          icon={<CarFront size={22} />}
+          ranking={rankingViaturas}
+          fullRanking={rankingViaturasFull}
+          entityColumnLabel="Viatura"
+        />
+        <PodiumCard
+          title="Pódio de saídas por motorista"
+          icon={<UserRound size={22} />}
+          ranking={rankingMotoristas}
+          fullRanking={rankingMotoristasFull}
+          entityColumnLabel="Motorista"
+        />
       </div>
 
       <Card>
@@ -412,6 +498,58 @@ export function StatisticsPage() {
                       <TableBody>
                         {lateSectors.map((entry, index) => {
                           const percent = lateSectorsTotal > 0 ? Math.round((entry.total / lateSectorsTotal) * 100) : 0;
+                          return (
+                            <TableRow
+                              key={entry.label}
+                              className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}
+                            >
+                              <TableCell className="font-semibold text-[hsl(var(--foreground))]">{entry.label}</TableCell>
+                              <TableCell className="text-right font-semibold text-[hsl(var(--primary))]">{entry.total}</TableCell>
+                              <TableCell className="text-right text-[hsl(var(--muted-foreground))]">{percent}%</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-[hsl(var(--border))] p-4">
+            <button
+              type="button"
+              onClick={() => setLateDestinationsExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between text-left"
+              aria-expanded={lateDestinationsExpanded}
+            >
+              <span className="text-sm font-semibold text-[hsl(var(--primary))]">Destinos mais solicitados</span>
+              <ChevronDown
+                size={18}
+                className={`text-[hsl(var(--primary))] transition-transform ${lateDestinationsExpanded ? "rotate-180" : "rotate-0"}`}
+              />
+            </button>
+            {lateDestinationsExpanded ? (
+              <div className="mt-3">
+                {lateDestinations.length === 0 ? (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Não há destinos com registros fora do prazo no período atual.
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
+                    <Table>
+                      <TableHeader className="bg-[hsl(var(--muted))/0.35]">
+                        <TableRow>
+                          <TableHead className="font-bold text-[hsl(var(--primary))]">Destino</TableHead>
+                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Quantidade</TableHead>
+                          <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Participação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lateDestinations.map((entry, index) => {
+                          const percent =
+                            lateDestinationsTotal > 0 ? Math.round((entry.total / lateDestinationsTotal) * 100) : 0;
                           return (
                             <TableRow
                               key={entry.label}
