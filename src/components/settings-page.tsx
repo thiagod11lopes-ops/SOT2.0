@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
@@ -40,7 +40,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 type SavePeriodMode = "full" | "month" | "year";
 
 const SETTINGS_SECTIONS = [
-  { id: "settings-visao-geral", label: "Visão geral" },
   { id: "settings-sync", label: "Modo de sincronização" },
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
@@ -50,7 +49,7 @@ const SETTINGS_SECTIONS = [
 ] as const;
 
 const SETTINGS_PANEL_CLASS =
-  "scroll-mt-3 space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm sm:p-5";
+  "space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm sm:p-5";
 
 function currentMonthInputValue() {
   const n = new Date();
@@ -82,7 +81,7 @@ function filterDeparturesForSave(
 }
 
 export function SettingsPage() {
-  const { departures, mergeDeparturesFromBackup, clearAllDepartures, cloudDeparturesSync } = useDepartures();
+  const { departures, mergeDeparturesFromBackup, clearAllDepartures } = useDepartures();
   const { firebaseOnlyEnabled, setFirebaseOnlyEnabled } = useSyncPreference();
   const { email: reportEmailStored, setEmail: setReportEmailStored } = useDeparturesReportEmail();
   const [reportEmailDest, setReportEmailDest] = useState(reportEmailStored);
@@ -108,29 +107,6 @@ export function SettingsPage() {
   const [activeSectionId, setActiveSectionId] = useState<string>(SETTINGS_SECTIONS[0].id);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
-
-  const scrollToSection = useCallback((id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActiveSectionId(id);
-  }, []);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting && e.target.id)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        const id = visible[0]?.target.id;
-        if (id) setActiveSectionId(id);
-      },
-      { root: null, rootMargin: "-10% 0px -50% 0px", threshold: [0, 0.15, 0.35, 0.55] },
-    );
-    for (const { id } of SETTINGS_SECTIONS) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
@@ -413,7 +389,8 @@ export function SettingsPage() {
                     <li key={id} className="lg:w-full">
                       <button
                         type="button"
-                        onClick={() => scrollToSection(id)}
+                        onClick={() => setActiveSectionId(id)}
+                        aria-current={active ? "true" : undefined}
                         className={cn(
                           "w-full rounded-lg px-3 py-2 text-left text-xs transition-colors sm:text-sm",
                           active
@@ -429,61 +406,12 @@ export function SettingsPage() {
               </ul>
             </nav>
 
-            <div className="min-w-0 flex-1 space-y-6 p-4 sm:p-6">
-              <section id="settings-visao-geral" className={SETTINGS_PANEL_CLASS}>
-                <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Visão geral</h3>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  Estado da ligação à nuvem e diagnóstico do ambiente de execução.
-                </p>
-                {cloudDeparturesSync.enabled ? (
-                  <div
-                    className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-3 py-2 text-sm"
-                    role="status"
-                  >
-                    <p className="font-semibold text-[hsl(var(--foreground))]">Nuvem (Firebase)</p>
-                    {cloudDeparturesSync.status === "connecting" ? (
-                      <p className="text-[hsl(var(--muted-foreground))]">A ligar e a sincronizar saídas…</p>
-                    ) : null}
-                    {cloudDeparturesSync.status === "live" ? (
-                      <p className="text-[hsl(var(--muted-foreground))]">
-                        Sincronização ativa: saídas e restantes dados da app (catálogo, avisos, oficina, limpeza,
-                        manutenções, escala do pão, cidades extras no formulário, etc.) são gravados no Firestore e
-                        partilhados entre dispositivos com as mesmas chaves Firebase.
-                      </p>
-                    ) : null}
-                    {cloudDeparturesSync.status === "error" ? (
-                      <p className="font-medium text-red-600 dark:text-red-400">
-                        {cloudDeparturesSync.message ??
-                          "Erro ao sincronizar. Verifique rede, regras Firestore e login anónimo."}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Dados guardados só neste navegador (IndexedDB). Para sincronizar saídas e o restante estado da app na
-                    nuvem, configure as variáveis Firebase no build (ver{" "}
-                    <code className="rounded bg-[hsl(var(--muted))]/50 px-1">.env.example</code>).
-                  </p>
-                )}
-                <p className="text-[0.7rem] leading-snug text-[hsl(var(--muted-foreground))]">
-                  <span className="font-semibold text-[hsl(var(--foreground))]">Diagnóstico:</span>{" "}
-                  <code className="rounded bg-[hsl(var(--muted))]/40 px-1">VITE_FIREBASE_PROJECT_ID</code> neste site ={" "}
-                  {import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim() ? (
-                    <span className="font-mono text-[hsl(var(--foreground))]">
-                      {import.meta.env.VITE_FIREBASE_PROJECT_ID}
-                    </span>
-                  ) : (
-                    <span className="font-medium text-amber-700 dark:text-amber-400">
-                      vazio — o site foi gerado sem Firebase; nada é gravado no Firestore. No GitHub: Configurações →
-                      Segredos e variáveis → Ações → crie os segredos <code className="font-mono">VITE_FIREBASE_*</code>{" "}
-                      e execute de novo o fluxo de implantação (ou envie um novo commit à ramo principal).
-                    </span>
-                  )}
-                </p>
-              </section>
-
-              <section id="settings-sync" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Modo de sincronização</h3>
+            <div className="min-h-[min(28rem,70vh)] min-w-0 flex-1 p-4 sm:p-6">
+              {activeSectionId === "settings-sync" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-sync">
+                <h3 id="settings-heading-sync" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Modo de sincronização
+                </h3>
           <label className="flex items-center gap-3 rounded-md border border-[hsl(var(--border))] p-3">
             <input
               type="checkbox"
@@ -524,15 +452,17 @@ export function SettingsPage() {
               onChange={handleFullBackupFileChange}
             />
           </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            O carregamento do backup geral só é permitido em modo local para evitar conflito e sobrescrita na nuvem.
-          </p>
-        </section>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  O carregamento do backup geral só é permitido em modo local para evitar conflito e sobrescrita na nuvem.
+                </p>
+              </section>
+              ) : null}
 
-        <section id="settings-senha-km" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">
-            Senha — edição de KM e hora de chegada (listas)
-          </h3>
+              {activeSectionId === "settings-senha-km" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-senha">
+                <h3 id="settings-heading-senha" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Senha — edição de KM e hora de chegada (listas)
+                </h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             Nas abas <strong>Saídas Administrativas</strong> e <strong>Ambulância</strong>, os campos{" "}
             <strong>KM saída</strong>, <strong>KM chegada</strong> e <strong>Chegada</strong> (hora) só podem ser
@@ -562,14 +492,18 @@ export function SettingsPage() {
               onChange={(e) => setKmSenhaConfirm(e.target.value)}
               className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 font-mono text-sm"
             />
-            <Button type="button" variant="default" className="mt-1 w-fit" onClick={handleSalvarSenhaKmListas}>
-              Guardar senha
-            </Button>
-          </div>
-        </section>
+                <Button type="button" variant="default" className="mt-1 w-fit" onClick={handleSalvarSenhaKmListas}>
+                  Guardar senha
+                </Button>
+              </div>
+              </section>
+              ) : null}
 
-        <section id="settings-saidas" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Saídas</h3>
+              {activeSectionId === "settings-saidas" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-saidas">
+                <h3 id="settings-heading-saidas" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Saídas
+                </h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             <strong>Salvar</strong> gera um arquivo JSON com as saídas (administrativas e ambulância) conforme o{" "}
             <strong>período</strong> escolhido. O filtro usa a <strong>data da saída</strong>; se estiver vazia, usa a{" "}
@@ -642,14 +576,18 @@ export function SettingsPage() {
               onChange={handleFileChange}
             />
           </div>
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            Saídas administrativas: <strong>{administrativas.length}</strong> · Ambulâncias:{" "}
-            <strong>{ambulancias.length}</strong> · Total geral: <strong>{departures.length}</strong>
-          </p>
-        </section>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Saídas administrativas: <strong>{administrativas.length}</strong> · Ambulâncias:{" "}
+                  <strong>{ambulancias.length}</strong> · Total geral: <strong>{departures.length}</strong>
+                </p>
+              </section>
+              ) : null}
 
-        <section id="settings-email-pdf" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">E-mail do relatório PDF</h3>
+              {activeSectionId === "settings-email-pdf" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-email">
+                <h3 id="settings-heading-email" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  E-mail do relatório PDF
+                </h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             Endereço usado pelo botão <strong>Enviar</strong>: abre o <strong>Gmail na Web</strong> (conta já iniciada no
             navegador) com este destinatário e o assunto <strong>Saídas</strong>. O PDF é descarregado em seguida — o
@@ -669,12 +607,16 @@ export function SettingsPage() {
               onChange={(e) => setReportEmailDest(e.target.value)}
               onBlur={() => setReportEmailStored(reportEmailDest)}
               className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-            />
-          </div>
-        </section>
+                />
+              </div>
+              </section>
+              ) : null}
 
-        <section id="settings-vistoria-cal" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Vistoria — calendário</h3>
+              {activeSectionId === "settings-vistoria-cal" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-vistoria">
+                <h3 id="settings-heading-vistoria" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Vistoria — calendário
+                </h3>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             Abre um calendário com as mesmas cores da aba <strong>Vistoriar</strong> (verde = todas as viaturas
             vistoriadas, laranja = parcial, vermelho = nenhuma). Escolha os dias e confirme para remover as vistorias
@@ -694,19 +636,29 @@ export function SettingsPage() {
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
               Aguarde o carregamento da escala (detalhe de serviço) para usar o calendário.
             </p>
-          ) : null}
-        </section>
+                ) : null}
+              </section>
+              ) : null}
 
-        <section id="settings-zona-risco" className={SETTINGS_PANEL_CLASS}>
-          <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Zona de risco</h3>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Remove todas as saídas da memória (incluindo ambulância). Não afeta o arquivo de backup estático
-            do SOT, se existir.
-          </p>
-          <Button type="button" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={handleExcluirTodas}>
-            Excluir todas as saídas
-          </Button>
-        </section>
+              {activeSectionId === "settings-zona-risco" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-risco">
+                <h3 id="settings-heading-risco" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Zona de risco
+                </h3>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Remove todas as saídas da memória (incluindo ambulância). Não afeta o arquivo de backup estático do
+                  SOT, se existir.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={handleExcluirTodas}
+                >
+                  Excluir todas as saídas
+                </Button>
+              </section>
+              ) : null}
             </div>
           </div>
         </CardContent>

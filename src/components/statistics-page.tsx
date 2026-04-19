@@ -41,6 +41,40 @@ function normalizeSectorKey(value: string): string {
     .toLowerCase();
 }
 
+/** Chave para comparar bairros em «Destinos mais solicitados» (acentos e espaços colapsados). */
+function foldBairroDestinoKey(value: string): string {
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Agrupa grafias usadas no cadastro para o mesmo destino em estatísticas.
+ * DiCamp (e variantes) → Campo Grande · Cemeru (e variantes) → Santa Cruz;
+ * «campo grande» / «santa cruz» (qualquer maiúsculas) unificam com esses rótulos.
+ */
+function normalizeBairroDestinoEstatistica(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  const f = foldBairroDestinoKey(t);
+  if (/\bdicamp\w*\b/i.test(f) || /di\s*[\-]?\s*camp\b/i.test(f)) {
+    return "Campo Grande";
+  }
+  if (/\bcemeru\w*\b/i.test(f) || /ce\s*[\-]?\s*meru\b/i.test(f)) {
+    return "Santa Cruz";
+  }
+  if (f === "campo grande" || f.startsWith("campo grande ")) {
+    return "Campo Grande";
+  }
+  if (f === "santa cruz" || f.startsWith("santa cruz ")) {
+    return "Santa Cruz";
+  }
+  return t;
+}
+
 /** Registos com «ASD» no motorista ou na viatura não entram nas estatísticas. */
 function rowHasAsdDriverOrVehicle(row: DepartureRecord): boolean {
   const motor = row.motoristas.trim().toUpperCase();
@@ -306,7 +340,9 @@ export function StatisticsPage() {
   const lateDestinations = useMemo(
     () =>
       toTopRanking(
-        toCountMap(lateRequestedDeparturesFilteredBySector, (row) => row.bairro),
+        toCountMap(lateRequestedDeparturesFilteredBySector, (row) =>
+          normalizeBairroDestinoEstatistica(row.bairro),
+        ),
         Number.POSITIVE_INFINITY,
       ),
     [lateRequestedDeparturesFilteredBySector],
