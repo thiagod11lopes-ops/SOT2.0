@@ -17,6 +17,13 @@
   --input: 0 0% 100%;
   --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.85);
 
+  /* Gráficos (shadcn / Recharts) — séries temporais */
+  --chart-1: hsl(204 58% 38%);
+  --chart-2: hsl(199 70% 40%);
+  --chart-3: hsl(25 88% 46%);
+  --chart-4: hsl(280 55% 48%);
+  --chart-5: hsl(152 55% 38%);
+
   /*
    * Nome do motorista por baixo da linha na rubrica (PNG gerado no mobile).
    * Afeta a miniatura na Situação das VTR e o PDF. Sem unidade: número puro.
@@ -40,6 +47,12 @@ html[data-appearance="dark"] {
   --ring: 187 80% 58%;
   --input: 222 28% 12%;
   --header-shadow: 0 1px 0 0 hsl(var(--border) / 0.9);
+
+  --chart-1: hsl(187 72% 58%);
+  --chart-2: hsl(199 75% 55%);
+  --chart-3: hsl(32 92% 58%);
+  --chart-4: hsl(280 65% 68%);
+  --chart-5: hsl(152 60% 52%);
 }
 
 html[data-appearance="ultra-modern"] {
@@ -57,6 +70,12 @@ html[data-appearance="ultra-modern"] {
   --header-shadow:
     0 1px 0 0 hsl(var(--border) / 0.65),
     0 18px 48px -24px hsl(220 45% 18% / 0.12);
+
+  --chart-1: hsl(201 90% 42%);
+  --chart-2: hsl(199 78% 42%);
+  --chart-3: hsl(28 90% 48%);
+  --chart-4: hsl(280 58% 50%);
+  --chart-5: hsl(152 58% 40%);
 }
 
 html[data-appearance="ultra-modern"] body {
