@@ -21,6 +21,10 @@ import { StatisticsLineChart } from "./statistics-line-chart";
 type RankEntry = { label: string; total: number };
 type MonthlyLateEntry = { monthLabel: string; total: number };
 const EXCLUDED_LATE_SECTORS = new Set(["siad", "secom", "emergencia"]);
+function pctAxisPercent(n: number): string {
+  return `${n}%`;
+}
+
 const MONTH_OPTIONS = [
   { value: "1", label: "Janeiro" },
   { value: "2", label: "Fevereiro" },
@@ -407,6 +411,23 @@ export function StatisticsPage() {
     [filteredDepartures],
   );
 
+  const monthlyLineLabels = useMemo(() => monthlyEvolution.map((m) => m.label), [monthlyEvolution]);
+  const lineSeriesTipo = useMemo(
+    () => [
+      { name: "Administrativa", values: monthlyEvolution.map((m) => m.admin), color: "hsl(var(--primary))" },
+      { name: "Ambulância", values: monthlyEvolution.map((m) => m.ambulance), color: "hsl(199 70% 40%)" },
+    ],
+    [monthlyEvolution],
+  );
+  const lineSeriesLate = useMemo(
+    () => [{ name: "Fora do prazo", values: monthlyEvolution.map((m) => m.late), color: "hsl(25 88% 48%)" }],
+    [monthlyEvolution],
+  );
+  const lineSeriesPct = useMemo(
+    () => [{ name: "% fora do prazo", values: monthlyEvolution.map((m) => m.pctLate), color: "hsl(280 55% 45%)" }],
+    [monthlyEvolution],
+  );
+
   return (
     <div className="space-y-5">
       <Card>
@@ -499,74 +520,6 @@ export function StatisticsPage() {
         <MetricCard label="Saídas Administrativas" value={totals.admin} icon={<ChartColumnBig size={24} />} />
         <MetricCard label="Saídas de Ambulância" value={totals.ambulance} icon={<Siren size={24} />} />
       </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-2">
-          <div>
-            <CardTitle>Evolução mensal (gráficos de linhas)</CardTitle>
-            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-              Tendência por mês com base na data de saída, respeitando os filtros acima. Comparativo entre
-              saídas administrativas e de ambulância; volume e percentagem de pedidos fora do prazo.
-            </p>
-          </div>
-          <span className="shrink-0 text-[hsl(var(--primary))]">
-            <LineChart size={22} aria-hidden />
-          </span>
-        </CardHeader>
-        <CardContent className="space-y-8">
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">
-              Saídas por tipo (Administrativa e Ambulância)
-            </h3>
-            <StatisticsLineChart
-              ariaLabel="Gráfico de linhas: saídas administrativas e de ambulância por mês."
-              labels={monthlyEvolution.map((m) => m.label)}
-              series={[
-                {
-                  name: "Administrativa",
-                  values: monthlyEvolution.map((m) => m.admin),
-                  color: "hsl(var(--primary))",
-                },
-                {
-                  name: "Ambulância",
-                  values: monthlyEvolution.map((m) => m.ambulance),
-                  color: "hsl(199 70% 40%)",
-                },
-              ]}
-            />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedidos fora do prazo por mês</h3>
-            <StatisticsLineChart
-              ariaLabel="Gráfico de linhas: quantidade de pedidos fora do prazo por mês."
-              labels={monthlyEvolution.map((m) => m.label)}
-              series={[
-                {
-                  name: "Fora do prazo",
-                  values: monthlyEvolution.map((m) => m.late),
-                  color: "hsl(25 88% 48%)",
-                },
-              ]}
-            />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Percentagem fora do prazo por mês</h3>
-            <StatisticsLineChart
-              ariaLabel="Gráfico de linhas: percentagem de pedidos fora do prazo por mês."
-              labels={monthlyEvolution.map((m) => m.label)}
-              series={[
-                {
-                  name: "% fora do prazo",
-                  values: monthlyEvolution.map((m) => m.pctLate),
-                  color: "hsl(280 55% 45%)",
-                },
-              ]}
-              yMax={100}
-              yAxisFormat={(n) => `${n}%`}
-            />
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <PodiumCard
@@ -751,6 +704,52 @@ export function StatisticsPage() {
                 )}
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-6 space-y-8 border-t border-[hsl(var(--border))] pt-6">
+            <div className="flex flex-row flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Evolução mensal (gráficos de linhas)
+                </h3>
+                <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                  Tendência por mês (data de saída), com os mesmos filtros. Passe o rato sobre o gráfico para ver
+                  valores por mês; destaque cada série na legenda.
+                </p>
+              </div>
+              <span className="shrink-0 text-[hsl(var(--primary))]">
+                <LineChart size={22} aria-hidden />
+              </span>
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                Saídas por tipo (Administrativa e Ambulância)
+              </h4>
+              <StatisticsLineChart
+                ariaLabel="Gráfico de linhas: saídas administrativas e de ambulância por mês."
+                labels={monthlyLineLabels}
+                series={lineSeriesTipo}
+              />
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedidos fora do prazo por mês</h4>
+              <StatisticsLineChart
+                ariaLabel="Gráfico de linhas: quantidade de pedidos fora do prazo por mês."
+                labels={monthlyLineLabels}
+                series={lineSeriesLate}
+              />
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-[hsl(var(--foreground))]">Percentagem fora do prazo por mês</h4>
+              <StatisticsLineChart
+                ariaLabel="Gráfico de linhas: percentagem de pedidos fora do prazo por mês."
+                labels={monthlyLineLabels}
+                series={lineSeriesPct}
+                yMax={100}
+                yAxisFormat={pctAxisPercent}
+                valueFormat={pctAxisPercent}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
