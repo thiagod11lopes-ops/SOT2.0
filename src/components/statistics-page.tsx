@@ -338,17 +338,16 @@ export function StatisticsPage() {
   const maxMonthlyLate = monthlyLateStats.reduce((max, row) => Math.max(max, row.total), 1);
   const lateSectorsTotal = lateSectors.reduce((acc, entry) => acc + entry.total, 0);
 
-  const lateDestinations = useMemo(
+  /** Todas as saídas do período filtrado, por bairro de destino (não só fora do prazo). */
+  const requestedDestinations = useMemo(
     () =>
       toTopRanking(
-        toCountMap(lateRequestedDeparturesFilteredBySector, (row) =>
-          normalizeBairroDestinoEstatistica(row.bairro),
-        ),
+        toCountMap(filteredDepartures, (row) => normalizeBairroDestinoEstatistica(row.bairro)),
         Number.POSITIVE_INFINITY,
       ),
-    [lateRequestedDeparturesFilteredBySector],
+    [filteredDepartures],
   );
-  const lateDestinationsTotal = lateDestinations.reduce((acc, entry) => acc + entry.total, 0);
+  const requestedDestinationsTotal = requestedDestinations.reduce((acc, entry) => acc + entry.total, 0);
 
   return (
     <div className="space-y-5">
@@ -586,12 +585,15 @@ export function StatisticsPage() {
             </button>
             {lateDestinationsExpanded ? (
               <div className="mt-3">
-                {lateDestinations.length === 0 ? (
+                {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    Não há destinos com registros fora do prazo no período atual.
+                    Não há saídas com bairro de destino indicado no período atual.
                   </p>
                 ) : (
                   <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
+                    <p className="mb-3 text-xs text-[hsl(var(--muted-foreground))]">
+                      Contagem de todas as saídas no período filtrado, agrupadas por bairro de destino (cadastro).
+                    </p>
                     <Table>
                       <TableHeader className="bg-[hsl(var(--muted))/0.35]">
                         <TableRow>
@@ -601,9 +603,11 @@ export function StatisticsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {lateDestinations.map((entry, index) => {
+                        {requestedDestinations.map((entry, index) => {
                           const percent =
-                            lateDestinationsTotal > 0 ? Math.round((entry.total / lateDestinationsTotal) * 100) : 0;
+                            requestedDestinationsTotal > 0
+                              ? Math.round((entry.total / requestedDestinationsTotal) * 100)
+                              : 0;
                           return (
                             <TableRow
                               key={entry.label}
