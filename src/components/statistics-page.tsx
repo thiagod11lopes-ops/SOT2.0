@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CarFront,
   ChartColumnBig,
   ChevronDown,
   ClipboardList,
+  FileDown,
   LineChart,
   Siren,
   TriangleAlert,
@@ -16,6 +17,7 @@ import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { downloadStatisticsPdf } from "../lib/statisticsPdf";
 import { StatisticsTimeSeriesCharts } from "./statistics-time-series-charts";
 
 type RankEntry = { label: string; total: number };
@@ -304,6 +306,7 @@ export function StatisticsPage() {
   const [monthlyLateChartExpanded, setMonthlyLateChartExpanded] = useState(false);
   const [evolutionChartsExpanded, setEvolutionChartsExpanded] = useState(true);
   const [lateDestinationsExpanded, setLateDestinationsExpanded] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
   const departuresForStatistics = useMemo(
@@ -408,6 +411,101 @@ export function StatisticsPage() {
     [filteredDepartures],
   );
 
+  const filterSummaryLines = useMemo(() => {
+    const monthLabel =
+      monthFilter === "todos"
+        ? "Todos"
+        : MONTH_OPTIONS.find((m) => m.value === monthFilter)?.label ?? monthFilter;
+    return [
+      `Ano: ${yearFilter === "todos" ? "Todos" : yearFilter}`,
+      `Mês: ${monthLabel}`,
+      `Motorista: ${driverFilter === "todos" ? "Todos" : driverFilter}`,
+      `Viatura: ${vehicleFilter === "todos" ? "Todas" : vehicleFilter}`,
+      `Tipo de saída: ${typeFilter === "todos" ? "Todos" : typeFilter}`,
+    ];
+  }, [yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
+
+  const handleGerarPdf = useCallback(async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    const snap = {
+      lateDestinationsExpanded,
+      lateSectorsExpanded,
+      monthlyLateChartExpanded,
+      evolutionChartsExpanded,
+    };
+    setLateDestinationsExpanded(true);
+    setLateSectorsExpanded(true);
+    setMonthlyLateChartExpanded(true);
+    setEvolutionChartsExpanded(true);
+    await new Promise((r) => window.setTimeout(r, 950));
+
+    const chartImages: { title: string; dataUrl: string }[] = [];
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const nodes = document.querySelectorAll<HTMLElement>("[data-pdf-chart]");
+      for (const el of nodes) {
+        const title = el.getAttribute("data-pdf-chart-title") ?? "Gráfico";
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          scrollX: 0,
+          scrollY: -window.scrollY,
+        });
+        chartImages.push({ title, dataUrl: canvas.toDataURL("image/jpeg", 0.9) });
+      }
+    } catch {
+      /* PDF continua só com tabelas */
+    }
+
+    try {
+      await downloadStatisticsPdf({
+        generatedAtLabel: new Date().toLocaleString("pt-BR"),
+        filterSummaryLines,
+        totals,
+        rankingViaturas: rankingViaturasFull,
+        rankingMotoristas: rankingMotoristasFull,
+        lateFora: lateTotal,
+        lateNoPrazo: onTimeTotal,
+        latePercent,
+        requestedDestinations,
+        requestedDestinationsTotal,
+        lateSectors,
+        lateSectorsTotal,
+        monthlyLateStats,
+        monthlyEvolution,
+        chartImages,
+      });
+    } finally {
+      setLateDestinationsExpanded(snap.lateDestinationsExpanded);
+      setLateSectorsExpanded(snap.lateSectorsExpanded);
+      setMonthlyLateChartExpanded(snap.monthlyLateChartExpanded);
+      setEvolutionChartsExpanded(snap.evolutionChartsExpanded);
+      setPdfBusy(false);
+    }
+  }, [
+    pdfBusy,
+    lateDestinationsExpanded,
+    lateSectorsExpanded,
+    monthlyLateChartExpanded,
+    evolutionChartsExpanded,
+    filterSummaryLines,
+    totals,
+    rankingViaturasFull,
+    rankingMotoristasFull,
+    lateTotal,
+    onTimeTotal,
+    latePercent,
+    requestedDestinations,
+    requestedDestinationsTotal,
+    lateSectors,
+    lateSectorsTotal,
+    monthlyLateStats,
+    monthlyEvolution,
+  ]);
+
   return (
     <div className="space-y-5">
       <Card>
@@ -418,7 +516,7 @@ export function StatisticsPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-2 md:grid-cols-5">
+          <div className="grid gap-2 md:grid-cols-6 md:items-end">
             <label className="space-y-1 text-xs">
               <span className="font-medium text-[hsl(var(--foreground))]">Ano</span>
               <select
@@ -491,6 +589,19 @@ export function StatisticsPage() {
                 <option value="Ambulância">Ambulância</option>
               </select>
             </label>
+            <div className="flex flex-col justify-end pb-0.5 md:col-span-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-full gap-1.5 text-xs"
+                disabled={pdfBusy}
+                onClick={() => void handleGerarPdf()}
+              >
+                <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {pdfBusy ? "A gerar PDF…" : "Gerar PDF"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -551,7 +662,11 @@ export function StatisticsPage() {
               />
             </button>
             {lateDestinationsExpanded ? (
-              <div className="mt-3">
+              <div
+                className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
+                data-pdf-chart="destinos-mais-solicitados"
+                data-pdf-chart-title="Destinos mais solicitados"
+              >
                 {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
                     Não há saídas com bairro de destino indicado no período atual.
@@ -608,7 +723,11 @@ export function StatisticsPage() {
               />
             </button>
             {lateSectorsExpanded ? (
-              <div className="mt-3">
+              <div
+                className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
+                data-pdf-chart="setores-fora-prazo"
+                data-pdf-chart-title="Setores com pedidos fora do prazo"
+              >
                 {lateSectors.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
                     Não há setores com registros fora do prazo no período atual.
@@ -661,7 +780,11 @@ export function StatisticsPage() {
               />
             </button>
             {monthlyLateChartExpanded ? (
-              <div className="mt-4">
+              <div
+                className="mt-4 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
+                data-pdf-chart="grafico-mensal-fora-prazo"
+                data-pdf-chart-title="Gráfico mensal de saídas fora do prazo"
+              >
                 {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
                     Não há registros fora do prazo para montar o gráfico.
