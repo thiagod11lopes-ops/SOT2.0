@@ -248,7 +248,7 @@ export function StatisticsPage() {
   const [vehicleFilter, setVehicleFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("todos");
   const [lateSectorsExpanded, setLateSectorsExpanded] = useState(false);
-  const [monthlyLateChartExpanded, setMonthlyLateChartExpanded] = useState(true);
+  const [monthlyLateChartExpanded, setMonthlyLateChartExpanded] = useState(false);
   const [lateDestinationsExpanded, setLateDestinationsExpanded] = useState(false);
 
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
