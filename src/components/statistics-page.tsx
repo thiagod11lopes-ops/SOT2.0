@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileDown,
   LineChart,
+  MapPin,
   Siren,
   TriangleAlert,
   UserRound,
@@ -407,6 +408,8 @@ export function StatisticsPage() {
   );
   const requestedDestinationsTotal = requestedDestinations.reduce((acc, entry) => acc + entry.total, 0);
 
+  const rankingDestinos = useMemo(() => requestedDestinations.slice(0, 3), [requestedDestinations]);
+
   const monthlyEvolution = useMemo(
     () => buildMonthlyEvolution(filteredDepartures),
     [filteredDepartures],
@@ -604,21 +607,49 @@ export function StatisticsPage() {
 
       <StatisticsDepartureTypeDonut admin={totals.admin} ambulance={totals.ambulance} total={totals.total} />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <PodiumCard
-          title="Pódio de saídas por viatura"
-          icon={<CarFront size={22} />}
-          ranking={rankingViaturas}
-          fullRanking={rankingViaturasFull}
-          entityColumnLabel="Viatura"
-        />
-        <PodiumCard
-          title="Pódio de saídas por motorista"
-          icon={<UserRound size={22} />}
-          ranking={rankingMotoristas}
-          fullRanking={rankingMotoristasFull}
-          entityColumnLabel="Motorista"
-        />
+      <div className="grid gap-4 md:grid-cols-3">
+        <div
+          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
+          data-pdf-chart="podium-viatura"
+          data-pdf-chart-title="Pódio de saídas por viatura"
+          data-pdf-order="2"
+        >
+          <PodiumCard
+            title="Pódio de saídas por viatura"
+            icon={<CarFront size={22} />}
+            ranking={rankingViaturas}
+            fullRanking={rankingViaturasFull}
+            entityColumnLabel="Viatura"
+          />
+        </div>
+        <div
+          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
+          data-pdf-chart="podium-motorista"
+          data-pdf-chart-title="Pódio de saídas por motorista"
+          data-pdf-order="3"
+        >
+          <PodiumCard
+            title="Pódio de saídas por motorista"
+            icon={<UserRound size={22} />}
+            ranking={rankingMotoristas}
+            fullRanking={rankingMotoristasFull}
+            entityColumnLabel="Motorista"
+          />
+        </div>
+        <div
+          className="rounded-xl bg-white dark:bg-[hsl(var(--card))]"
+          data-pdf-chart="podium-destino"
+          data-pdf-chart-title="Pódio de saídas por destino"
+          data-pdf-order="4"
+        >
+          <PodiumCard
+            title="Pódio de saídas por destino"
+            icon={<MapPin size={22} />}
+            ranking={rankingDestinos}
+            fullRanking={requestedDestinations}
+            entityColumnLabel="Destino"
+          />
+        </div>
       </div>
 
       <Card>
@@ -658,7 +689,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="destinos-mais-solicitados"
                 data-pdf-chart-title="Destinos mais solicitados"
-                data-pdf-order="2"
+                data-pdf-order="5"
               >
                 {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -720,7 +751,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="setores-fora-prazo"
                 data-pdf-chart-title="Setores com pedidos fora do prazo"
-                data-pdf-order="3"
+                data-pdf-order="6"
               >
                 {lateSectors.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -778,7 +809,7 @@ export function StatisticsPage() {
                 className="mt-4 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="grafico-mensal-fora-prazo"
                 data-pdf-chart-title="Gráfico mensal de saídas fora do prazo"
-                data-pdf-order="4"
+                data-pdf-order="7"
               >
                 {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">

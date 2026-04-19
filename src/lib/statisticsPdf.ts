@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 
 export type StatisticsPdfChartImage = { title: string; dataUrl: string };
 
-/** PDF resumido para apresentação: poucos números na 1.ª página e sobretudo gráficos (paisagem). */
+/** PDF resumido: páginas em paisagem com os gráficos capturados do painel; última página em retrato com filtros e indicadores. */
 export interface StatisticsPdfParams {
   filterSummaryLines: string[];
   generatedAtLabel: string;
@@ -17,8 +17,16 @@ function safeFileSegment(value: string): string {
   return value.replace(/[^\d\-a-zA-ZÀ-ÿ]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "estatisticas";
 }
 
-function addChartImagePageLandscape(doc: jsPDF, title: string, dataUrl: string, marginMm: number) {
-  doc.addPage("a4", "l");
+function addChartImagePageLandscape(
+  doc: jsPDF,
+  title: string,
+  dataUrl: string,
+  marginMm: number,
+  addPageBefore: boolean,
+) {
+  if (addPageBefore) {
+    doc.addPage("a4", "l");
+  }
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   doc.setFont("helvetica", "bold");
@@ -37,9 +45,8 @@ function addChartImagePageLandscape(doc: jsPDF, title: string, dataUrl: string, 
   doc.setTextColor(0, 0, 0);
 }
 
-export function buildStatisticsPdf(params: StatisticsPdfParams): { doc: jsPDF; filename: string } {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const margin = 14;
+/** Página final em retrato: filtros, indicadores e nota (após as páginas de gráficos em paisagem). */
+function renderStatisticsSummaryPage(doc: jsPDF, params: StatisticsPdfParams, margin: number) {
   const pageW = doc.internal.pageSize.getWidth();
   const centerX = pageW / 2;
 
@@ -83,19 +90,33 @@ export function buildStatisticsPdf(params: StatisticsPdfParams): { doc: jsPDF; f
   doc.setFontSize(7.5);
   doc.setTextColor(95, 95, 95);
   const nota = doc.splitTextToSize(
-    "As páginas seguintes mostram os gráficos do painel. Excluídos registos ASD e, nas métricas de fora do prazo, os setores SIAD, SECOM e Emergência.",
+    "As páginas anteriores mostram os gráficos do painel (composição por tipo, pódios e demais visualizações). Excluídos registos ASD e, nas métricas de fora do prazo, os setores SIAD, SECOM e Emergência.",
     pageW - 2 * margin,
   );
   doc.text(nota, margin, y);
   doc.setTextColor(0, 0, 0);
+}
 
+export function buildStatisticsPdf(params: StatisticsPdfParams): { doc: jsPDF; filename: string } {
+  const margin = 14;
   const imgs = params.chartImages ?? [];
-  for (const img of imgs) {
-    try {
-      addChartImagePageLandscape(doc, img.title, img.dataUrl, margin);
-    } catch {
-      /* ignora imagem inválida */
-    }
+
+  let doc: jsPDF;
+
+  if (imgs.length > 0) {
+    doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    imgs.forEach((img, index) => {
+      try {
+        addChartImagePageLandscape(doc, img.title, img.dataUrl, margin, index > 0);
+      } catch {
+        /* ignora imagem inválida */
+      }
+    });
+    doc.addPage("a4", "p");
+    renderStatisticsSummaryPage(doc, params, margin);
+  } else {
+    doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    renderStatisticsSummaryPage(doc, params, margin);
   }
 
   const slug = safeFileSegment(params.generatedAtLabel.replace(/[/\\:]/g, "-"));
