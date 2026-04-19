@@ -18,6 +18,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { downloadStatisticsPdf } from "../lib/statisticsPdf";
+import { StatisticsDepartureTypeDonut } from "./statistics-departure-type-donut";
 import { StatisticsTimeSeriesCharts } from "./statistics-time-series-charts";
 
 type RankEntry = { label: string; total: number };
@@ -439,11 +440,16 @@ export function StatisticsPage() {
     setMonthlyLateChartExpanded(true);
     setEvolutionChartsExpanded(true);
     await new Promise((r) => window.setTimeout(r, 950));
+    window.scrollTo(0, 0);
 
     const chartImages: { title: string; dataUrl: string }[] = [];
     try {
       const html2canvas = (await import("html2canvas")).default;
-      const nodes = document.querySelectorAll<HTMLElement>("[data-pdf-chart]");
+      const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-pdf-chart]")).sort((a, b) => {
+        const oa = Number.parseInt(a.getAttribute("data-pdf-order") ?? "999", 10);
+        const ob = Number.parseInt(b.getAttribute("data-pdf-order") ?? "999", 10);
+        return oa - ob;
+      });
       for (const el of nodes) {
         const title = el.getAttribute("data-pdf-chart-title") ?? "Gráfico";
         const canvas = await html2canvas(el, {
@@ -454,10 +460,10 @@ export function StatisticsPage() {
           scrollX: 0,
           scrollY: -window.scrollY,
         });
-        chartImages.push({ title, dataUrl: canvas.toDataURL("image/jpeg", 0.9) });
+        chartImages.push({ title, dataUrl: canvas.toDataURL("image/jpeg", 0.92) });
       }
     } catch {
-      /* PDF continua só com tabelas */
+      /* PDF só com resumo se a captura falhar */
     }
 
     try {
@@ -465,17 +471,9 @@ export function StatisticsPage() {
         generatedAtLabel: new Date().toLocaleString("pt-BR"),
         filterSummaryLines,
         totals,
-        rankingViaturas: rankingViaturasFull,
-        rankingMotoristas: rankingMotoristasFull,
         lateFora: lateTotal,
         lateNoPrazo: onTimeTotal,
         latePercent,
-        requestedDestinations,
-        requestedDestinationsTotal,
-        lateSectors,
-        lateSectorsTotal,
-        monthlyLateStats,
-        monthlyEvolution,
         chartImages,
       });
     } finally {
@@ -493,17 +491,9 @@ export function StatisticsPage() {
     evolutionChartsExpanded,
     filterSummaryLines,
     totals,
-    rankingViaturasFull,
-    rankingMotoristasFull,
     lateTotal,
     onTimeTotal,
     latePercent,
-    requestedDestinations,
-    requestedDestinationsTotal,
-    lateSectors,
-    lateSectorsTotal,
-    monthlyLateStats,
-    monthlyEvolution,
   ]);
 
   return (
@@ -612,6 +602,8 @@ export function StatisticsPage() {
         <MetricCard label="Saídas de Ambulância" value={totals.ambulance} icon={<Siren size={24} />} />
       </div>
 
+      <StatisticsDepartureTypeDonut admin={totals.admin} ambulance={totals.ambulance} total={totals.total} />
+
       <div className="grid gap-4 md:grid-cols-2">
         <PodiumCard
           title="Pódio de saídas por viatura"
@@ -666,6 +658,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="destinos-mais-solicitados"
                 data-pdf-chart-title="Destinos mais solicitados"
+                data-pdf-order="2"
               >
                 {requestedDestinations.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -727,6 +720,7 @@ export function StatisticsPage() {
                 className="mt-3 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="setores-fora-prazo"
                 data-pdf-chart-title="Setores com pedidos fora do prazo"
+                data-pdf-order="3"
               >
                 {lateSectors.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -784,6 +778,7 @@ export function StatisticsPage() {
                 className="mt-4 rounded-lg bg-white p-2 dark:bg-[hsl(var(--card))]"
                 data-pdf-chart="grafico-mensal-fora-prazo"
                 data-pdf-chart-title="Gráfico mensal de saídas fora do prazo"
+                data-pdf-order="4"
               >
                 {monthlyLateStats.length === 0 ? (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
