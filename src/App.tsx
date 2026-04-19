@@ -11,7 +11,9 @@ import { SettingsPage } from "./components/settings-page";
 import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { RelatorioDiarioViaturasCalendarPage } from "./components/relatorio-diario-viaturas-calendar-page";
 import { RelatorioDiarioViaturasPage } from "./components/relatorio-diario-viaturas-page";
+import { RdvRouteErrorBoundary } from "./components/rdv-route-error-boundary";
 import { useAvisos } from "./context/avisos-context";
 import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
@@ -109,22 +111,35 @@ function App() {
   /** Força remontagem do Dashboard ao regressar à página inicial por inatividade. */
   const [homeRemountKey, setHomeRemountKey] = useState(0);
 
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
+        window.location.hash = "";
+      }
+      setActiveTab(tab);
+    },
+    [setActiveTab],
+  );
+
   const handleIdleReturnHome = useCallback(() => {
     setActiveTab(null);
     setHomeRemountKey((k) => k + 1);
-    if (window.location.hash.replace(/^#/, "") === "/carro-quebrado") {
+    if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
       window.location.hash = "";
     }
   }, [setActiveTab]);
 
   const isMobileRoute = hash.startsWith("#/saidas");
-  const isCarroQuebradoRoute = hash.replace(/^#/, "") === "/carro-quebrado";
+  const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
   useIdleResetToHome(!isMobileRoute, handleIdleReturnHome);
 
   useEffect(() => {
     if (hash.startsWith("#/saidas")) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
+      if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
+        window.location.hash = "";
+      }
       setActiveTab("Cadastrar Saída");
     }
   }, [editIntentVersion, setActiveTab, hash]);
@@ -170,7 +185,18 @@ function App() {
   }
 
   const content = useMemo(() => {
-    if (isCarroQuebradoRoute) return <RelatorioDiarioViaturasPage />;
+    if (isCarroQuebradoRoute) {
+      const m = /^#\/carro-quebrado\/dia\/(\d{4}-\d{2}-\d{2})$/.exec(hash);
+      return (
+        <RdvRouteErrorBoundary>
+          {m?.[1] ? (
+            <RelatorioDiarioViaturasPage key={m[1]} initialReportDate={m[1]} />
+          ) : (
+            <RelatorioDiarioViaturasCalendarPage />
+          )}
+        </RdvRouteErrorBoundary>
+      );
+    }
     if (!activeTab) return <Dashboard key={homeRemountKey} mapaOleo={mapaOleo} />;
     if (activeTab === "Cadastrar Saída") return <RegisterDeparturePage />;
     if (activeTab === "Saídas Administrativas")
@@ -198,6 +224,7 @@ function App() {
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [
+    hash,
     activeTab,
     homeRemountKey,
     mapaOleo,
@@ -217,7 +244,8 @@ function App() {
       <Layout
         tabs={tabs}
         activeTab={activeTab ?? ""}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
+        rdvRouteActive={isCarroQuebradoRoute}
         homeTickerActive={showHomeAvisosTicker}
         fitHomeViewport={isHome}
       >

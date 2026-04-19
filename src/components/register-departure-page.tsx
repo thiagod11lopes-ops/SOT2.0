@@ -36,6 +36,10 @@ import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
+import {
+  getRdvPlacasInoperantesFromLatestPersistedRdv,
+  RDV_STORAGE_EVENT,
+} from "../lib/relatorioDiarioViaturasStorage";
 import { cn } from "../lib/utils";
 import type { DepartureRecord, DepartureType } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
@@ -138,6 +142,15 @@ function getMissingSiadWeekdayDates(records: DepartureRecord[]): Date[] {
 function getMissingExternoBatchWeekdayDates(records: DepartureRecord[]): Date[] {
   return getWeekdayDatesFromTodayThroughEndOfCurrentMonth().filter(
     (d) => !hasExternoBatchDepartureOnDate(records, d),
+  );
+}
+
+function viaturaRdvOption(v: string, keyPrefix: string, rdvInoperantes: Set<string>) {
+  const blocked = rdvInoperantes.has(v.trim().toLowerCase());
+  return (
+    <option key={`${keyPrefix}-${v}`} value={v} disabled={blocked} style={blocked ? { color: "#dc2626" } : undefined}>
+      {blocked ? `${v} — Inoperante (RDV)` : v}
+    </option>
   );
 }
 
@@ -337,6 +350,7 @@ export function RegisterDeparturePage() {
   const [requestResponsible, setRequestResponsible] = useState<string>("");
   const [om, setOm] = useState<string>("");
   const [vehicles, setVehicles] = useState<string>("");
+  const [rdvInopTick, setRdvInopTick] = useState(0);
   const [drivers, setDrivers] = useState<string>("");
   const [destinationHospital, setDestinationHospital] = useState<string>("");
   const [tipoSaidaInterHospitalar, setTipoSaidaInterHospitalar] = useState(false);
@@ -617,6 +631,25 @@ export function RegisterDeparturePage() {
     if (estaNaOficina(v)) setVehicles("");
   }, [vehicles, estaNaOficina]);
 
+  useEffect(() => {
+    const on = () => setRdvInopTick((t) => t + 1);
+    window.addEventListener(RDV_STORAGE_EVENT, on);
+    return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
+  }, []);
+
+  /** Inoperantes conforme o RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  const rdvPlacasInoperantes = useMemo(() => {
+    void rdvInopTick;
+    return getRdvPlacasInoperantesFromLatestPersistedRdv();
+  }, [rdvInopTick]);
+
+  /** Placa «Inoperante» nesse RDV (última data) não pode ser escolhida. */
+  useEffect(() => {
+    const v = vehicles.trim();
+    if (!v) return;
+    if (rdvPlacasInoperantes.has(v.toLowerCase())) setVehicles("");
+  }, [vehicles, rdvPlacasInoperantes]);
+
   const motoristaSelectOptions = useMemo(() => {
     const list = [...catalogItems.motoristas];
     const m = drivers.trim();
@@ -644,6 +677,7 @@ export function RegisterDeparturePage() {
     {
       const v = vehicles.trim();
       if (v && estaNaOficina(v)) f.push("Viaturas");
+      else if (v && rdvPlacasInoperantes.has(v.toLowerCase())) f.push("Viaturas");
       else if (viaturasCatalogForCurrentTipo.length > 0) {
         if (!v || !isValueInCatalog(v, viaturasCatalogForCurrentTipo)) f.push("Viaturas");
       }
@@ -668,6 +702,7 @@ export function RegisterDeparturePage() {
     viaturasCatalogForCurrentTipo,
     catalogItems.motoristas,
     estaNaOficina,
+    rdvPlacasInoperantes,
   ]);
 
   const canSubmitWithCatalog = catalogBlockingLabels.length === 0;
@@ -1398,30 +1433,24 @@ export function RegisterDeparturePage() {
                         <>
                           {viaturasAdminDisponiveis.length > 0 ? (
                             <optgroup label="Viaturas administrativas">
-                              {viaturasAdminDisponiveis.map((v) => (
-                                <option key={`adm-${v}`} value={v}>
-                                  {v}
-                                </option>
-                              ))}
+                              {viaturasAdminDisponiveis.map((v) =>
+                                viaturaRdvOption(v, "adm", rdvPlacasInoperantes),
+                              )}
                             </optgroup>
                           ) : null}
                           {ambulanciaOptionsForSelect.length > 0 ? (
                             <optgroup label="Ambulâncias">
-                              {ambulanciaOptionsForSelect.map((v) => (
-                                <option key={`amb-${v}`} value={v}>
-                                  {v}
-                                </option>
-                              ))}
+                              {ambulanciaOptionsForSelect.map((v) =>
+                                viaturaRdvOption(v, "amb-adm", rdvPlacasInoperantes),
+                              )}
                             </optgroup>
                           ) : null}
                         </>
                       ) : (
                         <optgroup label="Ambulâncias">
-                          {viaturasAmbDisponiveis.map((v) => (
-                            <option key={`amb-${v}`} value={v}>
-                              {v}
-                            </option>
-                          ))}
+                          {viaturasAmbDisponiveis.map((v) =>
+                            viaturaRdvOption(v, "amb", rdvPlacasInoperantes),
+                          )}
                         </optgroup>
                       )}
                     </select>

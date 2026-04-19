@@ -6,9 +6,14 @@ import type {
 } from "react";
 import { cn } from "../../lib/utils";
 
-export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
+export type TableProps = TableHTMLAttributes<HTMLTableElement> & {
+  /** Envolve a `<table>`; por omissão `overflow-x-auto`. Use `overflow-visible` p.ex. para PDF/captura. */
+  wrapperClassName?: string;
+};
+
+export function Table({ className, wrapperClassName, ...props }: TableProps) {
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={cn("w-full", wrapperClassName ?? "overflow-x-auto")}>
       <table className={cn("w-full text-sm", className)} {...props} />
     </div>
   );

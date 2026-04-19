@@ -2,21 +2,26 @@ import { HeaderDateTime } from "./header-datetime";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
 import { CloudSyncIndicator } from "./cloud-sync-indicator";
 import { BrokenCarIcon } from "./icons/broken-car-icon";
+import { useAppTab } from "../context/app-tab-context";
 import { Button } from "./ui/button";
 import { TabsList } from "./ui/tabs";
-
-function openCarroQuebradoInNewTab() {
-  const base = window.location.href.split("#")[0];
-  window.open(`${base}#/carro-quebrado`, "_blank", "noopener,noreferrer");
-}
+import { cn } from "../lib/utils";
 
 interface HeaderProps {
   tabs: string[];
   activeTab: string;
   onTabChange: (tab: string) => void;
+  /** RDV visível (rota `#/carro-quebrado`). */
+  rdvRouteActive?: boolean;
 }
 
-export function Header({ tabs, activeTab, onTabChange }: HeaderProps) {
+export function Header({ tabs, activeTab, onTabChange, rdvRouteActive }: HeaderProps) {
+  const { setActiveTab } = useAppTab();
+
+  function openRdvInApp() {
+    setActiveTab(null);
+    window.location.hash = "#/carro-quebrado";
+  }
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur">
       <div className="relative mx-auto flex min-h-[5rem] max-w-[1600px] items-center justify-between gap-3 px-6 py-3 sm:min-h-[5.25rem] sm:gap-4">
@@ -37,10 +42,12 @@ export function Header({ tabs, activeTab, onTabChange }: HeaderProps) {
           <HeaderPaoMotorista />
           <Button
             type="button"
-            variant="outline"
+            variant={rdvRouteActive ? "default" : "outline"}
             size="icon"
-            aria-label="Abrir Relatório Diário de Viaturas (RDV)"
-            onClick={openCarroQuebradoInNewTab}
+            aria-label="Relatório Diário de Viaturas (RDV)"
+            aria-pressed={rdvRouteActive}
+            onClick={openRdvInApp}
+            className={cn(rdvRouteActive && "shadow-sm")}
           >
             <BrokenCarIcon />
           </Button>

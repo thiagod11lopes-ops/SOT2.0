@@ -7,6 +7,8 @@ interface LayoutProps {
   tabs: string[];
   activeTab: string;
   onTabChange: (tab: string) => void;
+  /** Hash `#/carro-quebrado` ativo — destaca o botão RDV no cabeçalho. */
+  rdvRouteActive?: boolean;
   /** Espaço extra em baixo para o telão fixo da página inicial. */
   homeTickerActive?: boolean;
   /** Página inicial: preenche a altura da janela e escala o conteúdo para evitar scroll da página. */
@@ -18,6 +20,7 @@ export function Layout({
   tabs,
   activeTab,
   onTabChange,
+  rdvRouteActive,
   homeTickerActive,
   fitHomeViewport,
   children,
@@ -29,7 +32,7 @@ export function Layout({
         fitHomeViewport ? "flex h-[100dvh] min-h-0 flex-col overflow-hidden" : "min-h-screen",
       )}
     >
-      <Header tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
+      <Header tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} rdvRouteActive={rdvRouteActive} />
       <main
         className={cn(
           "mx-auto max-w-[1600px] px-6 pb-8 pt-64 xl:pt-44",
