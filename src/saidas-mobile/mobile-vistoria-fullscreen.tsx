@@ -577,10 +577,7 @@ export function MobileVistoriaFullscreen({
       } catch (optErr) {
         console.warn("[SOT] Falha ao otimizar rubrica antes do save:", optErr);
       }
-      const createdAt = (() => {
-        const parsed = parseIsoDate(selectedDate);
-        return parsed ? parsed.getTime() : 0;
-      })();
+      const createdAt = Date.now();
       const base: Omit<
       VistoriaInspection,
       | "rubrica"
