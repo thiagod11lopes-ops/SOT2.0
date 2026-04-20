@@ -53,7 +53,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { TabsList } from "./ui/tabs";
 
-const vistoriaSubTabs = ["Vistoriar", "Situação das VTR", "Prioridades", "Responsabilidade de Vistoria"] as const;
+const vistoriaSubTabs = ["Vistoriar", "Estado das Viaturas", "Prioridades", "Responsabilidade de Vistoria"] as const;
 
 function startOfLocalMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -92,6 +92,14 @@ type RowIssueControlState = {
   printMarked: boolean;
 };
 
+type EstadoViaturaRow = {
+  inspectionId: string;
+  viatura: string;
+  inspectionDate: string;
+  observacoes: string;
+  rubrica: string;
+};
+
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   if (row.observacaoPlain !== undefined || row.observacaoItalic !== undefined) {
     const p = row.observacaoPlain ?? "";
@@ -108,19 +116,6 @@ function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   return "—";
 }
 
-function renderDataSituacao(row: VtrSituacaoPendenteRow): ReactNode {
-  if (row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()) {
-    return (
-      <div className="space-y-0.5">
-        <div>{formatIsoDatePtBr(row.prefillInspectionDate)}</div>
-        <div className="text-[0.78em] font-bold italic leading-tight text-[hsl(var(--foreground))]">
-          ({formatIsoDatePtBr(row.inspectionDate)})
-        </div>
-      </div>
-    );
-  }
-  return formatIsoDatePtBr(row.inspectionDate);
-}
 
 /** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
 function parseVtrSituacaoGroupKey(groupKey: string): { vNorm: string; itemKey: ChecklistKey } | null {
@@ -262,10 +257,8 @@ export function VistoriaPage() {
   const avisoObservacaoTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const confirmOkClearsNoteTitleId = useId();
-  const [confirmDeleteSituacaoRow, setConfirmDeleteSituacaoRow] = useState<VtrSituacaoPendenteRow | null>(null);
-  const confirmDeleteSituacaoRowTitleId = useId();
-  const [confirmDeleteAllSituacao, setConfirmDeleteAllSituacao] = useState(false);
-  const confirmDeleteAllSituacaoTitleId = useId();
+  const [confirmDeleteEstadoRow, setConfirmDeleteEstadoRow] = useState<EstadoViaturaRow | null>(null);
+  const confirmDeleteEstadoRowTitleId = useId();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -653,26 +646,6 @@ export function VistoriaPage() {
     },
     [issueControlMap],
   );
-  const inspectionById = useMemo(() => {
-    const map = new Map<string, VistoriaInspection>();
-    for (const ins of inspections) map.set(ins.id, ins);
-    return map;
-  }, [inspections]);
-  const getRubricaForRow = useCallback(
-    (row: VtrSituacaoPendenteRow): string => {
-      const related = row.relatedIssueRefs
-        .map((ref) => inspectionById.get(ref.inspectionId))
-        .filter((ins): ins is VistoriaInspection => Boolean(ins))
-        .filter((ins) => ins.vistoriaAdministrativa !== true)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      for (const ins of related) {
-        const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
-        if (rub) return rub.startsWith("rubrica_ref:") ? "Rubrica em referência" : rub;
-      }
-      return "";
-    },
-    [inspectionById],
-  );
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
@@ -715,6 +688,37 @@ export function VistoriaPage() {
     return ordered;
   }, [vtrPrioridades, priorityOrderKeys]);
 
+  const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
+    const rows: EstadoViaturaRow[] = inspections.map((ins) => {
+      const partesObservacao: string[] = [];
+      for (const item of CHECKLIST_ITEMS) {
+        if (ins.checklist[item.key] !== "Alterações") continue;
+        const note = String(ins.checklistNotes[item.key] ?? "").trim();
+        partesObservacao.push(note ? `${item.label}: ${note}` : `${item.label}: sem observação`);
+      }
+      if (ins.origemMobile === true && (ins.localizacaoViatura === "Na Oficina" || ins.localizacaoViatura === "Destacada")) {
+        partesObservacao.push(`Situação mobile: ${ins.localizacaoViatura}`);
+      }
+      const rubricaRaw = String(
+        ins.vistoriaAdministrativa === true ? (ins.rubricaAdministrativa ?? "") : (ins.rubrica ?? ""),
+      ).trim();
+      const rubrica = rubricaRaw
+        ? rubricaRaw.startsWith("rubrica_ref:")
+          ? "Rubrica em referência"
+          : rubricaRaw
+        : "";
+      return {
+        inspectionId: ins.id,
+        viatura: ins.viatura,
+        inspectionDate: ins.inspectionDate,
+        observacoes: partesObservacao.join(" | "),
+        rubrica,
+      };
+    });
+    rows.sort((a, b) => b.inspectionDate.localeCompare(a.inspectionDate));
+    return rows;
+  }, [inspections]);
+
   function handlePriorityReorder(dragKey: string, targetKey: string) {
     if (dragKey === targetKey) return;
     setPriorityOrderKeys((prev) => {
@@ -728,69 +732,15 @@ export function VistoriaPage() {
     });
   }
 
-  function finalizeDeleteSituacaoRow(row: VtrSituacaoPendenteRow) {
-    if (row.relatedIssueRefs.length === 0) return;
-    const refSet = new Set(row.relatedIssueRefs.map((ref) => `${ref.inspectionId}:${ref.itemKey}`));
-    const touchedInspectionIds = new Set(row.relatedIssueRefs.map((ref) => ref.inspectionId));
+  function finalizeDeleteEstadoRow(row: EstadoViaturaRow) {
     updateVistoriaCloudState((prev) => ({
       ...prev,
-      inspections: prev.inspections.map((ins) => {
-        if (!touchedInspectionIds.has(ins.id)) return ins;
-        let next = ins;
-        for (const ref of row.relatedIssueRefs) {
-          if (ref.inspectionId !== ins.id) continue;
-          next = {
-            ...next,
-            checklist: { ...next.checklist, [ref.itemKey]: "" },
-            checklistNotes: { ...next.checklistNotes, [ref.itemKey]: "" },
-          };
-          // Linha de situação mobile ("Na Oficina"/"Destacada") usa `outros` e localização especial.
-          if (
-            ref.itemKey === "outros" &&
-            next.origemMobile === true &&
-            (next.localizacaoViatura === "Na Oficina" || next.localizacaoViatura === "Destacada")
-          ) {
-            next = { ...next, localizacaoViatura: "A Bordo" };
-          }
-        }
-        return next;
-      }),
-      issueControls: prev.issueControls.filter((ctrl) => !refSet.has(`${ctrl.inspectionId}:${ctrl.itemKey}`)),
-      resolvedIssues: prev.resolvedIssues.filter((res) => !refSet.has(`${res.inspectionId}:${res.itemKey}`)),
+      inspections: prev.inspections.filter((ins) => ins.id !== row.inspectionId),
+      issueControls: prev.issueControls.filter((ctrl) => ctrl.inspectionId !== row.inspectionId),
+      resolvedIssues: prev.resolvedIssues.filter((res) => res.inspectionId !== row.inspectionId),
     }));
   }
 
-  function finalizeDeleteAllSituacaoRows() {
-    const relatedRefs = vtrSituacaoPendente.flatMap((row) => row.relatedIssueRefs);
-    if (relatedRefs.length === 0) return;
-    const refSet = new Set(relatedRefs.map((ref) => `${ref.inspectionId}:${ref.itemKey}`));
-    const touchedInspectionIds = new Set(relatedRefs.map((ref) => ref.inspectionId));
-    updateVistoriaCloudState((prev) => ({
-      ...prev,
-      inspections: prev.inspections.map((ins) => {
-        if (!touchedInspectionIds.has(ins.id)) return ins;
-        let next = ins;
-        for (const ref of relatedRefs) {
-          if (ref.inspectionId !== ins.id) continue;
-          next = {
-            ...next,
-            checklist: { ...next.checklist, [ref.itemKey]: "" },
-            checklistNotes: { ...next.checklistNotes, [ref.itemKey]: "" },
-          };
-          if (
-            ref.itemKey === "outros" &&
-            next.origemMobile === true &&
-            (next.localizacaoViatura === "Na Oficina" || next.localizacaoViatura === "Destacada")
-          ) {
-            next = { ...next, localizacaoViatura: "A Bordo" };
-          }
-        }
-        return next;
-      }),
-      issueControls: prev.issueControls.filter((ctrl) => !refSet.has(`${ctrl.inspectionId}:${ctrl.itemKey}`)),
-      resolvedIssues: prev.resolvedIssues.filter((res) => !refSet.has(`${res.inspectionId}:${res.itemKey}`)),
-    }));
-  }
 
   function handleAddAssignment() {
     if (!canAdd) return;
@@ -1195,67 +1145,46 @@ export function VistoriaPage() {
           </Card>
         </div>
       ) : null}
-      {activeSubTab === "Situação das VTR" ? (
+      {activeSubTab === "Estado das Viaturas" ? (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-            <CardTitle>Situação das VTR</CardTitle>
-            <Button
-              type="button"
-              size="sm"
-              className="border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
-              onClick={() => setConfirmDeleteAllSituacao(true)}
-              disabled={vtrSituacaoPendente.length === 0}
-            >
-              <Trash2 className="mr-1 h-4 w-4" />
-              Excluir todas
-            </Button>
+          <CardHeader>
+            <CardTitle>Estado das Viaturas</CardTitle>
           </CardHeader>
           <CardContent>
-            {vtrSituacaoPendente.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">Não há itens pendentes no momento.</p>
+            {estadoViaturasRows.length === 0 ? (
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhuma vistoria registrada no momento.</p>
             ) : (
               <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
                 <Table>
                   <TableHeader className="bg-[hsl(var(--muted))/0.35]">
                     <TableRow>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Data da Vistoria</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica</TableHead>
-                      <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Ações</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">VIATURA</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">DATA</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">OBSERVAÇÕES</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">RUBRICA</TableHead>
+                      <TableHead className="text-right font-bold text-[hsl(var(--primary))]">AÇÕES</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {vtrSituacaoPendente.map((row, index) => {
-                      const rubrica = getRubricaForRow(row);
-                      return (
-                        <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
-                          <TableCell>{renderDataSituacao(row)}</TableCell>
-                          <TableCell className="font-semibold">{row.viatura}</TableCell>
-                          <TableCell>{row.itemLabel}</TableCell>
-                          <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
-                          <TableCell>
-                            {rubrica ? (
-                              <span className="whitespace-pre-wrap text-sm">{rubrica}</span>
-                            ) : (
-                              <span className="text-[hsl(var(--muted-foreground))]">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 w-8 border border-red-700/90 bg-red-600 p-0 text-white hover:bg-red-700"
-                              aria-label="Excluir linha da situação da VTR"
-                              onClick={() => setConfirmDeleteSituacaoRow(row)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {estadoViaturasRows.map((row, index) => (
+                      <TableRow key={row.inspectionId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                        <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
+                        <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
+                        <TableCell>{row.observacoes ? <span className="whitespace-pre-wrap">{row.observacoes}</span> : "—"}</TableCell>
+                        <TableCell>{row.rubrica ? <span className="whitespace-pre-wrap">{row.rubrica}</span> : "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 w-8 border border-red-700/90 bg-red-600 p-0 text-white hover:bg-red-700"
+                            aria-label="Excluir vistoria"
+                            onClick={() => setConfirmDeleteEstadoRow(row)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -1274,8 +1203,7 @@ export function VistoriaPage() {
           <CardContent>
             {vtrPrioridadesOrdered.length === 0 ? (
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Nenhum item marcado como prioridade. Use a coluna Prioridades em <strong>Situação das VTR</strong> para
-                incluir itens aqui.
+                Nenhum item marcado como prioridade no momento.
               </p>
             ) : (
               <ul className="space-y-2" role="list">
@@ -1326,88 +1254,45 @@ export function VistoriaPage() {
           </CardContent>
         </Card>
       ) : null}
-      {confirmDeleteSituacaoRow ? (
+      {confirmDeleteEstadoRow ? (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
-          aria-labelledby={confirmDeleteSituacaoRowTitleId}
+          aria-labelledby={confirmDeleteEstadoRowTitleId}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmDeleteSituacaoRow(null);
+            if (e.target === e.currentTarget) setConfirmDeleteEstadoRow(null);
           }}
         >
           <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
             <CardHeader>
-              <CardTitle id={confirmDeleteSituacaoRowTitleId}>Confirmar exclusão</CardTitle>
+              <CardTitle id={confirmDeleteEstadoRowTitleId}>Confirmar exclusão</CardTitle>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Deseja excluir esta linha da Situação das VTR? Esta ação remove os registros vinculados.
+                Esta ação exclui permanentemente a vistoria selecionada.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 p-3 text-sm">
                 <p>
-                  <span className="font-semibold">Viatura:</span> {confirmDeleteSituacaoRow.viatura || "—"}
+                  <span className="font-semibold">Viatura:</span> {confirmDeleteEstadoRow.viatura || "—"}
                 </p>
                 <p>
-                  <span className="font-semibold">Item:</span> {confirmDeleteSituacaoRow.itemLabel}
-                </p>
-                <p>
-                  <span className="font-semibold">Data:</span> {formatIsoDatePtBr(confirmDeleteSituacaoRow.inspectionDate)}
+                  <span className="font-semibold">Data:</span> {formatIsoDatePtBr(confirmDeleteEstadoRow.inspectionDate)}
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDeleteSituacaoRow(null)}>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDeleteEstadoRow(null)}>
                   Cancelar
                 </Button>
                 <Button
                   type="button"
                   className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
                   onClick={() => {
-                    finalizeDeleteSituacaoRow(confirmDeleteSituacaoRow);
-                    setConfirmDeleteSituacaoRow(null);
+                    finalizeDeleteEstadoRow(confirmDeleteEstadoRow);
+                    setConfirmDeleteEstadoRow(null);
                   }}
                 >
                   Excluir
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-      {confirmDeleteAllSituacao ? (
-        <div
-          className="fixed inset-0 z-[201] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={confirmDeleteAllSituacaoTitleId}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmDeleteAllSituacao(false);
-          }}
-        >
-          <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
-            <CardHeader>
-              <CardTitle id={confirmDeleteAllSituacaoTitleId}>Excluir todas as linhas?</CardTitle>
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Esta ação limpa permanentemente todas as linhas atuais da Situação das VTR.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm">
-                Linhas afetadas: <strong>{vtrSituacaoPendente.length}</strong>
-              </p>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDeleteAllSituacao(false)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
-                  onClick={() => {
-                    finalizeDeleteAllSituacaoRows();
-                    setConfirmDeleteAllSituacao(false);
-                  }}
-                >
-                  Excluir todas
                 </Button>
               </div>
             </CardContent>
