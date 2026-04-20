@@ -579,40 +579,20 @@ export function MobileVistoriaFullscreen({
     const intent = rubricaModalIntentRef.current;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
 
-    if (intent === "finalizeAbordo") {
-      if (!isViaturaLocalizacao(localizacaoViatura) || localizacaoViatura !== "A Bordo") {
-        rubricaModalIntentRef.current = null;
-        return;
-      }
-      const pend = CHECKLIST_ITEMS.find(({ key }) => inspectionChecklist[key] === "");
-      if (pend) {
-        window.alert(`Marque OK ou Anotações para «${pend.label}».`);
-        return;
-      }
-      const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
-      if (semObs) {
-        setAvisoObservacaoItemLabel(semObs);
-        return;
-      }
-      rubricaModalIntentRef.current = null;
-      void finalizeVistoria(drawn || undefined);
-      return;
-    }
-
     if (!isViaturaLocalizacao(localizacaoViatura)) {
-      rubricaModalIntentRef.current = null;
-      return;
-    }
-    if (localizacaoViatura === "A Bordo") {
       rubricaModalIntentRef.current = null;
       return;
     }
 
     const pend = CHECKLIST_ITEMS.find(({ key }) => inspectionChecklist[key] === "");
     if (pend) {
-      window.alert(
-        `Preencha o checklist no formulário e marque OK ou Anotações em «${pend.label}» antes de confirmar.`,
-      );
+      if (intent === "finalizeAbordo" || localizacaoViatura === "A Bordo") {
+        window.alert(`Marque OK ou Anotações para «${pend.label}».`);
+      } else {
+        window.alert(
+          `Preencha o checklist no formulário e marque OK ou Anotações em «${pend.label}» antes de confirmar.`,
+        );
+      }
       return;
     }
     const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
