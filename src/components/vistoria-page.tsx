@@ -1515,7 +1515,12 @@ export function VistoriaPage() {
                             </label>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteIssue(row)}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+                              onClick={() => handleDeleteIssue(row)}
+                            >
                               <Trash2 className="mr-1 h-4 w-4" />
                               Excluir
                             </Button>
@@ -1570,8 +1575,7 @@ export function VistoriaPage() {
                 </Button>
                 <Button
                   type="button"
-                  variant="destructive"
-                  className="flex-1"
+                  className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
                   onClick={() => {
                     finalizeDeleteIssueRows(confirmDelete.relatedIssueRefs);
                     setConfirmDelete(null);
