@@ -216,33 +216,27 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   }, []);
 
   /** Oficina, Inoperante e Destacada no RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
-  const rdvFrotaHome = useMemo(() => {
-    void rdvOficinaTick;
-    const isoDate = getLatestPersistedRdvIsoDate();
-    if (!isoDate) {
-      return {
+  void rdvOficinaTick;
+  const isoRdvFrota = getLatestPersistedRdvIsoDate();
+  const rdvFrotaHome = !isoRdvFrota
+    ? {
         isoDate: null as string | null,
         oficinaComObs: [] as { placa: string; observacao: string }[],
         inoperantesComObs: [] as { placa: string; observacao: string }[],
         placasDestacadas: [] as string[],
+      }
+    : {
+        isoDate: isoRdvFrota,
+        oficinaComObs: getRdvPlacasNaOficinaComObservacaoForDate(isoRdvFrota),
+        inoperantesComObs: getRdvPlacasPorSituacaoComObservacaoForDate(isoRdvFrota, "Inoperante"),
+        placasDestacadas: getRdvPlacasPorSituacaoForDate(isoRdvFrota, "Destacada"),
       };
-    }
-    return {
-      isoDate,
-      oficinaComObs: getRdvPlacasNaOficinaComObservacaoForDate(isoDate),
-      inoperantesComObs: getRdvPlacasPorSituacaoComObservacaoForDate(isoDate, "Inoperante"),
-      placasDestacadas: getRdvPlacasPorSituacaoForDate(isoDate, "Destacada"),
-    };
-  }, [rdvOficinaTick]);
 
   const placasNaOficina = rdvFrotaHome.oficinaComObs;
   const placasInoperantesRdv = rdvFrotaHome.inoperantesComObs;
   const placasDestacadasRdv = rdvFrotaHome.placasDestacadas;
   /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
-  const agoraDashboard = useMemo(() => {
-    void relogio;
-    return new Date();
-  }, [relogio]);
+  const agoraDashboard = useMemo(() => new Date(), [relogio]);
 
   /**
    * Só mostra alarmes ativos na home a partir do horário configurado (não antes).
