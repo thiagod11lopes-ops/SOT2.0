@@ -64,6 +64,61 @@ type Props = {
   administrativeVistoriadorMotorista?: string | null;
 };
 
+function isLikelyDocumentSizeError(error: unknown): boolean {
+  const code = error && typeof error === "object" && "code" in error ? String((error as { code?: string }).code) : "";
+  const msg =
+    error && typeof error === "object" && "message" in error ? String((error as { message?: string }).message) : "";
+  const haystack = `${code} ${msg}`.toLowerCase();
+  return (
+    haystack.includes("invalid-argument") ||
+    haystack.includes("document too large") ||
+    haystack.includes("payload") ||
+    haystack.includes("size")
+  );
+}
+
+async function optimizeRubricaDataUrl(dataUrl: string | undefined): Promise<string | undefined> {
+  const src = dataUrl?.trim();
+  if (!src || !src.startsWith("data:image/")) return src || undefined;
+  // Evita processamento quando já está num tamanho baixo para Firestore.
+  if (src.length <= 120_000) return src;
+  if (typeof document === "undefined") return src;
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("Falha ao carregar rubrica para otimização."));
+    el.src = src;
+  });
+
+  const maxW = 900;
+  const maxH = 420;
+  const scale = Math.min(1, maxW / Math.max(1, img.width), maxH / Math.max(1, img.height));
+  const outW = Math.max(1, Math.round(img.width * scale));
+  const outH = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return src;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, outW, outH);
+  ctx.drawImage(img, 0, 0, outW, outH);
+
+  const candidates = [
+    canvas.toDataURL("image/png"),
+    canvas.toDataURL("image/jpeg", 0.8),
+    canvas.toDataURL("image/jpeg", 0.65),
+    canvas.toDataURL("image/jpeg", 0.5),
+  ].filter(Boolean);
+
+  let smallest = src;
+  for (const c of candidates) {
+    if (c.length < smallest.length) smallest = c;
+  }
+  return smallest;
+}
+
 function newInspectionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -478,7 +533,12 @@ export function MobileVistoriaFullscreen({
     const motoristaRef = formMotorista.trim();
     const viaturaRef = formViatura.trim();
     if (!motoristaRef || !viaturaRef) return;
-    const rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    let rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    try {
+      rubricaTrim = await optimizeRubricaDataUrl(rubricaTrim);
+    } catch (optErr) {
+      console.warn("[SOT] Falha ao otimizar rubrica antes do save:", optErr);
+    }
     const createdAt = (() => {
       const parsed = parseIsoDate(selectedDate);
       return parsed ? parsed.getTime() : 0;
@@ -559,7 +619,13 @@ export function MobileVistoriaFullscreen({
       await appendVistoriaInspection(novo);
     } catch (error) {
       console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
-      window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+      if (isLikelyDocumentSizeError(error)) {
+        window.alert(
+          "Falha ao salvar no Firebase: o registo da vistoria excedeu o tamanho permitido. Tente limpar a rubrica e confirmar novamente. Se persistir, avise o suporte para reduzir o histórico no documento da vistoria.",
+        );
+      } else {
+        window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+      }
       return;
     }
     rubricaModalIntentRef.current = null;
