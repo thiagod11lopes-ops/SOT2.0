@@ -93,6 +93,7 @@ type RowIssueControlState = {
 };
 
 type EstadoViaturaRow = {
+  rowId: string;
   inspectionId: string;
   viatura: string;
   inspectionDate: string;
@@ -689,16 +690,13 @@ export function VistoriaPage() {
   }, [vtrPrioridades, priorityOrderKeys]);
 
   const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
-    const rows: EstadoViaturaRow[] = inspections.map((ins) => {
-      const partesObservacao: string[] = [];
-      for (const item of CHECKLIST_ITEMS) {
-        if (ins.checklist[item.key] !== "Alterações") continue;
-        const note = String(ins.checklistNotes[item.key] ?? "").trim();
-        partesObservacao.push(note ? `${item.label}: ${note}` : `${item.label}: sem observação`);
-      }
-      if (ins.origemMobile === true && (ins.localizacaoViatura === "Na Oficina" || ins.localizacaoViatura === "Destacada")) {
-        partesObservacao.push(`Situação mobile: ${ins.localizacaoViatura}`);
-      }
+    const sorted = [...inspections].sort((a, b) => b.createdAt - a.createdAt);
+    const latestByViaturaItem = new Map<string, EstadoViaturaRow>();
+    const latestByViaturaLocalizacao = new Map<string, EstadoViaturaRow>();
+
+    for (const ins of sorted) {
+      const viatura = ins.viatura.trim();
+      if (!viatura) continue;
       const rubricaRaw = String(
         ins.vistoriaAdministrativa === true ? (ins.rubricaAdministrativa ?? "") : (ins.rubrica ?? ""),
       ).trim();
@@ -707,15 +705,45 @@ export function VistoriaPage() {
           ? "Rubrica em referência"
           : rubricaRaw
         : "";
-      return {
-        inspectionId: ins.id,
-        viatura: ins.viatura,
-        inspectionDate: ins.inspectionDate,
-        observacoes: partesObservacao.join(" | "),
-        rubrica,
-      };
+
+      for (const item of CHECKLIST_ITEMS) {
+        if (ins.checklist[item.key] !== "Alterações") continue;
+        const rowId = `${viatura.toLowerCase()}::item::${item.key}`;
+        if (latestByViaturaItem.has(rowId)) continue;
+        const note = String(ins.checklistNotes[item.key] ?? "").trim();
+        latestByViaturaItem.set(rowId, {
+          rowId,
+          inspectionId: ins.id,
+          viatura,
+          inspectionDate: ins.inspectionDate,
+          observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
+          rubrica,
+        });
+      }
+
+      // Linha de localização sempre reflete a última ação de localização da viatura.
+      const localizacao = ins.localizacaoViatura;
+      if (localizacao === "A Bordo" || localizacao === "Na Oficina" || localizacao === "Destacada") {
+        const rowId = `${viatura.toLowerCase()}::localizacao`;
+        if (!latestByViaturaLocalizacao.has(rowId)) {
+          latestByViaturaLocalizacao.set(rowId, {
+            rowId,
+            inspectionId: ins.id,
+            viatura,
+            inspectionDate: ins.inspectionDate,
+            observacoes: `Localização da viatura: ${localizacao}`,
+            rubrica,
+          });
+        }
+      }
+    }
+
+    const rows = [...latestByViaturaItem.values(), ...latestByViaturaLocalizacao.values()];
+    rows.sort((a, b) => {
+      const byDate = b.inspectionDate.localeCompare(a.inspectionDate);
+      if (byDate !== 0) return byDate;
+      return a.viatura.localeCompare(b.viatura, "pt-BR");
     });
-    rows.sort((a, b) => b.inspectionDate.localeCompare(a.inspectionDate));
     return rows;
   }, [inspections]);
 
@@ -1167,7 +1195,7 @@ export function VistoriaPage() {
                   </TableHeader>
                   <TableBody>
                     {estadoViaturasRows.map((row, index) => (
-                      <TableRow key={row.inspectionId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                      <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                         <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
                         <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
                         <TableCell>{row.observacoes ? <span className="whitespace-pre-wrap">{row.observacoes}</span> : "—"}</TableCell>
