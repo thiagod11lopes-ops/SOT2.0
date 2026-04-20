@@ -378,6 +378,27 @@ export function MobileVistoriaFullscreen({
     });
   }, [view, open]);
 
+  useEffect(() => {
+    if (!open || view !== "form") return;
+    const motoristaRef = formMotorista.trim();
+    const viaturaRef = formViatura.trim();
+    if (!motoristaRef || !viaturaRef) return;
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura: viaturaRef,
+      baseChecklist,
+      baseNotes,
+    });
+    setLocalizacaoViatura(
+      isViaturaLocalizacao(existing?.localizacaoViatura) ? existing.localizacaoViatura : "A Bordo",
+    );
+    setInspectionChecklist(nextChecklist);
+    setInspectionChecklistNotes(nextNotes);
+  }, [inspections, open, view, formMotorista, formViatura]);
+
   function inspectionFeitaPara(motorista: string, viatura: string): boolean {
     return inspections.some(
       (i) =>

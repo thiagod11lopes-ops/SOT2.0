@@ -825,18 +825,28 @@ export function VistoriaPage() {
     const targetItemKey = row.itemKey;
     updateVistoriaCloudState((prev) => ({
       ...prev,
-      inspections: prev.inspections.filter((ins) => {
+      inspections: prev.inspections.map((ins) => {
         const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
-        if (!sameViatura) return true;
+        if (!sameViatura) return ins;
         if (row.rowKind === "item" && targetItemKey) {
-          return ins.checklist[targetItemKey] === "Alterações" ? false : true;
+          if (ins.checklist[targetItemKey] !== "Alterações") return ins;
+          return {
+            ...ins,
+            checklist: { ...ins.checklist, [targetItemKey]: "" },
+            checklistNotes: { ...ins.checklistNotes, [targetItemKey]: "" },
+          };
         }
         if (row.rowKind === "localizacao") {
-          return ins.localizacaoViatura === "A Bordo" || ins.localizacaoViatura === "Na Oficina" || ins.localizacaoViatura === "Destacada"
-            ? false
-            : true;
+          if (
+            ins.localizacaoViatura === "A Bordo" ||
+            ins.localizacaoViatura === "Na Oficina" ||
+            ins.localizacaoViatura === "Destacada"
+          ) {
+            return { ...ins, localizacaoViatura: "A Bordo" };
+          }
+          return ins;
         }
-        return ins.id !== row.inspectionId;
+        return ins;
       }),
       issueControls: prev.issueControls.filter((ctrl) => {
         const ins = prev.inspections.find((i) => i.id === ctrl.inspectionId);
@@ -858,6 +868,27 @@ export function VistoriaPage() {
       }),
     }));
   }
+
+  useEffect(() => {
+    if (!inspectionOpen) return;
+    const viaturaRef = inspectionViatura.trim();
+    const motoristaRef = inspectionMotorista.trim();
+    if (!viaturaRef || !motoristaRef) return;
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura: viaturaRef,
+      baseChecklist,
+      baseNotes,
+    });
+    setLocalizacaoViatura(
+      isViaturaLocalizacao(existing?.localizacaoViatura) ? existing.localizacaoViatura : "A Bordo",
+    );
+    setInspectionChecklist(nextChecklist);
+    setInspectionChecklistNotes(nextNotes);
+  }, [inspections, inspectionOpen, inspectionMotorista, inspectionViatura]);
 
 
   function handleAddAssignment() {
