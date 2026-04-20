@@ -564,6 +564,15 @@ export function VistoriaPage() {
       if (localizacaoMobilePendente) {
         const groupKey = `${inspection.viatura.trim().toLowerCase()}::mobile-localizacao`;
         if (!grouped.has(groupKey)) {
+          const relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }> = inspections
+            .filter(
+              (candidate) =>
+                candidate.viatura.trim().toLowerCase() === inspection.viatura.trim().toLowerCase() &&
+                candidate.origemMobile === true &&
+                (candidate.localizacaoViatura === "Na Oficina" || candidate.localizacaoViatura === "Destacada") &&
+                !resolvedIssueSet.has(`${candidate.id}:outros`),
+            )
+            .map((candidate) => ({ inspectionId: candidate.id, itemKey: "outros" as ChecklistKey }));
           grouped.set(groupKey, {
             rowId: groupKey,
             inspectionId: inspection.id,
@@ -574,7 +583,7 @@ export function VistoriaPage() {
             itemLabel: "Situacao da viatura (mobile)",
             observacao: `Viatura marcada como ${inspection.localizacaoViatura}.`,
             vistoriaAdministrativa,
-            relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: "outros" }],
+            relatedIssueRefs,
           });
         }
       }
@@ -587,6 +596,15 @@ export function VistoriaPage() {
       ) {
         const groupKey = `${inspection.viatura.trim().toLowerCase()}::outros`;
         if (!grouped.has(groupKey)) {
+          const relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }> = inspections
+            .filter(
+              (candidate) =>
+                candidate.viatura.trim().toLowerCase() === inspection.viatura.trim().toLowerCase() &&
+                candidate.origemMobile === true &&
+                !CHECKLIST_ITEMS.some(({ key }) => candidate.checklist[key] === "Alterações") &&
+                !resolvedIssueSet.has(`${candidate.id}:outros`),
+            )
+            .map((candidate) => ({ inspectionId: candidate.id, itemKey: "outros" as ChecklistKey }));
           grouped.set(groupKey, {
             rowId: groupKey,
             inspectionId: inspection.id,
@@ -597,7 +615,7 @@ export function VistoriaPage() {
             itemLabel: "Registo de vistoria (mobile)",
             observacao: "Sem itens com anotações (todos OK).",
             vistoriaAdministrativa,
-            relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: "outros" }],
+            relatedIssueRefs,
           });
         }
       }
