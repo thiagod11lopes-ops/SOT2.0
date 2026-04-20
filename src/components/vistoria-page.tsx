@@ -548,6 +548,32 @@ export function VistoriaPage() {
     for (const inspection of sorted) {
       const vistoriaAdministrativa = inspection.vistoriaAdministrativa === true;
       const temAlgumItemAlteracoes = CHECKLIST_ITEMS.some(({ key }) => inspection.checklist[key] === "Alterações");
+      const localizacaoMobilePendente =
+        inspection.origemMobile === true &&
+        (inspection.localizacaoViatura === "Na Oficina" || inspection.localizacaoViatura === "Destacada") &&
+        !resolvedIssueSet.has(`${inspection.id}:outros`);
+
+      /**
+       * Vistoria mobile com localização especial: gera linha explícita na Situação das VTR
+       * para deixar rastreável na coluna de Anotação.
+       */
+      if (localizacaoMobilePendente) {
+        const groupKey = `${inspection.viatura.trim().toLowerCase()}::mobile-localizacao`;
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, {
+            rowId: groupKey,
+            inspectionId: inspection.id,
+            viatura: inspection.viatura,
+            motorista: inspection.motorista,
+            inspectionDate: inspection.inspectionDate,
+            itemKey: "outros",
+            itemLabel: "Situacao da viatura (mobile)",
+            observacao: `Viatura marcada como ${inspection.localizacaoViatura}.`,
+            vistoriaAdministrativa,
+            relatedIssueRefs: [{ inspectionId: inspection.id, itemKey: "outros" }],
+          });
+        }
+      }
 
       /** Vistoria só mobile, sem nenhum item em «Anotações»: entra na aba com linha de registo (chave «outros»). */
       if (
