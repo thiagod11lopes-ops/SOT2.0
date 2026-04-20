@@ -241,11 +241,15 @@ export type LoadRdvDayForEditResult = {
 /**
  * Carrega o RDV para edição: se estiver pendente (sem PDF salvo), copia o conteúdo do **último**
  * relatório com PDF gerado numa data anterior (ex.: dia 19 pendente ← dia 18 salvo).
- * Não bloqueia por rascunho/replicação já gravado para a data — isso impedia a cópia.
+ * Se já existir relatório gravado (`v === 1`) para esta data — rascunho ou réplica — usa esse dado
+ * e **não** substitui pela cópia do dia anterior (evita perder edições ao recarregar ou ao sincronizar Firebase).
  */
 export function loadRdvDayForEdit(isoDate: string): LoadRdvDayForEditResult {
   const snap = loadRdvDay(isoDate);
   if (snap.pdfSalvo) {
+    return { data: snap, filledFromPreviousIso: null };
+  }
+  if (hasPersistedRdvDay(isoDate)) {
     return { data: snap, filledFromPreviousIso: null };
   }
   const sourceIso = getLatestPersistedRdvIsoWithPdfSalvoStrictlyBefore(isoDate);

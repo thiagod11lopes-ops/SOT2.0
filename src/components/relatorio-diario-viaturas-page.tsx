@@ -272,6 +272,46 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
   const [pdfSalvo, setPdfSalvo] = useState(() => rdvInitial.data.pdfSalvo);
 
   const skipNextPersistRef = useRef(false);
+  const reportDateRef = useRef(reportDate);
+  reportDateRef.current = reportDate;
+  const draftPersistRef = useRef({
+    rowsAmb: rdvInitial.data.rowsAmb,
+    rowsAdm: rdvInitial.data.rowsAdm,
+    assinaturaNome: rdvInitial.data.assinaturaNome,
+    efetivoAmb: rdvInitial.data.efetivoAmb,
+    efetivoAdm: rdvInitial.data.efetivoAdm,
+    resumoUti: rdvInitial.data.resumoUti,
+    resumoUsb: rdvInitial.data.resumoUsb,
+  });
+
+  useEffect(() => {
+    draftPersistRef.current = {
+      rowsAmb,
+      rowsAdm,
+      assinaturaNome,
+      efetivoAmb,
+      efetivoAdm,
+      resumoUti,
+      resumoUsb,
+    };
+  }, [rowsAmb, rowsAdm, assinaturaNome, efetivoAmb, efetivoAdm, resumoUti, resumoUsb]);
+
+  useEffect(() => {
+    const flush = () => {
+      const d = draftPersistRef.current;
+      persistRdvDraft(reportDateRef.current, {
+        rowsAmb: d.rowsAmb,
+        rowsAdm: d.rowsAdm,
+        assinaturaNome: d.assinaturaNome,
+        efetivoAmb: d.efetivoAmb,
+        efetivoAdm: d.efetivoAdm,
+        resumoUti: d.resumoUti,
+        resumoUsb: d.resumoUsb,
+      });
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
 
   useEffect(() => {
     const { data, filledFromPreviousIso } = loadRdvDayForEdit(reportDate);
@@ -318,7 +358,18 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
   }, [reportDate, rowsAmb, rowsAdm, assinaturaNome, efetivoAmb, efetivoAdm, resumoUti, resumoUsb]);
 
   useEffect(() => {
-    const onStorage = () => setPdfSalvo(loadRdvDay(reportDate).pdfSalvo);
+    const onStorage = () => {
+      const { data } = loadRdvDayForEdit(reportDate);
+      skipNextPersistRef.current = true;
+      setRowsAmb(data.rowsAmb);
+      setRowsAdm(data.rowsAdm);
+      setAssinaturaNome(data.assinaturaNome);
+      setEfetivoAmb(data.efetivoAmb);
+      setEfetivoAdm(data.efetivoAdm);
+      setResumoUti(data.resumoUti);
+      setResumoUsb(data.resumoUsb);
+      setPdfSalvo(data.pdfSalvo);
+    };
     window.addEventListener(RDV_STORAGE_EVENT, onStorage);
     return () => window.removeEventListener(RDV_STORAGE_EVENT, onStorage);
   }, [reportDate]);
