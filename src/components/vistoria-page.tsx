@@ -286,6 +286,7 @@ export function VistoriaPage() {
   const [inspectionViatura, setInspectionViatura] = useState("");
   const [localizacaoViatura, setLocalizacaoViatura] = useState<ViaturaLocalizacao>("A Bordo");
   const [inspectionChecklist, setInspectionChecklist] = useState<VistoriaChecklist>(() => emptyChecklist());
+  const inspectionFormDirtyRef = useRef(false);
   const [inspectionChecklistNotes, setInspectionChecklistNotes] = useState<VistoriaChecklistNotes>(() =>
     emptyChecklistNotes(),
   );
@@ -351,6 +352,7 @@ export function VistoriaPage() {
   /** Nem OK nem Anotações: assume OK. */
   useEffect(() => {
     if (!inspectionOpen) {
+      inspectionFormDirtyRef.current = false;
       setAvisoObservacaoItemLabel(null);
       return;
     }
@@ -871,6 +873,7 @@ export function VistoriaPage() {
 
   useEffect(() => {
     if (!inspectionOpen) return;
+    if (inspectionFormDirtyRef.current) return;
     const viaturaRef = inspectionViatura.trim();
     const motoristaRef = inspectionMotorista.trim();
     if (!viaturaRef || !motoristaRef) return;
@@ -917,6 +920,7 @@ export function VistoriaPage() {
   }
 
   function handleOpenInspection(motorista: string, viatura: string) {
+    inspectionFormDirtyRef.current = false;
     const motoristaRef = motorista.trim();
     const viaturaRef = viatura.trim();
     setInspectionMotorista(motoristaRef);
@@ -994,6 +998,7 @@ export function VistoriaPage() {
     }
     setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
     setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
+    inspectionFormDirtyRef.current = true;
   }
 
   function confirmProceedOkClearsNote() {
@@ -1001,6 +1006,7 @@ export function VistoriaPage() {
     const k = confirmOkClearsNote.key;
     setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
     setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    inspectionFormDirtyRef.current = true;
     setConfirmOkClearsNote(null);
   }
 
@@ -1474,7 +1480,10 @@ export function VistoriaPage() {
                         name="vistoria-localizacao-viatura"
                         value={opt}
                         checked={localizacaoViatura === opt}
-                        onChange={() => setLocalizacaoViatura(opt)}
+                        onChange={() => {
+                          inspectionFormDirtyRef.current = true;
+                          setLocalizacaoViatura(opt);
+                        }}
                         className="accent-[hsl(var(--primary))]"
                       />
                       {opt}
@@ -1509,12 +1518,13 @@ export function VistoriaPage() {
                             name={`vistoria-${item.key}`}
                             value="Alterações"
                             checked={inspectionChecklist[item.key] === "Alterações"}
-                            onChange={() =>
+                            onChange={() => {
+                              inspectionFormDirtyRef.current = true;
                               setInspectionChecklist((prev) => ({
                                 ...prev,
                                 [item.key]: "Alterações",
-                              }))
-                            }
+                              }));
+                            }}
                           />
                           Anotações
                         </label>
@@ -1524,12 +1534,13 @@ export function VistoriaPage() {
                         <input
                           type="text"
                           value={inspectionChecklistNotes[item.key]}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            inspectionFormDirtyRef.current = true;
                             setInspectionChecklistNotes((prev) => ({
                               ...prev,
                               [item.key]: e.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           disabled={inspectionChecklist[item.key] === "OK"}
                           placeholder="Escreva observações deste item..."
                           className={`h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-60`}

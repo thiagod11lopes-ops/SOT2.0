@@ -175,6 +175,7 @@ export function MobileVistoriaFullscreen({
   const [inspectionChecklistNotes, setInspectionChecklistNotes] = useState<VistoriaChecklistNotes>(() =>
     emptyChecklistNotes(),
   );
+  const inspectionFormDirtyRef = useRef(false);
 
   const [rubricaOpen, setRubricaOpen] = useState(false);
   const [rubricaSubmitPressed, setRubricaSubmitPressed] = useState(false);
@@ -380,6 +381,7 @@ export function MobileVistoriaFullscreen({
 
   useEffect(() => {
     if (!open || view !== "form") return;
+    if (inspectionFormDirtyRef.current) return;
     const motoristaRef = formMotorista.trim();
     const viaturaRef = formViatura.trim();
     if (!motoristaRef || !viaturaRef) return;
@@ -427,6 +429,7 @@ export function MobileVistoriaFullscreen({
   }
 
   function openForm(motorista: string, viatura: string) {
+    inspectionFormDirtyRef.current = false;
     const motoristaRef = motorista.trim();
     const viaturaRef = viatura.trim();
     setFormMotorista(motoristaRef);
@@ -497,6 +500,7 @@ export function MobileVistoriaFullscreen({
     }
     setInspectionChecklist((prev) => ({ ...prev, [itemKey]: "OK" }));
     setInspectionChecklistNotes((prev) => ({ ...prev, [itemKey]: "" }));
+    inspectionFormDirtyRef.current = true;
   }
 
   function confirmProceedOkClearsNote() {
@@ -504,10 +508,12 @@ export function MobileVistoriaFullscreen({
     const k = confirmOkClearsNote.key;
     setInspectionChecklist((prev) => ({ ...prev, [k]: "OK" }));
     setInspectionChecklistNotes((prev) => ({ ...prev, [k]: "" }));
+    inspectionFormDirtyRef.current = true;
     setConfirmOkClearsNote(null);
   }
 
   function handleLocalizacaoChange(opt: ViaturaLocalizacao) {
+    inspectionFormDirtyRef.current = true;
     setLocalizacaoViatura(opt);
     if (opt === "Na Oficina" || opt === "Destacada") {
       rubricaModalIntentRef.current = "captureNaoAbordo";
@@ -1048,12 +1054,13 @@ export function MobileVistoriaFullscreen({
                         type="radio"
                         name={`mobile-vistoria-${item.key}`}
                         checked={inspectionChecklist[item.key] === "Alterações"}
-                        onChange={() =>
+                        onChange={() => {
+                          inspectionFormDirtyRef.current = true;
                           setInspectionChecklist((prev) => ({
                             ...prev,
                             [item.key]: "Alterações",
-                          }))
-                        }
+                          }));
+                        }}
                         className="h-5 w-5 accent-[hsl(var(--primary))]"
                       />
                       Anotações
@@ -1065,12 +1072,13 @@ export function MobileVistoriaFullscreen({
                     enterKeyHint="next"
                     autoComplete="off"
                     value={inspectionChecklistNotes[item.key]}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      inspectionFormDirtyRef.current = true;
                       setInspectionChecklistNotes((prev) => ({
                         ...prev,
                         [item.key]: e.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     disabled={inspectionChecklist[item.key] === "OK"}
                     placeholder="Opcional"
                     className="mt-1 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40 disabled:cursor-not-allowed disabled:opacity-60"
