@@ -269,7 +269,7 @@ export function VistoriaPage() {
   const avisoObservacaoTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const confirmOkClearsNoteTitleId = useId();
-  const [confirmResolve, setConfirmResolve] = useState<{
+  const [confirmDelete, setConfirmDelete] = useState<{
     inspectionId: string;
     itemKey: ChecklistKey;
     itemLabel: string;
@@ -278,7 +278,7 @@ export function VistoriaPage() {
     inspectionDate: string;
     relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
   } | null>(null);
-  const confirmResolveTitleId = useId();
+  const confirmDeleteTitleId = useId();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -954,27 +954,15 @@ export function VistoriaPage() {
     setConfirmOkClearsNote(null);
   }
 
-  function finalizeResolveIssue(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
-    const unresolved = relatedIssueRefs.filter((ref) => !resolvedIssueSet.has(`${ref.inspectionId}:${ref.itemKey}`));
-    if (unresolved.length === 0) return;
-
-    updateVistoriaCloudState((prev) => {
-      const existing = new Set(prev.resolvedIssues.map((r) => `${r.inspectionId}:${r.itemKey}`));
-      const toAdd = unresolved.filter((ref) => !existing.has(`${ref.inspectionId}:${ref.itemKey}`));
-      if (toAdd.length === 0) return prev;
-      return {
-        ...prev,
-        resolvedIssues: [
-          ...prev.resolvedIssues,
-          ...toAdd.map((ref) => ({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            inspectionId: ref.inspectionId,
-            itemKey: ref.itemKey,
-            resolvedAt: Date.now(),
-          })),
-        ],
-      };
-    });
+  function finalizeDeleteIssueRows(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
+    if (relatedIssueRefs.length === 0) return;
+    const inspectionIds = new Set(relatedIssueRefs.map((ref) => ref.inspectionId));
+    updateVistoriaCloudState((prev) => ({
+      ...prev,
+      inspections: prev.inspections.filter((ins) => !inspectionIds.has(ins.id)),
+      issueControls: prev.issueControls.filter((ctrl) => !inspectionIds.has(ctrl.inspectionId)),
+      resolvedIssues: prev.resolvedIssues.filter((res) => !inspectionIds.has(res.inspectionId)),
+    }));
 
     // Retirar da checklist aberta o eco do item resolvido (o pré-pende de pendências lê o cloud já atualizado).
     if (!inspectionOpen) return;
@@ -994,8 +982,8 @@ export function VistoriaPage() {
     setInspectionChecklistNotes(nextNotes);
   }
 
-  function handleResolveIssue(row: VtrSituacaoPendenteRow) {
-    setConfirmResolve({
+  function handleDeleteIssue(row: VtrSituacaoPendenteRow) {
+    setConfirmDelete({
       inspectionId: row.inspectionId,
       itemKey: row.itemKey,
       itemLabel: row.itemLabel,
@@ -1527,12 +1515,9 @@ export function VistoriaPage() {
                             </label>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              size="sm"
-                                onClick={() => handleResolveIssue(row)}
-                            >
-                              Resolver
+                            <Button type="button" size="sm" variant="destructive" onClick={() => handleDeleteIssue(row)}>
+                              <Trash2 className="mr-1 h-4 w-4" />
+                              Excluir
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1546,52 +1531,53 @@ export function VistoriaPage() {
         </Card>
       ) : null}
 
-      {confirmResolve ? (
+      {confirmDelete ? (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
-          aria-labelledby={confirmResolveTitleId}
+          aria-labelledby={confirmDeleteTitleId}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmResolve(null);
+            if (e.target === e.currentTarget) setConfirmDelete(null);
           }}
         >
           <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
             <CardHeader>
-              <CardTitle id={confirmResolveTitleId}>Confirmar resolução</CardTitle>
+              <CardTitle id={confirmDeleteTitleId}>Confirmar exclusão</CardTitle>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Esta ação remove a linha da lista de pendências (fica marcada como resolvida neste navegador).
+                Esta ação exclui permanentemente os registros relacionados desta linha na vistoria.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 p-3 text-sm">
                 <p>
-                  <span className="font-semibold">Viatura:</span> {confirmResolve.viatura || "—"}
+                  <span className="font-semibold">Viatura:</span> {confirmDelete.viatura || "—"}
                 </p>
                 <p>
-                  <span className="font-semibold">Item:</span> {confirmResolve.itemLabel}
+                  <span className="font-semibold">Item:</span> {confirmDelete.itemLabel}
                 </p>
                 <p>
-                  <span className="font-semibold">Motorista:</span> {confirmResolve.motorista || "—"}
+                  <span className="font-semibold">Motorista:</span> {confirmDelete.motorista || "—"}
                 </p>
                 <p>
                   <span className="font-semibold">Data:</span>{" "}
-                  {confirmResolve.inspectionDate ? formatIsoDatePtBr(confirmResolve.inspectionDate) : "—"}
+                  {confirmDelete.inspectionDate ? formatIsoDatePtBr(confirmDelete.inspectionDate) : "—"}
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmResolve(null)}>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDelete(null)}>
                   Cancelar
                 </Button>
                 <Button
                   type="button"
+                  variant="destructive"
                   className="flex-1"
                   onClick={() => {
-                    finalizeResolveIssue(confirmResolve.relatedIssueRefs);
-                    setConfirmResolve(null);
+                    finalizeDeleteIssueRows(confirmDelete.relatedIssueRefs);
+                    setConfirmDelete(null);
                   }}
                 >
-                  Confirmar
+                  Excluir
                 </Button>
               </div>
             </CardContent>
