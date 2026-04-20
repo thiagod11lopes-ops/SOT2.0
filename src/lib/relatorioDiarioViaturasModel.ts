@@ -28,7 +28,6 @@ export type RdvRowAdm = {
   ano: string;
   situacao: RdvStatus;
   vidaUtil: string;
-  especificacao: string;
   observacao: string;
   /** Viatura na oficina (coluna OFICINA na planilha / PDF). */
   naOficina: boolean;
@@ -71,7 +70,6 @@ type AdmSeed = {
   ano: number | string;
   situacao: RdvStatus;
   vidaUtil: number | string;
-  especificacao?: string;
   observacao: string;
   naOficina?: boolean;
 };
@@ -84,7 +82,6 @@ function adm(partial: AdmSeed): RdvRowAdm {
     ano: String(partial.ano ?? ""),
     situacao: partial.situacao,
     vidaUtil: String(partial.vidaUtil ?? ""),
-    especificacao: partial.especificacao !== undefined ? String(partial.especificacao) : "",
     observacao: partial.observacao,
     naOficina: partial.naOficina === true,
   };
@@ -354,7 +351,6 @@ export function emptyAdmRow(): RdvRowAdm {
     ano: "",
     situacao: "Operando",
     vidaUtil: "",
-    especificacao: "",
     observacao: "",
     naOficina: false,
   };

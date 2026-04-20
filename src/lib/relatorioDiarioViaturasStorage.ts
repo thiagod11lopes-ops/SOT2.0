@@ -12,9 +12,14 @@ function normalizeAmbRow(r: RdvRowAmb): RdvRowAmb {
 
 function normalizeAdmRow(r: RdvRowAdm): RdvRowAdm {
   return {
-    ...r,
+    id: r.id,
+    tipo: r.tipo,
+    placa: r.placa,
+    ano: r.ano,
+    situacao: r.situacao,
+    vidaUtil: r.vidaUtil,
+    observacao: r.observacao ?? "",
     naOficina: r.naOficina === true,
-    especificacao: typeof r.especificacao === "string" ? r.especificacao : "",
   };
 }
 import { SOT_STATE_DOC, setSotStateDocWithRetry } from "./firebase/sotStateFirestore";

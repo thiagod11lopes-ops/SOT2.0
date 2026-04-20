@@ -927,7 +927,6 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
               <TableHead className="w-[76px] text-[#334155]">ANO</TableHead>
               <TableHead className="w-[120px] text-[#334155]">SITUAÇÃO</TableHead>
               <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
-              <TableHead className="w-[100px] text-[#334155]">ESPECIFICAÇÃO</TableHead>
               <TableHead className={cn("text-[#334155]", rdvObsColMinAmb)}>OBSERVAÇÃO</TableHead>
               <TableHead className={cn("rdv-col-oficina text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
               <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
@@ -996,13 +995,6 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
                     className={cellInput}
                     value={row.vidaUtil}
                     onChange={(e) => patchAdm(row.id, { vidaUtil: e.target.value })}
-                  />
-                </TableCell>
-                <TableCell>
-                  <input
-                    className={cellInput}
-                    value={row.especificacao}
-                    onChange={(e) => patchAdm(row.id, { especificacao: e.target.value })}
                   />
                 </TableCell>
                 <TableCell className={rdvObsColMinAmb}>
