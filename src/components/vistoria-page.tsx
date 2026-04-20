@@ -904,7 +904,7 @@ export function VistoriaPage() {
   }, [inspections, inspectionOpen, inspectionMotorista, inspectionViatura]);
 
 
-  function handleAddAssignment() {
+  async function handleAddAssignment() {
     if (!canAdd) return;
     const motorista = selectedMotorista.trim();
     const viatura = selectedViatura.trim();
@@ -913,20 +913,36 @@ export function VistoriaPage() {
       window.alert("Esta viatura já está vinculada a um motorista.");
       return;
     }
-    setAssignments((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        motorista,
-        viatura,
-        createdAt: Date.now(),
-      },
-    ]);
-    setSelectedViatura("");
+    try {
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        assignments: [
+          ...prev.assignments,
+          {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            motorista,
+            viatura,
+            createdAt: Date.now(),
+          },
+        ],
+      }));
+      setSelectedViatura("");
+    } catch (err) {
+      console.error("[SOT] Falha ao gravar vínculo de vistoria no Firebase:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+    }
   }
 
-  function handleRemoveAssignment(id: string) {
-    setAssignments((prev) => prev.filter((a) => a.id !== id));
+  async function handleRemoveAssignment(id: string) {
+    try {
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        assignments: prev.assignments.filter((a) => a.id !== id),
+      }));
+    } catch (err) {
+      console.error("[SOT] Falha ao remover vínculo de vistoria no Firebase:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+    }
   }
 
   function handleOpenInspection(motorista: string, viatura: string) {
@@ -952,10 +968,18 @@ export function VistoriaPage() {
     setInspectionOpen(true);
   }
 
-  function handleSaveInspection() {
+  async function handleSaveInspection() {
     const motoristaRef = inspectionMotorista.trim();
     const viaturaRef = inspectionViatura.trim();
     if (!inspectionOpen || !motoristaRef || !viaturaRef) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      window.alert("Sem conexão com a internet. A vistoria salva apenas no Firebase quando online.");
+      return;
+    }
+    if (!isVistoriaCloudStateHydrated()) {
+      window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
+      return;
+    }
     if (!isViaturaLocalizacao(localizacaoViatura)) {
       window.alert("Marque uma opção em «Localização da Viatura».");
       return;
@@ -983,21 +1007,29 @@ export function VistoriaPage() {
       origemMobile: false,
       localizacaoViatura,
     });
-    setInspections((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        motorista: motoristaRef,
-        viatura: viaturaRef,
-        inspectionDate: selectedInspectionDate,
-        localizacaoViatura,
-        checklist: inspectionChecklist,
-        checklistNotes: inspectionChecklistNotes,
-        createdAt: Date.now(),
-        rubrica: "",
-      },
-    ]);
-    setInspectionOpen(false);
+    try {
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        inspections: [
+          ...prev.inspections,
+          {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            motorista: motoristaRef,
+            viatura: viaturaRef,
+            inspectionDate: selectedInspectionDate,
+            localizacaoViatura,
+            checklist: inspectionChecklist,
+            checklistNotes: inspectionChecklistNotes,
+            createdAt: Date.now(),
+            rubrica: "",
+          },
+        ],
+      }));
+      setInspectionOpen(false);
+    } catch (err) {
+      console.error("[SOT] Falha ao salvar vistoria no Firebase:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+    }
   }
 
   function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
