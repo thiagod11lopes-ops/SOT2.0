@@ -724,6 +724,17 @@ export function VistoriaPage() {
     });
   }
 
+  function handleDeleteSituacaoRow(row: VtrSituacaoPendenteRow) {
+    const inspectionIds = new Set(row.relatedIssueRefs.map((ref) => ref.inspectionId));
+    if (inspectionIds.size === 0) return;
+    updateVistoriaCloudState((prev) => ({
+      ...prev,
+      inspections: prev.inspections.filter((ins) => !inspectionIds.has(ins.id)),
+      issueControls: prev.issueControls.filter((ctrl) => !inspectionIds.has(ctrl.inspectionId)),
+      resolvedIssues: prev.resolvedIssues.filter((res) => !inspectionIds.has(res.inspectionId)),
+    }));
+  }
+
   function handleAddAssignment() {
     if (!canAdd) return;
     const motorista = selectedMotorista.trim();
@@ -1145,6 +1156,7 @@ export function VistoriaPage() {
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica</TableHead>
+                      <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1162,6 +1174,17 @@ export function VistoriaPage() {
                             ) : (
                               <span className="text-[hsl(var(--muted-foreground))]">—</span>
                             )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 w-8 border border-red-700/90 bg-red-600 p-0 text-white hover:bg-red-700"
+                              aria-label="Excluir linha da situação da VTR"
+                              onClick={() => handleDeleteSituacaoRow(row)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
