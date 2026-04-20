@@ -114,7 +114,7 @@ export function appendResolvedIssue(inspectionId: string, itemKey: ChecklistKey)
   const key = `${id}:${itemKey}`;
   const prevSet = readResolvedIssueKeySet();
   if (prevSet.has(key)) return;
-  updateVistoriaCloudState((prev) => ({
+  void updateVistoriaCloudState((prev) => ({
     ...prev,
     resolvedIssues: [
       ...prev.resolvedIssues,
@@ -590,11 +590,11 @@ function notifyVistoriaInspectionsChanged(): void {
 }
 
 /** Acrescenta uma vistoria (ex.: vista mobile) mantendo o mesmo formato que o desktop grava em massa. */
-export function appendVistoriaInspection(inspection: VistoriaInspection): void {
+export async function appendVistoriaInspection(inspection: VistoriaInspection): Promise<void> {
   ensureVistoriaCloudStateSyncStarted();
   if (!isVistoriaCloudStateHydrated()) {
     throw new Error("Vistoria cloud state not hydrated yet.");
   }
-  updateVistoriaCloudState((state) => ({ ...state, inspections: [...state.inspections, inspection] }));
+  await updateVistoriaCloudState((state) => ({ ...state, inspections: [...state.inspections, inspection] }));
   notifyVistoriaInspectionsChanged();
 }

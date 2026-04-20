@@ -87,6 +87,13 @@ export function MobileVistoriaFullscreen({
     const v = mergeViaturasCatalog(catalogItems);
     return [...v].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [catalogItems]);
+  const motoristasCatalogo = useMemo(
+    () =>
+      [...new Set(catalogItems.motoristas.map((m) => m.trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, "pt-BR"),
+      ),
+    [catalogItems.motoristas],
+  );
   const [view, setView] = useState<"list" | "adminViatura" | "form">("list");
   const [adminViaturaDraft, setAdminViaturaDraft] = useState("");
   const [listRefresh, setListRefresh] = useState(0);
@@ -119,6 +126,11 @@ export function MobileVistoriaFullscreen({
   const avisoObservacaoTitleId = useId();
   const confirmOkClearsNoteTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
+  const [driverConfirmOpen, setDriverConfirmOpen] = useState(false);
+  const [driverConfirmExpectedMotorista, setDriverConfirmExpectedMotorista] = useState("");
+  const [driverConfirmViatura, setDriverConfirmViatura] = useState("");
+  const [driverConfirmUseDifferent, setDriverConfirmUseDifferent] = useState(false);
+  const [driverConfirmSelectedMotorista, setDriverConfirmSelectedMotorista] = useState("");
   const adminFormSnapshotRef = useRef<{
     checklist: VistoriaChecklist;
     notes: VistoriaChecklistNotes;
@@ -195,6 +207,11 @@ export function MobileVistoriaFullscreen({
       setView("list");
       setRubricaOpen(false);
       setAvisoObservacaoItemLabel(null);
+      setDriverConfirmOpen(false);
+      setDriverConfirmExpectedMotorista("");
+      setDriverConfirmViatura("");
+      setDriverConfirmUseDifferent(false);
+      setDriverConfirmSelectedMotorista("");
       setAdminViaturaDraft("");
       return;
     }
@@ -356,6 +373,38 @@ export function MobileVistoriaFullscreen({
     setView("form");
   }
 
+  function beginDriverConfirmForPlate(motorista: string, viatura: string) {
+    setDriverConfirmExpectedMotorista(motorista.trim());
+    setDriverConfirmViatura(viatura.trim());
+    setDriverConfirmUseDifferent(false);
+    setDriverConfirmSelectedMotorista("");
+    setDriverConfirmOpen(true);
+  }
+
+  function closeDriverConfirmModal() {
+    setDriverConfirmOpen(false);
+    setDriverConfirmUseDifferent(false);
+    setDriverConfirmSelectedMotorista("");
+  }
+
+  function confirmDriverAndOpenForm() {
+    const motoristaPadrao = driverConfirmExpectedMotorista.trim();
+    const viatura = driverConfirmViatura.trim();
+    if (!motoristaPadrao || !viatura) {
+      closeDriverConfirmModal();
+      return;
+    }
+    const motoristaFinal = driverConfirmUseDifferent
+      ? driverConfirmSelectedMotorista.trim()
+      : motoristaPadrao;
+    if (!motoristaFinal) {
+      window.alert("Selecione o motorista que realizou a vistoria.");
+      return;
+    }
+    closeDriverConfirmModal();
+    openForm(motoristaFinal, viatura);
+  }
+
   function handleSelectChecklistOk(itemKey: ChecklistKey, itemLabel: string) {
     const note = String(inspectionChecklistNotes[itemKey] ?? "").trim();
     if (note !== "") {
@@ -420,7 +469,7 @@ export function MobileVistoriaFullscreen({
     setRubricaOpen(true);
   }
 
-  function finalizeVistoria(rubricaDataUrl: string | undefined) {
+  async function finalizeVistoria(rubricaDataUrl: string | undefined): Promise<void> {
     if (!isViaturaLocalizacao(localizacaoViatura)) return;
     if (!isVistoriaCloudStateHydrated()) {
       window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
@@ -506,7 +555,13 @@ export function MobileVistoriaFullscreen({
         notes: inspectionChecklistNotes,
       });
     }
-    appendVistoriaInspection(novo);
+    try {
+      await appendVistoriaInspection(novo);
+    } catch (error) {
+      console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+      return;
+    }
     rubricaModalIntentRef.current = null;
     setRubricaOpen(false);
     setListRefresh((k) => k + 1);
@@ -540,7 +595,7 @@ export function MobileVistoriaFullscreen({
         return;
       }
       rubricaModalIntentRef.current = null;
-      finalizeVistoria(drawn || undefined);
+      void finalizeVistoria(drawn || undefined);
       return;
     }
 
@@ -567,13 +622,17 @@ export function MobileVistoriaFullscreen({
     }
 
     rubricaModalIntentRef.current = null;
-    finalizeVistoria(drawn || undefined);
+    void finalizeVistoria(drawn || undefined);
   }
 
   if (!open) return null;
 
   const modalStackObscuresMain =
-    rubricaOpen || Boolean(avisoObservacaoItemLabel) || Boolean(confirmOkClearsNote) || saveSuccessOpen;
+    rubricaOpen ||
+    Boolean(avisoObservacaoItemLabel) ||
+    Boolean(confirmOkClearsNote) ||
+    driverConfirmOpen ||
+    saveSuccessOpen;
 
   return (
     <>
@@ -740,7 +799,7 @@ export function MobileVistoriaFullscreen({
                                   ? "min-h-11 rounded-xl border border-emerald-600/90 bg-emerald-500 px-3 py-2 text-sm font-semibold text-white active:scale-[0.98]"
                                   : "min-h-11 rounded-xl border border-red-600/90 bg-red-500 px-3 py-2 text-sm font-semibold text-white active:scale-[0.98]"
                               }
-                              onClick={() => openForm(motorista, viatura)}
+                              onClick={() => beginDriverConfirmForPlate(motorista, viatura)}
                             >
                               {viatura}
                             </button>
@@ -1097,6 +1156,83 @@ export function MobileVistoriaFullscreen({
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               A vistoria foi registrada e já está disponível na tabela <strong>Situação das VTR</strong>.
             </p>
+          </div>
+        </div>
+      ) : null}
+      {driverConfirmOpen ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[555]`}
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeDriverConfirmModal();
+          }}
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) closeDriverConfirmModal();
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">Confirmar motorista</h2>
+            <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
+              A viatura <strong>{driverConfirmViatura}</strong> esta vinculada a{" "}
+              <strong>{driverConfirmExpectedMotorista}</strong>. O motorista da vistoria e o mesmo?
+            </p>
+            <div className="space-y-2 rounded-xl border border-[hsl(var(--border))] p-3">
+              <label className="flex min-h-10 items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="mobile-vistoria-driver-confirm"
+                  checked={!driverConfirmUseDifferent}
+                  onChange={() => setDriverConfirmUseDifferent(false)}
+                  className="h-5 w-5 accent-[hsl(var(--primary))]"
+                />
+                Sim, manter {driverConfirmExpectedMotorista}
+              </label>
+              <label className="flex min-h-10 items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="mobile-vistoria-driver-confirm"
+                  checked={driverConfirmUseDifferent}
+                  onChange={() => setDriverConfirmUseDifferent(true)}
+                  className="h-5 w-5 accent-[hsl(var(--primary))]"
+                />
+                Nao, trocar motorista
+              </label>
+              {driverConfirmUseDifferent ? (
+                <select
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+                  value={driverConfirmSelectedMotorista}
+                  onChange={(e) => setDriverConfirmSelectedMotorista(e.target.value)}
+                  aria-label="Selecionar motorista da vistoria"
+                >
+                  <option value="">— Selecionar motorista —</option>
+                  {motoristasCatalogo.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {nome}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button
+                type="button"
+                className="min-h-11 flex-1 rounded-xl border border-red-600/90 bg-red-500 font-semibold text-white"
+                onClick={closeDriverConfirmModal}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 flex-1 rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
+                onClick={confirmDriverAndOpenForm}
+              >
+                Confirmar
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

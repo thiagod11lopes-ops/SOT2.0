@@ -23,6 +23,7 @@ export type VistoriaCloudState = {
   resolvedIssues: ResolvedIssue[];
   issueControls: IssueControl[];
   priorityOrderKeys: string[];
+  updatedAt: number;
 };
 
 const EVENT_NAME = "sot-vistoria-cloud-changed";
@@ -33,6 +34,7 @@ const emptyState: VistoriaCloudState = {
   resolvedIssues: [],
   issueControls: [],
   priorityOrderKeys: [],
+  updatedAt: 0,
 };
 
 let cache: VistoriaCloudState = { ...emptyState };
@@ -107,6 +109,7 @@ function normalizeCloudPayload(payload: unknown): VistoriaCloudState {
     resolvedIssues: normalizeResolvedIssues(p.resolvedIssues),
     issueControls: normalizeIssueControls(p.issueControls),
     priorityOrderKeys: toStringList(p.priorityOrderKeys),
+    updatedAt: typeof p.updatedAt === "number" && Number.isFinite(p.updatedAt) ? p.updatedAt : 0,
   };
 }
 
@@ -119,6 +122,7 @@ function dispatchChange() {
 }
 
 function setCache(next: VistoriaCloudState) {
+  if (next.updatedAt < cache.updatedAt) return;
   cache = next;
   hydrated = true;
   dispatchChange();
@@ -159,10 +163,21 @@ export function subscribeVistoriaCloudStateChange(listener: () => void): () => v
   return () => window.removeEventListener(EVENT_NAME, wrapped);
 }
 
-export function updateVistoriaCloudState(updater: (prev: VistoriaCloudState) => VistoriaCloudState): void {
-  const next = updater(cache);
+export async function updateVistoriaCloudState(
+  updater: (prev: VistoriaCloudState) => VistoriaCloudState,
+): Promise<void> {
+  const prev = cache;
+  const rawNext = updater(cache);
+  const next: VistoriaCloudState = {
+    ...rawNext,
+    updatedAt: Math.max(Date.now(), Number(rawNext.updatedAt || 0), prev.updatedAt + 1),
+  };
   setCache(next);
-  void setSotStateDocWithRetry(SOT_STATE_DOC.vistoria, next).catch((err) => {
+  try {
+    await setSotStateDocWithRetry(SOT_STATE_DOC.vistoria, next);
+  } catch (err) {
+    setCache(prev);
     console.warn("[SOT] Vistoria: falha ao gravar no Firebase", err);
-  });
+    throw err;
+  }
 }
