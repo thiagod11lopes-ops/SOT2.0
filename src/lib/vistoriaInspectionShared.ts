@@ -60,11 +60,11 @@ export type VistoriaInspection = {
   checklist: VistoriaChecklist;
   checklistNotes: VistoriaChecklistNotes;
   createdAt: number;
-  /** Rubrica (PNG data URL) — preenchida na vista mobile ao gravar (vistoria normal). */
+  /** Rubrica da vistoria comum: PNG data URL ou referência `rubrica_ref:v1:*` para payload externo no Firestore. */
   rubrica?: string;
   /** Vistoria aberta pelo fluxo «Vistoria administrativa» no mobile. */
   vistoriaAdministrativa?: boolean;
-  /** Rubrica do vistoriador quando a vistoria é administrativa (PNG data URL). */
+  /** Rubrica administrativa: PNG data URL ou referência `rubrica_ref:v1:*` para payload externo no Firestore. */
   rubricaAdministrativa?: string;
   /** Gravada na vista mobile (após rubrica e confirmar). Usado para listar na Situação das VTR. */
   origemMobile?: boolean;

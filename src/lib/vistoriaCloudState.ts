@@ -1,5 +1,7 @@
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
 import type { ChecklistKey, VistoriaAssignment, VistoriaInspection } from "./vistoriaInspectionShared";
+import { saveVistoriaRubricaByInspectionId } from "./firebase/vistoriaRubricaFirestore";
+import { buildVistoriaRubricaRef, isRubricaImageDataUrl, parseVistoriaRubricaRef } from "./rubricaDrawing";
 
 export type ResolvedIssue = {
   id: string;
@@ -41,6 +43,7 @@ let cache: VistoriaCloudState = { ...emptyState };
 let started = false;
 let unsubscribe: (() => void) | null = null;
 let hydrated = false;
+let rubricaMigrationInFlight = false;
 
 function toStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((x) => typeof x === "string" && x.length > 0) : [];
@@ -128,6 +131,60 @@ function setCache(next: VistoriaCloudState) {
   dispatchChange();
 }
 
+async function migrateInlineRubricasIfNeeded(snapshot: VistoriaCloudState): Promise<void> {
+  if (rubricaMigrationInFlight) return;
+  const inlineTargets = snapshot.inspections.filter((ins) => {
+    const rubrica = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+    const rubricaAdmin = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+    const commonIsInlineImage = rubrica.length > 0 && isRubricaImageDataUrl(rubrica) && !parseVistoriaRubricaRef(rubrica);
+    const adminIsInlineImage =
+      rubricaAdmin.length > 0 && isRubricaImageDataUrl(rubricaAdmin) && !parseVistoriaRubricaRef(rubricaAdmin);
+    return commonIsInlineImage || adminIsInlineImage;
+  });
+  if (inlineTargets.length === 0) return;
+
+  rubricaMigrationInFlight = true;
+  try {
+    for (const ins of inlineTargets) {
+      const id = String(ins.id ?? "").trim();
+      if (!id) continue;
+      const rubrica = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+      const rubricaAdmin = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+      if (rubrica && isRubricaImageDataUrl(rubrica) && !parseVistoriaRubricaRef(rubrica)) {
+        await saveVistoriaRubricaByInspectionId({ inspectionId: id, kind: "comum", dataUrl: rubrica });
+      }
+      if (rubricaAdmin && isRubricaImageDataUrl(rubricaAdmin) && !parseVistoriaRubricaRef(rubricaAdmin)) {
+        await saveVistoriaRubricaByInspectionId({ inspectionId: id, kind: "administrativa", dataUrl: rubricaAdmin });
+      }
+    }
+
+    await updateVistoriaCloudState((prev) => {
+      let changed = false;
+      const nextInspections = prev.inspections.map((ins) => {
+        const id = String(ins.id ?? "").trim();
+        if (!id) return ins;
+        let next = ins;
+        const rubrica = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+        if (rubrica && isRubricaImageDataUrl(rubrica) && !parseVistoriaRubricaRef(rubrica)) {
+          next = { ...next, rubrica: buildVistoriaRubricaRef(id, "comum") };
+          changed = true;
+        }
+        const rubricaAdmin = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+        if (rubricaAdmin && isRubricaImageDataUrl(rubricaAdmin) && !parseVistoriaRubricaRef(rubricaAdmin)) {
+          next = { ...next, rubricaAdministrativa: buildVistoriaRubricaRef(id, "administrativa") };
+          changed = true;
+        }
+        return next;
+      });
+      return changed ? { ...prev, inspections: nextInspections } : prev;
+    });
+  } catch (err) {
+    console.warn("[SOT] Vistoria: falha ao migrar rubricas inline para referência", err);
+  } finally {
+    rubricaMigrationInFlight = false;
+  }
+}
+
 export function getVistoriaCloudState(): VistoriaCloudState {
   return cache;
 }
@@ -142,7 +199,9 @@ export function ensureVistoriaCloudStateSyncStarted(): void {
   unsubscribe = subscribeSotStateDoc(
     SOT_STATE_DOC.vistoria,
     (payload) => {
-      setCache(normalizeCloudPayload(payload));
+      const next = normalizeCloudPayload(payload);
+      setCache(next);
+      void migrateInlineRubricasIfNeeded(next);
     },
     (err) => {
       console.warn("[SOT] Vistoria: falha ao sincronizar do Firebase", err);

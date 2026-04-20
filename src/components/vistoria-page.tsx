@@ -12,6 +12,8 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
+import { loadVistoriaRubricaFromRef } from "../lib/firebase/vistoriaRubricaFirestore";
+import { parseVistoriaRubricaRef } from "../lib/rubricaDrawing";
 import {
   CHECKLIST_ITEMS,
   checklistComOkPorDefeito,
@@ -255,6 +257,7 @@ export function VistoriaPage() {
   const [draggingPriorityKey, setDraggingPriorityKey] = useState<string | null>(null);
   /** Filtro na aba Situação das VTR: "" = todas as viaturas com pendência. */
   const [situacaoVtrFiltroViatura, setSituacaoVtrFiltroViatura] = useState("");
+  const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
   const avisoObservacaoTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
@@ -666,7 +669,13 @@ export function VistoriaPage() {
         .sort((a, b) => b.createdAt - a.createdAt);
       for (const ins of related) {
         const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
-        if (rub) return rub;
+        if (!rub) continue;
+        if (isRubricaImageDataUrl(rub)) return rub;
+        const parsed = parseVistoriaRubricaRef(rub);
+        if (parsed) {
+          const resolved = rubricaRefResolvedMap[rub];
+          if (resolved) return resolved;
+        }
       }
       const adminsComOrigem = getRelatedInspections(row)
         .filter((ins) => ins.vistoriaAdministrativa === true && ins.prefillSourceInspectionId)
@@ -674,11 +683,17 @@ export function VistoriaPage() {
       for (const ins of adminsComOrigem) {
         const src = inspectionById.get(ins.prefillSourceInspectionId!);
         const rub = typeof src?.rubrica === "string" ? src.rubrica.trim() : "";
-        if (rub) return rub;
+        if (!rub) continue;
+        if (isRubricaImageDataUrl(rub)) return rub;
+        const parsed = parseVistoriaRubricaRef(rub);
+        if (parsed) {
+          const resolved = rubricaRefResolvedMap[rub];
+          if (resolved) return resolved;
+        }
       }
       return "";
     },
-    [getRelatedInspections, inspectionById],
+    [getRelatedInspections, inspectionById, rubricaRefResolvedMap],
   );
   const getAdministrativeRubricaForRow = useCallback(
     (row: VtrSituacaoPendenteRow): string => {
@@ -688,11 +703,17 @@ export function VistoriaPage() {
       for (const ins of related) {
         const rub = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
         if (!rub) continue;
-        if (ins.itensAlteradosAdministracao?.includes(row.itemKey) === true) return rub;
+        if (ins.itensAlteradosAdministracao?.includes(row.itemKey) !== true) continue;
+        if (isRubricaImageDataUrl(rub)) return rub;
+        const parsed = parseVistoriaRubricaRef(rub);
+        if (parsed) {
+          const resolved = rubricaRefResolvedMap[rub];
+          if (resolved) return resolved;
+        }
       }
       return "";
     },
-    [getRelatedInspections],
+    [getRelatedInspections, rubricaRefResolvedMap],
   );
   const vtrPrioridades = useMemo(
     () =>
@@ -701,6 +722,40 @@ export function VistoriaPage() {
       ),
     [vtrSituacaoPendente, getRowIssueControl],
   );
+
+  useEffect(() => {
+    const refs = new Set<string>();
+    for (const ins of inspections) {
+      const rCommon = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+      const rAdmin = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
+      if (parseVistoriaRubricaRef(rCommon)) refs.add(rCommon);
+      if (parseVistoriaRubricaRef(rAdmin)) refs.add(rAdmin);
+    }
+    const missing = [...refs].filter((ref) => rubricaRefResolvedMap[ref] === undefined);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      missing.map(async (ref) => {
+        try {
+          const resolved = await loadVistoriaRubricaFromRef(ref);
+          return [ref, resolved] as const;
+        } catch (err) {
+          console.warn("[SOT] Falha ao carregar rubrica por referencia:", err);
+          return [ref, ""] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setRubricaRefResolvedMap((prev) => {
+        const next = { ...prev };
+        for (const [ref, value] of pairs) next[ref] = value;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [inspections, rubricaRefResolvedMap]);
 
   useEffect(() => {
     const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.rowId));
@@ -938,7 +993,25 @@ export function VistoriaPage() {
       window.alert("Nenhuma linha com Imprimir marcado.");
       return;
     }
-    const pdfRows = rowsComImprimir.map((row) => {
+    const resolveRubricaForPdf = async (raw: string): Promise<string> => {
+      const trimmed = raw.trim();
+      if (!trimmed) return "";
+      if (isRubricaImageDataUrl(trimmed)) return trimmed;
+      if (!parseVistoriaRubricaRef(trimmed)) return trimmed;
+      if (rubricaRefResolvedMap[trimmed] !== undefined) return rubricaRefResolvedMap[trimmed] ?? "";
+      try {
+        const loaded = await loadVistoriaRubricaFromRef(trimmed);
+        setRubricaRefResolvedMap((prev) => ({ ...prev, [trimmed]: loaded }));
+        return loaded;
+      } catch (err) {
+        console.warn("[SOT] Falha ao resolver rubrica para PDF:", err);
+        return "";
+      }
+    };
+
+    const pdfRows = await Promise.all(rowsComImprimir.map(async (row) => {
+      const rubricaComum = await resolveRubricaForPdf(getCommonRubricaForRow(row));
+      const rubricaAdministrativa = await resolveRubricaForPdf(getAdministrativeRubricaForRow(row));
       return {
         inspectionDate: row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
           ? formatIsoDatePtBr(row.prefillInspectionDate)
@@ -957,10 +1030,10 @@ export function VistoriaPage() {
           row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
             ? row.observacaoItalic ?? ""
             : undefined,
-        rubricaComum: getCommonRubricaForRow(row),
-        rubricaAdministrativa: getAdministrativeRubricaForRow(row),
+        rubricaComum,
+        rubricaAdministrativa,
       };
-    });
+    }));
     const { doc, filename } = await buildVistoriaSituacaoImprimirPdf(pdfRows);
     doc.save(filename);
   }

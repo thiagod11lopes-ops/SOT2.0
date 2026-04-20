@@ -40,6 +40,8 @@ import {
 } from "../lib/vistoriaInspectionShared";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
+import { saveVistoriaRubricaByInspectionId } from "../lib/firebase/vistoriaRubricaFirestore";
+import { buildVistoriaRubricaRef } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
@@ -564,6 +566,23 @@ export function MobileVistoriaFullscreen({
       createdAt,
       origemMobile: true,
     };
+    const isAdmin = isAdminSession;
+    let rubricaStoredValue = rubricaTrim;
+    if (rubricaTrim) {
+      try {
+        await saveVistoriaRubricaByInspectionId({
+          inspectionId: base.id,
+          kind: isAdmin ? "administrativa" : "comum",
+          dataUrl: rubricaTrim,
+        });
+        rubricaStoredValue = buildVistoriaRubricaRef(base.id, isAdmin ? "administrativa" : "comum");
+      } catch (rubricaError) {
+        console.error("[SOT] Falha ao salvar rubrica da vistoria no Firebase:", rubricaError);
+        window.alert("Falha ao salvar a rubrica no Firebase. Verifique a conexao e tente novamente.");
+        return;
+      }
+    }
+
     let novo: VistoriaInspection;
     if (isAdminSession) {
       const snap = adminFormSnapshotRef.current;
@@ -588,7 +607,7 @@ export function MobileVistoriaFullscreen({
       novo = {
         ...base,
         vistoriaAdministrativa: true,
-        rubricaAdministrativa: rubricaTrim,
+        rubricaAdministrativa: rubricaStoredValue,
         prefillSourceInspectionId: src?.id,
         prefillMotorista: src?.motorista,
         prefillInspectionDate: src?.inspectionDate,
@@ -597,7 +616,7 @@ export function MobileVistoriaFullscreen({
           Object.keys(observacaoSegmentacaoAdmin).length > 0 ? observacaoSegmentacaoAdmin : undefined,
       };
     } else {
-      novo = { ...base, rubrica: rubricaTrim };
+      novo = { ...base, rubrica: rubricaStoredValue };
     }
     adminFormSnapshotRef.current = null;
     if (isAdminSession) {
@@ -621,10 +640,11 @@ export function MobileVistoriaFullscreen({
       console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
       if (isLikelyDocumentSizeError(error)) {
         window.alert(
-          "Falha ao salvar no Firebase: o registo da vistoria excedeu o tamanho permitido. Tente limpar a rubrica e confirmar novamente. Se persistir, avise o suporte para reduzir o histórico no documento da vistoria.",
+          "Falha ao salvar no Firebase: o registo da vistoria excedeu o tamanho permitido. A rubrica foi guardada separadamente, mas a vistoria nao entrou na lista principal. Tente novamente.",
         );
       } else {
         window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+        return;
       }
       return;
     }
