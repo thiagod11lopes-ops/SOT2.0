@@ -109,10 +109,13 @@ type EstadoViaturaRow = {
 function loadOrCreateEstadoVtrCutoffMs(): number {
   if (typeof localStorage === "undefined") return Date.now();
   try {
+    const now = Date.now();
     const raw = localStorage.getItem(ESTADO_VTR_CUTOFF_KEY);
     const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    const now = Date.now();
+    if (Number.isFinite(parsed) && parsed > 0) {
+      // Protege contra cutoff inválido no futuro (relógio/sessão antigos), que esconderia toda a tabela.
+      if (parsed <= now + 60_000) return parsed;
+    }
     localStorage.setItem(ESTADO_VTR_CUTOFF_KEY, String(now));
     return now;
   } catch {
@@ -739,9 +742,16 @@ export function VistoriaPage() {
   }, [estadoVtrDeletedMap]);
 
   const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
+    const effectiveCutoffMs = Math.min(estadoVtrCutoffMs, Date.now());
+    const createdAtSafe = (ins: VistoriaInspection): number => {
+      const n = Number(ins.createdAt);
+      if (Number.isFinite(n) && n > 0) return n;
+      const parsed = parseIsoDate(ins.inspectionDate);
+      return parsed ? parsed.getTime() : 0;
+    };
     const sorted = [...inspections]
-      .filter((ins) => Number(ins.createdAt) >= estadoVtrCutoffMs)
-      .sort((a, b) => b.createdAt - a.createdAt);
+      .filter((ins) => createdAtSafe(ins) >= effectiveCutoffMs)
+      .sort((a, b) => createdAtSafe(b) - createdAtSafe(a));
     const latestByViaturaItem = new Map<string, EstadoViaturaRow>();
     const latestByViaturaLocalizacao = new Map<string, EstadoViaturaRow>();
 
@@ -767,7 +777,7 @@ export function VistoriaPage() {
           inspectionId: ins.id,
           viatura,
           inspectionDate: ins.inspectionDate,
-          createdAt: Number(ins.createdAt) || 0,
+            createdAt: createdAtSafe(ins),
           observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
           rubrica,
           rowKind: "item",
@@ -785,7 +795,7 @@ export function VistoriaPage() {
             inspectionId: ins.id,
             viatura,
             inspectionDate: ins.inspectionDate,
-            createdAt: Number(ins.createdAt) || 0,
+            createdAt: createdAtSafe(ins),
             observacoes: `Localização da viatura: ${localizacao}`,
             rubrica,
             rowKind: "localizacao",
