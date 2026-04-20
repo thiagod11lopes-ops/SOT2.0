@@ -262,6 +262,8 @@ export function VistoriaPage() {
   const avisoObservacaoTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const confirmOkClearsNoteTitleId = useId();
+  const [confirmDeleteSituacaoRow, setConfirmDeleteSituacaoRow] = useState<VtrSituacaoPendenteRow | null>(null);
+  const confirmDeleteSituacaoRowTitleId = useId();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -724,7 +726,7 @@ export function VistoriaPage() {
     });
   }
 
-  function handleDeleteSituacaoRow(row: VtrSituacaoPendenteRow) {
+  function finalizeDeleteSituacaoRow(row: VtrSituacaoPendenteRow) {
     const inspectionIds = new Set(row.relatedIssueRefs.map((ref) => ref.inspectionId));
     if (inspectionIds.size === 0) return;
     updateVistoriaCloudState((prev) => ({
@@ -1181,7 +1183,7 @@ export function VistoriaPage() {
                               size="sm"
                               className="h-8 w-8 border border-red-700/90 bg-red-600 p-0 text-white hover:bg-red-700"
                               aria-label="Excluir linha da situação da VTR"
-                              onClick={() => handleDeleteSituacaoRow(row)}
+                              onClick={() => setConfirmDeleteSituacaoRow(row)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -1258,6 +1260,54 @@ export function VistoriaPage() {
             )}
           </CardContent>
         </Card>
+      ) : null}
+      {confirmDeleteSituacaoRow ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmDeleteSituacaoRowTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmDeleteSituacaoRow(null);
+          }}
+        >
+          <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
+            <CardHeader>
+              <CardTitle id={confirmDeleteSituacaoRowTitleId}>Confirmar exclusão</CardTitle>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Deseja excluir esta linha da Situação das VTR? Esta ação remove os registros vinculados.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 p-3 text-sm">
+                <p>
+                  <span className="font-semibold">Viatura:</span> {confirmDeleteSituacaoRow.viatura || "—"}
+                </p>
+                <p>
+                  <span className="font-semibold">Item:</span> {confirmDeleteSituacaoRow.itemLabel}
+                </p>
+                <p>
+                  <span className="font-semibold">Data:</span> {formatIsoDatePtBr(confirmDeleteSituacaoRow.inspectionDate)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDeleteSituacaoRow(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => {
+                    finalizeDeleteSituacaoRow(confirmDeleteSituacaoRow);
+                    setConfirmDeleteSituacaoRow(null);
+                  }}
+                >
+                  Excluir
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
       {inspectionOpen ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-2 backdrop-blur-[3px]">
