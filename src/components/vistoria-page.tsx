@@ -25,7 +25,6 @@ import {
   isoDateFromDate,
   VIATURA_LOCALIZACAO_OPCOES,
   type ViaturaLocalizacao,
-  nomesMotoristaVistoriaEquivalentes,
   normalizeDriverKey,
   parseIsoDate,
   readVistoriaAssignments,
@@ -1320,7 +1319,6 @@ export function VistoriaPage() {
                                     const vistoriaFeita = inspections.some(
                                       (i) =>
                                         i.inspectionDate === selectedInspectionDate &&
-                                        nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
                                         i.viatura.trim() === viatura.trim(),
                                     );
                                     return (
