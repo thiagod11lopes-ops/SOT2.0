@@ -66,6 +66,8 @@ type Props = {
   administrativeVistoriadorMotorista?: string | null;
 };
 
+type RubricaSyncStage = "idle" | "preparing" | "uploadingRubrica" | "confirmingInspection";
+
 function isLikelyDocumentSizeError(error: unknown): boolean {
   const code = error && typeof error === "object" && "code" in error ? String((error as { code?: string }).code) : "";
   const msg =
@@ -174,6 +176,9 @@ export function MobileVistoriaFullscreen({
   );
 
   const [rubricaOpen, setRubricaOpen] = useState(false);
+  const [rubricaSubmitPressed, setRubricaSubmitPressed] = useState(false);
+  const [rubricaSubmitLoading, setRubricaSubmitLoading] = useState(false);
+  const [rubricaSyncStage, setRubricaSyncStage] = useState<RubricaSyncStage>("idle");
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const successCloseTimerRef = useRef<number | null>(null);
@@ -490,8 +495,10 @@ export function MobileVistoriaFullscreen({
   }
 
   function closeRubricaModalSemConfirmar() {
+    if (rubricaSubmitLoading) return;
     rubricaModalIntentRef.current = null;
     setRubricaOpen(false);
+    setRubricaSyncStage("idle");
   }
 
   function handlePedirSalvar() {
@@ -527,25 +534,32 @@ export function MobileVistoriaFullscreen({
   }
 
   async function finalizeVistoria(rubricaDataUrl: string | undefined): Promise<void> {
-    if (!isViaturaLocalizacao(localizacaoViatura)) return;
-    if (!isVistoriaCloudStateHydrated()) {
-      window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
-      return;
-    }
-    const motoristaRef = formMotorista.trim();
-    const viaturaRef = formViatura.trim();
-    if (!motoristaRef || !viaturaRef) return;
-    let rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+    setRubricaSubmitLoading(true);
+    setRubricaSyncStage("preparing");
     try {
-      rubricaTrim = await optimizeRubricaDataUrl(rubricaTrim);
-    } catch (optErr) {
-      console.warn("[SOT] Falha ao otimizar rubrica antes do save:", optErr);
-    }
-    const createdAt = (() => {
-      const parsed = parseIsoDate(selectedDate);
-      return parsed ? parsed.getTime() : 0;
-    })();
-    const base: Omit<
+      if (!isViaturaLocalizacao(localizacaoViatura)) return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        window.alert("Sem conexao com a internet. A vistoria mobile salva apenas no Firebase quando online.");
+        return;
+      }
+      if (!isVistoriaCloudStateHydrated()) {
+        window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
+        return;
+      }
+      const motoristaRef = formMotorista.trim();
+      const viaturaRef = formViatura.trim();
+      if (!motoristaRef || !viaturaRef) return;
+      let rubricaTrim = rubricaDataUrl?.trim() ? rubricaDataUrl : undefined;
+      try {
+        rubricaTrim = await optimizeRubricaDataUrl(rubricaTrim);
+      } catch (optErr) {
+        console.warn("[SOT] Falha ao otimizar rubrica antes do save:", optErr);
+      }
+      const createdAt = (() => {
+        const parsed = parseIsoDate(selectedDate);
+        return parsed ? parsed.getTime() : 0;
+      })();
+      const base: Omit<
       VistoriaInspection,
       | "rubrica"
       | "vistoriaAdministrativa"
@@ -555,36 +569,37 @@ export function MobileVistoriaFullscreen({
       | "prefillInspectionDate"
       | "itensAlteradosAdministracao"
       | "observacaoSegmentacaoAdmin"
-    > = {
-      id: newInspectionId(),
-      motorista: motoristaRef,
-      viatura: viaturaRef,
-      inspectionDate: selectedDate,
-      localizacaoViatura,
-      checklist: inspectionChecklist,
-      checklistNotes: inspectionChecklistNotes,
-      createdAt,
-      origemMobile: true,
-    };
-    const isAdmin = isAdminSession;
-    let rubricaStoredValue = rubricaTrim;
-    if (rubricaTrim) {
-      try {
-        await saveVistoriaRubricaByInspectionId({
-          inspectionId: base.id,
-          kind: isAdmin ? "administrativa" : "comum",
-          dataUrl: rubricaTrim,
-        });
-        rubricaStoredValue = buildVistoriaRubricaRef(base.id, isAdmin ? "administrativa" : "comum");
-      } catch (rubricaError) {
-        console.error("[SOT] Falha ao salvar rubrica da vistoria no Firebase:", rubricaError);
-        window.alert("Falha ao salvar a rubrica no Firebase. Verifique a conexao e tente novamente.");
-        return;
+      > = {
+        id: newInspectionId(),
+        motorista: motoristaRef,
+        viatura: viaturaRef,
+        inspectionDate: selectedDate,
+        localizacaoViatura,
+        checklist: inspectionChecklist,
+        checklistNotes: inspectionChecklistNotes,
+        createdAt,
+        origemMobile: true,
+      };
+      const isAdmin = isAdminSession;
+      let rubricaStoredValue = rubricaTrim;
+      if (rubricaTrim) {
+        setRubricaSyncStage("uploadingRubrica");
+        try {
+          await saveVistoriaRubricaByInspectionId({
+            inspectionId: base.id,
+            kind: isAdmin ? "administrativa" : "comum",
+            dataUrl: rubricaTrim,
+          });
+          rubricaStoredValue = buildVistoriaRubricaRef(base.id, isAdmin ? "administrativa" : "comum");
+        } catch (rubricaError) {
+          console.error("[SOT] Falha ao salvar rubrica da vistoria no Firebase:", rubricaError);
+          window.alert("Falha ao salvar a rubrica no Firebase. Verifique a conexao e tente novamente.");
+          return;
+        }
       }
-    }
 
-    let novo: VistoriaInspection;
-    if (isAdminSession) {
+      let novo: VistoriaInspection;
+      if (isAdminSession) {
       const snap = adminFormSnapshotRef.current;
       const itensAlterados: ChecklistKey[] = [];
       const observacaoSegmentacaoAdmin: Partial<Record<ChecklistKey, { plain: string; italic: string }>> = {};
@@ -615,53 +630,63 @@ export function MobileVistoriaFullscreen({
         observacaoSegmentacaoAdmin:
           Object.keys(observacaoSegmentacaoAdmin).length > 0 ? observacaoSegmentacaoAdmin : undefined,
       };
-    } else {
-      novo = { ...base, rubrica: rubricaStoredValue };
-    }
-    adminFormSnapshotRef.current = null;
-    if (isAdminSession) {
-      autoResolveCommonRedundanciesOnAdministrativeSave({
-        inspections,
-        viatura: viaturaRef,
-        checklist: inspectionChecklist,
-        notes: inspectionChecklistNotes,
-      });
-    } else {
-      autoResolveAdministrativeRedundanciesOnCommonSave({
-        inspections,
-        viatura: viaturaRef,
-        checklist: inspectionChecklist,
-        notes: inspectionChecklistNotes,
-      });
-    }
-    try {
-      await appendVistoriaInspection(novo);
-    } catch (error) {
-      console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
-      if (isLikelyDocumentSizeError(error)) {
-        window.alert(
-          "Falha ao salvar no Firebase: o registo da vistoria excedeu o tamanho permitido. A rubrica foi guardada separadamente, mas a vistoria nao entrou na lista principal. Tente novamente.",
-        );
       } else {
-        window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+        novo = { ...base, rubrica: rubricaStoredValue };
+      }
+      adminFormSnapshotRef.current = null;
+      if (isAdminSession) {
+        autoResolveCommonRedundanciesOnAdministrativeSave({
+          inspections,
+          viatura: viaturaRef,
+          checklist: inspectionChecklist,
+          notes: inspectionChecklistNotes,
+        });
+      } else {
+        autoResolveAdministrativeRedundanciesOnCommonSave({
+          inspections,
+          viatura: viaturaRef,
+          checklist: inspectionChecklist,
+          notes: inspectionChecklistNotes,
+        });
+      }
+      try {
+        setRubricaSyncStage("confirmingInspection");
+        await appendVistoriaInspection(novo);
+      } catch (error) {
+        console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
+        if (isLikelyDocumentSizeError(error)) {
+          window.alert(
+            "Falha ao salvar no Firebase: o registo da vistoria excedeu o tamanho permitido. A rubrica foi guardada separadamente, mas a vistoria nao entrou na lista principal. Tente novamente.",
+          );
+        } else {
+          window.alert("Falha ao salvar no Firebase. Verifique a conexao e tente novamente.");
+        }
         return;
       }
-      return;
+
+      rubricaModalIntentRef.current = null;
+      setRubricaOpen(false);
+      setRubricaSubmitPressed(false);
+      setRubricaSyncStage("idle");
+      setListRefresh((k) => k + 1);
+      rubricaPadRef.current?.clearPad();
+      setSaveSuccessOpen(true);
+      if (successCloseTimerRef.current) window.clearTimeout(successCloseTimerRef.current);
+      successCloseTimerRef.current = window.setTimeout(() => {
+        successCloseTimerRef.current = null;
+        setSaveSuccessOpen(false);
+        onOpenChange(false);
+      }, 2000);
+    } finally {
+      setRubricaSubmitLoading(false);
+      if (rubricaOpen) setRubricaSyncStage("idle");
     }
-    rubricaModalIntentRef.current = null;
-    setRubricaOpen(false);
-    setListRefresh((k) => k + 1);
-    rubricaPadRef.current?.clearPad();
-    setSaveSuccessOpen(true);
-    if (successCloseTimerRef.current) window.clearTimeout(successCloseTimerRef.current);
-    successCloseTimerRef.current = window.setTimeout(() => {
-      successCloseTimerRef.current = null;
-      setSaveSuccessOpen(false);
-      onOpenChange(false);
-    }, 2000);
   }
 
   function commitRubricaESalvar() {
+    if (rubricaSubmitLoading) return;
+    setRubricaSubmitPressed(true);
+    window.setTimeout(() => setRubricaSubmitPressed(false), 180);
     const intent = rubricaModalIntentRef.current;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
 
@@ -1102,6 +1127,7 @@ export function MobileVistoriaFullscreen({
                   type="button"
                   className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
                   onClick={() => rubricaPadRef.current?.clearPad()}
+                  disabled={rubricaSubmitLoading}
                 >
                   Limpar
                 </Button>
@@ -1109,17 +1135,44 @@ export function MobileVistoriaFullscreen({
                   type="button"
                   className="min-h-11 w-[48%] rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] font-semibold text-[hsl(var(--primary-foreground))]"
                   onClick={closeRubricaModalSemConfirmar}
+                  disabled={rubricaSubmitLoading}
                 >
                   Voltar ao formulário
                 </Button>
               </div>
               <Button
                 type="button"
-                className="min-h-11 w-full rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
+                className={`min-h-11 w-full rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white transition-all ${
+                  rubricaSubmitPressed ? "scale-[0.98] brightness-110" : "scale-100"
+                } ${rubricaSubmitLoading ? "cursor-wait opacity-90" : ""}`}
                 onClick={commitRubricaESalvar}
+                disabled={rubricaSubmitLoading}
               >
-                Confirmar e guardar
+                {rubricaSubmitLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                      aria-hidden
+                    />
+                    {rubricaSyncStage === "preparing"
+                      ? "Preparando..."
+                      : rubricaSyncStage === "uploadingRubrica"
+                        ? "Enviando rubrica..."
+                        : "Confirmando vistoria..."}
+                  </span>
+                ) : (
+                  "Confirmar e guardar"
+                )}
               </Button>
+              {rubricaSubmitLoading ? (
+                <div className="w-full rounded-lg border border-emerald-300/70 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+                  {rubricaSyncStage === "preparing"
+                    ? "Etapa 1/3 - Preparando dados para envio."
+                    : rubricaSyncStage === "uploadingRubrica"
+                      ? "Etapa 2/3 - Enviando rubrica para o Firebase."
+                      : "Etapa 3/3 - Confirmando registro da vistoria no Firebase."}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

@@ -595,6 +595,9 @@ export async function appendVistoriaInspection(inspection: VistoriaInspection): 
   if (!isVistoriaCloudStateHydrated()) {
     throw new Error("Vistoria cloud state not hydrated yet.");
   }
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Vistoria save requires online Firebase connection.");
+  }
   await updateVistoriaCloudState((state) => ({ ...state, inspections: [...state.inspections, inspection] }));
   notifyVistoriaInspectionsChanged();
 }

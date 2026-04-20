@@ -133,6 +133,15 @@ export async function setSotStateDoc(docId: SotStateDocId, payload: unknown): Pr
   await setDoc(docRef(docId), { payload: sanitizePayload(payload) });
 }
 
+export async function readSotStateDocFromServer(docId: SotStateDocId): Promise<unknown | null> {
+  await ensureFirebaseAuth();
+  const snap = await getDocFromServer(docRef(docId));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  const payload = data && typeof data === "object" && "payload" in data ? (data as { payload?: unknown }).payload : null;
+  return payload ?? null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -1,4 +1,9 @@
-import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
+import {
+  SOT_STATE_DOC,
+  readSotStateDocFromServer,
+  setSotStateDocWithRetry,
+  subscribeSotStateDoc,
+} from "./firebase/sotStateFirestore";
 import type { ChecklistKey, VistoriaAssignment, VistoriaInspection } from "./vistoriaInspectionShared";
 import { saveVistoriaRubricaByInspectionId } from "./firebase/vistoriaRubricaFirestore";
 import { buildVistoriaRubricaRef, isRubricaImageDataUrl, parseVistoriaRubricaRef } from "./rubricaDrawing";
@@ -225,8 +230,20 @@ export function subscribeVistoriaCloudStateChange(listener: () => void): () => v
 export async function updateVistoriaCloudState(
   updater: (prev: VistoriaCloudState) => VistoriaCloudState,
 ): Promise<void> {
-  const prev = cache;
-  const rawNext = updater(cache);
+  let prev = cache;
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    try {
+      const serverPayload = await readSotStateDocFromServer(SOT_STATE_DOC.vistoria);
+      const serverState = normalizeCloudPayload(serverPayload);
+      if (serverState.updatedAt >= prev.updatedAt) {
+        prev = serverState;
+        setCache(serverState);
+      }
+    } catch (err) {
+      console.warn("[SOT] Vistoria: falha ao ler estado atual do servidor antes de gravar", err);
+    }
+  }
+  const rawNext = updater(prev);
   const next: VistoriaCloudState = {
     ...rawNext,
     updatedAt: Math.max(Date.now(), Number(rawNext.updatedAt || 0), prev.updatedAt + 1),
