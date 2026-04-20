@@ -11,7 +11,11 @@ function normalizeAmbRow(r: RdvRowAmb): RdvRowAmb {
 }
 
 function normalizeAdmRow(r: RdvRowAdm): RdvRowAdm {
-  return { ...r, naOficina: r.naOficina === true };
+  return {
+    ...r,
+    naOficina: r.naOficina === true,
+    especificacao: typeof r.especificacao === "string" ? r.especificacao : "",
+  };
 }
 import { SOT_STATE_DOC, setSotStateDocWithRetry } from "./firebase/sotStateFirestore";
 

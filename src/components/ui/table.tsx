@@ -11,10 +11,12 @@ export type TableProps = TableHTMLAttributes<HTMLTableElement> & {
   wrapperClassName?: string;
 };
 
-export function Table({ className, wrapperClassName, ...props }: TableProps) {
+export function Table({ className, wrapperClassName, children, ...props }: TableProps) {
   return (
     <div className={cn("w-full", wrapperClassName ?? "overflow-x-auto")}>
-      <table className={cn("w-full text-sm", className)} {...props} />
+      <table className={cn("w-full text-sm", className)} {...props}>
+        {children}
+      </table>
     </div>
   );
 }

@@ -61,6 +61,21 @@ export const RDV_EXPORT_STYLES = `
     text-align: center;
     line-height: 1.1;
   }
+  /* Coluna OFICINA: ✓ (sem quadrado) centrado na célula. */
+  .rdv-pdf-body table th.rdv-col-oficina,
+  .rdv-pdf-body table td.rdv-col-oficina {
+    text-align: center;
+    vertical-align: middle;
+  }
+  .rdv-pdf-body table td.rdv-col-oficina > .rdv-pdf-cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 1.15em;
+    top: 0;
+    box-sizing: border-box;
+  }
   .rdv-pdf-body .rdv-section-bar {
     font-size: ${RDV_PDF_TABLE_FONT_PT}pt;
   }
@@ -93,6 +108,9 @@ function removeAcaoColumns(clone: HTMLElement): void {
     table.querySelectorAll("thead tr th:last-child, tbody tr td:last-child").forEach((el) => {
       el.remove();
     });
+    /** Mantém colunas alinhadas ao remover a última célula (AÇÃO). */
+    const lastCol = table.querySelector("colgroup > col:last-child");
+    lastCol?.remove();
   }
 }
 
@@ -146,7 +164,8 @@ function flattenFormControls(root: HTMLElement): void {
 
     if (input.type === "checkbox") {
       const span = doc.createElement("span");
-      span.textContent = input.checked ? "☑" : "☐";
+      /** Só o traço interior (✓); sem quadrado ☑/☐. */
+      span.textContent = input.checked ? "\u2713" : "";
       span.setAttribute("aria-label", input.checked ? "Na oficina: sim" : "Na oficina: não");
       input.replaceWith(span);
       return;

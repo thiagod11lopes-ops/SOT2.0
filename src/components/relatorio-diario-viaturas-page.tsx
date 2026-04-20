@@ -136,9 +136,8 @@ const sectionBar = cn(
   "mt-4 border border-b-0 border-[#0f172a] bg-[#e2f0d9] px-2 py-1 text-left text-[9pt] font-bold",
 );
 
-/** Largura mínima da coluna OBSERVAÇÃO (ambulâncias); administrativas usa o dobro no colspan. */
+/** Largura mínima da coluna OBSERVAÇÃO (ambulâncias e administrativas). */
 const rdvObsColMinAmb = "min-w-[13.2rem] w-[13.2rem]";
-const rdvObsColMinAdmColspan = "min-w-[26.4rem] w-[26.4rem]";
 const rdvOficinaCol = "w-[3.5rem] min-w-[3.5rem] text-center align-middle";
 
 /** Remove fundos com `hsl(var(--muted))` dos componentes de tabela (oklch no tema). */
@@ -788,7 +787,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
               <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
               <TableHead className="w-[100px] text-[#334155]">ESPECIFICAÇÃO</TableHead>
               <TableHead className={cn("text-[#334155]", rdvObsColMinAmb)}>OBSERVAÇÃO</TableHead>
-              <TableHead className={cn("text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
+              <TableHead className={cn("rdv-col-oficina text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
               <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
@@ -869,7 +868,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
                     onChange={(e) => patchAmb(row.id, { observacao: e.target.value })}
                   />
                 </TableCell>
-                <TableCell className={rdvOficinaCol}>
+                <TableCell className={cn("rdv-col-oficina", rdvOficinaCol)}>
                   <input
                     type="checkbox"
                     className="h-4 w-4 cursor-pointer accent-[#334155]"
@@ -928,10 +927,9 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
               <TableHead className="w-[76px] text-[#334155]">ANO</TableHead>
               <TableHead className="w-[120px] text-[#334155]">SITUAÇÃO</TableHead>
               <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
-              <TableHead colSpan={2} className={cn("text-[#334155]", rdvObsColMinAdmColspan)}>
-                OBSERVAÇÃO
-              </TableHead>
-              <TableHead className={cn("text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
+              <TableHead className="w-[100px] text-[#334155]">ESPECIFICAÇÃO</TableHead>
+              <TableHead className={cn("text-[#334155]", rdvObsColMinAmb)}>OBSERVAÇÃO</TableHead>
+              <TableHead className={cn("rdv-col-oficina text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
               <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
@@ -1000,14 +998,21 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
                     onChange={(e) => patchAdm(row.id, { vidaUtil: e.target.value })}
                   />
                 </TableCell>
-                <TableCell colSpan={2} className={rdvObsColMinAdmColspan}>
+                <TableCell>
+                  <input
+                    className={cellInput}
+                    value={row.especificacao}
+                    onChange={(e) => patchAdm(row.id, { especificacao: e.target.value })}
+                  />
+                </TableCell>
+                <TableCell className={rdvObsColMinAmb}>
                   <input
                     className={cellInputLeft}
                     value={row.observacao}
                     onChange={(e) => patchAdm(row.id, { observacao: e.target.value })}
                   />
                 </TableCell>
-                <TableCell className={rdvOficinaCol}>
+                <TableCell className={cn("rdv-col-oficina", rdvOficinaCol)}>
                   <input
                     type="checkbox"
                     className="h-4 w-4 cursor-pointer accent-[#334155]"

@@ -313,14 +313,6 @@ function addCanvasToPdfA4(pdf: jsPDF, canvas: HTMLCanvasElement, layout: Relator
   }
 }
 
-function stripAdminObsColspanForCapture(doc: Document): void {
-  doc.querySelectorAll<HTMLTableCellElement>(
-    "#rdv-tabela-administrativas tbody td[colspan=\"2\"]",
-  ).forEach((td) => {
-    td.removeAttribute("colspan");
-  });
-}
-
 async function loadRdvExportInIframe(htmlDoc: string): Promise<{
   iframe: HTMLIFrameElement;
   root: HTMLElement;
@@ -373,8 +365,6 @@ async function loadRdvExportInIframe(htmlDoc: string): Promise<{
   if (!root) {
     throw new Error("Conteúdo RDV não encontrado.");
   }
-
-  stripAdminObsColspanForCapture(doc);
 
   if (doc.fonts?.ready) {
     await doc.fonts.ready.catch(() => {});
