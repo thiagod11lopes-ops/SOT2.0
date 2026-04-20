@@ -46,6 +46,7 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import {
   ensureVistoriaCloudStateSyncStarted,
+  isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
 
@@ -126,6 +127,7 @@ export function MobileVistoriaFullscreen({
 
   const assignments = useMemo(() => (open ? readVistoriaAssignments() : []), [open, listRefresh]);
   const inspections = useMemo(() => (open ? readVistoriaInspections() : []), [open, listRefresh]);
+  const cloudHydrated = isVistoriaCloudStateHydrated();
 
   const viaturasPorMotorista = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -386,6 +388,10 @@ export function MobileVistoriaFullscreen({
   }
 
   function handlePedirSalvar() {
+    if (!cloudHydrated) {
+      window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
+      return;
+    }
     if (!isViaturaLocalizacao(localizacaoViatura)) {
       window.alert("Marque uma opção em «Localização da Viatura».");
       return;
@@ -415,6 +421,10 @@ export function MobileVistoriaFullscreen({
 
   function finalizeVistoria(rubricaDataUrl: string | undefined) {
     if (!isViaturaLocalizacao(localizacaoViatura)) return;
+    if (!isVistoriaCloudStateHydrated()) {
+      window.alert("A sincronização de vistoria ainda está carregando. Aguarde alguns segundos e tente novamente.");
+      return;
+    }
     const motoristaRef = formMotorista.trim();
     const viaturaRef = formViatura.trim();
     if (!motoristaRef || !viaturaRef) return;
@@ -608,6 +618,11 @@ export function MobileVistoriaFullscreen({
             <X className="h-5 w-5" />
           </button>
           </header>
+          {!cloudHydrated ? (
+            <div className="mx-3 mt-3 rounded-xl border border-amber-500/70 bg-amber-100/85 px-3 py-2 text-xs font-medium text-amber-900 min-[480px]:mx-4">
+              Sincronizando dados de vistoria... aguarde para salvar com seguranca.
+            </div>
+          ) : null}
 
           {view === "list" ? (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3 min-[480px]:px-4">
@@ -884,8 +899,9 @@ export function MobileVistoriaFullscreen({
                   isAdminSession
                     ? "border border-emerald-600/90 bg-emerald-500 text-white"
                     : ""
-                }`}
+                } ${!cloudHydrated ? "cursor-not-allowed opacity-60" : ""}`}
                 onClick={handlePedirSalvar}
+                disabled={!cloudHydrated}
               >
                 Salvar vistoria
               </Button>

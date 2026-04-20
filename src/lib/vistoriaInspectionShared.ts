@@ -4,6 +4,7 @@ import { isoDateToPtBr } from "./dateFormat";
 import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
   updateVistoriaCloudState,
 } from "./vistoriaCloudState";
 
@@ -591,7 +592,9 @@ function notifyVistoriaInspectionsChanged(): void {
 /** Acrescenta uma vistoria (ex.: vista mobile) mantendo o mesmo formato que o desktop grava em massa. */
 export function appendVistoriaInspection(inspection: VistoriaInspection): void {
   ensureVistoriaCloudStateSyncStarted();
-  const prev = readVistoriaInspections();
-  updateVistoriaCloudState((state) => ({ ...state, inspections: [...prev, inspection] }));
+  if (!isVistoriaCloudStateHydrated()) {
+    throw new Error("Vistoria cloud state not hydrated yet.");
+  }
+  updateVistoriaCloudState((state) => ({ ...state, inspections: [...state.inspections, inspection] }));
   notifyVistoriaInspectionsChanged();
 }
