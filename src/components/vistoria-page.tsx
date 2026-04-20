@@ -742,7 +742,7 @@ export function VistoriaPage() {
   }, [estadoVtrDeletedMap]);
 
   const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
-    const effectiveCutoffMs = Math.min(estadoVtrCutoffMs, Date.now());
+    const effectiveCutoffMs = estadoVtrCutoffMs;
     const createdAtSafe = (ins: VistoriaInspection): number => {
       const n = Number(ins.createdAt);
       if (Number.isFinite(n) && n > 0) return n;
