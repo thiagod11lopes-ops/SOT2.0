@@ -90,6 +90,12 @@ type VtrSituacaoPendenteRow = {
   relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
 };
 
+type RowIssueControlState = {
+  problemMarked: boolean;
+  priorityMarked: boolean;
+  printMarked: boolean;
+};
+
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   if (row.observacaoPlain !== undefined || row.observacaoItalic !== undefined) {
     const p = row.observacaoPlain ?? "";
@@ -659,13 +665,26 @@ export function VistoriaPage() {
     for (const item of issueControls) map.set(`${item.inspectionId}:${item.itemKey}`, item);
     return map;
   }, [issueControls]);
-  const getRowIssueControl = useCallback(
-    (row: VtrSituacaoPendenteRow): IssueControl | null => {
+  const getRowIssueControlState = useCallback(
+    (row: VtrSituacaoPendenteRow): RowIssueControlState => {
+      let foundAny = false;
+      let problemMarked = true;
+      let priorityMarked = false;
+      let printMarked = false;
       for (const ref of row.relatedIssueRefs) {
         const control = issueControlMap.get(`${ref.inspectionId}:${ref.itemKey}`);
-        if (control) return control;
+        if (!control) continue;
+        foundAny = true;
+        // Problema: conservador (desmarca só quando todos estão desmarcados por upsert da linha).
+        problemMarked = problemMarked && control.problemMarked;
+        // Prioridade/Imprimir: basta um marcado entre as refs da linha.
+        priorityMarked = priorityMarked || control.priorityMarked;
+        printMarked = printMarked || control.printMarked;
       }
-      return null;
+      if (!foundAny) {
+        return { problemMarked: true, priorityMarked: false, printMarked: false };
+      }
+      return { problemMarked, priorityMarked, printMarked };
     },
     [issueControlMap],
   );
@@ -737,9 +756,9 @@ export function VistoriaPage() {
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
-        (row) => getRowIssueControl(row)?.priorityMarked === true,
+        (row) => getRowIssueControlState(row).priorityMarked === true,
       ),
-    [vtrSituacaoPendente, getRowIssueControl],
+    [vtrSituacaoPendente, getRowIssueControlState],
   );
 
   useEffect(() => {
@@ -988,10 +1007,10 @@ export function VistoriaPage() {
   }
 
   function upsertIssueControl(row: VtrSituacaoPendenteRow, patch: Partial<IssueControl>) {
-    const current = getRowIssueControl(row);
-    const problemMarked = patch.problemMarked ?? current?.problemMarked ?? true;
-    const priorityMarked = patch.priorityMarked ?? current?.priorityMarked ?? false;
-    const printMarked = patch.printMarked ?? current?.printMarked ?? false;
+    const current = getRowIssueControlState(row);
+    const problemMarked = patch.problemMarked ?? current.problemMarked;
+    const priorityMarked = patch.priorityMarked ?? current.priorityMarked;
+    const printMarked = patch.printMarked ?? current.printMarked;
     setIssueControls((prev) => {
       const clone = [...prev];
       for (const ref of row.relatedIssueRefs) {
@@ -1013,7 +1032,7 @@ export function VistoriaPage() {
 
   async function handleGerarPdfSituacaoVtr() {
     const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
-      (row) => getRowIssueControl(row)?.printMarked === true,
+      (row) => getRowIssueControlState(row).printMarked === true,
     );
     if (rowsComImprimir.length === 0) {
       window.alert("Nenhuma linha com Imprimir marcado.");
@@ -1409,10 +1428,10 @@ export function VistoriaPage() {
                   </TableHeader>
                   <TableBody>
                     {vtrSituacaoPendenteFiltrado.map((row, index) => {
-                      const control = getRowIssueControl(row);
-                      const problemMarked = control?.problemMarked ?? true;
-                      const priorityMarked = control?.priorityMarked ?? false;
-                      const printMarked = control?.printMarked ?? false;
+                      const control = getRowIssueControlState(row);
+                      const problemMarked = control.problemMarked;
+                      const priorityMarked = control.priorityMarked;
+                      const printMarked = control.printMarked;
                       return (
                         <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                           <TableCell>{renderDataSituacao(row)}</TableCell>
