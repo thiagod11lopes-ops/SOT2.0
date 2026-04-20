@@ -8,6 +8,7 @@ import {
   type DetalheServicoBundle,
 } from "../lib/detalheServicoBundle";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { loadVistoriaRubricaFromRef } from "../lib/firebase/vistoriaRubricaFirestore";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import {
@@ -267,6 +268,7 @@ export function VistoriaPage() {
   const { items } = useCatalogItems();
   const applyingCloudRef = useRef(false);
   const cloudReadyRef = useRef(false);
+  const lastPriorityOrderSyncedRef = useRef("[]");
   const [activeSubTab, setActiveSubTab] = useState<string>(vistoriaSubTabs[0]);
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -302,6 +304,7 @@ export function VistoriaPage() {
   const confirmDeleteEstadoRowTitleId = useId();
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
   const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
+  const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -319,6 +322,7 @@ export function VistoriaPage() {
       setResolvedIssues(cloud.resolvedIssues);
       setIssueControls(cloud.issueControls);
       setPriorityOrderKeys(cloud.priorityOrderKeys);
+      lastPriorityOrderSyncedRef.current = JSON.stringify(cloud.priorityOrderKeys ?? []);
       cloudReadyRef.current = true;
       queueMicrotask(() => {
         applyingCloudRef.current = false;
@@ -330,27 +334,6 @@ export function VistoriaPage() {
     const unsub = subscribeVistoriaCloudStateChange(syncFromCloud);
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!cloudReadyRef.current || applyingCloudRef.current) return;
-    updateVistoriaCloudState((prev) => ({ ...prev, assignments }));
-  }, [assignments]);
-  useEffect(() => {
-    if (!cloudReadyRef.current || applyingCloudRef.current) return;
-    updateVistoriaCloudState((prev) => ({ ...prev, inspections }));
-  }, [inspections]);
-  useEffect(() => {
-    if (!cloudReadyRef.current || applyingCloudRef.current) return;
-    updateVistoriaCloudState((prev) => ({ ...prev, resolvedIssues }));
-  }, [resolvedIssues]);
-  useEffect(() => {
-    if (!cloudReadyRef.current || applyingCloudRef.current) return;
-    updateVistoriaCloudState((prev) => ({ ...prev, issueControls }));
-  }, [issueControls]);
-  useEffect(() => {
-    if (!cloudReadyRef.current || applyingCloudRef.current) return;
-    updateVistoriaCloudState((prev) => ({ ...prev, priorityOrderKeys }));
-  }, [priorityOrderKeys]);
 
   /** Nem OK nem Anotações: assume OK. */
   useEffect(() => {
@@ -712,6 +695,14 @@ export function VistoriaPage() {
     });
   }, [vtrPrioridades]);
 
+  useEffect(() => {
+    if (!cloudReadyRef.current || applyingCloudRef.current) return;
+    const serialized = JSON.stringify(priorityOrderKeys);
+    if (serialized === lastPriorityOrderSyncedRef.current) return;
+    lastPriorityOrderSyncedRef.current = serialized;
+    void updateVistoriaCloudState((prev) => ({ ...prev, priorityOrderKeys }));
+  }, [priorityOrderKeys]);
+
   const vtrPrioridadesOrdered = useMemo(() => {
     const map = new Map(
       vtrPrioridades.map((r) => [issueRowKey(r.rowId), r] as const),
@@ -761,11 +752,7 @@ export function VistoriaPage() {
       const rubricaRaw = String(
         ins.vistoriaAdministrativa === true ? (ins.rubricaAdministrativa ?? "") : (ins.rubrica ?? ""),
       ).trim();
-      const rubrica = rubricaRaw
-        ? rubricaRaw.startsWith("rubrica_ref:")
-          ? "Rubrica em referência"
-          : rubricaRaw
-        : "";
+      const rubrica = rubricaRaw;
 
       for (const item of CHECKLIST_ITEMS) {
         if (ins.checklist[item.key] !== "Alterações") continue;
@@ -816,6 +803,33 @@ export function VistoriaPage() {
     });
     return rows;
   }, [inspections, estadoVtrCutoffMs, estadoVtrDeletedMap]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refs = [...new Set(estadoViaturasRows.map((row) => row.rubrica.trim()).filter((r) => r.startsWith("rubrica_ref:")))];
+    if (refs.length === 0) return;
+    void (async () => {
+      const pairs = await Promise.all(
+        refs.map(async (ref) => {
+          try {
+            const resolved = await loadVistoriaRubricaFromRef(ref);
+            return [ref, resolved] as const;
+          } catch {
+            return [ref, ""] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      setRubricaRefResolvedMap((prev) => {
+        const next = { ...prev };
+        for (const [ref, resolved] of pairs) next[ref] = resolved;
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [estadoViaturasRows]);
 
   function handlePriorityReorder(dragKey: string, targetKey: string) {
     if (dragKey === targetKey) return;
@@ -1368,7 +1382,24 @@ export function VistoriaPage() {
                         <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
                         <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
                         <TableCell>{row.observacoes ? <span className="whitespace-pre-wrap">{row.observacoes}</span> : "—"}</TableCell>
-                        <TableCell>{row.rubrica ? <span className="whitespace-pre-wrap">{row.rubrica}</span> : "—"}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const raw = row.rubrica.trim();
+                            const rubrica =
+                              raw.startsWith("rubrica_ref:") ? (rubricaRefResolvedMap[raw] ?? "") : raw;
+                            if (!rubrica) return "—";
+                            if (rubrica.startsWith("data:image/")) {
+                              return (
+                                <img
+                                  src={rubrica}
+                                  alt={`Rubrica da viatura ${row.viatura}`}
+                                  className="max-h-14 w-auto rounded border border-[hsl(var(--border))] bg-white"
+                                />
+                              );
+                            }
+                            return <span className="whitespace-pre-wrap">{rubrica}</span>;
+                          })()}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button
                             type="button"
