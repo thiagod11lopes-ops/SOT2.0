@@ -3,7 +3,8 @@ import { ensureFirebaseAuth } from "./auth";
 import { getFirebaseApp } from "./config";
 import { parseVistoriaRubricaRef } from "../rubricaDrawing";
 
-const COLLECTION = "sot_vistoria_rubricas";
+const COLLECTION = "sot_state";
+const DOC_PREFIX = "vistoria_rubrica_v1_";
 
 type RubricaDoc = {
   comumDataUrl?: string;
@@ -14,7 +15,7 @@ type RubricaDoc = {
 const cache = new Map<string, string>();
 
 function refDoc(id: string) {
-  return doc(getFirestore(getFirebaseApp()), COLLECTION, id);
+  return doc(getFirestore(getFirebaseApp()), COLLECTION, `${DOC_PREFIX}${id}`);
 }
 
 function cacheKey(ref: string): string {
