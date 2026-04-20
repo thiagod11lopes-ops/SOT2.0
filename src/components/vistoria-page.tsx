@@ -99,6 +99,7 @@ type EstadoViaturaRow = {
   rowId: string;
   inspectionId: string;
   viatura: string;
+  vistoriador: string;
   inspectionDate: string;
   createdAt: number;
   observacoes: string;
@@ -763,6 +764,7 @@ export function VistoriaPage() {
           rowId,
           inspectionId: ins.id,
           viatura,
+          vistoriador: ins.motorista,
           inspectionDate: ins.inspectionDate,
             createdAt: createdAtSafe(ins),
           observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
@@ -781,6 +783,7 @@ export function VistoriaPage() {
             rowId,
             inspectionId: ins.id,
             viatura,
+            vistoriador: ins.motorista,
             inspectionDate: ins.inspectionDate,
             createdAt: createdAtSafe(ins),
             observacoes: `Localização da viatura: ${localizacao}`,
@@ -1372,6 +1375,7 @@ export function VistoriaPage() {
                       <TableHead className="font-bold text-[hsl(var(--primary))]">VIATURA</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">DATA</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">OBSERVAÇÕES</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">VISTORIADOR</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">RUBRICA</TableHead>
                       <TableHead className="text-right font-bold text-[hsl(var(--primary))]">AÇÕES</TableHead>
                     </TableRow>
@@ -1382,6 +1386,7 @@ export function VistoriaPage() {
                         <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
                         <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
                         <TableCell>{row.observacoes ? <span className="whitespace-pre-wrap">{row.observacoes}</span> : "—"}</TableCell>
+                        <TableCell>{row.vistoriador?.trim() ? row.vistoriador : "—"}</TableCell>
                         <TableCell>
                           {(() => {
                             const raw = row.rubrica.trim();

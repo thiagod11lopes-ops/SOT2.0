@@ -32,8 +32,6 @@ import {
   normalizeDriverKey,
   parseIsoDate,
   resolveViaturasParaMotoristaEscala,
-  readVistoriaAssignments,
-  readVistoriaInspections,
   type ChecklistKey,
   type VistoriaChecklist,
   type VistoriaChecklistNotes,
@@ -49,6 +47,7 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import {
   ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
   isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
@@ -156,7 +155,6 @@ export function MobileVistoriaFullscreen({
   );
   const [view, setView] = useState<"list" | "adminViatura" | "form">("list");
   const [adminViaturaDraft, setAdminViaturaDraft] = useState("");
-  const [listRefresh, setListRefresh] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => isoDateFromDate(new Date()));
   const [vistoriaDatePtBr, setVistoriaDatePtBr] = useState(() =>
     isoDateToPtBr(isoDateFromDate(new Date())),
@@ -201,8 +199,8 @@ export function MobileVistoriaFullscreen({
     source: VistoriaInspection | null;
   } | null>(null);
 
-  const assignments = useMemo(() => (open ? readVistoriaAssignments() : []), [open, listRefresh]);
-  const inspections = useMemo(() => (open ? readVistoriaInspections() : []), [open, listRefresh]);
+  const [assignments, setAssignments] = useState(() => getVistoriaCloudState().assignments);
+  const [inspections, setInspections] = useState(() => getVistoriaCloudState().inspections);
   const cloudHydrated = isVistoriaCloudStateHydrated();
   const calendarReady = cloudHydrated && !bundleLoading;
 
@@ -280,12 +278,23 @@ export function MobileVistoriaFullscreen({
       return;
     }
     ensureVistoriaCloudStateSyncStarted();
-    setListRefresh((k) => k + 1);
+    if (isVistoriaCloudStateHydrated()) {
+      const cloud = getVistoriaCloudState();
+      setAssignments(cloud.assignments);
+      setInspections(cloud.inspections);
+    }
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const unsub = subscribeVistoriaCloudStateChange(() => setListRefresh((k) => k + 1));
+    const syncFromCloud = () => {
+      if (!isVistoriaCloudStateHydrated()) return;
+      const cloud = getVistoriaCloudState();
+      setAssignments(cloud.assignments);
+      setInspections(cloud.inspections);
+    };
+    syncFromCloud();
+    const unsub = subscribeVistoriaCloudStateChange(syncFromCloud);
     return () => unsub();
   }, [open]);
 
@@ -700,7 +709,6 @@ export function MobileVistoriaFullscreen({
       setRubricaOpen(false);
       setRubricaSubmitPressed(false);
       setRubricaSyncStage("idle");
-      setListRefresh((k) => k + 1);
       rubricaPadRef.current?.clearPad();
       setSaveSuccessOpen(true);
       if (successCloseTimerRef.current) window.clearTimeout(successCloseTimerRef.current);
