@@ -144,6 +144,14 @@ function flattenFormControls(root: HTMLElement): void {
     const input = node as HTMLInputElement;
     if (input.type === "hidden") return;
 
+    if (input.type === "checkbox") {
+      const span = doc.createElement("span");
+      span.textContent = input.checked ? "☑" : "☐";
+      span.setAttribute("aria-label", input.checked ? "Na oficina: sim" : "Na oficina: não");
+      input.replaceWith(span);
+      return;
+    }
+
     /** Cabeçalho RDV: já existe um span com dd/mm/aaaa; não duplicar ao substituir o input date. */
     if (input.type === "date") {
       const headerLabel = input.closest(".rdv-pdf-header-shell h3 label.relative");

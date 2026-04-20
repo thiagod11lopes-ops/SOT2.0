@@ -2,7 +2,6 @@ import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import { isoDateToPtBr } from "./dateFormat";
 import { maiorKmChegadaPorViatura, statusTrocaOleo, type TrocaOleoRegistro } from "./oilMaintenance";
-import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "./oficinaVisits";
 import type { DepartureRecord } from "../types/departure";
 
 function safeFileSegment(value: string): string {
@@ -19,16 +18,12 @@ export type VehicleMaintenancePdfRow = {
   proximaTrocaKm: string;
   trocaPorTempo: string;
   status: string;
-  inop: string;
-  oficina: string;
 };
 
 export type VehicleMaintenancePdfParams = {
   placas: string[];
   departures: DepartureRecord[];
   mapaTrocaOleo: Record<string, TrocaOleoRegistro | undefined>;
-  mapaOficina: MapaOficinaPorViatura;
-  isInoperante: (placa: string) => boolean;
 };
 
 export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfParams): VehicleMaintenancePdfRow[] {
@@ -58,9 +53,6 @@ export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfPara
         ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData)}`
         : "—";
 
-    const visitasOficina = params.mapaOficina[placa] ?? [];
-    const oficinaComSaidaEmBranco = viaturaEstaNaOficina(visitasOficina);
-
     return {
       viatura: placa,
       kmAtual: kmAtualNum !== null ? `${kmAtualNum.toLocaleString("pt-BR")} km` : "—",
@@ -68,8 +60,6 @@ export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfPara
       proximaTrocaKm: limiteKm,
       trocaPorTempo: limiteData,
       status: statusLabel,
-      inop: params.isInoperante(placa) ? "SIM" : "—",
-      oficina: oficinaComSaidaEmBranco ? "SIM" : "—",
     };
   });
 }
@@ -97,7 +87,7 @@ export async function buildVehicleMaintenancePdf(
   const rows = buildVehicleMaintenancePdfRows(params);
 
   const head = [
-    ["Viatura", "KM atual", "Última troca", "Próxima troca (km)", "Troca por tempo", "Status", "INOP", "Oficina"],
+    ["Viatura", "KM atual", "Última troca", "Próxima troca (km)", "Troca por tempo", "Status"],
   ];
   const body = rows.map((r) => [
     r.viatura,
@@ -106,8 +96,6 @@ export async function buildVehicleMaintenancePdf(
     r.proximaTrocaKm,
     r.trocaPorTempo,
     r.status,
-    r.inop,
-    r.oficina,
   ]);
 
   autoTable(doc, {
@@ -133,14 +121,12 @@ export async function buildVehicleMaintenancePdf(
     margin: { left: margin, right: margin },
     tableWidth: pageW - 2 * margin,
     columnStyles: {
-      0: { cellWidth: 34 },
-      1: { cellWidth: 26 },
-      2: { cellWidth: 44 },
-      3: { cellWidth: 34 },
-      4: { cellWidth: 30 },
-      5: { cellWidth: 44 },
-      6: { cellWidth: 16, halign: "center" },
-      7: { cellWidth: 18, halign: "center" },
+      0: { cellWidth: 38 },
+      1: { cellWidth: 30 },
+      2: { cellWidth: 50 },
+      3: { cellWidth: 38 },
+      4: { cellWidth: 34 },
+      5: { cellWidth: 52 },
     },
   });
 

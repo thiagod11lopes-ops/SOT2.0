@@ -11,7 +11,6 @@ import {
 } from "../context/catalog-items-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useDepartures } from "../context/departures-context";
-import { useOficinaVisitas } from "../context/oficina-visits-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import {
   CUSTOM_LOCATIONS_STORAGE_KEY,
@@ -38,6 +37,7 @@ import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
 import {
   getRdvPlacasInoperantesFromLatestPersistedRdv,
+  getRdvPlacasNaOficinaFromLatestPersistedRdv,
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import { cn } from "../lib/utils";
@@ -284,7 +284,6 @@ export function RegisterDeparturePage() {
     bumpDeparturesListMountKey,
   } = useAppTab();
   const { items: catalogItems, addItem: addCatalogItem } = useCatalogItems();
-  const { estaNaOficina } = useOficinaVisitas();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
   const [saidaFiltroViatura, setSaidaFiltroViatura] = useState("");
   const [saidaFiltroMotorista, setSaidaFiltroMotorista] = useState("");
@@ -566,14 +565,25 @@ export function RegisterDeparturePage() {
     return list;
   }, [cityNeighborhoods, neighborhood]);
 
+  /** Oficina conforme coluna Oficina no RDV gravado com data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  const rdvPlacasNaOficinaLower = useMemo(() => {
+    void rdvInopTick;
+    return new Set(
+      getRdvPlacasNaOficinaFromLatestPersistedRdv()
+        .map((p) => p.trim().toLowerCase())
+        .filter(Boolean),
+    );
+  }, [rdvInopTick]);
+
   const viaturasAdminDisponiveis = useMemo(
-    () => catalogItems.viaturasAdministrativas.filter((p) => !estaNaOficina(p)),
-    [catalogItems.viaturasAdministrativas, estaNaOficina],
+    () =>
+      catalogItems.viaturasAdministrativas.filter((p) => !rdvPlacasNaOficinaLower.has(p.trim().toLowerCase())),
+    [catalogItems.viaturasAdministrativas, rdvPlacasNaOficinaLower],
   );
 
   const viaturasAmbDisponiveis = useMemo(
-    () => catalogItems.ambulancias.filter((p) => !estaNaOficina(p)),
-    [catalogItems.ambulancias, estaNaOficina],
+    () => catalogItems.ambulancias.filter((p) => !rdvPlacasNaOficinaLower.has(p.trim().toLowerCase())),
+    [catalogItems.ambulancias, rdvPlacasNaOficinaLower],
   );
 
   const mergedViaturasCatalog = useMemo(
@@ -624,12 +634,12 @@ export function RegisterDeparturePage() {
     });
   }, [departureType, catalogItems.ambulancias]);
 
-  /** Viatura na oficina (entrada sem saída) não pode ser usada em nova saída. */
+  /** Viatura marcada «Oficina» no RDV (data mais recente) não pode ser usada em nova saída. */
   useEffect(() => {
     const v = vehicles.trim();
     if (!v) return;
-    if (estaNaOficina(v)) setVehicles("");
-  }, [vehicles, estaNaOficina]);
+    if (rdvPlacasNaOficinaLower.has(v.toLowerCase())) setVehicles("");
+  }, [vehicles, rdvPlacasNaOficinaLower]);
 
   useEffect(() => {
     const on = () => setRdvInopTick((t) => t + 1);
@@ -676,7 +686,7 @@ export function RegisterDeparturePage() {
     }
     {
       const v = vehicles.trim();
-      if (v && estaNaOficina(v)) f.push("Viaturas");
+      if (v && rdvPlacasNaOficinaLower.has(v.toLowerCase())) f.push("Viaturas");
       else if (v && rdvPlacasInoperantes.has(v.toLowerCase())) f.push("Viaturas");
       else if (viaturasCatalogForCurrentTipo.length > 0) {
         if (!v || !isValueInCatalog(v, viaturasCatalogForCurrentTipo)) f.push("Viaturas");
@@ -701,7 +711,7 @@ export function RegisterDeparturePage() {
     catalogItems.hospitais,
     viaturasCatalogForCurrentTipo,
     catalogItems.motoristas,
-    estaNaOficina,
+    rdvPlacasNaOficinaLower,
     rdvPlacasInoperantes,
   ]);
 

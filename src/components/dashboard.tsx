@@ -14,8 +14,13 @@ import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
-import { useOficinaVisitas } from "../context/oficina-visits-context";
-import { useViaturasInoperantes } from "../context/viaturas-inoperantes-context";
+import {
+  getLatestPersistedRdvIsoDate,
+  getRdvPlacasNaOficinaComObservacaoForDate,
+  getRdvPlacasPorSituacaoComObservacaoForDate,
+  getRdvPlacasPorSituacaoForDate,
+  RDV_STORAGE_EVENT,
+} from "../lib/relatorioDiarioViaturasStorage";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import { fraseProximaTrocaOleo, rotuloViaturaPlaca } from "../lib/homeTickerStrings";
@@ -27,7 +32,6 @@ import {
   statusTrocaOleo,
   viaturasCatalogoUnicas,
 } from "../lib/oilMaintenance";
-import { viaturaEstaNaOficina, type MapaOficinaPorViatura } from "../lib/oficinaVisits";
 import {
   normalizeViaturaKey,
   useVistoriaProblemasMarcadosRefresh,
@@ -123,13 +127,6 @@ const homeFluidCardTitleClass =
 /** Textos de corpo / listas / vazios: mesma cor e peso das células. */
 const homeBodyEmphasisClass = "font-bold text-[hsl(var(--primary))]";
 
-/** Placas com visita na oficina que tem data de entrada e ainda sem data de saída (modal Oficina). */
-function placasAtualmenteNaOficina(mapaOficina: MapaOficinaPorViatura): string[] {
-  return Object.keys(mapaOficina)
-    .filter((placa) => viaturaEstaNaOficina(mapaOficina[placa]))
-    .sort((a, b) => a.localeCompare(b, "pt-BR"));
-}
-
 /** Minutos desde meia-noite; inválido/vazio ordena por último (igual às abas de saídas). */
 function sortKeyHoraSaida(hora: string): number {
   const parsed = parseHhMm(hora);
@@ -176,9 +173,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
   const { fainasLinhas, alarmesDiarios } = useAvisos();
   const { isDismissedTodayForAlarm } = useAlarmDismiss();
-  const { placas: placasInoperantes } = useViaturasInoperantes();
-
-  const { mapaOficina } = useOficinaVisitas();
   const placasCatalogo = useMemo(
     () => viaturasCatalogoUnicas(items.viaturasAdministrativas, items.ambulancias),
     [items.viaturasAdministrativas, items.ambulancias],
@@ -193,9 +187,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       .filter(({ st }) => alertaProximaTrocaOleo(st))
       .sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
   }, [placasCatalogo, departuresAtivas, mapaOleo]);
-  const placasNaOficina = useMemo(() => placasAtualmenteNaOficina(mapaOficina), [mapaOficina]);
   /** Atualiza saídas administrativas, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
+  const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
@@ -214,6 +208,36 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const on = () => setRdvOficinaTick((t) => t + 1);
+    window.addEventListener(RDV_STORAGE_EVENT, on);
+    return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
+  }, []);
+
+  /** Oficina, Inoperante e Destacada no RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  const rdvFrotaHome = useMemo(() => {
+    void rdvOficinaTick;
+    const isoDate = getLatestPersistedRdvIsoDate();
+    if (!isoDate) {
+      return {
+        isoDate: null as string | null,
+        oficinaComObs: [] as { placa: string; observacao: string }[],
+        inoperantesComObs: [] as { placa: string; observacao: string }[],
+        placasDestacadas: [] as string[],
+      };
+    }
+    return {
+      isoDate,
+      oficinaComObs: getRdvPlacasNaOficinaComObservacaoForDate(isoDate),
+      inoperantesComObs: getRdvPlacasPorSituacaoComObservacaoForDate(isoDate, "Inoperante"),
+      placasDestacadas: getRdvPlacasPorSituacaoForDate(isoDate, "Destacada"),
+    };
+  }, [rdvOficinaTick]);
+
+  const placasNaOficina = rdvFrotaHome.oficinaComObs;
+  const placasInoperantesRdv = rdvFrotaHome.inoperantesComObs;
+  const placasDestacadasRdv = rdvFrotaHome.placasDestacadas;
   /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
   const agoraDashboard = useMemo(() => {
     void relogio;
@@ -516,34 +540,67 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     <p className={homeFluidCardTitleClass}>Viaturas na Oficina</p>
                     {placasNaOficina.length === 0 ? (
                       <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Nenhuma viatura com entrada na oficina sem data de saída.
+                        {!rdvFrotaHome.isoDate
+                          ? "Grave um relatório diário para listar viaturas aqui."
+                          : "Nenhuma viatura marcada na coluna Oficina neste relatório."}
                       </p>
                     ) : (
                       <ul className="mt-2 flex flex-wrap gap-1.5">
-                        {placasNaOficina.map((placa) => (
-                          <li
-                            key={placa}
-                            className={cn(
-                              "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
-                              homeBodyEmphasisClass,
-                            )}
-                          >
-                            {placa}
-                          </li>
-                        ))}
+                        {placasNaOficina.map(({ placa, observacao }) => {
+                          const tip = observacao.trim();
+                          return (
+                            <li
+                              key={placa}
+                              title={tip || undefined}
+                              className={cn(
+                                "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
+                                homeBodyEmphasisClass,
+                                tip && "cursor-help",
+                              )}
+                            >
+                              {placa}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
 
                   <div className="border-t border-[hsl(var(--border))] pt-3">
                     <p className={homeFluidCardTitleClass}>Viaturas Inoperantes</p>
-                    {placasInoperantes.length === 0 ? (
+                    {placasInoperantesRdv.length === 0 ? (
                       <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Nenhuma viatura inoperante cadastrada.
+                        {!rdvFrotaHome.isoDate
+                          ? "Grave um relatório diário para listar viaturas aqui."
+                          : "Nenhuma viatura com situação Inoperante neste relatório."}
                       </p>
                     ) : (
                       <ul className="mt-2 flex flex-wrap gap-1.5">
-                        {placasInoperantes.map((placa) => (
+                        {placasInoperantesRdv.map(({ placa, observacao }) => {
+                          const tip = observacao.trim();
+                          return (
+                            <li
+                              key={placa}
+                              title={tip || undefined}
+                              className={cn(
+                                "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono",
+                                homeBodyEmphasisClass,
+                                tip && "cursor-help",
+                              )}
+                            >
+                              {placa}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  {placasDestacadasRdv.length > 0 ? (
+                    <div className="border-t border-[hsl(var(--border))] pt-3">
+                      <p className={homeFluidCardTitleClass}>Viaturas Destacadas</p>
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {placasDestacadasRdv.map((placa) => (
                           <li
                             key={placa}
                             className={cn(
@@ -555,18 +612,12 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           </li>
                         ))}
                       </ul>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-auto shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3 hover:bg-[hsl(var(--muted))]"
-                  onClick={openFleetManutencoes}
-                  aria-label="Abrir Frota e Pessoal, Viaturas, Manutenções — viaturas na oficina"
-                >
+                <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3" aria-hidden>
                   <Wrench className="h-5 w-5 text-slate-600" />
-                </Button>
+                </div>
               </CardContent>
             </Card>
           ) : null}

@@ -3,7 +3,16 @@ import {
   newRdvId,
   type RdvRowAdm,
   type RdvRowAmb,
+  type RdvStatus,
 } from "./relatorioDiarioViaturasModel";
+
+function normalizeAmbRow(r: RdvRowAmb): RdvRowAmb {
+  return { ...r, naOficina: r.naOficina === true };
+}
+
+function normalizeAdmRow(r: RdvRowAdm): RdvRowAdm {
+  return { ...r, naOficina: r.naOficina === true };
+}
 import { SOT_STATE_DOC, setSotStateDocWithRetry } from "./firebase/sotStateFirestore";
 
 export type RdvDayPersisted = {
@@ -127,8 +136,8 @@ export function loadRdvDay(isoDate: string): RdvDayHydrated {
   const row = map[isoDate];
   if (!row || row.v !== 1) return defaultHydrated();
   return {
-    rowsAmb: row.rowsAmb,
-    rowsAdm: row.rowsAdm,
+    rowsAmb: row.rowsAmb.map(normalizeAmbRow),
+    rowsAdm: row.rowsAdm.map(normalizeAdmRow),
     assinaturaNome: row.assinaturaNome ?? "",
     efetivoAmb: row.efetivoAmb ?? 10,
     efetivoAdm: row.efetivoAdm ?? 14,
@@ -284,6 +293,73 @@ export function getRdvPlacasInoperantesFromLatestPersistedRdv(): Set<string> {
   return getRdvPlacasInoperantesForDate(iso);
 }
 
+export type RdvPlacaComObservacao = { placa: string; observacao: string };
+
+function mergeObservacaoRdv(a: string, b: string): string {
+  const t1 = a.trim();
+  const t2 = b.trim();
+  if (!t1) return t2;
+  if (!t2) return t1;
+  if (t1 === t2) return t1;
+  return `${t1} · ${t2}`;
+}
+
+/**
+ * Coluna Oficina marcada: placa + texto da coluna Observação (amb + adm; mesma placa funde observações).
+ */
+export function getRdvPlacasNaOficinaComObservacaoForDate(isoDate: string): RdvPlacaComObservacao[] {
+  const map = readAll();
+  const row = map[isoDate];
+  if (!row || row.v !== 1) return [];
+  const byKey = new Map<string, RdvPlacaComObservacao>();
+  for (const r of row.rowsAmb) {
+    if (r.naOficina === true && r.placa.trim()) {
+      const k = r.placa.trim().toLowerCase();
+      const obs = r.observacao ?? "";
+      const prev = byKey.get(k);
+      if (!prev) {
+        byKey.set(k, { placa: r.placa.trim(), observacao: obs.trim() });
+      } else {
+        byKey.set(k, {
+          placa: prev.placa,
+          observacao: mergeObservacaoRdv(prev.observacao, obs),
+        });
+      }
+    }
+  }
+  for (const r of row.rowsAdm) {
+    if (r.naOficina === true && r.placa.trim()) {
+      const k = r.placa.trim().toLowerCase();
+      const obs = r.observacao ?? "";
+      const prev = byKey.get(k);
+      if (!prev) {
+        byKey.set(k, { placa: r.placa.trim(), observacao: obs.trim() });
+      } else {
+        byKey.set(k, {
+          placa: prev.placa,
+          observacao: mergeObservacaoRdv(prev.observacao, obs),
+        });
+      }
+    }
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
+}
+
+/**
+ * Placas com coluna «Oficina» marcada no RDV **gravado** para `isoDate`.
+ * Uma placa só aparece uma vez (amb + adm); ordenação pt-BR.
+ */
+export function getRdvPlacasNaOficinaForDate(isoDate: string): string[] {
+  return getRdvPlacasNaOficinaComObservacaoForDate(isoDate).map((x) => x.placa);
+}
+
+/** Placas «Oficina» no RDV da data mais recente gravada (alinhado ao último relatório guardado). */
+export function getRdvPlacasNaOficinaFromLatestPersistedRdv(): string[] {
+  const iso = getLatestPersistedRdvIsoDate();
+  if (!iso) return [];
+  return getRdvPlacasNaOficinaForDate(iso);
+}
+
 function cloneRdvDraft(d: Omit<RdvDayHydrated, "pdfSalvo">): Omit<RdvDayHydrated, "pdfSalvo"> {
   return {
     rowsAmb: d.rowsAmb.map((r) => ({ ...r })),
@@ -325,19 +401,60 @@ export function isoDateFromDate(d: Date): string {
 }
 
 /**
+ * Situação escolhida: placa + coluna Observação (amb + adm; mesma placa funde observações).
+ */
+export function getRdvPlacasPorSituacaoComObservacaoForDate(
+  isoDate: string,
+  situacao: RdvStatus,
+): RdvPlacaComObservacao[] {
+  const map = readAll();
+  const row = map[isoDate];
+  if (!row || row.v !== 1) return [];
+  const byKey = new Map<string, RdvPlacaComObservacao>();
+  for (const r of row.rowsAmb) {
+    if (r.situacao === situacao && r.placa.trim()) {
+      const k = r.placa.trim().toLowerCase();
+      const obs = r.observacao ?? "";
+      const prev = byKey.get(k);
+      if (!prev) {
+        byKey.set(k, { placa: r.placa.trim(), observacao: obs.trim() });
+      } else {
+        byKey.set(k, {
+          placa: prev.placa,
+          observacao: mergeObservacaoRdv(prev.observacao, obs),
+        });
+      }
+    }
+  }
+  for (const r of row.rowsAdm) {
+    if (r.situacao === situacao && r.placa.trim()) {
+      const k = r.placa.trim().toLowerCase();
+      const obs = r.observacao ?? "";
+      const prev = byKey.get(k);
+      if (!prev) {
+        byKey.set(k, { placa: r.placa.trim(), observacao: obs.trim() });
+      } else {
+        byKey.set(k, {
+          placa: prev.placa,
+          observacao: mergeObservacaoRdv(prev.observacao, obs),
+        });
+      }
+    }
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
+}
+
+/**
+ * Placas cuja coluna Situação coincide com `situacao` no RDV gravado para `isoDate` (amb + adm, sem duplicar placa).
+ */
+export function getRdvPlacasPorSituacaoForDate(isoDate: string, situacao: RdvStatus): string[] {
+  return getRdvPlacasPorSituacaoComObservacaoForDate(isoDate, situacao).map((x) => x.placa);
+}
+
+/**
  * Placas com situação «Inoperante» no RDV **gravado** para `isoDate` (sem rascunho padrão).
  * Usado em Cadastrar Saída para bloquear viatura.
  */
 export function getRdvPlacasInoperantesForDate(isoDate: string): Set<string> {
-  const map = readAll();
-  const row = map[isoDate];
-  if (!row || row.v !== 1) return new Set();
-  const out = new Set<string>();
-  for (const r of row.rowsAmb) {
-    if (r.situacao === "Inoperante" && r.placa.trim()) out.add(r.placa.trim().toLowerCase());
-  }
-  for (const r of row.rowsAdm) {
-    if (r.situacao === "Inoperante" && r.placa.trim()) out.add(r.placa.trim().toLowerCase());
-  }
-  return out;
+  return new Set(getRdvPlacasPorSituacaoForDate(isoDate, "Inoperante").map((p) => p.toLowerCase()));
 }

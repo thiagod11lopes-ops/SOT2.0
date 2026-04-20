@@ -10,13 +10,11 @@ import {
 } from "react";
 import { useCatalogItems } from "./catalog-items-context";
 import { useDepartures } from "./departures-context";
-import { useOficinaVisitas } from "./oficina-visits-context";
 import { useSyncPreference } from "./sync-preference-context";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
-import type { MapaOficinaPorViatura, RegistroOficina } from "../lib/oficinaVisits";
 import type { DepartureRecord } from "../types/departure";
 import {
   maiorKmChegadaPorViatura,
@@ -44,13 +42,9 @@ export type VehicleMaintenanceContextValue = {
   setMapa: React.Dispatch<React.SetStateAction<MapaOleo>>;
   departures: DepartureRecord[];
   placas: string[];
-  oficinaPlacaAberta: string | null;
-  setOficinaPlacaAberta: (p: string | null) => void;
   trocaOleoPlaca: string | null;
   setTrocaOleoPlaca: (p: string | null) => void;
   kmSugeridoTrocaOleo: number | null;
-  mapaOficina: MapaOficinaPorViatura;
-  atualizarVisitasOficina: (placa: string, visitas: RegistroOficina[]) => void;
   bumpLocalOleoMutation: () => void;
 };
 
@@ -59,9 +53,7 @@ const VehicleMaintenanceContext = createContext<VehicleMaintenanceContextValue |
 function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
   const { items } = useCatalogItems();
   const { departures } = useDepartures();
-  const { mapaOficina, setVisitasParaPlaca } = useOficinaVisitas();
   const [mapa, setMapa] = useState<MapaOleo>({});
-  const [oficinaPlacaAberta, setOficinaPlacaAberta] = useState<string | null>(null);
   const [trocaOleoPlaca, setTrocaOleoPlaca] = useState<string | null>(null);
   const hidratado = useRef(false);
   const applyingRemoteRef = useRef(false);
@@ -187,13 +179,6 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
     return () => window.clearTimeout(t);
   }, [mapa, useCloud]);
 
-  const atualizarVisitasOficina = useCallback(
-    (placa: string, visitas: RegistroOficina[]) => {
-      setVisitasParaPlaca(placa, visitas);
-    },
-    [setVisitasParaPlaca],
-  );
-
   const placas = useMemo(
     () => viaturasCatalogoUnicas(items.viaturasAdministrativas, items.ambulancias),
     [items.viaturasAdministrativas, items.ambulancias],
@@ -208,26 +193,12 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
       setMapa,
       departures,
       placas,
-      oficinaPlacaAberta,
-      setOficinaPlacaAberta,
       trocaOleoPlaca,
       setTrocaOleoPlaca,
       kmSugeridoTrocaOleo,
-      mapaOficina,
-      atualizarVisitasOficina,
       bumpLocalOleoMutation,
     }),
-    [
-      mapa,
-      departures,
-      placas,
-      oficinaPlacaAberta,
-      trocaOleoPlaca,
-      kmSugeridoTrocaOleo,
-      mapaOficina,
-      atualizarVisitasOficina,
-      bumpLocalOleoMutation,
-    ],
+    [mapa, departures, placas, trocaOleoPlaca, kmSugeridoTrocaOleo, bumpLocalOleoMutation],
   );
 }
 

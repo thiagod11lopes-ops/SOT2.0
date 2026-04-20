@@ -1,15 +1,18 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
-import { useOficinaVisitas } from "../context/oficina-visits-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
+import {
+  getRdvPlacasNaOficinaFromLatestPersistedRdv,
+  RDV_STORAGE_EVENT,
+} from "../lib/relatorioDiarioViaturasStorage";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -46,11 +49,24 @@ export function DepartureCard({
   const rubricaTitleId = useId();
   const row = listRowFromRecord(record);
   const { items: catalogItems } = useCatalogItems();
-  const { estaNaOficina } = useOficinaVisitas();
-  /** Ambulância: só placas de «Ambulâncias» em Frota e Pessoal e fora da oficina (igual ao cadastro principal). */
+  const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
+  useEffect(() => {
+    const on = () => setRdvOficinaTick((t) => t + 1);
+    window.addEventListener(RDV_STORAGE_EVENT, on);
+    return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
+  }, []);
+  const rdvPlacasNaOficinaLower = useMemo(() => {
+    void rdvOficinaTick;
+    return new Set(
+      getRdvPlacasNaOficinaFromLatestPersistedRdv()
+        .map((p) => p.trim().toLowerCase())
+        .filter(Boolean),
+    );
+  }, [rdvOficinaTick]);
+  /** Ambulância: só placas de «Ambulâncias» em Frota e Pessoal e fora da oficina (RDV col. Oficina, igual ao cadastro principal). */
   const viaturasAmbDisponiveis = useMemo(
-    () => catalogItems.ambulancias.filter((p) => !estaNaOficina(p)),
-    [catalogItems.ambulancias, estaNaOficina],
+    () => catalogItems.ambulancias.filter((p) => !rdvPlacasNaOficinaLower.has(p.trim().toLowerCase())),
+    [catalogItems.ambulancias, rdvPlacasNaOficinaLower],
   );
   const viaturasOpcoes = useMemo(() => {
     if (record.tipo !== "Ambulância") return mergeViaturasCatalog(catalogItems);

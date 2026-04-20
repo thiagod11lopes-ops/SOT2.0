@@ -17,6 +17,8 @@ export type RdvRowAmb = {
   vidaUtil: string;
   especificacao: string;
   observacao: string;
+  /** Viatura na oficina (coluna OFICINA na planilha / PDF). */
+  naOficina: boolean;
 };
 
 export type RdvRowAdm = {
@@ -27,6 +29,8 @@ export type RdvRowAdm = {
   situacao: RdvStatus;
   vidaUtil: string;
   observacao: string;
+  /** Viatura na oficina (coluna OFICINA na planilha / PDF). */
+  naOficina: boolean;
 };
 
 export function newRdvId(): string {
@@ -42,6 +46,7 @@ type AmbSeed = {
   vidaUtil: number | string;
   especificacao: string;
   observacao: string;
+  naOficina?: boolean;
 };
 
 function amb(partial: AmbSeed): RdvRowAmb {
@@ -54,6 +59,7 @@ function amb(partial: AmbSeed): RdvRowAmb {
     vidaUtil: String(partial.vidaUtil ?? ""),
     especificacao: partial.especificacao,
     observacao: partial.observacao,
+    naOficina: partial.naOficina === true,
   };
 }
 
@@ -65,6 +71,7 @@ type AdmSeed = {
   situacao: RdvStatus;
   vidaUtil: number | string;
   observacao: string;
+  naOficina?: boolean;
 };
 
 function adm(partial: AdmSeed): RdvRowAdm {
@@ -76,6 +83,7 @@ function adm(partial: AdmSeed): RdvRowAdm {
     situacao: partial.situacao,
     vidaUtil: String(partial.vidaUtil ?? ""),
     observacao: partial.observacao,
+    naOficina: partial.naOficina === true,
   };
 }
 
@@ -331,6 +339,7 @@ export function emptyAmbRow(): RdvRowAmb {
     vidaUtil: "",
     especificacao: "",
     observacao: "",
+    naOficina: false,
   };
 }
 
@@ -343,5 +352,6 @@ export function emptyAdmRow(): RdvRowAdm {
     situacao: "Operando",
     vidaUtil: "",
     observacao: "",
+    naOficina: false,
   };
 }

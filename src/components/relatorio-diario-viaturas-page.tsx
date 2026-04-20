@@ -139,6 +139,7 @@ const sectionBar = cn(
 /** Largura mínima da coluna OBSERVAÇÃO (ambulâncias); administrativas usa o dobro no colspan. */
 const rdvObsColMinAmb = "min-w-[13.2rem] w-[13.2rem]";
 const rdvObsColMinAdmColspan = "min-w-[26.4rem] w-[26.4rem]";
+const rdvOficinaCol = "w-[3.5rem] min-w-[3.5rem] text-center align-middle";
 
 /** Remove fundos com `hsl(var(--muted))` dos componentes de tabela (oklch no tema). */
 const rdvTableHeaderClass =
@@ -580,16 +581,26 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
   function zerarPlanilha() {
     if (
       !window.confirm(
-        "Zerar planilha: todas as situações passam a «Operando» e as observações são apagadas. Deseja continuar?",
+        "Zerar planilha: todas as situações passam a «Operando», as observações são apagadas e a coluna Oficina é desmarcada. Deseja continuar?",
       )
     ) {
       return;
     }
     setRowsAmb((rows) =>
-      rows.map((r) => ({ ...r, situacao: "Operando" as RdvStatus, observacao: "" })),
+      rows.map((r) => ({
+        ...r,
+        situacao: "Operando" as RdvStatus,
+        observacao: "",
+        naOficina: false,
+      })),
     );
     setRowsAdm((rows) =>
-      rows.map((r) => ({ ...r, situacao: "Operando" as RdvStatus, observacao: "" })),
+      rows.map((r) => ({
+        ...r,
+        situacao: "Operando" as RdvStatus,
+        observacao: "",
+        naOficina: false,
+      })),
     );
   }
 
@@ -777,6 +788,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
               <TableHead className="w-[70px] text-[#334155]">VIDA ÚTIL</TableHead>
               <TableHead className="w-[100px] text-[#334155]">ESPECIFICAÇÃO</TableHead>
               <TableHead className={cn("text-[#334155]", rdvObsColMinAmb)}>OBSERVAÇÃO</TableHead>
+              <TableHead className={cn("text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
               <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
@@ -857,6 +869,19 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
                     onChange={(e) => patchAmb(row.id, { observacao: e.target.value })}
                   />
                 </TableCell>
+                <TableCell className={rdvOficinaCol}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-[#334155]"
+                    checked={row.naOficina}
+                    onChange={(e) => patchAmb(row.id, { naOficina: e.target.checked })}
+                    aria-label={
+                      row.placa.trim()
+                        ? `Viatura ${row.placa} na oficina`
+                        : "Viatura na oficina"
+                    }
+                  />
+                </TableCell>
                 <TableCell className="text-center">
                   <button
                     type="button"
@@ -906,6 +931,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
               <TableHead colSpan={2} className={cn("text-[#334155]", rdvObsColMinAdmColspan)}>
                 OBSERVAÇÃO
               </TableHead>
+              <TableHead className={cn("text-[#334155]", rdvOficinaCol)}>OFICINA</TableHead>
               <TableHead className="w-[50px] text-[#334155]">AÇÃO</TableHead>
             </TableRow>
           </TableHeader>
@@ -979,6 +1005,19 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
                     className={cellInputLeft}
                     value={row.observacao}
                     onChange={(e) => patchAdm(row.id, { observacao: e.target.value })}
+                  />
+                </TableCell>
+                <TableCell className={rdvOficinaCol}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-[#334155]"
+                    checked={row.naOficina}
+                    onChange={(e) => patchAdm(row.id, { naOficina: e.target.checked })}
+                    aria-label={
+                      row.placa.trim()
+                        ? `Viatura ${row.placa} na oficina`
+                        : "Viatura na oficina"
+                    }
                   />
                 </TableCell>
                 <TableCell className="text-center">
