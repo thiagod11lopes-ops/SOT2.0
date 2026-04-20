@@ -472,6 +472,50 @@ export function autoResolveCommonRedundanciesOnAdministrativeSave(args: {
 }
 
 /**
+ * Ao salvar uma nova vistoria, mantém apenas a ocorrência mais recente por viatura/item na Situação das VTR:
+ * - para cada item em «Alterações» no novo formulário, resolve pendências antigas do mesmo item/viatura;
+ * - para localização mobile «Na Oficina»/«Destacada», resolve pendências antigas de localização da mesma viatura.
+ */
+export function autoResolveOlderPendingRowsOnSave(args: {
+  inspections: VistoriaInspection[];
+  viatura: string;
+  checklist: VistoriaChecklist;
+  origemMobile?: boolean;
+  localizacaoViatura?: ViaturaLocalizacao;
+}): void {
+  const vNorm = args.viatura.trim().toLowerCase();
+  if (!vNorm) return;
+  const resolvedSet = readResolvedIssueKeySet();
+
+  for (const { key } of CHECKLIST_ITEMS) {
+    if (args.checklist[key] !== "Alterações") continue;
+    for (const ins of args.inspections) {
+      if (ins.viatura.trim().toLowerCase() !== vNorm) continue;
+      if (ins.checklist[key] !== "Alterações") continue;
+      const rk = `${ins.id}:${key}`;
+      if (resolvedSet.has(rk)) continue;
+      appendResolvedIssue(ins.id, key);
+      resolvedSet.add(rk);
+    }
+  }
+
+  const localizacaoEspecial =
+    args.origemMobile === true &&
+    (args.localizacaoViatura === "Na Oficina" || args.localizacaoViatura === "Destacada");
+  if (!localizacaoEspecial) return;
+
+  for (const ins of args.inspections) {
+    if (ins.viatura.trim().toLowerCase() !== vNorm) continue;
+    if (ins.origemMobile !== true) continue;
+    if (ins.localizacaoViatura !== "Na Oficina" && ins.localizacaoViatura !== "Destacada") continue;
+    const rk = `${ins.id}:outros`;
+    if (resolvedSet.has(rk)) continue;
+    appendResolvedIssue(ins.id, "outros");
+    resolvedSet.add(rk);
+  }
+}
+
+/**
  * Viaturas para o nome exibido na escala, mesmo quando difere do texto do vínculo (ex.: posto + nome).
  */
 export function resolveViaturasParaMotoristaEscala(

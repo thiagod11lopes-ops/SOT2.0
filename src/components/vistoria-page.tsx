@@ -20,6 +20,7 @@ import {
   type ChecklistKey,
   applySituacaoVtrPendingPrefillForViatura,
   autoResolveAdministrativeRedundanciesOnCommonSave,
+  autoResolveOlderPendingRowsOnSave,
   emptyChecklist,
   emptyChecklistNotes,
   formatIsoDatePtBr,
@@ -873,6 +874,13 @@ export function VistoriaPage() {
       viatura: viaturaRef,
       checklist: inspectionChecklist,
       notes: inspectionChecklistNotes,
+    });
+    autoResolveOlderPendingRowsOnSave({
+      inspections,
+      viatura: viaturaRef,
+      checklist: inspectionChecklist,
+      origemMobile: false,
+      localizacaoViatura,
     });
     setInspections((prev) => [
       ...prev,

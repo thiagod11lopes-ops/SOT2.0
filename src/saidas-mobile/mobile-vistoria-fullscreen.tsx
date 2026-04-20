@@ -16,6 +16,7 @@ import {
   checklistComOkPorDefeito,
   applySituacaoVtrPendingPrefillForViatura,
   autoResolveAdministrativeRedundanciesOnCommonSave,
+  autoResolveOlderPendingRowsOnSave,
   autoResolveCommonRedundanciesOnAdministrativeSave,
   emptyChecklist,
   emptyChecklistNotes,
@@ -649,6 +650,13 @@ export function MobileVistoriaFullscreen({
           notes: inspectionChecklistNotes,
         });
       }
+      autoResolveOlderPendingRowsOnSave({
+        inspections,
+        viatura: viaturaRef,
+        checklist: inspectionChecklist,
+        origemMobile: true,
+        localizacaoViatura,
+      });
       try {
         setRubricaSyncStage("confirmingInspection");
         await appendVistoriaInspection(novo);
