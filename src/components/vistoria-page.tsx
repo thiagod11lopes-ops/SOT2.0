@@ -99,6 +99,8 @@ type EstadoViaturaRow = {
   inspectionDate: string;
   observacoes: string;
   rubrica: string;
+  rowKind: "item" | "localizacao";
+  itemKey?: ChecklistKey;
 };
 
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
@@ -718,6 +720,8 @@ export function VistoriaPage() {
           inspectionDate: ins.inspectionDate,
           observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
           rubrica,
+          rowKind: "item",
+          itemKey: item.key,
         });
       }
 
@@ -733,6 +737,7 @@ export function VistoriaPage() {
             inspectionDate: ins.inspectionDate,
             observacoes: `Localização da viatura: ${localizacao}`,
             rubrica,
+            rowKind: "localizacao",
           });
         }
       }
@@ -761,11 +766,41 @@ export function VistoriaPage() {
   }
 
   function finalizeDeleteEstadoRow(row: EstadoViaturaRow) {
+    const viaturaNorm = row.viatura.trim().toLowerCase();
+    const targetItemKey = row.itemKey;
     updateVistoriaCloudState((prev) => ({
       ...prev,
-      inspections: prev.inspections.filter((ins) => ins.id !== row.inspectionId),
-      issueControls: prev.issueControls.filter((ctrl) => ctrl.inspectionId !== row.inspectionId),
-      resolvedIssues: prev.resolvedIssues.filter((res) => res.inspectionId !== row.inspectionId),
+      inspections: prev.inspections.filter((ins) => {
+        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+        if (!sameViatura) return true;
+        if (row.rowKind === "item" && targetItemKey) {
+          return ins.checklist[targetItemKey] === "Alterações" ? false : true;
+        }
+        if (row.rowKind === "localizacao") {
+          return ins.localizacaoViatura === "A Bordo" || ins.localizacaoViatura === "Na Oficina" || ins.localizacaoViatura === "Destacada"
+            ? false
+            : true;
+        }
+        return ins.id !== row.inspectionId;
+      }),
+      issueControls: prev.issueControls.filter((ctrl) => {
+        const ins = prev.inspections.find((i) => i.id === ctrl.inspectionId);
+        if (!ins) return false;
+        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+        if (!sameViatura) return true;
+        if (row.rowKind === "item" && targetItemKey) return ctrl.itemKey !== targetItemKey;
+        if (row.rowKind === "localizacao") return ctrl.itemKey !== "outros";
+        return ctrl.inspectionId !== row.inspectionId;
+      }),
+      resolvedIssues: prev.resolvedIssues.filter((res) => {
+        const ins = prev.inspections.find((i) => i.id === res.inspectionId);
+        if (!ins) return false;
+        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+        if (!sameViatura) return true;
+        if (row.rowKind === "item" && targetItemKey) return res.itemKey !== targetItemKey;
+        if (row.rowKind === "localizacao") return res.itemKey !== "outros";
+        return res.inspectionId !== row.inspectionId;
+      }),
     }));
   }
 
