@@ -53,7 +53,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { TabsList } from "./ui/tabs";
 
-const vistoriaSubTabs = ["Vistoriar", "Prioridades", "Responsabilidade de Vistoria"] as const;
+const vistoriaSubTabs = ["Vistoriar", "Situação das VTR", "Prioridades", "Responsabilidade de Vistoria"] as const;
 
 function startOfLocalMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -106,6 +106,20 @@ function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   }
   if (row.observacao.trim()) return <span className="whitespace-pre-wrap">{row.observacao}</span>;
   return "—";
+}
+
+function renderDataSituacao(row: VtrSituacaoPendenteRow): ReactNode {
+  if (row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()) {
+    return (
+      <div className="space-y-0.5">
+        <div>{formatIsoDatePtBr(row.prefillInspectionDate)}</div>
+        <div className="text-[0.78em] font-bold italic leading-tight text-[hsl(var(--foreground))]">
+          ({formatIsoDatePtBr(row.inspectionDate)})
+        </div>
+      </div>
+    );
+  }
+  return formatIsoDatePtBr(row.inspectionDate);
 }
 
 /** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
@@ -635,6 +649,26 @@ export function VistoriaPage() {
     },
     [issueControlMap],
   );
+  const inspectionById = useMemo(() => {
+    const map = new Map<string, VistoriaInspection>();
+    for (const ins of inspections) map.set(ins.id, ins);
+    return map;
+  }, [inspections]);
+  const getRubricaForRow = useCallback(
+    (row: VtrSituacaoPendenteRow): string => {
+      const related = row.relatedIssueRefs
+        .map((ref) => inspectionById.get(ref.inspectionId))
+        .filter((ins): ins is VistoriaInspection => Boolean(ins))
+        .filter((ins) => ins.vistoriaAdministrativa !== true)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const ins of related) {
+        const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
+        if (rub) return rub.startsWith("rubrica_ref:") ? "Rubrica em referência" : rub;
+      }
+      return "";
+    },
+    [inspectionById],
+  );
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
@@ -1092,6 +1126,52 @@ export function VistoriaPage() {
             </CardContent>
           </Card>
         </div>
+      ) : null}
+      {activeSubTab === "Situação das VTR" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Situação das VTR</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {vtrSituacaoPendente.length === 0 ? (
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Não há itens pendentes no momento.</p>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
+                <Table>
+                  <TableHeader className="bg-[hsl(var(--muted))/0.35]">
+                    <TableRow>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">Data da Vistoria</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
+                      <TableHead className="font-bold text-[hsl(var(--primary))]">Rubrica</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vtrSituacaoPendente.map((row, index) => {
+                      const rubrica = getRubricaForRow(row);
+                      return (
+                        <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                          <TableCell>{renderDataSituacao(row)}</TableCell>
+                          <TableCell className="font-semibold">{row.viatura}</TableCell>
+                          <TableCell>{row.itemLabel}</TableCell>
+                          <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
+                          <TableCell>
+                            {rubrica ? (
+                              <span className="whitespace-pre-wrap text-sm">{rubrica}</span>
+                            ) : (
+                              <span className="text-[hsl(var(--muted-foreground))]">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ) : null}
       {activeSubTab === "Prioridades" ? (
         <Card>
