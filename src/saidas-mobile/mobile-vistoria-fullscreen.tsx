@@ -128,6 +128,7 @@ export function MobileVistoriaFullscreen({
   const assignments = useMemo(() => (open ? readVistoriaAssignments() : []), [open, listRefresh]);
   const inspections = useMemo(() => (open ? readVistoriaInspections() : []), [open, listRefresh]);
   const cloudHydrated = isVistoriaCloudStateHydrated();
+  const calendarReady = cloudHydrated && !bundleLoading;
 
   const viaturasPorMotorista = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -626,11 +627,33 @@ export function MobileVistoriaFullscreen({
 
           {view === "list" ? (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3 min-[480px]:px-4">
+            {!calendarReady ? (
+              <div className="mb-4 rounded-2xl border border-[hsl(var(--primary))]/35 bg-[hsl(var(--primary))]/8 p-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-5 w-5 animate-spin rounded-full border-2 border-[hsl(var(--primary))]/25 border-t-[hsl(var(--primary))]"
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                      Carregando calendario da vistoria...
+                    </p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Aguarde a sincronizacao para iniciar com seguranca.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--primary))]/15">
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-[hsl(var(--primary))]/55" />
+                </div>
+              </div>
+            ) : null}
             <p className="mb-2 text-sm text-[hsl(var(--muted-foreground))]">Data da vistoria</p>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 aria-label="Dia anterior"
+                disabled={!calendarReady}
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, -1))}
               >
@@ -639,6 +662,7 @@ export function MobileVistoriaFullscreen({
               <input
                 type="text"
                 inputMode="numeric"
+                disabled={!calendarReady}
                 value={vistoriaDatePtBr}
                 onChange={(e) => {
                   const v = normalizeDatePtBr(e.target.value);
@@ -656,6 +680,7 @@ export function MobileVistoriaFullscreen({
               <button
                 type="button"
                 aria-label="Dia seguinte"
+                disabled={!calendarReady}
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm active:scale-[0.97]"
                 onClick={() => setSelectedDate((d) => addDaysToIso(d, 1))}
               >
@@ -665,6 +690,7 @@ export function MobileVistoriaFullscreen({
                 <Calendar className="h-5 w-5" aria-hidden />
                 <input
                   type="date"
+                  disabled={!calendarReady}
                   className="absolute inset-0 cursor-pointer opacity-0"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value || selectedDate)}
