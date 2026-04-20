@@ -887,16 +887,6 @@ export function MobileVistoriaFullscreen({
               </label>
             </div>
 
-            <div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/12 px-3 py-2.5">
-              <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
-                Motoristas e viaturas — {formatIsoDatePtBr(selectedDate)}
-              </p>
-              <p className="mt-1 text-xs leading-snug text-[hsl(var(--muted-foreground))]">
-                Lista alinhada ao dia do filtro das Saídas. Mostra quem tem <strong>S</strong> no Detalhe de Serviço e
-                viatura vinculada em Vistoria (computador).
-              </p>
-            </div>
-
             {bundleLoading ? (
               <p className="text-sm text-[hsl(var(--muted-foreground))]">A carregar escala de serviço…</p>
             ) : !bundle ? (
@@ -1148,12 +1138,6 @@ export function MobileVistoriaFullscreen({
             <h2 id={rubricaTitleId} className="mb-2 text-lg font-semibold text-[hsl(var(--foreground))]">
               Rubrica
             </h2>
-            <p className="mb-3 text-sm text-[hsl(var(--muted-foreground))]">
-              Na imagem guardada, o nome do motorista fica por baixo da linha; desenhe a rubrica na área branca. Confirmar grava
-              a vistoria e regressa ao ecrã inicial. Preencha o checklist antes de confirmar (em «Na Oficina» ou
-              «Destacada», use «Voltar ao formulário» se ainda faltar o checklist). Pode deixar o traço em branco se não
-              for necessário.
-            </p>
             <div className="flex h-[min(40vh,280px)] w-full min-h-[200px] touch-none flex-col">
               <RubricaSignaturePad
                 ref={rubricaPadRef}

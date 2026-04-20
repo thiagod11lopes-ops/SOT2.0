@@ -94,6 +94,43 @@ type RowIssueControlState = {
   printMarked: boolean;
 };
 
+/** Observações na tabela: rótulo em negrito; texto administrativo com acrescento em itálico quando existir segmentação. */
+type EstadoViaturaObservacoes =
+  | {
+      kind: "item";
+      itemLabel: string;
+      body?: string;
+      plain?: string;
+      italic?: string;
+    }
+  | { kind: "localizacao"; prefix: string; value: string };
+
+function renderEstadoViaturaObservacoes(o: EstadoViaturaObservacoes | undefined): ReactNode {
+  if (!o) return "—";
+  if (o.kind === "localizacao") {
+    return (
+      <span className="whitespace-pre-wrap font-bold">
+        <span>{o.prefix}</span> <span>{o.value}</span>
+      </span>
+    );
+  }
+  const hasSeg = o.plain !== undefined || o.italic !== undefined;
+  return (
+    <span className="whitespace-pre-wrap">
+      <span className="font-bold">{o.itemLabel}: </span>
+      {hasSeg ? (
+        <>
+          {o.plain ? <span className="font-bold">{o.plain}</span> : null}
+          {o.italic ? <em className="italic font-normal text-[hsl(var(--foreground))]">{o.italic}</em> : null}
+          {!o.plain && !o.italic ? <span className="font-bold">—</span> : null}
+        </>
+      ) : (
+        <span className="font-bold">{o.body ?? "—"}</span>
+      )}
+    </span>
+  );
+}
+
 type EstadoViaturaRow = {
   rowId: string;
   inspectionId: string;
@@ -101,7 +138,7 @@ type EstadoViaturaRow = {
   vistoriador: string;
   inspectionDate: string;
   createdAt: number;
-  observacoes: string;
+  observacoes: EstadoViaturaObservacoes;
   rubrica: string;
   rowKind: "item" | "localizacao";
   itemKey?: ChecklistKey;
@@ -302,6 +339,8 @@ export function VistoriaPage() {
   const confirmOkClearsNoteTitleId = useId();
   const [confirmDeleteEstadoRow, setConfirmDeleteEstadoRow] = useState<EstadoViaturaRow | null>(null);
   const confirmDeleteEstadoRowTitleId = useId();
+  const [confirmEditInspection, setConfirmEditInspection] = useState<{ motorista: string; viatura: string } | null>(null);
+  const confirmEditInspectionTitleId = useId();
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
   const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
   const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
@@ -759,6 +798,22 @@ export function VistoriaPage() {
         const rowId = `${viatura.toLowerCase()}::item::${item.key}`;
         if (latestByViaturaItem.has(rowId)) continue;
         const note = String(ins.checklistNotes[item.key] ?? "").trim();
+        const seg = ins.observacaoSegmentacaoAdmin?.[item.key];
+        const useSeg =
+          seg &&
+          (String(seg.plain ?? "").trim().length > 0 || String(seg.italic ?? "").trim().length > 0);
+        const observacoes: EstadoViaturaObservacoes = useSeg
+          ? {
+              kind: "item",
+              itemLabel: item.label,
+              plain: seg!.plain ?? "",
+              italic: seg!.italic ?? "",
+            }
+          : {
+              kind: "item",
+              itemLabel: item.label,
+              body: note ? note : "sem observação",
+            };
         latestByViaturaItem.set(rowId, {
           rowId,
           inspectionId: ins.id,
@@ -766,7 +821,7 @@ export function VistoriaPage() {
           vistoriador: ins.motorista,
           inspectionDate: ins.inspectionDate,
             createdAt: createdAtSafe(ins),
-          observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
+          observacoes,
           rubrica,
           rowKind: "item",
           itemKey: item.key,
@@ -785,7 +840,11 @@ export function VistoriaPage() {
             vistoriador: ins.motorista,
             inspectionDate: ins.inspectionDate,
             createdAt: createdAtSafe(ins),
-            observacoes: `Localização da viatura: ${localizacao}`,
+            observacoes: {
+              kind: "localizacao",
+              prefix: "Localização da viatura:",
+              value: localizacao,
+            },
             rubrica,
             rowKind: "localizacao",
           });
@@ -1327,6 +1386,10 @@ export function VistoriaPage() {
                                         type="button"
                                         onClick={() => {
                                           setDriversModalOpen(false);
+                                          if (vistoriaFeita) {
+                                            setConfirmEditInspection({ motorista, viatura });
+                                            return;
+                                          }
                                           handleOpenInspection(motorista, viatura);
                                         }}
                                         className={
@@ -1357,6 +1420,44 @@ export function VistoriaPage() {
           </Card>
         </div>
       ) : null}
+      {confirmEditInspection ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmEditInspectionTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmEditInspection(null);
+          }}
+        >
+          <Card className="w-full max-w-md" onMouseDown={(e) => e.stopPropagation()}>
+            <CardHeader>
+              <CardTitle id={confirmEditInspectionTitleId}>Vistoria já realizada</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                A viatura <strong>{confirmEditInspection.viatura}</strong> já possui vistoria concluída para esta data.
+                Deseja editar essa vistoria?
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setConfirmEditInspection(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const target = confirmEditInspection;
+                    setConfirmEditInspection(null);
+                    handleOpenInspection(target.motorista, target.viatura);
+                  }}
+                >
+                  Editar vistoria
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       {activeSubTab === "Estado das Viaturas" ? (
         <Card>
           <CardHeader>
@@ -1383,7 +1484,7 @@ export function VistoriaPage() {
                       <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                         <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
                         <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
-                        <TableCell>{row.observacoes ? <span className="whitespace-pre-wrap">{row.observacoes}</span> : "—"}</TableCell>
+                        <TableCell>{renderEstadoViaturaObservacoes(row.observacoes)}</TableCell>
                         <TableCell>{row.vistoriador?.trim() ? row.vistoriador : "—"}</TableCell>
                         <TableCell>
                           {(() => {
