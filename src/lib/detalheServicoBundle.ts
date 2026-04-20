@@ -157,7 +157,7 @@ function clearLegacyLocalStorageKeys(bundleKey: string): void {
 }
 
 export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoBundle> {
-  const fromIdb = await idbGetJson<unknown>(IDB_KEY);
+  const fromIdb = await idbGetJson<unknown>(IDB_KEY, { allowWhenFirebaseOnlyOnline: true });
   if (fromIdb && typeof fromIdb === "object") {
     return normalizeDetalheServicoBundle(fromIdb);
   }
@@ -170,7 +170,7 @@ export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoB
       if (raw) {
         const p = JSON.parse(raw) as unknown;
         const b = normalizeDetalheServicoBundle(p);
-        await idbSetJson(IDB_KEY, b);
+        await idbSetJson(IDB_KEY, b, { allowWhenFirebaseOnlyOnline: true });
         localStorage.removeItem(LEGACY_BUNDLE_LS_KEY);
         return b;
       }
@@ -180,7 +180,7 @@ export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoB
   }
   const migrated = migrateLegacyLocalStorageToBundle();
   if (migrated && !isDetalheServicoBundleEmpty(migrated)) {
-    await idbSetJson(IDB_KEY, migrated);
+    await idbSetJson(IDB_KEY, migrated, { allowWhenFirebaseOnlyOnline: true });
     clearLegacyLocalStorageKeys(LEGACY_BUNDLE_LS_KEY);
     return migrated;
   }
@@ -188,5 +188,5 @@ export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoB
 }
 
 export async function saveDetalheServicoBundleToIdb(bundle: DetalheServicoBundle): Promise<void> {
-  await idbSetJson(IDB_KEY, bundle);
+  await idbSetJson(IDB_KEY, bundle, { allowWhenFirebaseOnlyOnline: true });
 }

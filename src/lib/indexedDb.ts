@@ -25,8 +25,12 @@ async function getDb() {
   return dbPromise;
 }
 
-export async function idbGetJson<T>(key: string): Promise<T | null> {
-  if (isFirebaseOnlyOnlineActive()) return null;
+export async function idbGetJson<T>(
+  key: string,
+  options?: { allowWhenFirebaseOnlyOnline?: boolean },
+): Promise<T | null> {
+  const allowWhenFirebaseOnlyOnline = options?.allowWhenFirebaseOnlyOnline === true;
+  if (isFirebaseOnlyOnlineActive() && !allowWhenFirebaseOnlyOnline) return null;
   try {
     const db = await getDb();
     return await new Promise<T | null>((resolve, reject) => {
@@ -52,9 +56,10 @@ function sleep(ms: number): Promise<void> {
 export async function idbSetJson<T>(
   key: string,
   value: T,
-  options?: { maxAttempts?: number },
+  options?: { maxAttempts?: number; allowWhenFirebaseOnlyOnline?: boolean },
 ): Promise<boolean> {
-  if (isFirebaseOnlyOnlineActive()) return true;
+  const allowWhenFirebaseOnlyOnline = options?.allowWhenFirebaseOnlyOnline === true;
+  if (isFirebaseOnlyOnlineActive() && !allowWhenFirebaseOnlyOnline) return true;
   const maxAttempts = options?.maxAttempts ?? 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

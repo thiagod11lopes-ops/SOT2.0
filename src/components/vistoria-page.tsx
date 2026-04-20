@@ -727,13 +727,34 @@ export function VistoriaPage() {
   }
 
   function finalizeDeleteSituacaoRow(row: VtrSituacaoPendenteRow) {
-    const inspectionIds = new Set(row.relatedIssueRefs.map((ref) => ref.inspectionId));
-    if (inspectionIds.size === 0) return;
+    if (row.relatedIssueRefs.length === 0) return;
+    const refSet = new Set(row.relatedIssueRefs.map((ref) => `${ref.inspectionId}:${ref.itemKey}`));
+    const touchedInspectionIds = new Set(row.relatedIssueRefs.map((ref) => ref.inspectionId));
     updateVistoriaCloudState((prev) => ({
       ...prev,
-      inspections: prev.inspections.filter((ins) => !inspectionIds.has(ins.id)),
-      issueControls: prev.issueControls.filter((ctrl) => !inspectionIds.has(ctrl.inspectionId)),
-      resolvedIssues: prev.resolvedIssues.filter((res) => !inspectionIds.has(res.inspectionId)),
+      inspections: prev.inspections.map((ins) => {
+        if (!touchedInspectionIds.has(ins.id)) return ins;
+        let next = ins;
+        for (const ref of row.relatedIssueRefs) {
+          if (ref.inspectionId !== ins.id) continue;
+          next = {
+            ...next,
+            checklist: { ...next.checklist, [ref.itemKey]: "" },
+            checklistNotes: { ...next.checklistNotes, [ref.itemKey]: "" },
+          };
+          // Linha de situação mobile ("Na Oficina"/"Destacada") usa `outros` e localização especial.
+          if (
+            ref.itemKey === "outros" &&
+            next.origemMobile === true &&
+            (next.localizacaoViatura === "Na Oficina" || next.localizacaoViatura === "Destacada")
+          ) {
+            next = { ...next, localizacaoViatura: "A Bordo" };
+          }
+        }
+        return next;
+      }),
+      issueControls: prev.issueControls.filter((ctrl) => !refSet.has(`${ctrl.inspectionId}:${ctrl.itemKey}`)),
+      resolvedIssues: prev.resolvedIssues.filter((res) => !refSet.has(`${res.inspectionId}:${res.itemKey}`)),
     }));
   }
 

@@ -34,6 +34,7 @@ export type VistoriaCloudState = {
 };
 
 const EVENT_NAME = "sot-vistoria-cloud-changed";
+const LOCAL_SHADOW_KEY = "sot_vistoria_cloud_shadow_v1";
 
 const emptyState: VistoriaCloudState = {
   assignments: [],
@@ -49,6 +50,38 @@ let started = false;
 let unsubscribe: (() => void) | null = null;
 let hydrated = false;
 let rubricaMigrationInFlight = false;
+
+function loadLocalShadowState(): VistoriaCloudState | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(LOCAL_SHADOW_KEY);
+    if (!raw) return null;
+    return normalizeCloudPayload(JSON.parse(raw) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalShadowState(state: VistoriaCloudState): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(LOCAL_SHADOW_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore */
+  }
+}
+
+function withAssignmentsFallbackFromLocal(remote: VistoriaCloudState): VistoriaCloudState {
+  const local = loadLocalShadowState();
+  if (!local) return remote;
+  if (remote.assignments.length > 0) return remote;
+  if (local.assignments.length === 0) return remote;
+  return {
+    ...remote,
+    assignments: local.assignments,
+    updatedAt: Math.max(remote.updatedAt, local.updatedAt),
+  };
+}
 
 function toStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((x) => typeof x === "string" && x.length > 0) : [];
@@ -133,6 +166,7 @@ function setCache(next: VistoriaCloudState) {
   if (next.updatedAt < cache.updatedAt) return;
   cache = next;
   hydrated = true;
+  saveLocalShadowState(next);
   dispatchChange();
 }
 
@@ -200,11 +234,13 @@ export function isVistoriaCloudStateHydrated(): boolean {
 
 export function ensureVistoriaCloudStateSyncStarted(): void {
   if (started) return;
+  const localShadow = loadLocalShadowState();
+  if (localShadow) setCache(localShadow);
   started = true;
   unsubscribe = subscribeSotStateDoc(
     SOT_STATE_DOC.vistoria,
     (payload) => {
-      const next = normalizeCloudPayload(payload);
+      const next = withAssignmentsFallbackFromLocal(normalizeCloudPayload(payload));
       setCache(next);
       void migrateInlineRubricasIfNeeded(next);
     },
@@ -234,7 +270,7 @@ export async function updateVistoriaCloudState(
   if (typeof navigator !== "undefined" && navigator.onLine) {
     try {
       const serverPayload = await readSotStateDocFromServer(SOT_STATE_DOC.vistoria);
-      const serverState = normalizeCloudPayload(serverPayload);
+      const serverState = withAssignmentsFallbackFromLocal(normalizeCloudPayload(serverPayload));
       if (serverState.updatedAt >= prev.updatedAt) {
         prev = serverState;
         setCache(serverState);
@@ -252,8 +288,7 @@ export async function updateVistoriaCloudState(
   try {
     await setSotStateDocWithRetry(SOT_STATE_DOC.vistoria, next);
   } catch (err) {
-    setCache(prev);
-    console.warn("[SOT] Vistoria: falha ao gravar no Firebase", err);
+    console.warn("[SOT] Vistoria: falha ao gravar no Firebase (mantendo alterações locais)", err);
     throw err;
   }
 }
