@@ -2,7 +2,6 @@ import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "l
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import { buildVistoriaSituacaoImprimirPdf } from "../lib/generateVistoriaSituacaoPdf";
 import {
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
@@ -11,9 +10,6 @@ import {
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
-import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
-import { loadVistoriaRubricaFromRef } from "../lib/firebase/vistoriaRubricaFirestore";
-import { parseVistoriaRubricaRef } from "../lib/rubricaDrawing";
 import {
   CHECKLIST_ITEMS,
   checklistComOkPorDefeito,
@@ -57,7 +53,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { TabsList } from "./ui/tabs";
 
-const vistoriaSubTabs = ["Vistoriar", "Situação das VTR", "Prioridades", "Responsabilidade de Vistoria"] as const;
+const vistoriaSubTabs = ["Vistoriar", "Prioridades", "Responsabilidade de Vistoria"] as const;
 
 function startOfLocalMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -110,20 +106,6 @@ function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   }
   if (row.observacao.trim()) return <span className="whitespace-pre-wrap">{row.observacao}</span>;
   return "—";
-}
-
-function renderDataSituacao(row: VtrSituacaoPendenteRow): ReactNode {
-  if (row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()) {
-    return (
-      <div className="space-y-0.5">
-        <div>{formatIsoDatePtBr(row.prefillInspectionDate)}</div>
-        <div className="text-[0.78em] font-bold italic leading-tight text-[hsl(var(--foreground))]">
-          ({formatIsoDatePtBr(row.inspectionDate)})
-        </div>
-      </div>
-    );
-  }
-  return formatIsoDatePtBr(row.inspectionDate);
 }
 
 /** Agrupa por `${viatura.toLowerCase()}::${itemKey}` — resolve chave mesmo se a placa tiver ":" no texto. */
@@ -262,23 +244,10 @@ export function VistoriaPage() {
     emptyChecklistNotes(),
   );
   const [draggingPriorityKey, setDraggingPriorityKey] = useState<string | null>(null);
-  /** Filtro na aba Situação das VTR: "" = todas as viaturas com pendência. */
-  const [situacaoVtrFiltroViatura, setSituacaoVtrFiltroViatura] = useState("");
-  const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
   const [avisoObservacaoItemLabel, setAvisoObservacaoItemLabel] = useState<string | null>(null);
   const avisoObservacaoTitleId = useId();
   const [confirmOkClearsNote, setConfirmOkClearsNote] = useState<{ key: ChecklistKey; label: string } | null>(null);
   const confirmOkClearsNoteTitleId = useId();
-  const [confirmDelete, setConfirmDelete] = useState<{
-    inspectionId: string;
-    itemKey: ChecklistKey;
-    itemLabel: string;
-    viatura: string;
-    motorista: string;
-    inspectionDate: string;
-    relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>;
-  } | null>(null);
-  const confirmDeleteTitleId = useId();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -637,28 +606,6 @@ export function VistoriaPage() {
     return rows;
   }, [inspections, resolvedIssueSet]);
 
-  const viaturasComPendenciaSituacao = useMemo(() => {
-    const s = new Set(
-      vtrSituacaoPendente.map((r) => r.viatura.trim()).filter(Boolean),
-    );
-    return [...s].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [vtrSituacaoPendente]);
-
-  const vtrSituacaoPendenteFiltrado = useMemo(() => {
-    const f = situacaoVtrFiltroViatura.trim();
-    if (!f) return vtrSituacaoPendente;
-    const fl = f.toLowerCase();
-    return vtrSituacaoPendente.filter((r) => r.viatura.trim().toLowerCase() === fl);
-  }, [vtrSituacaoPendente, situacaoVtrFiltroViatura]);
-
-  useEffect(() => {
-    if (
-      situacaoVtrFiltroViatura &&
-      !viaturasComPendenciaSituacao.some((v) => v === situacaoVtrFiltroViatura)
-    ) {
-      setSituacaoVtrFiltroViatura("");
-    }
-  }, [situacaoVtrFiltroViatura, viaturasComPendenciaSituacao]);
 
   const issueControlMap = useMemo(() => {
     const map = new Map<string, IssueControl>();
@@ -688,71 +635,6 @@ export function VistoriaPage() {
     },
     [issueControlMap],
   );
-  const inspectionById = useMemo(() => {
-    const map = new Map<string, VistoriaInspection>();
-    for (const ins of inspections) map.set(ins.id, ins);
-    return map;
-  }, [inspections]);
-  const getRelatedInspections = useCallback(
-    (row: VtrSituacaoPendenteRow): VistoriaInspection[] =>
-      row.relatedIssueRefs
-        .map((ref) => inspectionById.get(ref.inspectionId))
-        .filter((ins): ins is VistoriaInspection => Boolean(ins)),
-    [inspectionById],
-  );
-  const getCommonRubricaForRow = useCallback(
-    (row: VtrSituacaoPendenteRow): string => {
-      const related = getRelatedInspections(row)
-        .filter((ins) => ins.vistoriaAdministrativa !== true)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      for (const ins of related) {
-        const rub = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
-        if (!rub) continue;
-        if (isRubricaImageDataUrl(rub)) return rub;
-        const parsed = parseVistoriaRubricaRef(rub);
-        if (parsed) {
-          const resolved = rubricaRefResolvedMap[rub];
-          if (resolved) return resolved;
-        }
-      }
-      const adminsComOrigem = getRelatedInspections(row)
-        .filter((ins) => ins.vistoriaAdministrativa === true && ins.prefillSourceInspectionId)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      for (const ins of adminsComOrigem) {
-        const src = inspectionById.get(ins.prefillSourceInspectionId!);
-        const rub = typeof src?.rubrica === "string" ? src.rubrica.trim() : "";
-        if (!rub) continue;
-        if (isRubricaImageDataUrl(rub)) return rub;
-        const parsed = parseVistoriaRubricaRef(rub);
-        if (parsed) {
-          const resolved = rubricaRefResolvedMap[rub];
-          if (resolved) return resolved;
-        }
-      }
-      return "";
-    },
-    [getRelatedInspections, inspectionById, rubricaRefResolvedMap],
-  );
-  const getAdministrativeRubricaForRow = useCallback(
-    (row: VtrSituacaoPendenteRow): string => {
-      const related = getRelatedInspections(row)
-        .filter((ins) => ins.vistoriaAdministrativa === true)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      for (const ins of related) {
-        const rub = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
-        if (!rub) continue;
-        if (ins.itensAlteradosAdministracao?.includes(row.itemKey) !== true) continue;
-        if (isRubricaImageDataUrl(rub)) return rub;
-        const parsed = parseVistoriaRubricaRef(rub);
-        if (parsed) {
-          const resolved = rubricaRefResolvedMap[rub];
-          if (resolved) return resolved;
-        }
-      }
-      return "";
-    },
-    [getRelatedInspections, rubricaRefResolvedMap],
-  );
   const vtrPrioridades = useMemo(
     () =>
       vtrSituacaoPendente.filter(
@@ -761,39 +643,6 @@ export function VistoriaPage() {
     [vtrSituacaoPendente, getRowIssueControlState],
   );
 
-  useEffect(() => {
-    const refs = new Set<string>();
-    for (const ins of inspections) {
-      const rCommon = typeof ins.rubrica === "string" ? ins.rubrica.trim() : "";
-      const rAdmin = typeof ins.rubricaAdministrativa === "string" ? ins.rubricaAdministrativa.trim() : "";
-      if (parseVistoriaRubricaRef(rCommon)) refs.add(rCommon);
-      if (parseVistoriaRubricaRef(rAdmin)) refs.add(rAdmin);
-    }
-    const missing = [...refs].filter((ref) => rubricaRefResolvedMap[ref] === undefined);
-    if (missing.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      missing.map(async (ref) => {
-        try {
-          const resolved = await loadVistoriaRubricaFromRef(ref);
-          return [ref, resolved] as const;
-        } catch (err) {
-          console.warn("[SOT] Falha ao carregar rubrica por referencia:", err);
-          return [ref, ""] as const;
-        }
-      }),
-    ).then((pairs) => {
-      if (cancelled) return;
-      setRubricaRefResolvedMap((prev) => {
-        const next = { ...prev };
-        for (const [ref, value] of pairs) next[ref] = value;
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [inspections, rubricaRefResolvedMap]);
 
   useEffect(() => {
     const pendingKeys = vtrPrioridades.map((r) => issueRowKey(r.rowId));
@@ -954,122 +803,6 @@ export function VistoriaPage() {
     setConfirmOkClearsNote(null);
   }
 
-  function finalizeDeleteIssueRows(relatedIssueRefs: Array<{ inspectionId: string; itemKey: ChecklistKey }>) {
-    if (relatedIssueRefs.length === 0) return;
-    const inspectionIds = new Set(relatedIssueRefs.map((ref) => ref.inspectionId));
-    updateVistoriaCloudState((prev) => ({
-      ...prev,
-      inspections: prev.inspections.filter((ins) => !inspectionIds.has(ins.id)),
-      issueControls: prev.issueControls.filter((ctrl) => !inspectionIds.has(ctrl.inspectionId)),
-      resolvedIssues: prev.resolvedIssues.filter((res) => !inspectionIds.has(res.inspectionId)),
-    }));
-
-    // Retirar da checklist aberta o eco do item resolvido (o pré-pende de pendências lê o cloud já atualizado).
-    if (!inspectionOpen) return;
-    const viaturaRef = inspectionViatura.trim();
-    if (!viaturaRef) return;
-    const motoristaRef = inspectionMotorista.trim();
-    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
-    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
-    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
-    const { checklist: nextChecklist, notes: nextNotes } = applySituacaoVtrPendingPrefillForViatura({
-      inspections,
-      viatura: viaturaRef,
-      baseChecklist,
-      baseNotes,
-    });
-    setInspectionChecklist(nextChecklist);
-    setInspectionChecklistNotes(nextNotes);
-  }
-
-  function handleDeleteIssue(row: VtrSituacaoPendenteRow) {
-    setConfirmDelete({
-      inspectionId: row.inspectionId,
-      itemKey: row.itemKey,
-      itemLabel: row.itemLabel,
-      viatura: row.viatura,
-      motorista: row.motorista,
-      inspectionDate: row.inspectionDate,
-      relatedIssueRefs: row.relatedIssueRefs,
-    });
-  }
-
-  function upsertIssueControl(row: VtrSituacaoPendenteRow, patch: Partial<IssueControl>) {
-    const current = getRowIssueControlState(row);
-    const problemMarked = patch.problemMarked ?? current.problemMarked;
-    const priorityMarked = patch.priorityMarked ?? current.priorityMarked;
-    const printMarked = patch.printMarked ?? current.printMarked;
-    setIssueControls((prev) => {
-      const clone = [...prev];
-      for (const ref of row.relatedIssueRefs) {
-        const idx = clone.findIndex((x) => x.inspectionId === ref.inspectionId && x.itemKey === ref.itemKey);
-        const next: IssueControl = {
-          id: idx >= 0 ? clone[idx].id : `issue-ctrl-${ref.inspectionId}-${ref.itemKey}`,
-          inspectionId: ref.inspectionId,
-          itemKey: ref.itemKey,
-          problemMarked,
-          priorityMarked,
-          printMarked,
-        };
-        if (idx < 0) clone.push(next);
-        else clone[idx] = next;
-      }
-      return clone;
-    });
-  }
-
-  async function handleGerarPdfSituacaoVtr() {
-    const rowsComImprimir = vtrSituacaoPendenteFiltrado.filter(
-      (row) => getRowIssueControlState(row).printMarked === true,
-    );
-    if (rowsComImprimir.length === 0) {
-      window.alert("Nenhuma linha com Imprimir marcado.");
-      return;
-    }
-    const resolveRubricaForPdf = async (raw: string): Promise<string> => {
-      const trimmed = raw.trim();
-      if (!trimmed) return "";
-      if (isRubricaImageDataUrl(trimmed)) return trimmed;
-      if (!parseVistoriaRubricaRef(trimmed)) return trimmed;
-      if (rubricaRefResolvedMap[trimmed] !== undefined) return rubricaRefResolvedMap[trimmed] ?? "";
-      try {
-        const loaded = await loadVistoriaRubricaFromRef(trimmed);
-        setRubricaRefResolvedMap((prev) => ({ ...prev, [trimmed]: loaded }));
-        return loaded;
-      } catch (err) {
-        console.warn("[SOT] Falha ao resolver rubrica para PDF:", err);
-        return "";
-      }
-    };
-
-    const pdfRows = await Promise.all(rowsComImprimir.map(async (row) => {
-      const rubricaComum = await resolveRubricaForPdf(getCommonRubricaForRow(row));
-      const rubricaAdministrativa = await resolveRubricaForPdf(getAdministrativeRubricaForRow(row));
-      return {
-        inspectionDate: row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-          ? formatIsoDatePtBr(row.prefillInspectionDate)
-          : formatIsoDatePtBr(row.inspectionDate),
-        inspectionDateSecondary:
-          row.exibirBlocoAdminDataMotorista && row.prefillInspectionDate?.trim()
-            ? formatIsoDatePtBr(row.inspectionDate)
-            : undefined,
-        viatura: row.viatura,
-        itemLabel: row.itemLabel,
-        observacaoPlain:
-          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-            ? row.observacaoPlain ?? ""
-            : row.observacao,
-        observacaoItalic:
-          row.observacaoPlain !== undefined || row.observacaoItalic !== undefined
-            ? row.observacaoItalic ?? ""
-            : undefined,
-        rubricaComum,
-        rubricaAdministrativa,
-      };
-    }));
-    const { doc, filename } = await buildVistoriaSituacaoImprimirPdf(pdfRows);
-    doc.save(filename);
-  }
 
   return (
     <div className="space-y-4">
@@ -1356,234 +1089,6 @@ export function VistoriaPage() {
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-      {activeSubTab === "Situação das VTR" ? (
-        <Card>
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-            <CardTitle>Situação das VTR</CardTitle>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
-                <span className="shrink-0 font-medium text-[hsl(var(--foreground))]">Viatura</span>
-                <select
-                  value={situacaoVtrFiltroViatura}
-                  onChange={(e) => setSituacaoVtrFiltroViatura(e.target.value)}
-                  disabled={vtrSituacaoPendente.length === 0}
-                  className="h-10 min-w-[12rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Filtrar por viatura"
-                >
-                  <option value="">Todas</option>
-                  {viaturasComPendenciaSituacao.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Button type="button" variant="outline" className="shrink-0" onClick={handleGerarPdfSituacaoVtr}>
-                Gerar PDF
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {vtrSituacaoPendente.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Não há itens pendentes no momento. Todas as alterações das vistorias atuais estão resolvidas.
-              </p>
-            ) : vtrSituacaoPendenteFiltrado.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Nenhum item pendente para a viatura selecionada. Escolha outra viatura ou <strong>Todas</strong>.
-              </p>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
-                <Table>
-                  <TableHeader className="bg-[hsl(var(--muted))/0.35]">
-                    <TableRow>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Data da Vistoria</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Viatura</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Item com Anotação</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Anotação</TableHead>
-                      <TableHead colSpan={2} className="text-center font-bold text-[hsl(var(--primary))]">
-                        Rubricas
-                      </TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Marcar Problema</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Prioridades</TableHead>
-                      <TableHead className="font-bold text-[hsl(var(--primary))]">Imprimir</TableHead>
-                      <TableHead className="text-right font-bold text-[hsl(var(--primary))]">Ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vtrSituacaoPendenteFiltrado.map((row, index) => {
-                      const control = getRowIssueControlState(row);
-                      const problemMarked = control.problemMarked;
-                      const priorityMarked = control.priorityMarked;
-                      const printMarked = control.printMarked;
-                      return (
-                        <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
-                          <TableCell>{renderDataSituacao(row)}</TableCell>
-                          <TableCell className="font-semibold">{row.viatura}</TableCell>
-                          <TableCell>{row.itemLabel}</TableCell>
-                          <TableCell>{renderAnotacaoSituacao(row)}</TableCell>
-                          <TableCell colSpan={2} className="min-w-[16rem] max-w-[22rem] align-top">
-                            <div className="flex flex-wrap gap-4">
-                              <div className="min-w-[6.5rem] flex-1">
-                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                                  Comum
-                                </div>
-                                {(() => {
-                                  const rubrica = getCommonRubricaForRow(row);
-                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                                  if (isRubricaImageDataUrl(rubrica)) {
-                                    return (
-                                      <img
-                                        src={rubrica}
-                                        alt="Rubrica da vistoria comum"
-                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
-                                      />
-                                    );
-                                  }
-                                  return <span className="text-sm">{rubrica}</span>;
-                                })()}
-                              </div>
-                              <div className="min-w-[6.5rem] flex-1">
-                                <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                                  Administrativa
-                                </div>
-                                {(() => {
-                                  const rubrica = getAdministrativeRubricaForRow(row);
-                                  if (!rubrica) return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
-                                  if (isRubricaImageDataUrl(rubrica)) {
-                                    return (
-                                      <img
-                                        src={rubrica}
-                                        alt="Rubrica administrativa"
-                                        className="max-h-28 max-w-[148px] rounded border border-[hsl(var(--border))] object-contain object-top bg-white"
-                                      />
-                                    );
-                                  }
-                                  return <span className="text-sm">{rubrica}</span>;
-                                })()}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <label className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={problemMarked}
-                                onChange={(e) =>
-                                  upsertIssueControl(row, {
-                                    problemMarked: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
-                              />
-                              {problemMarked ? "Marcado" : "Não"}
-                            </label>
-                          </TableCell>
-                          <TableCell>
-                            <label className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={priorityMarked}
-                                onChange={(e) =>
-                                  upsertIssueControl(row, {
-                                    priorityMarked: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
-                              />
-                              {priorityMarked ? "Marcado" : "Não"}
-                            </label>
-                          </TableCell>
-                          <TableCell>
-                            <label className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={printMarked}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  upsertIssueControl(row, {
-                                    printMarked: checked,
-                                  });
-                                }}
-                                className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
-                              />
-                              {printMarked ? "Marcado" : "Não"}
-                            </label>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
-                              onClick={() => handleDeleteIssue(row)}
-                            >
-                              <Trash2 className="mr-1 h-4 w-4" />
-                              Excluir
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {confirmDelete ? (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={confirmDeleteTitleId}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmDelete(null);
-          }}
-        >
-          <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
-            <CardHeader>
-              <CardTitle id={confirmDeleteTitleId}>Confirmar exclusão</CardTitle>
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Esta ação exclui permanentemente os registros relacionados desta linha na vistoria.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 p-3 text-sm">
-                <p>
-                  <span className="font-semibold">Viatura:</span> {confirmDelete.viatura || "—"}
-                </p>
-                <p>
-                  <span className="font-semibold">Item:</span> {confirmDelete.itemLabel}
-                </p>
-                <p>
-                  <span className="font-semibold">Motorista:</span> {confirmDelete.motorista || "—"}
-                </p>
-                <p>
-                  <span className="font-semibold">Data:</span>{" "}
-                  {confirmDelete.inspectionDate ? formatIsoDatePtBr(confirmDelete.inspectionDate) : "—"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDelete(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
-                  onClick={() => {
-                    finalizeDeleteIssueRows(confirmDelete.relatedIssueRefs);
-                    setConfirmDelete(null);
-                  }}
-                >
-                  Excluir
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>
