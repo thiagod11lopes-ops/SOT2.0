@@ -54,6 +54,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { TabsList } from "./ui/tabs";
 
 const vistoriaSubTabs = ["Vistoriar", "Estado das Viaturas", "Prioridades", "Responsabilidade de Vistoria"] as const;
+const ESTADO_VTR_CUTOFF_KEY = "sot_estado_vtr_cutoff_v1";
+const ESTADO_VTR_DELETED_MAP_KEY = "sot_estado_vtr_deleted_rows_v1";
 
 function startOfLocalMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -97,11 +99,43 @@ type EstadoViaturaRow = {
   inspectionId: string;
   viatura: string;
   inspectionDate: string;
+  createdAt: number;
   observacoes: string;
   rubrica: string;
   rowKind: "item" | "localizacao";
   itemKey?: ChecklistKey;
 };
+
+function loadOrCreateEstadoVtrCutoffMs(): number {
+  if (typeof localStorage === "undefined") return Date.now();
+  try {
+    const raw = localStorage.getItem(ESTADO_VTR_CUTOFF_KEY);
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const now = Date.now();
+    localStorage.setItem(ESTADO_VTR_CUTOFF_KEY, String(now));
+    return now;
+  } catch {
+    return Date.now();
+  }
+}
+
+function loadEstadoVtrDeletedMap(): Record<string, number> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(ESTADO_VTR_DELETED_MAP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) out[k] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 function renderAnotacaoSituacao(row: VtrSituacaoPendenteRow): ReactNode {
   if (row.observacaoPlain !== undefined || row.observacaoItalic !== undefined) {
@@ -262,6 +296,8 @@ export function VistoriaPage() {
   const confirmOkClearsNoteTitleId = useId();
   const [confirmDeleteEstadoRow, setConfirmDeleteEstadoRow] = useState<EstadoViaturaRow | null>(null);
   const confirmDeleteEstadoRowTitleId = useId();
+  const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
+  const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -691,8 +727,19 @@ export function VistoriaPage() {
     return ordered;
   }, [vtrPrioridades, priorityOrderKeys]);
 
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(ESTADO_VTR_DELETED_MAP_KEY, JSON.stringify(estadoVtrDeletedMap));
+    } catch {
+      /* ignore */
+    }
+  }, [estadoVtrDeletedMap]);
+
   const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
-    const sorted = [...inspections].sort((a, b) => b.createdAt - a.createdAt);
+    const sorted = [...inspections]
+      .filter((ins) => Number(ins.createdAt) >= estadoVtrCutoffMs)
+      .sort((a, b) => b.createdAt - a.createdAt);
     const latestByViaturaItem = new Map<string, EstadoViaturaRow>();
     const latestByViaturaLocalizacao = new Map<string, EstadoViaturaRow>();
 
@@ -718,6 +765,7 @@ export function VistoriaPage() {
           inspectionId: ins.id,
           viatura,
           inspectionDate: ins.inspectionDate,
+          createdAt: Number(ins.createdAt) || 0,
           observacoes: note ? `${item.label}: ${note}` : `${item.label}: sem observação`,
           rubrica,
           rowKind: "item",
@@ -735,6 +783,7 @@ export function VistoriaPage() {
             inspectionId: ins.id,
             viatura,
             inspectionDate: ins.inspectionDate,
+            createdAt: Number(ins.createdAt) || 0,
             observacoes: `Localização da viatura: ${localizacao}`,
             rubrica,
             rowKind: "localizacao",
@@ -743,14 +792,18 @@ export function VistoriaPage() {
       }
     }
 
-    const rows = [...latestByViaturaItem.values(), ...latestByViaturaLocalizacao.values()];
+    const rows = [...latestByViaturaItem.values(), ...latestByViaturaLocalizacao.values()].filter((row) => {
+      const deletedAt = estadoVtrDeletedMap[row.rowId];
+      if (!deletedAt) return true;
+      return row.createdAt > deletedAt;
+    });
     rows.sort((a, b) => {
       const byDate = b.inspectionDate.localeCompare(a.inspectionDate);
       if (byDate !== 0) return byDate;
       return a.viatura.localeCompare(b.viatura, "pt-BR");
     });
     return rows;
-  }, [inspections]);
+  }, [inspections, estadoVtrCutoffMs, estadoVtrDeletedMap]);
 
   function handlePriorityReorder(dragKey: string, targetKey: string) {
     if (dragKey === targetKey) return;
@@ -766,6 +819,8 @@ export function VistoriaPage() {
   }
 
   function finalizeDeleteEstadoRow(row: EstadoViaturaRow) {
+    const deletedAt = Date.now();
+    setEstadoVtrDeletedMap((prev) => ({ ...prev, [row.rowId]: deletedAt }));
     const viaturaNorm = row.viatura.trim().toLowerCase();
     const targetItemKey = row.itemKey;
     updateVistoriaCloudState((prev) => ({
