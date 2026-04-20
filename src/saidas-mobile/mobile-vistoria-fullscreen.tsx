@@ -28,7 +28,6 @@ import {
   segmentarObservacaoAdmin,
   VIATURA_LOCALIZACAO_OPCOES,
   type ViaturaLocalizacao,
-  nomesMotoristaVistoriaEquivalentes,
   normalizeDriverKey,
   parseIsoDate,
   resolveViaturasParaMotoristaEscala,
@@ -411,10 +410,10 @@ export function MobileVistoriaFullscreen({
   }, [inspections, open, view, formMotorista, formViatura]);
 
   function inspectionFeitaPara(motorista: string, viatura: string): boolean {
+    void motorista;
     return inspections.some(
       (i) =>
         i.inspectionDate === selectedDate &&
-        nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
         i.viatura.trim() === viatura.trim(),
     );
   }

@@ -774,9 +774,9 @@ export function VistoriaPage() {
         });
       }
 
-      // Linha de localização sempre reflete a última ação de localização da viatura.
+      // Linha de localização apenas para estados que exigem destaque na tabela.
       const localizacao = ins.localizacaoViatura;
-      if (localizacao === "A Bordo" || localizacao === "Na Oficina" || localizacao === "Destacada") {
+      if (localizacao === "Na Oficina" || localizacao === "Destacada") {
         const rowId = `${viatura.toLowerCase()}::localizacao`;
         if (!latestByViaturaLocalizacao.has(rowId)) {
           latestByViaturaLocalizacao.set(rowId, {
