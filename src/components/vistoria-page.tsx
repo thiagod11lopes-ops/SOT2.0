@@ -264,6 +264,8 @@ export function VistoriaPage() {
   const confirmOkClearsNoteTitleId = useId();
   const [confirmDeleteSituacaoRow, setConfirmDeleteSituacaoRow] = useState<VtrSituacaoPendenteRow | null>(null);
   const confirmDeleteSituacaoRowTitleId = useId();
+  const [confirmDeleteAllSituacao, setConfirmDeleteAllSituacao] = useState(false);
+  const confirmDeleteAllSituacaoTitleId = useId();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -758,6 +760,38 @@ export function VistoriaPage() {
     }));
   }
 
+  function finalizeDeleteAllSituacaoRows() {
+    const relatedRefs = vtrSituacaoPendente.flatMap((row) => row.relatedIssueRefs);
+    if (relatedRefs.length === 0) return;
+    const refSet = new Set(relatedRefs.map((ref) => `${ref.inspectionId}:${ref.itemKey}`));
+    const touchedInspectionIds = new Set(relatedRefs.map((ref) => ref.inspectionId));
+    updateVistoriaCloudState((prev) => ({
+      ...prev,
+      inspections: prev.inspections.map((ins) => {
+        if (!touchedInspectionIds.has(ins.id)) return ins;
+        let next = ins;
+        for (const ref of relatedRefs) {
+          if (ref.inspectionId !== ins.id) continue;
+          next = {
+            ...next,
+            checklist: { ...next.checklist, [ref.itemKey]: "" },
+            checklistNotes: { ...next.checklistNotes, [ref.itemKey]: "" },
+          };
+          if (
+            ref.itemKey === "outros" &&
+            next.origemMobile === true &&
+            (next.localizacaoViatura === "Na Oficina" || next.localizacaoViatura === "Destacada")
+          ) {
+            next = { ...next, localizacaoViatura: "A Bordo" };
+          }
+        }
+        return next;
+      }),
+      issueControls: prev.issueControls.filter((ctrl) => !refSet.has(`${ctrl.inspectionId}:${ctrl.itemKey}`)),
+      resolvedIssues: prev.resolvedIssues.filter((res) => !refSet.has(`${res.inspectionId}:${res.itemKey}`)),
+    }));
+  }
+
   function handleAddAssignment() {
     if (!canAdd) return;
     const motorista = selectedMotorista.trim();
@@ -1163,8 +1197,18 @@ export function VistoriaPage() {
       ) : null}
       {activeSubTab === "Situação das VTR" ? (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
             <CardTitle>Situação das VTR</CardTitle>
+            <Button
+              type="button"
+              size="sm"
+              className="border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+              onClick={() => setConfirmDeleteAllSituacao(true)}
+              disabled={vtrSituacaoPendente.length === 0}
+            >
+              <Trash2 className="mr-1 h-4 w-4" />
+              Excluir todas
+            </Button>
           </CardHeader>
           <CardContent>
             {vtrSituacaoPendente.length === 0 ? (
@@ -1324,6 +1368,46 @@ export function VistoriaPage() {
                   }}
                 >
                   Excluir
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {confirmDeleteAllSituacao ? (
+        <div
+          className="fixed inset-0 z-[201] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={confirmDeleteAllSituacaoTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmDeleteAllSituacao(false);
+          }}
+        >
+          <Card className="w-full max-w-sm border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
+            <CardHeader>
+              <CardTitle id={confirmDeleteAllSituacaoTitleId}>Excluir todas as linhas?</CardTitle>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Esta ação limpa permanentemente todas as linhas atuais da Situação das VTR.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm">
+                Linhas afetadas: <strong>{vtrSituacaoPendente.length}</strong>
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmDeleteAllSituacao(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => {
+                    finalizeDeleteAllSituacaoRows();
+                    setConfirmDeleteAllSituacao(false);
+                  }}
+                >
+                  Excluir todas
                 </Button>
               </div>
             </CardContent>
