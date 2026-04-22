@@ -1,29 +1,20 @@
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-
-type RunWithProgressOptions = {
-  label?: string;
-  minDurationMs?: number;
-};
-
-type MobileLoadingOverlayContextValue = {
-  runWithProgress: <T>(task: () => Promise<T> | T, options?: RunWithProgressOptions) => Promise<T>;
-  isVisible: boolean;
-  progress: number;
-  label: string;
-};
+  MobileLoadingOverlayContext,
+  type MobileProgressReporter,
+  type RunWithProgressOptions,
+  useMobileLoadingOverlay,
+} from "./mobile-loading-context";
 
 const DEFAULT_LABEL = "A carregar...";
-const MobileLoadingOverlayContext = createContext<MobileLoadingOverlayContextValue | null>(null);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 export function MobileLoadingOverlayProvider({ children }: { children: ReactNode }) {
@@ -31,33 +22,41 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
   const [progress, setProgress] = useState(0);
   const [label, setLabel] = useState(DEFAULT_LABEL);
 
-  const runWithProgress = useCallback(
-    async <T,>(task: () => Promise<T> | T, options?: RunWithProgressOptions): Promise<T> => {
+  const runWithTrackedProgress = useCallback(
+    async <T,>(
+      task: (reporter: MobileProgressReporter) => Promise<T> | T,
+      options?: RunWithProgressOptions,
+    ): Promise<T> => {
       const startedAt = Date.now();
-      const minDurationMs = Math.max(450, options?.minDurationMs ?? 700);
+      const minDurationMs = Math.max(350, options?.minDurationMs ?? 500);
       const nextLabel = options?.label?.trim() || DEFAULT_LABEL;
       setLabel(nextLabel);
       setProgress(0);
       setIsVisible(true);
 
-      const ticker = window.setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 92) return prev;
-          return Math.min(92, prev + 7);
-        });
-      }, 70);
+      const reporter: MobileProgressReporter = {
+        setProgress: (value: number) => {
+          setProgress((prev) => {
+            const next = clampProgress(value);
+            return next < prev ? prev : next;
+          });
+        },
+        setLabel: (value: string) => {
+          const next = value.trim();
+          if (next) setLabel(next);
+        },
+      };
 
       try {
-        const result = await task();
+        const result = await task(reporter);
+        reporter.setProgress(100);
         const elapsed = Date.now() - startedAt;
         if (elapsed < minDurationMs) {
           await sleep(minDurationMs - elapsed);
         }
-        setProgress(100);
-        await sleep(220);
+        await sleep(180);
         return result;
       } finally {
-        window.clearInterval(ticker);
         setIsVisible(false);
         setProgress(0);
       }
@@ -65,14 +64,36 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
     [],
   );
 
+  const runWithProgress = useCallback(
+    async <T,>(task: () => Promise<T> | T, options?: RunWithProgressOptions): Promise<T> => {
+      return runWithTrackedProgress(async (reporter) => {
+        const ticker = window.setInterval(() => {
+          setProgress((prev) => {
+            if (prev >= 92) return prev;
+            return Math.min(92, prev + 7);
+          });
+        }, 70);
+        try {
+          const result = await task();
+          reporter.setProgress(100);
+          return result;
+        } finally {
+          window.clearInterval(ticker);
+        }
+      }, options);
+    },
+    [runWithTrackedProgress],
+  );
+
   const value = useMemo(
     () => ({
       runWithProgress,
+      runWithTrackedProgress,
       isVisible,
       progress,
       label,
     }),
-    [runWithProgress, isVisible, progress, label],
+    [runWithProgress, runWithTrackedProgress, isVisible, progress, label],
   );
 
   return (
@@ -80,14 +101,6 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
       {children}
     </MobileLoadingOverlayContext.Provider>
   );
-}
-
-export function useMobileLoadingOverlay(): MobileLoadingOverlayContextValue {
-  const ctx = useContext(MobileLoadingOverlayContext);
-  if (!ctx) {
-    throw new Error("useMobileLoadingOverlay só pode ser usado dentro de MobileLoadingOverlayProvider");
-  }
-  return ctx;
 }
 
 export function MobileLoadingOverlayHost() {

@@ -17,7 +17,6 @@ import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
-import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
 
 export function DepartureCard({
   record,
@@ -43,7 +42,6 @@ export function DepartureCard({
   /** Idem: setores combinados (vista administrativa). */
   mergedSetorDisplay?: string;
 }) {
-  const { runWithProgress } = useMobileLoadingOverlay();
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -105,18 +103,12 @@ export function DepartureCard({
 
   function commitRubrica() {
     if (!updateDeparture) return;
-    void runWithProgress(
-      async () => {
-        const { id, createdAt, ...rest } = record;
-        void id;
-        void createdAt;
-        const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
-        updateDeparture(record.id, { ...rest, rubrica: drawn });
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
-        setRubricaModalOpen(false);
-      },
-      { label: "Confirmando e guardando rubrica...", minDurationMs: 900 },
-    );
+    const { id, createdAt, ...rest } = record;
+    void id;
+    void createdAt;
+    const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
+    updateDeparture(record.id, { ...rest, rubrica: drawn });
+    setRubricaModalOpen(false);
   }
 
   function handleSalvarOcorrencias(departureId: string, texto: string) {

@@ -44,7 +44,8 @@ import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../cont
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
-import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
+import { useMobileLoadingOverlay } from "./mobile-loading-context";
+import type { MobileProgressReporter } from "./mobile-loading-context";
 import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
@@ -140,7 +141,7 @@ export function MobileVistoriaFullscreen({
   onOpenChange,
   administrativeVistoriadorMotorista = null,
 }: Props) {
-  const { runWithProgress } = useMobileLoadingOverlay();
+  const { runWithTrackedProgress } = useMobileLoadingOverlay();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const { items: catalogItems } = useCatalogItems();
   const viaturasCatalogo = useMemo(() => {
@@ -206,7 +207,23 @@ export function MobileVistoriaFullscreen({
   const calendarReady = cloudHydrated && !bundleLoading;
 
   useEffect(() => {
+    if (!open) return;
+    window.dispatchEvent(new CustomEvent<number>("sot-mobile-vistoria-progress", { detail: 15 }));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !cloudHydrated) return;
+    window.dispatchEvent(new CustomEvent<number>("sot-mobile-vistoria-progress", { detail: 55 }));
+  }, [open, cloudHydrated]);
+
+  useEffect(() => {
+    if (!open || bundleLoading) return;
+    window.dispatchEvent(new CustomEvent<number>("sot-mobile-vistoria-progress", { detail: 82 }));
+  }, [open, bundleLoading]);
+
+  useEffect(() => {
     if (!open || !calendarReady) return;
+    window.dispatchEvent(new CustomEvent<number>("sot-mobile-vistoria-progress", { detail: 100 }));
     window.dispatchEvent(new Event("sot-mobile-vistoria-ready"));
   }, [open, calendarReady]);
 
@@ -576,10 +593,14 @@ export function MobileVistoriaFullscreen({
     setRubricaOpen(true);
   }
 
-  async function finalizeVistoria(rubricaDataUrl: string | undefined): Promise<void> {
+  async function finalizeVistoria(
+    rubricaDataUrl: string | undefined,
+    progress?: MobileProgressReporter,
+  ): Promise<void> {
     setRubricaSubmitLoading(true);
     setRubricaSyncStage("preparing");
     try {
+      progress?.setProgress(10);
       if (!isViaturaLocalizacao(localizacaoViatura)) return;
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         window.alert("Sem conexao com a internet. A vistoria mobile salva apenas no Firebase quando online.");
@@ -598,6 +619,7 @@ export function MobileVistoriaFullscreen({
       } catch (optErr) {
         console.warn("[SOT] Falha ao otimizar rubrica antes do save:", optErr);
       }
+      progress?.setProgress(30);
       const createdAt = Date.now();
       const base: Omit<
       VistoriaInspection,
@@ -624,6 +646,7 @@ export function MobileVistoriaFullscreen({
       let rubricaStoredValue = rubricaTrim;
       if (rubricaTrim) {
         setRubricaSyncStage("uploadingRubrica");
+        progress?.setProgress(50);
         try {
           await saveVistoriaRubricaByInspectionId({
             inspectionId: base.id,
@@ -631,11 +654,14 @@ export function MobileVistoriaFullscreen({
             dataUrl: rubricaTrim,
           });
           rubricaStoredValue = buildVistoriaRubricaRef(base.id, isAdmin ? "administrativa" : "comum");
+          progress?.setProgress(78);
         } catch (rubricaError) {
           console.error("[SOT] Falha ao salvar rubrica da vistoria no Firebase:", rubricaError);
           window.alert("Falha ao salvar a rubrica no Firebase. Verifique a conexao e tente novamente.");
           return;
         }
+      } else {
+        progress?.setProgress(78);
       }
 
       let novo: VistoriaInspection;
@@ -698,7 +724,9 @@ export function MobileVistoriaFullscreen({
       });
       try {
         setRubricaSyncStage("confirmingInspection");
+        progress?.setProgress(88);
         await appendVistoriaInspection(novo);
+        progress?.setProgress(100);
       } catch (error) {
         console.error("[SOT] Falha ao salvar vistoria mobile no Firebase:", error);
         if (isLikelyDocumentSizeError(error)) {
@@ -759,11 +787,11 @@ export function MobileVistoriaFullscreen({
     }
 
     rubricaModalIntentRef.current = null;
-    void runWithProgress(
-      async () => {
-        await finalizeVistoria(drawn || undefined);
+    void runWithTrackedProgress(
+      async (progress) => {
+        await finalizeVistoria(drawn || undefined, progress);
       },
-      { label: "Sincronizando rubrica com o Firebase...", minDurationMs: 700 },
+      { label: "Sincronizando rubrica com o Firebase...", minDurationMs: 250 },
     );
   }
 

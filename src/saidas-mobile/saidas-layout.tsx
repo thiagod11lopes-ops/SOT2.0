@@ -16,10 +16,10 @@ import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
-import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
+import { useMobileLoadingOverlay } from "./mobile-loading-context";
 
 export function SaidasLayout() {
-  const { runWithProgress } = useMobileLoadingOverlay();
+  const { runWithTrackedProgress } = useMobileLoadingOverlay();
   const { mergeDeparturesFromBackup } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
@@ -100,29 +100,40 @@ export function SaidasLayout() {
   }
 
   function openVistoriaWithFirebaseProgress() {
-    void runWithProgress(
-      async () => {
+    void runWithTrackedProgress(
+      async (progress) => {
+        progress.setProgress(5);
         setVistoriaAdministrativaMotorista(null);
         setVistoriaMobileOpen(true);
+        progress.setProgress(12);
         await new Promise<void>((resolve) => {
           let done = false;
+          const onProgress = (event: Event) => {
+            const custom = event as CustomEvent<number>;
+            progress.setProgress(custom.detail);
+          };
           const timer = window.setTimeout(() => {
             if (done) return;
             done = true;
+            progress.setProgress(100);
+            window.removeEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
             window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
             resolve();
           }, 9000);
           const onReady = () => {
             if (done) return;
             done = true;
+            progress.setProgress(100);
             window.clearTimeout(timer);
+            window.removeEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
             window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
             resolve();
           };
+          window.addEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
           window.addEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
         });
       },
-      { label: "Sincronizando calendário e placas com o Firebase...", minDurationMs: 800 },
+      { label: "Sincronizando calendário e placas com o Firebase...", minDurationMs: 300 },
     );
   }
 
