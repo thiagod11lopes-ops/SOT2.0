@@ -217,16 +217,14 @@ export function getLatestPersistedRdvIsoStrictlyBefore(isoDate: string): string 
   return best;
 }
 
-/** Maior data ISO estritamente anterior a `isoDate` com PDF já gerado (base para pré-preencher o dia pendente). */
-export function getLatestPersistedRdvIsoWithPdfSalvoStrictlyBefore(isoDate: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+/** Maior data ISO com PDF já gerado (base para pré-preencher qualquer dia pendente). */
+export function getLatestPersistedRdvIsoWithPdfSalvo(): string | null {
   const map = readAll();
   let best: string | null = null;
   for (const k of Object.keys(map)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
     const row = map[k];
     if (!row || row.v !== 1 || !row.pdfSalvo) continue;
-    if (k >= isoDate) continue;
     if (best === null || k > best) best = k;
   }
   return best;
@@ -240,19 +238,15 @@ export type LoadRdvDayForEditResult = {
 
 /**
  * Carrega o RDV para edição: se estiver pendente (sem PDF salvo), copia o conteúdo do **último**
- * relatório com PDF gerado numa data anterior (ex.: dia 19 pendente ← dia 18 salvo).
- * Se já existir relatório gravado (`v === 1`) para esta data — rascunho ou réplica — usa esse dado
- * e **não** substitui pela cópia do dia anterior (evita perder edições ao recarregar ou ao sincronizar Firebase).
+ * relatório com PDF gerado, independentemente da data clicada no calendário.
+ * Ex.: se o último salvo for 20/04, qualquer dia pendente abre com base no conteúdo de 20/04.
  */
 export function loadRdvDayForEdit(isoDate: string): LoadRdvDayForEditResult {
   const snap = loadRdvDay(isoDate);
   if (snap.pdfSalvo) {
     return { data: snap, filledFromPreviousIso: null };
   }
-  if (hasPersistedRdvDay(isoDate)) {
-    return { data: snap, filledFromPreviousIso: null };
-  }
-  const sourceIso = getLatestPersistedRdvIsoWithPdfSalvoStrictlyBefore(isoDate);
+  const sourceIso = getLatestPersistedRdvIsoWithPdfSalvo();
   if (!sourceIso) {
     return { data: snap, filledFromPreviousIso: null };
   }
