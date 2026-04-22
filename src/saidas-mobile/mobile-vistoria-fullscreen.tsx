@@ -44,6 +44,7 @@ import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../cont
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
+import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
 import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
@@ -139,6 +140,7 @@ export function MobileVistoriaFullscreen({
   onOpenChange,
   administrativeVistoriadorMotorista = null,
 }: Props) {
+  const { runWithProgress } = useMobileLoadingOverlay();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const { items: catalogItems } = useCatalogItems();
   const viaturasCatalogo = useMemo(() => {
@@ -202,6 +204,11 @@ export function MobileVistoriaFullscreen({
   const [inspections, setInspections] = useState(() => getVistoriaCloudState().inspections);
   const cloudHydrated = isVistoriaCloudStateHydrated();
   const calendarReady = cloudHydrated && !bundleLoading;
+
+  useEffect(() => {
+    if (!open || !calendarReady) return;
+    window.dispatchEvent(new Event("sot-mobile-vistoria-ready"));
+  }, [open, calendarReady]);
 
   const viaturasPorMotorista = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -752,7 +759,12 @@ export function MobileVistoriaFullscreen({
     }
 
     rubricaModalIntentRef.current = null;
-    void finalizeVistoria(drawn || undefined);
+    void runWithProgress(
+      async () => {
+        await finalizeVistoria(drawn || undefined);
+      },
+      { label: "Sincronizando rubrica com o Firebase...", minDurationMs: 700 },
+    );
   }
 
   if (!open) return null;

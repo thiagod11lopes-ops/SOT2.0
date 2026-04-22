@@ -16,8 +16,10 @@ import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
+import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
 
 export function SaidasLayout() {
+  const { runWithProgress } = useMobileLoadingOverlay();
   const { mergeDeparturesFromBackup } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
@@ -95,6 +97,33 @@ export function SaidasLayout() {
     setVistoriaAdministrativaMotorista(m);
     closeVistoriaAdminModal();
     setVistoriaMobileOpen(true);
+  }
+
+  function openVistoriaWithFirebaseProgress() {
+    void runWithProgress(
+      async () => {
+        setVistoriaAdministrativaMotorista(null);
+        setVistoriaMobileOpen(true);
+        await new Promise<void>((resolve) => {
+          let done = false;
+          const timer = window.setTimeout(() => {
+            if (done) return;
+            done = true;
+            window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
+            resolve();
+          }, 9000);
+          const onReady = () => {
+            if (done) return;
+            done = true;
+            window.clearTimeout(timer);
+            window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
+            resolve();
+          };
+          window.addEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
+        });
+      },
+      { label: "Sincronizando calendário e placas com o Firebase...", minDurationMs: 800 },
+    );
   }
 
   return (
@@ -220,10 +249,7 @@ export function SaidasLayout() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setVistoriaAdministrativaMotorista(null);
-                setVistoriaMobileOpen(true);
-              }}
+              onClick={openVistoriaWithFirebaseProgress}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
               aria-label="Vistoria — calendário e checklist"
               title="Vistoria"
