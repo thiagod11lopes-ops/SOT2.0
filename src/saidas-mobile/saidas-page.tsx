@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
@@ -8,6 +8,7 @@ import { addDaysPtBr, getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } fro
 import { parseHhMm } from "../lib/timeInput";
 import { DepartureCard } from "./departure-card";
 import { cn } from "../lib/utils";
+import { useMobileLoadingOverlay } from "./mobile-loading-overlay";
 
 function isCompleteDatePtBr(value: string) {
   return /^\d{2}\/\d{2}\/\d{4}$/.test(value);
@@ -62,6 +63,8 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
 }
 
 export function SaidasPage({ tipo }: { tipo: DepartureType }) {
+  const { runWithProgress } = useMobileLoadingOverlay();
+  const firstLoadShownRef = useRef(false);
   const { departures, updateDepartureKmFields, updateDeparture, addDeparture, removeDeparture } =
     useDepartures();
   const [excluirModalId, setExcluirModalId] = useState<string | null>(null);
@@ -110,6 +113,24 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
   const hoje = getCurrentDatePtBr();
   const filtroEhHojeCompleto = isCompleteDatePtBr(filterDate) && filterDate === hoje;
   const podeNovaAmbulancia = filtroEhHojeCompleto;
+
+  useEffect(() => {
+    if (firstLoadShownRef.current) return;
+    firstLoadShownRef.current = true;
+    void runWithProgress(async () => {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+    }, { label: "Carregando calendário e viaturas...", minDurationMs: 750 });
+  }, [runWithProgress]);
+
+  function queueCalendarAndVehiclesLoad(setter: () => void) {
+    void runWithProgress(
+      async () => {
+        setter();
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+      },
+      { label: "Carregando calendário e viaturas...", minDurationMs: 680 },
+    );
+  }
 
   function handleNovaAmbulancia() {
     if (!filtroEhHojeCompleto) return;
@@ -169,7 +190,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             type="button"
             aria-label="Dia anterior"
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 text-[hsl(var(--foreground))] active:scale-[0.97]"
-            onClick={() => setFilterDate((d) => addDaysPtBr(d, -1))}
+            onClick={() => queueCalendarAndVehiclesLoad(() => setFilterDate((d) => addDaysPtBr(d, -1)))}
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -187,7 +208,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             type="button"
             aria-label="Dia seguinte"
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 text-[hsl(var(--foreground))] active:scale-[0.97]"
-            onClick={() => setFilterDate((d) => addDaysPtBr(d, 1))}
+            onClick={() => queueCalendarAndVehiclesLoad(() => setFilterDate((d) => addDaysPtBr(d, 1)))}
           >
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -201,7 +222,10 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
                 const iso = e.target.value;
                 if (!iso || iso.length < 10) return;
                 const [y, m, d] = iso.split("-");
-                if (y && m && d) setFilterDate(`${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`);
+                if (y && m && d) {
+                  const nextDate = `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+                  queueCalendarAndVehiclesLoad(() => setFilterDate(nextDate));
+                }
               }}
               aria-label="Abrir calendário"
             />
@@ -209,7 +233,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
           <button
             type="button"
             className="min-h-12 rounded-xl border border-[hsl(var(--border))] px-4 text-sm font-semibold text-[hsl(var(--primary))] active:bg-[hsl(var(--muted))]/40"
-            onClick={() => setFilterDate(getCurrentDatePtBr())}
+            onClick={() => queueCalendarAndVehiclesLoad(() => setFilterDate(getCurrentDatePtBr()))}
           >
             Hoje
           </button>

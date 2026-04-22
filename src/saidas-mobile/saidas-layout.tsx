@@ -15,6 +15,7 @@ import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
+import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 
 export function SaidasLayout() {
   const { mergeDeparturesFromBackup } = useDepartures();
@@ -98,6 +99,7 @@ export function SaidasLayout() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
+      <MobileLoadingOverlayHost />
       {vistoriaAdminModalOpen ? (
         <div
           className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[520]`}
