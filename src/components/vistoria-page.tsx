@@ -109,7 +109,7 @@ function renderEstadoViaturaObservacoes(o: EstadoViaturaObservacoes | undefined)
   if (!o) return "—";
   if (o.kind === "localizacao") {
     return (
-      <span className="whitespace-pre-wrap font-bold">
+      <span className="whitespace-pre-wrap italic font-normal">
         <span>{o.prefix}</span> <span>{o.value}</span>
       </span>
     );
@@ -117,15 +117,15 @@ function renderEstadoViaturaObservacoes(o: EstadoViaturaObservacoes | undefined)
   const hasSeg = o.plain !== undefined || o.italic !== undefined;
   return (
     <span className="whitespace-pre-wrap">
-      <span className="font-bold">{o.itemLabel}: </span>
+      <span className="italic font-normal">{o.itemLabel}: </span>
       {hasSeg ? (
         <>
-          {o.plain ? <span className="font-bold">{o.plain}</span> : null}
+          {o.plain ? <span className="italic font-normal">{o.plain}</span> : null}
           {o.italic ? <em className="italic font-normal text-[hsl(var(--foreground))]">{o.italic}</em> : null}
-          {!o.plain && !o.italic ? <span className="font-bold">—</span> : null}
+          {!o.plain && !o.italic ? <span className="italic font-normal">—</span> : null}
         </>
       ) : (
-        <span className="font-bold">{o.body ?? "—"}</span>
+        <span className="italic font-normal">{o.body ?? "—"}</span>
       )}
     </span>
   );
