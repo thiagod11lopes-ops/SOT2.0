@@ -344,6 +344,7 @@ export function VistoriaPage() {
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
   const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
   const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
+  const ignoreEstadoVtrLocal = isOnline && isFirebaseOnlyOnlineActive();
 
   const viaturas = useMemo(() => {
     const merged = [...items.viaturasAdministrativas, ...items.ambulancias].map((v) => v.trim()).filter(Boolean);
@@ -763,16 +764,18 @@ export function VistoriaPage() {
   }, [vtrPrioridades, priorityOrderKeys]);
 
   useEffect(() => {
+    if (ignoreEstadoVtrLocal) return;
     if (typeof localStorage === "undefined") return;
     try {
       localStorage.setItem(ESTADO_VTR_DELETED_MAP_KEY, JSON.stringify(estadoVtrDeletedMap));
     } catch {
       /* ignore */
     }
-  }, [estadoVtrDeletedMap]);
+  }, [estadoVtrDeletedMap, ignoreEstadoVtrLocal]);
 
   const estadoViaturasRows = useMemo<EstadoViaturaRow[]>(() => {
-    const effectiveCutoffMs = estadoVtrCutoffMs;
+    const effectiveCutoffMs = ignoreEstadoVtrLocal ? 0 : estadoVtrCutoffMs;
+    const effectiveDeletedMap = ignoreEstadoVtrLocal ? {} : estadoVtrDeletedMap;
     const createdAtSafe = (ins: VistoriaInspection): number => {
       const n = Number(ins.createdAt);
       if (Number.isFinite(n) && n > 0) return n;
@@ -853,7 +856,7 @@ export function VistoriaPage() {
     }
 
     const rows = [...latestByViaturaItem.values(), ...latestByViaturaLocalizacao.values()].filter((row) => {
-      const deletedAt = estadoVtrDeletedMap[row.rowId];
+      const deletedAt = effectiveDeletedMap[row.rowId];
       if (!deletedAt) return true;
       return row.createdAt > deletedAt;
     });
@@ -863,7 +866,7 @@ export function VistoriaPage() {
       return a.viatura.localeCompare(b.viatura, "pt-BR");
     });
     return rows;
-  }, [inspections, estadoVtrCutoffMs, estadoVtrDeletedMap]);
+  }, [inspections, estadoVtrCutoffMs, estadoVtrDeletedMap, ignoreEstadoVtrLocal]);
 
   useEffect(() => {
     let cancelled = false;

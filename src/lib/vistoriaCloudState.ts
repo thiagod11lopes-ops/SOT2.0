@@ -4,6 +4,7 @@ import {
   setSotStateDocWithRetry,
   subscribeSotStateDoc,
 } from "./firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
 import type { ChecklistKey, VistoriaAssignment, VistoriaInspection } from "./vistoriaInspectionShared";
 import { saveVistoriaRubricaByInspectionId } from "./firebase/vistoriaRubricaFirestore";
 import { buildVistoriaRubricaRef, isRubricaImageDataUrl, parseVistoriaRubricaRef } from "./rubricaDrawing";
@@ -51,7 +52,12 @@ let unsubscribe: (() => void) | null = null;
 let hydrated = false;
 let rubricaMigrationInFlight = false;
 
+function shouldIgnoreLocalShadow(): boolean {
+  return isFirebaseOnlyOnlineActive();
+}
+
 function loadLocalShadowState(): VistoriaCloudState | null {
+  if (shouldIgnoreLocalShadow()) return null;
   if (typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem(LOCAL_SHADOW_KEY);
@@ -63,6 +69,7 @@ function loadLocalShadowState(): VistoriaCloudState | null {
 }
 
 function saveLocalShadowState(state: VistoriaCloudState): void {
+  if (shouldIgnoreLocalShadow()) return;
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(LOCAL_SHADOW_KEY, JSON.stringify(state));
@@ -72,6 +79,7 @@ function saveLocalShadowState(state: VistoriaCloudState): void {
 }
 
 function withAssignmentsFallbackFromLocal(remote: VistoriaCloudState): VistoriaCloudState {
+  if (shouldIgnoreLocalShadow()) return remote;
   const local = loadLocalShadowState();
   if (!local) return remote;
   if (remote.assignments.length > 0) return remote;
