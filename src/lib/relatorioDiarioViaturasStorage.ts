@@ -246,6 +246,11 @@ export function loadRdvDayForEdit(isoDate: string): LoadRdvDayForEditResult {
   if (snap.pdfSalvo) {
     return { data: snap, filledFromPreviousIso: null };
   }
+  // Se já existe rascunho gravado para a data, preserva-o em recargas (F5)
+  // e sincronizações, evitando sobrescrever com a cópia do último "Salvo".
+  if (hasPersistedRdvDay(isoDate)) {
+    return { data: snap, filledFromPreviousIso: null };
+  }
   const sourceIso = getLatestPersistedRdvIsoWithPdfSalvo();
   if (!sourceIso) {
     return { data: snap, filledFromPreviousIso: null };
