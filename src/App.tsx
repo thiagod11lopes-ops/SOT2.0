@@ -247,7 +247,6 @@ function App() {
   useEffect(() => {
     if (isMobileRoute) return;
     let cancelled = false;
-    let timer: number | undefined;
 
     const runCheck = async () => {
       if (cancelled) return;
@@ -328,13 +327,13 @@ function App() {
     };
 
     void runCheck();
-    timer = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       void runCheck();
     }, 60_000);
 
     return () => {
       cancelled = true;
-      if (timer) window.clearInterval(timer);
+      window.clearInterval(timer);
     };
   }, [isMobileRoute]);
 
