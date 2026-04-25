@@ -1,4 +1,6 @@
 type WhatsAppSendResult = { ok: true } | { ok: false; error: string };
+const WHATSAPP_LOCAL_TOKEN_KEY = "sot_whatsapp_cloud_token_v1";
+const WHATSAPP_LOCAL_PHONE_NUMBER_ID_KEY = "sot_whatsapp_cloud_phone_number_id_v1";
 
 function readEnv(name: string): string {
   const v = String(import.meta.env[name] ?? "").trim();
@@ -13,10 +15,26 @@ function normalizePhoneForApi(input: string): string {
 }
 
 function getConfig(): { token: string; phoneNumberId: string } | null {
-  const token = readEnv("VITE_WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = readEnv("VITE_WHATSAPP_PHONE_NUMBER_ID");
+  const localToken = typeof localStorage !== "undefined" ? String(localStorage.getItem(WHATSAPP_LOCAL_TOKEN_KEY) ?? "").trim() : "";
+  const localPhoneNumberId =
+    typeof localStorage !== "undefined" ? String(localStorage.getItem(WHATSAPP_LOCAL_PHONE_NUMBER_ID_KEY) ?? "").trim() : "";
+  const token = localToken || readEnv("VITE_WHATSAPP_ACCESS_TOKEN");
+  const phoneNumberId = localPhoneNumberId || readEnv("VITE_WHATSAPP_PHONE_NUMBER_ID");
   if (!token || !phoneNumberId) return null;
   return { token, phoneNumberId };
+}
+
+export function saveWhatsAppCloudApiConfig(config: { token: string; phoneNumberId: string }): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(WHATSAPP_LOCAL_TOKEN_KEY, config.token.trim());
+  localStorage.setItem(WHATSAPP_LOCAL_PHONE_NUMBER_ID_KEY, config.phoneNumberId.trim());
+}
+
+export function readWhatsAppCloudApiConfig(): { token: string; phoneNumberId: string } {
+  const token = typeof localStorage !== "undefined" ? String(localStorage.getItem(WHATSAPP_LOCAL_TOKEN_KEY) ?? "") : "";
+  const phoneNumberId =
+    typeof localStorage !== "undefined" ? String(localStorage.getItem(WHATSAPP_LOCAL_PHONE_NUMBER_ID_KEY) ?? "") : "";
+  return { token: token.trim(), phoneNumberId: phoneNumberId.trim() };
 }
 
 export async function sendWhatsAppTemplateHelloWorld(toPhone: string): Promise<WhatsAppSendResult> {

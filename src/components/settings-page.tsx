@@ -24,7 +24,12 @@ import {
   isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
-import { sendWhatsAppTemplateHelloWorld, sendWhatsAppTextMessage } from "../lib/whatsappCloudApi";
+import {
+  readWhatsAppCloudApiConfig,
+  saveWhatsAppCloudApiConfig,
+  sendWhatsAppTemplateHelloWorld,
+  sendWhatsAppTextMessage,
+} from "../lib/whatsappCloudApi";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -186,6 +191,8 @@ export function SettingsPage() {
   );
   const [whatsMessageModalOpen, setWhatsMessageModalOpen] = useState(false);
   const [whatsMessageDraft, setWhatsMessageDraft] = useState<string>(() => loadVistoriaWhatsappMessageTemplate());
+  const [whatsApiToken, setWhatsApiToken] = useState<string>(() => readWhatsAppCloudApiConfig().token);
+  const [whatsApiPhoneNumberId, setWhatsApiPhoneNumberId] = useState<string>(() => readWhatsAppCloudApiConfig().phoneNumberId);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -505,6 +512,17 @@ export function SettingsPage() {
     setWhatsMessageModalOpen(false);
   }
 
+  function handleSaveWhatsApiConfig() {
+    const token = whatsApiToken.trim();
+    const phoneNumberId = whatsApiPhoneNumberId.trim();
+    if (!token || !phoneNumberId) {
+      window.alert("Preencha Access Token e Phone Number ID da Cloud API.");
+      return;
+    }
+    saveWhatsAppCloudApiConfig({ token, phoneNumberId });
+    window.alert("Configuração da API do WhatsApp salva neste navegador.");
+  }
+
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -817,6 +835,49 @@ export function SettingsPage() {
                   >
                     Editar mensagem automática
                   </Button>
+                </div>
+                <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.1] p-3 space-y-2">
+                  <p className="text-sm font-medium text-[hsl(var(--foreground))]">Configuração da API (produção/pages)</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_260px_auto] md:items-end">
+                    <div className="space-y-1">
+                      <label
+                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                        htmlFor="vistoria-whats-api-token"
+                      >
+                        Access Token
+                      </label>
+                      <input
+                        id="vistoria-whats-api-token"
+                        type="password"
+                        value={whatsApiToken}
+                        onChange={(e) => setWhatsApiToken(e.target.value)}
+                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                        placeholder="Cole o token da Cloud API"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label
+                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                        htmlFor="vistoria-whats-api-phone-id"
+                      >
+                        Phone Number ID
+                      </label>
+                      <input
+                        id="vistoria-whats-api-phone-id"
+                        type="text"
+                        value={whatsApiPhoneNumberId}
+                        onChange={(e) => setWhatsApiPhoneNumberId(e.target.value)}
+                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                        placeholder="Ex.: 1141540469032095"
+                      />
+                    </div>
+                    <Button type="button" variant="outline" className="h-10" onClick={handleSaveWhatsApiConfig}>
+                      Salvar API
+                    </Button>
+                  </div>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    Use este bloco quando estiver em ambiente publicado (GitHub Pages) e o .env local não estiver disponível.
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
                   <div className="space-y-1">
