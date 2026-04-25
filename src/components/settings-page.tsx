@@ -3,6 +3,7 @@ import { useDeparturesReportEmail } from "../context/departures-report-email-con
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { Loader2 } from "lucide-react";
 import {
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
@@ -23,7 +24,7 @@ import {
   isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
-import { sendWhatsAppTemplateHelloWorld } from "../lib/whatsappCloudApi";
+import { sendWhatsAppTemplateHelloWorld, sendWhatsAppTextMessage } from "../lib/whatsappCloudApi";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -176,6 +177,7 @@ export function SettingsPage() {
   const [vistoriaWhatsappContacts, setVistoriaWhatsappContacts] = useState<VistoriaWhatsappContact[]>(
     () => loadVistoriaWhatsappContacts(),
   );
+  const [testingWhatsappMotorista, setTestingWhatsappMotorista] = useState<string | null>(null);
   const [vistoriaWhatsappTriggerTime, setVistoriaWhatsappTriggerTime] = useState<string>(() =>
     loadVistoriaWhatsappTriggerTime(),
   );
@@ -468,12 +470,29 @@ export function SettingsPage() {
   }
 
   async function handleTestVistoriaWhatsappContact(row: VistoriaWhatsappContact) {
-    const result = await sendWhatsAppTemplateHelloWorld(row.telefone);
-    if (!result.ok) {
-      window.alert(`Falha no envio de teste via WhatsApp API: ${result.error}`);
+    setTestingWhatsappMotorista(row.motorista);
+    const now = new Date();
+    const text =
+      `SOT 2.0 - Mensagem de teste\n` +
+      `Motorista: ${row.motorista}\n` +
+      `Data: ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR")}\n` +
+      `Envio imediato de teste do WhatsApp da vistoria.`;
+    const textResult = await sendWhatsAppTextMessage(row.telefone, text);
+    if (!textResult.ok) {
+      const templateResult = await sendWhatsAppTemplateHelloWorld(row.telefone);
+      if (!templateResult.ok) {
+        window.alert(`Falha no envio de teste via WhatsApp API: ${textResult.error}`);
+        setTestingWhatsappMotorista(null);
+        return;
+      }
+      window.alert(
+        `Teste enviado para ${row.motorista} com template padrao (a conta pode estar fora da janela de 24h).`,
+      );
+      setTestingWhatsappMotorista(null);
       return;
     }
-    window.alert(`Mensagem de teste enviada para ${row.motorista}.`);
+    window.alert(`Mensagem de teste enviada imediatamente para ${row.motorista}.`);
+    setTestingWhatsappMotorista(null);
   }
 
   function handleSaveWhatsMessageTemplate() {
@@ -859,11 +878,19 @@ export function SettingsPage() {
                             type="button"
                             variant="outline"
                             className="h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            disabled={testingWhatsappMotorista === row.motorista}
                             onClick={() => {
                               void handleTestVistoriaWhatsappContact(row);
                             }}
                           >
-                            Teste
+                            {testingWhatsappMotorista === row.motorista ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Enviando...
+                              </span>
+                            ) : (
+                              "Teste"
+                            )}
                           </Button>
                           <Button
                             type="button"
@@ -994,6 +1021,13 @@ export function SettingsPage() {
                 className="w-full rounded-md border border-[hsl(var(--border))] bg-white p-3 text-sm"
               />
               <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setWhatsMessageDraft(DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE)}
+                >
+                  Restaurar padrão
+                </Button>
                 <Button type="button" variant="outline" onClick={() => setWhatsMessageModalOpen(false)}>
                   Cancelar
                 </Button>
