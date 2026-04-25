@@ -801,11 +801,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <Card className="w-full max-w-lg border-[hsl(var(--primary))]/25 shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-[hsl(var(--border))]">
               <CardTitle className="text-lg">
-                Itens com anotação (Marcar Problema)
+                Relatório Simplificado da Viatura
                 {(() => {
                   const first = porViatura.get(vistoriaProblemaModalKey)?.[0];
                   return first?.viatura ? (
-                    <span className="block text-sm font-normal text-[hsl(var(--muted-foreground))]">{first.viatura}</span>
+                    <span className="block text-sm font-bold text-[hsl(var(--muted-foreground))]">{first.viatura}</span>
                   ) : null;
                 })()}
               </CardTitle>
@@ -823,12 +823,12 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                       key={`${item.inspectionId}-${item.itemKey}`}
                       className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.12] p-3"
                     >
-                      <p className="text-sm font-semibold text-[hsl(var(--primary))]">{item.itemLabel}</p>
+                      <p className="text-sm font-semibold text-orange-500">{item.itemLabel}</p>
                       <p className="text-xs text-[hsl(var(--muted-foreground))]">
                         Data da vistoria: {formatIsoDatePtBrShort(item.inspectionDate)}
                       </p>
                       {item.anotacao ? (
-                        <p className="mt-2 text-sm text-[hsl(var(--foreground))]">{item.anotacao}</p>
+                        <p className="mt-2 text-sm font-bold text-orange-500">{item.anotacao}</p>
                       ) : (
                         <p className="mt-2 text-sm italic text-[hsl(var(--muted-foreground))]">Sem anotação escrita.</p>
                       )}
