@@ -47,6 +47,7 @@ import {
   type ResolvedIssue,
   updateVistoriaCloudState,
 } from "../lib/vistoriaCloudState";
+import { buildVistoriaSituacaoImprimirPdf, type VistoriaSituacaoImprimirPdfRow } from "../lib/generateVistoriaSituacaoPdf";
 import { buildViaturasPorMotoristaMap, getVistoriaCalendarDayTintForIso } from "../lib/vistoriaCalendarTint";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -63,6 +64,19 @@ function startOfLocalMonth(d: Date): Date {
 
 function monthLabelPtBr(date: Date): string {
   return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
+function isoFromPtBrDateInput(value: string): string {
+  const trimmed = value.trim();
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (!m) return "";
+  const [, dd, mm, yyyy] = m;
+  const day = Number(dd);
+  const month = Number(mm);
+  const year = Number(yyyy);
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return "";
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function issueRowKey(rowId: string): string {
@@ -109,23 +123,23 @@ function renderEstadoViaturaObservacoes(o: EstadoViaturaObservacoes | undefined)
   if (!o) return "—";
   if (o.kind === "localizacao") {
     return (
-      <span className="whitespace-pre-wrap italic font-normal">
-        <span>{o.prefix}</span> <span>{o.value}</span>
+      <span className="whitespace-pre-wrap">
+        <strong>{o.prefix}</strong> <em className="italic font-normal">{o.value}</em>
       </span>
     );
   }
   const hasSeg = o.plain !== undefined || o.italic !== undefined;
   return (
     <span className="whitespace-pre-wrap">
-      <span className="italic font-normal">{o.itemLabel}: </span>
+      <strong>{o.itemLabel}:</strong>{" "}
       {hasSeg ? (
         <>
-          {o.plain ? <span className="italic font-normal">{o.plain}</span> : null}
+          {o.plain ? <em className="italic font-normal">{o.plain}</em> : null}
           {o.italic ? <em className="italic font-normal text-[hsl(var(--foreground))]">{o.italic}</em> : null}
-          {!o.plain && !o.italic ? <span className="italic font-normal">—</span> : null}
+          {!o.plain && !o.italic ? <em className="italic font-normal">—</em> : null}
         </>
       ) : (
-        <span className="italic font-normal">{o.body ?? "—"}</span>
+        <em className="italic font-normal">{o.body ?? "—"}</em>
       )}
     </span>
   );
@@ -344,6 +358,8 @@ export function VistoriaPage() {
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
   const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
   const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
+  const [estadoViaturasFilterViatura, setEstadoViaturasFilterViatura] = useState("");
+  const [estadoViaturasFilterDate, setEstadoViaturasFilterDate] = useState("");
   const ignoreEstadoVtrLocal = isOnline && isFirebaseOnlyOnlineActive();
 
   const viaturas = useMemo(() => {
@@ -692,6 +708,15 @@ export function VistoriaPage() {
   }, [issueControls]);
   const getRowIssueControlState = useCallback(
     (row: VtrSituacaoPendenteRow): RowIssueControlState => {
+      const primaryControl = issueControlMap.get(`${row.inspectionId}:${row.itemKey}`);
+      // Prioriza o controle da própria linha atual para evitar "herança" de marcações antigas.
+      if (primaryControl) {
+        return {
+          problemMarked: primaryControl.problemMarked,
+          priorityMarked: primaryControl.priorityMarked,
+          printMarked: primaryControl.printMarked,
+        };
+      }
       let foundAny = false;
       let problemMarked = true;
       let priorityMarked = false;
@@ -868,6 +893,24 @@ export function VistoriaPage() {
     return rows;
   }, [inspections, estadoVtrCutoffMs, estadoVtrDeletedMap, ignoreEstadoVtrLocal]);
 
+  const estadoViaturasRowsFiltered = useMemo(() => {
+    const viaturaFilter = estadoViaturasFilterViatura.trim().toLowerCase();
+    const dateFilterIso = isoFromPtBrDateInput(estadoViaturasFilterDate);
+    return estadoViaturasRows.filter((row) => {
+      const sameViatura = !viaturaFilter || row.viatura.trim().toLowerCase() === viaturaFilter;
+      const sameDate = !estadoViaturasFilterDate || (dateFilterIso !== "" && row.inspectionDate === dateFilterIso);
+      return sameViatura && sameDate;
+    });
+  }, [estadoViaturasRows, estadoViaturasFilterViatura, estadoViaturasFilterDate]);
+
+  const estadoViaturasRowsPrintable = useMemo(() => {
+    return estadoViaturasRowsFiltered.filter((row) => {
+      const controlKey = `${row.inspectionId}:${row.itemKey ?? "outros"}`;
+      const control = issueControlMap.get(controlKey);
+      return control?.printMarked === true;
+    });
+  }, [estadoViaturasRowsFiltered, issueControlMap]);
+
   useEffect(() => {
     let cancelled = false;
     const refs = [...new Set(estadoViaturasRows.map((row) => row.rubrica.trim()).filter((r) => r.startsWith("rubrica_ref:")))];
@@ -906,6 +949,103 @@ export function VistoriaPage() {
       next.splice(to, 0, moved);
       return next;
     });
+  }
+
+  async function handleToggleEstadoViaturaControl(
+    row: EstadoViaturaRow,
+    field: "problemMarked" | "priorityMarked" | "printMarked",
+    checked: boolean,
+  ) {
+    const itemKey: ChecklistKey = row.itemKey ?? "outros";
+    setIssueControls((prev) => {
+      const idx = prev.findIndex((ctrl) => ctrl.inspectionId === row.inspectionId && ctrl.itemKey === itemKey);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], [field]: checked };
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          id: `control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          inspectionId: row.inspectionId,
+          itemKey,
+          problemMarked: field === "problemMarked" ? checked : true,
+          priorityMarked: field === "priorityMarked" ? checked : false,
+          printMarked: field === "printMarked" ? checked : false,
+        },
+      ];
+    });
+
+    try {
+      await updateVistoriaCloudState((prev) => {
+        const idx = prev.issueControls.findIndex(
+          (ctrl) => ctrl.inspectionId === row.inspectionId && ctrl.itemKey === itemKey,
+        );
+        if (idx >= 0) {
+          const nextIssueControls = [...prev.issueControls];
+          nextIssueControls[idx] = { ...nextIssueControls[idx], [field]: checked };
+          return { ...prev, issueControls: nextIssueControls };
+        }
+        return {
+          ...prev,
+          issueControls: [
+            ...prev.issueControls,
+            {
+              id: `control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              inspectionId: row.inspectionId,
+              itemKey,
+              problemMarked: field === "problemMarked" ? checked : true,
+              priorityMarked: field === "priorityMarked" ? checked : false,
+              printMarked: field === "printMarked" ? checked : false,
+            },
+          ],
+        };
+      });
+    } catch (err) {
+      console.error("[SOT] Falha ao atualizar controle da vistoria:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+    }
+  }
+
+  async function handleGenerateEstadoViaturasPdf() {
+    if (estadoViaturasRowsPrintable.length === 0) {
+      window.alert("Nenhuma linha marcada em Imprimir para gerar PDF.");
+      return;
+    }
+    try {
+      const pdfRows: VistoriaSituacaoImprimirPdfRow[] = estadoViaturasRowsPrintable.map((row) => {
+        const rubricaRaw = row.rubrica.trim();
+        const rubricaResolved =
+          rubricaRaw.startsWith("rubrica_ref:") ? (rubricaRefResolvedMap[rubricaRaw] ?? "") : rubricaRaw;
+        if (row.observacoes.kind === "item") {
+          return {
+            inspectionDate: formatIsoDatePtBr(row.inspectionDate),
+            viatura: row.viatura,
+            vistoriador: row.vistoriador,
+            itemLabel: row.observacoes.itemLabel,
+            observacaoPlain: String(row.observacoes.plain ?? row.observacoes.body ?? "").trim(),
+            observacaoItalic: String(row.observacoes.italic ?? "").trim() || undefined,
+            rubricaComum: rubricaResolved,
+            rubricaAdministrativa: "",
+          };
+        }
+        return {
+          inspectionDate: formatIsoDatePtBr(row.inspectionDate),
+          viatura: row.viatura,
+          vistoriador: row.vistoriador,
+          itemLabel: row.observacoes.prefix,
+          observacaoPlain: String(row.observacoes.value ?? "").trim(),
+          rubricaComum: rubricaResolved,
+          rubricaAdministrativa: "",
+        };
+      });
+      const { doc, filename } = await buildVistoriaSituacaoImprimirPdf(pdfRows);
+      doc.save(filename);
+    } catch (err) {
+      console.error("[SOT] Falha ao gerar PDF de Estado das Viaturas:", err);
+      window.alert("Falha ao gerar o PDF. Tente novamente.");
+    }
   }
 
   function finalizeDeleteEstadoRow(row: EstadoViaturaRow) {
@@ -1067,7 +1207,28 @@ export function VistoriaPage() {
       window.alert(`Marque OK ou Anotações para "${pendingChecklist.label}".`);
       return;
     }
-    const semObs = primeiroLabelAnotacoesSemObservacao(inspectionChecklist, inspectionChecklistNotes);
+    const checklistToSave: VistoriaChecklist = { ...inspectionChecklist };
+    const notesToSave: VistoriaChecklistNotes = { ...inspectionChecklistNotes };
+    const existing = findLatestInspectionForFormPrefill(inspections, motoristaRef, viaturaRef);
+    const baseChecklist = checklistComOkPorDefeito({ ...emptyChecklist(), ...(existing?.checklist ?? {}) });
+    const baseNotes = { ...emptyChecklistNotes(), ...(existing?.checklistNotes ?? {}) };
+    const prefill = applySituacaoVtrPendingPrefillForViatura({
+      inspections,
+      viatura: viaturaRef,
+      baseChecklist,
+      baseNotes,
+    });
+    for (const { key } of CHECKLIST_ITEMS) {
+      const unchangedPrefilledAlteracao =
+        checklistToSave[key] === "Alterações" &&
+        prefill.checklist[key] === "Alterações" &&
+        String(notesToSave[key] ?? "").trim() === String(prefill.notes[key] ?? "").trim();
+      if (!unchangedPrefilledAlteracao) continue;
+      // Não reaplica rubrica nova em item herdado e não editado.
+      checklistToSave[key] = "OK";
+      notesToSave[key] = "";
+    }
+    const semObs = primeiroLabelAnotacoesSemObservacao(checklistToSave, notesToSave);
     if (semObs) {
       setAvisoObservacaoItemLabel(semObs);
       return;
@@ -1075,13 +1236,13 @@ export function VistoriaPage() {
     autoResolveAdministrativeRedundanciesOnCommonSave({
       inspections,
       viatura: viaturaRef,
-      checklist: inspectionChecklist,
-      notes: inspectionChecklistNotes,
+      checklist: checklistToSave,
+      notes: notesToSave,
     });
     autoResolveOlderPendingRowsOnSave({
       inspections,
       viatura: viaturaRef,
-      checklist: inspectionChecklist,
+      checklist: checklistToSave,
       origemMobile: false,
       localizacaoViatura,
     });
@@ -1096,8 +1257,8 @@ export function VistoriaPage() {
             viatura: viaturaRef,
             inspectionDate: selectedInspectionDate,
             localizacaoViatura,
-            checklist: inspectionChecklist,
-            checklistNotes: inspectionChecklistNotes,
+            checklist: checklistToSave,
+            checklistNotes: notesToSave,
             createdAt: Date.now(),
             rubrica: "",
           },
@@ -1467,7 +1628,72 @@ export function VistoriaPage() {
             <CardTitle>Estado das Viaturas</CardTitle>
           </CardHeader>
           <CardContent>
-            {estadoViaturasRows.length === 0 ? (
+            <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                  Viatura
+                </span>
+                <select
+                  value={estadoViaturasFilterViatura}
+                  onChange={(e) => setEstadoViaturasFilterViatura(e.target.value)}
+                  className="h-10 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                >
+                  <option value="">Todas as viaturas</option>
+                  {viaturas.map((viatura) => (
+                    <option key={viatura} value={viatura}>
+                      {viatura}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                  Data
+                </span>
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                  <input
+                    type="text"
+                    value={estadoViaturasFilterDate}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+                      const p1 = digits.slice(0, 2);
+                      const p2 = digits.slice(2, 4);
+                      const p3 = digits.slice(4, 8);
+                      const masked = [p1, p2, p3].filter(Boolean).join("/");
+                      setEstadoViaturasFilterDate(masked);
+                    }}
+                    inputMode="numeric"
+                    placeholder="dd/mm/aaaa"
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                  />
+                </div>
+              </label>
+              <div className="flex items-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 flex-1"
+                  onClick={() => {
+                    setEstadoViaturasFilterViatura("");
+                    setEstadoViaturasFilterDate("");
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+                <Button
+                  type="button"
+                  className="h-10 flex-1"
+                  onClick={() => {
+                    void handleGenerateEstadoViaturasPdf();
+                  }}
+                  disabled={estadoViaturasRowsPrintable.length === 0}
+                >
+                  Gerar PDF
+                </Button>
+              </div>
+            </div>
+            {estadoViaturasRowsFiltered.length === 0 ? (
               <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhuma vistoria registrada no momento.</p>
             ) : (
               <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]">
@@ -1478,17 +1704,61 @@ export function VistoriaPage() {
                       <TableHead className="font-bold text-[hsl(var(--primary))]">DATA</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">OBSERVAÇÕES</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">VISTORIADOR</TableHead>
+                      <TableHead className="text-center font-bold text-[hsl(var(--primary))]">MARCAR</TableHead>
+                      <TableHead className="text-center font-bold text-[hsl(var(--primary))]">PRIORIDADE</TableHead>
+                      <TableHead className="text-center font-bold text-[hsl(var(--primary))]">IMPRIMIR</TableHead>
                       <TableHead className="font-bold text-[hsl(var(--primary))]">RUBRICA</TableHead>
                       <TableHead className="text-right font-bold text-[hsl(var(--primary))]">AÇÕES</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {estadoViaturasRows.map((row, index) => (
+                    {estadoViaturasRowsFiltered.map((row, index) => (
                       <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
+                        {(() => {
+                          const controlKey = `${row.inspectionId}:${row.itemKey ?? "outros"}`;
+                          const control = issueControlMap.get(controlKey);
+                          const problemMarked = control?.problemMarked ?? true;
+                          const priorityMarked = control?.priorityMarked ?? false;
+                          const printMarked = control?.printMarked ?? false;
+                          return (
+                            <>
                         <TableCell className="font-semibold">{row.viatura || "—"}</TableCell>
                         <TableCell>{formatIsoDatePtBr(row.inspectionDate)}</TableCell>
                         <TableCell>{renderEstadoViaturaObservacoes(row.observacoes)}</TableCell>
                         <TableCell>{row.vistoriador?.trim() ? row.vistoriador : "—"}</TableCell>
+                        <TableCell className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={problemMarked}
+                            onChange={(e) => {
+                              void handleToggleEstadoViaturaControl(row, "problemMarked", e.target.checked);
+                            }}
+                            aria-label={`Marcar ${row.viatura}`}
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={priorityMarked}
+                            onChange={(e) => {
+                              void handleToggleEstadoViaturaControl(row, "priorityMarked", e.target.checked);
+                            }}
+                            aria-label={`Prioridade ${row.viatura}`}
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={printMarked}
+                            onChange={(e) => {
+                              void handleToggleEstadoViaturaControl(row, "printMarked", e.target.checked);
+                            }}
+                            aria-label={`Imprimir ${row.viatura}`}
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                          />
+                        </TableCell>
                         <TableCell>
                           {(() => {
                             const raw = row.rubrica.trim();
@@ -1518,6 +1788,9 @@ export function VistoriaPage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
+                            </>
+                          );
+                        })()}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1531,9 +1804,7 @@ export function VistoriaPage() {
         <Card>
           <CardHeader>
             <CardTitle>Prioridades</CardTitle>
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Arraste as linhas para alterar a ordem (1° no topo). A ordem é salva neste navegador.
-            </p>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">Mostra apenas viaturas e observações marcadas em prioridade.</p>
           </CardHeader>
           <CardContent>
             {vtrPrioridadesOrdered.length === 0 ? (
@@ -1576,8 +1847,8 @@ export function VistoriaPage() {
                         aria-hidden
                       />
                       <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-base font-semibold text-[hsl(var(--foreground))]">{row.viatura}</p>
-                        <div className="whitespace-pre-wrap text-sm text-[hsl(var(--muted-foreground))]">
+                        <p className="text-base font-semibold text-[hsl(var(--primary))]">{row.viatura}</p>
+                        <div className="whitespace-pre-wrap text-sm font-bold text-[hsl(var(--foreground))]">
                           {renderAnotacaoSituacao(row)}
                         </div>
                       </div>

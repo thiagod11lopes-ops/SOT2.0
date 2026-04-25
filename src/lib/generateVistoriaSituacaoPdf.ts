@@ -6,8 +6,8 @@ import { isRubricaImageDataUrl } from "./rubricaDrawing";
 const RUBRICA_UI_MAX_W_MM = (148 * 25.4) / 96;
 /** Alinha com `max-h-28` (112px se 1rem=16px → 7rem). */
 const RUBRICA_UI_MAX_H_MM = (112 * 25.4) / 96;
-/** No PDF, a imagem da rubrica é desenhada a 50% da caixa lógica do ecrã. */
-const RUBRICA_PDF_DISPLAY_SCALE = 0.5;
+/** No PDF, a imagem da rubrica é desenhada a 80% da caixa lógica do ecrã. */
+const RUBRICA_PDF_DISPLAY_SCALE = 0.8;
 
 function fitRubricaImageMm(
   naturalW: number,
@@ -88,6 +88,7 @@ export type VistoriaSituacaoImprimirPdfRow = {
   inspectionDate: string;
   inspectionDateSecondary?: string;
   viatura: string;
+  vistoriador?: string;
   itemLabel: string;
   observacaoPlain: string;
   observacaoItalic?: string;
@@ -113,33 +114,55 @@ export async function buildVistoriaSituacaoImprimirPdf(
   const margin = 10;
   const pageW = doc.internal.pageSize.getWidth();
 
+  const uniqueViaturas = new Set(rows.map((r) => r.viatura.trim()).filter(Boolean));
+  const titulo = uniqueViaturas.size <= 1 ? "Situação da VTR" : "Situação das VTR";
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("Situação das VTR — itens com Imprimir marcado", margin, margin);
+  doc.setFontSize(28);
+  doc.text(titulo, margin, margin);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(18);
   doc.setTextColor(60, 60, 60);
   const generated = new Date().toLocaleString("pt-BR");
   doc.text(`Gerado em: ${generated}`, margin, margin + 6);
   doc.setTextColor(0, 0, 0);
 
-  const head = [["Data da Vistoria", "Viatura", "Item com Anotação", "Anotação", "Rubricas"]];
+  const head = [["Data da Vistoria", "Viatura", "Anotação", "Vistoriador", "Rubricas"]];
 
   const body = rows.map((r) => [
     r.inspectionDateSecondary?.trim() ? `${r.inspectionDate}\n(${r.inspectionDateSecondary})` : r.inspectionDate,
     r.viatura,
-    r.itemLabel,
     `${r.observacaoPlain ?? ""}${r.observacaoItalic ?? ""}`.trim() || "—",
+    r.vistoriador?.trim() || "—",
     " ",
   ]);
+
+  const rubricaDisplayWidths = rows.map((r, idx) => {
+    const content = String(r.rubricaComum ?? r.rubricaAdministrativa ?? "").trim();
+    if (!content) return 6;
+    if (isRubricaImageDataUrl(content)) {
+      const natural = rubricaLayouts[idx]?.comum ?? rubricaLayouts[idx]?.admin;
+      const nw = natural?.w ?? 400;
+      const nh = natural?.h ?? 280;
+      const maxW = RUBRICA_UI_MAX_W_MM * RUBRICA_PDF_DISPLAY_SCALE;
+      const maxH = RUBRICA_UI_MAX_H_MM * RUBRICA_PDF_DISPLAY_SCALE;
+      const { iw } = fitRubricaImageMm(nw, nh, maxW, maxH);
+      return iw;
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    const textW = doc.getTextWidth(content);
+    return Math.min(60, Math.max(6, textW));
+  });
+  const rubricaContentW = rubricaDisplayWidths.length > 0 ? Math.max(...rubricaDisplayWidths) : 18;
+  const rubricaColW = Math.min(70, Math.max(18, rubricaContentW + 4));
 
   autoTable(doc, {
     startY: margin + 10,
     head,
     body,
     styles: {
-      fontSize: 7,
+      fontSize: 14,
       cellPadding: 1.6,
       overflow: "linebreak",
       valign: "middle",
@@ -163,9 +186,9 @@ export async function buildVistoriaSituacaoImprimirPdf(
     columnStyles: {
       0: { cellWidth: 32 },
       1: { cellWidth: 32 },
-      2: { cellWidth: 46 },
-      3: { cellWidth: 94 },
-      4: { cellWidth: 73 },
+      2: { cellWidth: "auto" },
+      3: { cellWidth: 40 },
+      4: { cellWidth: rubricaColW },
     },
     didParseCell: (data) => {
       if (data.section === "head") {
@@ -189,7 +212,7 @@ export async function buildVistoriaSituacaoImprimirPdf(
     },
     willDrawCell: (data) => {
       if (data.section !== "body") return;
-      if (data.column.index === 0 || data.column.index === 3 || data.column.index === 4) {
+      if (data.column.index === 0 || data.column.index === 2 || data.column.index === 4) {
         data.cell.text = [];
       }
     },
@@ -223,18 +246,18 @@ export async function buildVistoriaSituacaoImprimirPdf(
         return;
       }
 
-      if (data.column.index === 3) {
+      if (data.column.index === 2) {
         const plain = (row.observacaoPlain ?? "").trim();
         const italic = (row.observacaoItalic ?? "").trim();
         if (!plain && !italic) {
-          doc.setFont("helvetica", "normal");
+          doc.setFont("helvetica", "bolditalic");
           const top = data.cell.y + cellH / 2 + lineGap * 0.22;
           doc.text("—", left, top, { maxWidth });
           return;
         }
         let nLines = 0;
         if (plain) {
-          doc.setFont("helvetica", "normal");
+          doc.setFont("helvetica", "bolditalic");
           nLines += (doc.splitTextToSize(plain, maxWidth) as string[]).length;
         }
         if (italic) {
@@ -244,7 +267,7 @@ export async function buildVistoriaSituacaoImprimirPdf(
         const totalH = Math.max(lineGap, nLines * lineGap);
         let y = data.cell.y + (cellH - totalH) / 2 + lineGap * 0.72;
         if (plain) {
-          doc.setFont("helvetica", "normal");
+          doc.setFont("helvetica", "bolditalic");
           const plainLines = doc.splitTextToSize(plain, maxWidth) as string[];
           for (const line of plainLines) {
             doc.text(line, left, y, { maxWidth });
@@ -263,81 +286,47 @@ export async function buildVistoriaSituacaoImprimirPdf(
       }
 
       if (data.column.index === 4) {
-        const gapMm = 2;
-        const halfW = Math.max(10, (maxWidth - gapMm) / 2);
-        const leftX = left;
-        const rightX = left + halfW + gapMm;
-        const boxMaxW = Math.min(halfW - 0.5, RUBRICA_UI_MAX_W_MM) * RUBRICA_PDF_DISPLAY_SCALE;
+        const boxMaxW = Math.min(maxWidth - 0.5, RUBRICA_UI_MAX_W_MM) * RUBRICA_PDF_DISPLAY_SCALE;
         const boxMaxH = RUBRICA_UI_MAX_H_MM * RUBRICA_PDF_DISPLAY_SCALE;
         const layout = rubricaLayouts[data.row.index];
-        const LABEL_GAP_MM = 3.2;
-
-        const hL = measureRubricaBlockHeightMm(
-          row.rubricaComum ?? "",
-          layout?.comum,
-          halfW,
+        const content = String(row.rubricaComum ?? row.rubricaAdministrativa ?? "").trim();
+        const contentH = measureRubricaBlockHeightMm(
+          content,
+          layout?.comum ?? layout?.admin,
+          maxWidth,
           boxMaxW,
           boxMaxH,
           doc,
           lineGap,
         );
-        const hR = measureRubricaBlockHeightMm(
-          row.rubricaAdministrativa ?? "",
-          layout?.admin,
-          halfW,
-          boxMaxW,
-          boxMaxH,
-          doc,
-          lineGap,
-        );
-        const contentMax = Math.max(hL, hR);
-        const blockH = LABEL_GAP_MM + contentMax;
-        const yLabel = data.cell.y + (cellH - blockH) / 2 + 1.35;
-
-        const drawBlock = (
-          raw: string,
-          startX: number,
-          startY: number,
-          natural: { w: number; h: number } | null | undefined,
-        ): number => {
-          let yy = startY;
-          const content = String(raw ?? "").trim();
-          if (!content) {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(7);
-            doc.text("—", startX, yy);
-            return yy + lineGap;
-          }
-          if (isRubricaImageDataUrl(content)) {
-            const nw = natural?.w ?? 400;
-            const nh = natural?.h ?? 280;
-            const { iw, ih } = fitRubricaImageMm(nw, nh, boxMaxW, boxMaxH);
-            try {
-              doc.addImage(content, "PNG", startX, yy, iw, ih);
-            } catch {
-              doc.setFont("helvetica", "italic");
-              doc.setFontSize(6);
-              doc.text("(imagem)", startX, yy);
-            }
-            return yy + ih + 1.2;
-          }
+        let y = data.cell.y + (cellH - contentH) / 2 + lineGap * 0.72;
+        if (!content) {
           doc.setFont("helvetica", "normal");
-          doc.setFontSize(7);
-          const lines = doc.splitTextToSize(content, halfW - 0.5) as string[];
-          for (const line of lines) {
-            doc.text(line, startX, yy, { maxWidth: halfW - 0.5 });
-            yy += lineGap;
+          doc.setFontSize(14);
+          doc.text("—", left, y);
+          return;
+        }
+        if (isRubricaImageDataUrl(content)) {
+          const natural = layout?.comum ?? layout?.admin;
+          const nw = natural?.w ?? 400;
+          const nh = natural?.h ?? 280;
+          const { iw, ih } = fitRubricaImageMm(nw, nh, boxMaxW, boxMaxH);
+          try {
+            doc.addImage(content, "PNG", left, y - lineGap * 0.55, iw, ih);
+          } catch {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(6);
+            doc.text("(imagem)", left, y);
           }
-          return yy;
-        };
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6);
-        doc.text("Comum", leftX, yLabel);
-        doc.text("Administrativa", rightX, yLabel);
-        const yContent = yLabel + LABEL_GAP_MM;
-        drawBlock(row.rubricaComum ?? "", leftX, yContent, layout?.comum);
-        drawBlock(row.rubricaAdministrativa ?? "", rightX, yContent, layout?.admin);
+          return;
+        }
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(14);
+        const lines = doc.splitTextToSize(content, maxWidth) as string[];
+        for (const line of lines) {
+          doc.text(line, left, y, { maxWidth });
+          y += lineGap;
+        }
       }
     },
   });

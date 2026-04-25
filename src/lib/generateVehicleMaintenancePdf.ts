@@ -71,11 +71,13 @@ export async function buildVehicleMaintenancePdf(
   const margin = 12;
   const pageW = doc.internal.pageSize.getWidth();
   const centerX = pageW / 2;
+  const uniquePlacas = new Set(params.placas.map((p) => p.trim()).filter(Boolean));
+  const titulo = uniquePlacas.size <= 1 ? "Manutenção — Troca de óleo" : "Manutenções — Troca de óleo";
 
   let y = margin;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
-  doc.text("Manutenções — Troca de óleo", centerX, y, { align: "center" });
+  doc.text(titulo, centerX, y, { align: "center" });
   y += 6.5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
