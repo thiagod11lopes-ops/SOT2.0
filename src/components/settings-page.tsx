@@ -60,6 +60,11 @@ type VistoriaWhatsappContact = {
 };
 
 const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
+const VISTORIA_WHATSAPP_TRIGGER_TIME_KEY = "sot_vistoria_whatsapp_trigger_time_v1";
+const VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY = "sot_vistoria_whatsapp_message_template_v1";
+const DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME = "14:00";
+const DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE =
+  "SOT 2.0 - Aviso de vistoria\nMotorista: {motorista}\nData: {data}\nHá viatura(s) pendente(s) de vistoria: {placas}.\nPor favor, realize a vistoria o quanto antes.";
 
 function normalizePhone(input: string): string {
   return input.replace(/\D/g, "");
@@ -88,6 +93,26 @@ function loadVistoriaWhatsappContacts(): VistoriaWhatsappContact[] {
       .filter((row) => row.motorista && row.telefone);
   } catch {
     return [];
+  }
+}
+
+function loadVistoriaWhatsappTriggerTime(): string {
+  if (typeof localStorage === "undefined") return DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
+  try {
+    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_TRIGGER_TIME_KEY) ?? "").trim();
+    return /^\d{2}:\d{2}$/.test(raw) ? raw : DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
+  } catch {
+    return DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
+  }
+}
+
+function loadVistoriaWhatsappMessageTemplate(): string {
+  if (typeof localStorage === "undefined") return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
+  try {
+    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY) ?? "");
+    return raw.trim() ? raw : DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
+  } catch {
+    return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
   }
 }
 
@@ -151,6 +176,14 @@ export function SettingsPage() {
   const [vistoriaWhatsappContacts, setVistoriaWhatsappContacts] = useState<VistoriaWhatsappContact[]>(
     () => loadVistoriaWhatsappContacts(),
   );
+  const [vistoriaWhatsappTriggerTime, setVistoriaWhatsappTriggerTime] = useState<string>(() =>
+    loadVistoriaWhatsappTriggerTime(),
+  );
+  const [vistoriaWhatsappMessageTemplate, setVistoriaWhatsappMessageTemplate] = useState<string>(() =>
+    loadVistoriaWhatsappMessageTemplate(),
+  );
+  const [whatsMessageModalOpen, setWhatsMessageModalOpen] = useState(false);
+  const [whatsMessageDraft, setWhatsMessageDraft] = useState<string>(() => loadVistoriaWhatsappMessageTemplate());
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -223,6 +256,20 @@ export function SettingsPage() {
       /* ignore */
     }
   }, [vistoriaWhatsappContacts]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(VISTORIA_WHATSAPP_TRIGGER_TIME_KEY, vistoriaWhatsappTriggerTime);
+    } catch {
+      /* ignore */
+    }
+  }, [vistoriaWhatsappTriggerTime]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY, vistoriaWhatsappMessageTemplate);
+    } catch {
+      /* ignore */
+    }
+  }, [vistoriaWhatsappMessageTemplate]);
   const ambulancias = useMemo(
     () => departures.filter((d) => d.tipo === "Ambulância"),
     [departures],
@@ -427,6 +474,16 @@ export function SettingsPage() {
       return;
     }
     window.alert(`Mensagem de teste enviada para ${row.motorista}.`);
+  }
+
+  function handleSaveWhatsMessageTemplate() {
+    const trimmed = whatsMessageDraft.trim();
+    if (!trimmed) {
+      window.alert("A mensagem automática não pode ficar vazia.");
+      return;
+    }
+    setVistoriaWhatsappMessageTemplate(trimmed);
+    setWhatsMessageModalOpen(false);
   }
 
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -714,6 +771,34 @@ export function SettingsPage() {
                 <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
                   Cadastre os contatos dos motoristas para aviso de vistoria no WhatsApp.
                 </p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-trigger-time">
+                      Horário de disparo
+                    </label>
+                    <input
+                      id="vistoria-whats-trigger-time"
+                      type="time"
+                      value={vistoriaWhatsappTriggerTime}
+                      onChange={(e) => setVistoriaWhatsappTriggerTime(e.target.value)}
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                    />
+                  </div>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    A mensagem automática será avaliada todos os dias a partir desse horário.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10"
+                    onClick={() => {
+                      setWhatsMessageDraft(vistoriaWhatsappMessageTemplate);
+                      setWhatsMessageModalOpen(true);
+                    }}
+                  >
+                    Editar mensagem automática
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-motorista">
@@ -891,6 +976,34 @@ export function SettingsPage() {
           assignments={vistoriaCloudSnapshot.assignments}
           inspections={vistoriaCloudSnapshot.inspections}
         />
+      ) : null}
+      {whatsMessageModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-2xl">
+            <CardHeader className="border-b border-[hsl(var(--border))]">
+              <CardTitle>Mensagem automática de vistoria</CardTitle>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Variáveis disponíveis: {"{motorista}"}, {"{data}"}, {"{placas}"}.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4">
+              <textarea
+                value={whatsMessageDraft}
+                onChange={(e) => setWhatsMessageDraft(e.target.value)}
+                rows={8}
+                className="w-full rounded-md border border-[hsl(var(--border))] bg-white p-3 text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setWhatsMessageModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={handleSaveWhatsMessageTemplate}>
+                  Salvar mensagem
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
     </>
   );

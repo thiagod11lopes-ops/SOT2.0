@@ -58,6 +58,11 @@ const tabs = [
 const DAILY_BACKUP_KEY = "sot_daily_backup_gate_v1";
 const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
 const VISTORIA_WHATSAPP_SENT_KEY = "sot_vistoria_whatsapp_sent_v1";
+const VISTORIA_WHATSAPP_TRIGGER_TIME_KEY = "sot_vistoria_whatsapp_trigger_time_v1";
+const VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY = "sot_vistoria_whatsapp_message_template_v1";
+const DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME = "14:00";
+const DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE =
+  "SOT 2.0 - Aviso de vistoria\nMotorista: {motorista}\nData: {data}\nHá viatura(s) pendente(s) de vistoria: {placas}.\nPor favor, realize a vistoria o quanto antes.";
 
 type VistoriaWhatsappContact = {
   motorista: string;
@@ -114,6 +119,24 @@ function writeVistoriaWhatsappSentGate(dayKey: string, sentMotoristas: string[])
     localStorage.setItem(VISTORIA_WHATSAPP_SENT_KEY, JSON.stringify({ dayKey, sentMotoristas }));
   } catch {
     /* ignore */
+  }
+}
+
+function loadVistoriaWhatsappTriggerTime(): string {
+  try {
+    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_TRIGGER_TIME_KEY) ?? "").trim();
+    return /^\d{2}:\d{2}$/.test(raw) ? raw : DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
+  } catch {
+    return DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
+  }
+}
+
+function loadVistoriaWhatsappMessageTemplate(): string {
+  try {
+    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY) ?? "");
+    return raw.trim() ? raw : DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
+  } catch {
+    return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
   }
 }
 
@@ -229,7 +252,12 @@ function App() {
     const runCheck = async () => {
       if (cancelled) return;
       const now = new Date();
-      if (now.getHours() < 14) return;
+      const trigger = loadVistoriaWhatsappTriggerTime();
+      const [hh, mm] = trigger.split(":").map((x) => Number(x));
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const triggerMinutes = hh * 60 + mm;
+      if (nowMinutes < triggerMinutes) return;
       if (!isVistoriaCloudStateHydrated()) return;
 
       const dayKey = localDayKeyNow();
@@ -275,12 +303,11 @@ function App() {
 
       const failedSends: string[] = [];
       for (const row of toSend) {
-        const text =
-          `SOT 2.0 - Aviso de vistoria\n` +
-          `Motorista: ${row.motorista}\n` +
-          `Data: ${now.toLocaleDateString("pt-BR")}\n` +
-          `Ha viatura(s) pendente(s) de vistoria: ${row.pendentes.join(", ")}.\n` +
-          `Por favor, realize a vistoria o quanto antes.`;
+        const template = loadVistoriaWhatsappMessageTemplate();
+        const text = template
+          .replace(/\{motorista\}/g, row.motorista)
+          .replace(/\{data\}/g, now.toLocaleDateString("pt-BR"))
+          .replace(/\{placas\}/g, row.pendentes.join(", "));
         const textResult = await sendWhatsAppTextMessage(row.telefone, text);
         if (!textResult.ok) {
           const templateResult = await sendWhatsAppTemplateHelloWorld(row.telefone);
