@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
+import { useCatalogItems } from "../context/catalog-items-context";
 import {
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
@@ -22,6 +23,7 @@ import {
   isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
+import { sendWhatsAppTemplateHelloWorld } from "../lib/whatsappCloudApi";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -44,12 +46,50 @@ const SETTINGS_SECTIONS = [
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
+  { id: "settings-whatsapp-vistoria", label: "WhatsApp — vistoria" },
   { id: "settings-vistoria-cal", label: "Vistoria — calendário" },
   { id: "settings-zona-risco", label: "Zona de risco" },
 ] as const;
 
 const SETTINGS_PANEL_CLASS =
   "space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm sm:p-5";
+
+type VistoriaWhatsappContact = {
+  motorista: string;
+  telefone: string;
+};
+
+const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
+
+function normalizePhone(input: string): string {
+  return input.replace(/\D/g, "");
+}
+
+function formatPhone(input: string): string {
+  const digits = normalizePhone(input).slice(0, 13);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  return `+${digits.slice(0, 2)} (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+}
+
+function loadVistoriaWhatsappContacts(): VistoriaWhatsappContact[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(VISTORIA_WHATSAPP_CONTACTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        motorista: String(row.motorista ?? "").trim(),
+        telefone: normalizePhone(String(row.telefone ?? "")),
+      }))
+      .filter((row) => row.motorista && row.telefone);
+  } catch {
+    return [];
+  }
+}
 
 function currentMonthInputValue() {
   const n = new Date();
@@ -82,6 +122,7 @@ function filterDeparturesForSave(
 
 export function SettingsPage() {
   const { departures, mergeDeparturesFromBackup, clearAllDepartures } = useDepartures();
+  const { items } = useCatalogItems();
   const { firebaseOnlyEnabled, setFirebaseOnlyEnabled } = useSyncPreference();
   const { email: reportEmailStored, setEmail: setReportEmailStored } = useDeparturesReportEmail();
   const [reportEmailDest, setReportEmailDest] = useState(reportEmailStored);
@@ -105,6 +146,11 @@ export function SettingsPage() {
   const [kmSenhaNova, setKmSenhaNova] = useState("");
   const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string>(SETTINGS_SECTIONS[0].id);
+  const [whatsMotorista, setWhatsMotorista] = useState("");
+  const [whatsTelefone, setWhatsTelefone] = useState("");
+  const [vistoriaWhatsappContacts, setVistoriaWhatsappContacts] = useState<VistoriaWhatsappContact[]>(
+    () => loadVistoriaWhatsappContacts(),
+  );
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -165,6 +211,18 @@ export function SettingsPage() {
     () => departures.filter((d) => d.tipo === "Administrativa"),
     [departures],
   );
+  const motoristasCatalogo = useMemo(
+    () => [...new Set(items.motoristas.map((m) => m.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [items.motoristas],
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VISTORIA_WHATSAPP_CONTACTS_KEY, JSON.stringify(vistoriaWhatsappContacts));
+    } catch {
+      /* ignore */
+    }
+  }, [vistoriaWhatsappContacts]);
   const ambulancias = useMemo(
     () => departures.filter((d) => d.tipo === "Ambulância"),
     [departures],
@@ -333,6 +391,42 @@ export function SettingsPage() {
     window.alert(
       "Senha guardada. Será pedida ao alterar KM saída, KM chegada ou hora de chegada nas abas Saídas Administrativas e Ambulância.",
     );
+  }
+
+  function handleAddVistoriaWhatsappContact() {
+    const motorista = whatsMotorista.trim();
+    const telefone = normalizePhone(whatsTelefone);
+    if (!motorista) {
+      window.alert("Selecione um motorista.");
+      return;
+    }
+    if (telefone.length < 10) {
+      window.alert("Informe um número de telefone válido com DDD.");
+      return;
+    }
+    setVistoriaWhatsappContacts((prev) => {
+      const already = prev.some((row) => row.motorista.toLowerCase() === motorista.toLowerCase());
+      if (already) {
+        return prev.map((row) =>
+          row.motorista.toLowerCase() === motorista.toLowerCase() ? { ...row, telefone } : row,
+        );
+      }
+      return [...prev, { motorista, telefone }].sort((a, b) => a.motorista.localeCompare(b.motorista, "pt-BR"));
+    });
+    setWhatsTelefone("");
+  }
+
+  function handleRemoveVistoriaWhatsappContact(motorista: string) {
+    setVistoriaWhatsappContacts((prev) => prev.filter((row) => row.motorista !== motorista));
+  }
+
+  async function handleTestVistoriaWhatsappContact(row: VistoriaWhatsappContact) {
+    const result = await sendWhatsAppTemplateHelloWorld(row.telefone);
+    if (!result.ok) {
+      window.alert(`Falha no envio de teste via WhatsApp API: ${result.error}`);
+      return;
+    }
+    window.alert(`Mensagem de teste enviada para ${row.motorista}.`);
   }
 
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -609,6 +703,96 @@ export function SettingsPage() {
               className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
                 />
               </div>
+              </section>
+              ) : null}
+
+              {activeSectionId === "settings-whatsapp-vistoria" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-whatsapp-vistoria">
+                <h3 id="settings-heading-whatsapp-vistoria" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  WhatsApp — vistoria
+                </h3>
+                <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  Cadastre os contatos dos motoristas para aviso de vistoria no WhatsApp.
+                </p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-motorista">
+                      Motorista
+                    </label>
+                    <select
+                      id="vistoria-whats-motorista"
+                      value={whatsMotorista}
+                      onChange={(e) => setWhatsMotorista(e.target.value)}
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                    >
+                      <option value="">Selecione</option>
+                      {motoristasCatalogo.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-telefone">
+                      Telefone (WhatsApp)
+                    </label>
+                    <input
+                      id="vistoria-whats-telefone"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="(11) 99999-9999"
+                      value={formatPhone(whatsTelefone)}
+                      onChange={(e) => setWhatsTelefone(e.target.value)}
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                    />
+                  </div>
+                  <Button type="button" variant="default" className="h-10" onClick={handleAddVistoriaWhatsappContact}>
+                    Salvar contato
+                  </Button>
+                </div>
+                {motoristasCatalogo.length === 0 ? (
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    Cadastre motoristas em <strong>Frota e Pessoal</strong> para habilitar o seletor.
+                  </p>
+                ) : null}
+                {vistoriaWhatsappContacts.length === 0 ? (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum contato de motorista cadastrado.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {vistoriaWhatsappContacts.map((row) => (
+                      <li
+                        key={row.motorista}
+                        className="flex items-center justify-between gap-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.15] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">{row.motorista}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{formatPhone(row.telefone)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            onClick={() => {
+                              void handleTestVistoriaWhatsappContact(row);
+                            }}
+                          >
+                            Teste
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 border-red-300 text-red-700 hover:bg-red-50"
+                            onClick={() => handleRemoveVistoriaWhatsappContact(row.motorista)}
+                          >
+                            Remover
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
               ) : null}
 

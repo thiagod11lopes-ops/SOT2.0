@@ -19,9 +19,19 @@ import { useAppTab } from "./context/app-tab-context";
 import { useDepartures } from "./context/departures-context";
 import { useSyncPreference } from "./context/sync-preference-context";
 import { useMapaOleoFromMaintenance } from "./context/vehicle-maintenance-context";
+import { loadDetalheServicoBundleFromIdb } from "./lib/detalheServicoBundle";
 import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
+import {
+  ensureVistoriaCloudStateSyncStarted,
+  getVistoriaCloudState,
+  isVistoriaCloudStateHydrated,
+} from "./lib/vistoriaCloudState";
+import { listMotoristasComServicoOuRotinaNoDia } from "./lib/detalheServicoDayMarkers";
+import { sendWhatsAppTemplateHelloWorld, sendWhatsAppTextMessage } from "./lib/whatsappCloudApi";
 import { useIdleResetToHome } from "./lib/useIdleResetToHome";
 import { isSettingsTab } from "./lib/tabMatch";
+import { buildViaturasPorMotoristaMap } from "./lib/vistoriaCalendarTint";
+import { isoDateFromDate, resolveViaturasParaMotoristaEscala } from "./lib/vistoriaInspectionShared";
 import { Button } from "./components/ui/button";
 
 function useLocationHash() {
@@ -46,6 +56,13 @@ const tabs = [
 ];
 
 const DAILY_BACKUP_KEY = "sot_daily_backup_gate_v1";
+const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
+const VISTORIA_WHATSAPP_SENT_KEY = "sot_vistoria_whatsapp_sent_v1";
+
+type VistoriaWhatsappContact = {
+  motorista: string;
+  telefone: string;
+};
 
 function localDayKeyNow(): string {
   const d = new Date();
@@ -53,6 +70,51 @@ function localDayKeyNow(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function normalizePhone(input: string): string {
+  return input.replace(/\D/g, "");
+}
+
+function loadVistoriaWhatsappContacts(): VistoriaWhatsappContact[] {
+  try {
+    const raw = localStorage.getItem(VISTORIA_WHATSAPP_CONTACTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        motorista: String(row.motorista ?? "").trim(),
+        telefone: normalizePhone(String(row.telefone ?? "")),
+      }))
+      .filter((row) => row.motorista && row.telefone);
+  } catch {
+    return [];
+  }
+}
+
+function readVistoriaWhatsappSentGate(): { dayKey: string; sentMotoristas: string[] } {
+  try {
+    const raw = localStorage.getItem(VISTORIA_WHATSAPP_SENT_KEY);
+    if (!raw) return { dayKey: "", sentMotoristas: [] };
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      dayKey: String(parsed.dayKey ?? ""),
+      sentMotoristas: Array.isArray(parsed.sentMotoristas)
+        ? parsed.sentMotoristas.filter((x): x is string => typeof x === "string")
+        : [],
+    };
+  } catch {
+    return { dayKey: "", sentMotoristas: [] };
+  }
+}
+
+function writeVistoriaWhatsappSentGate(dayKey: string, sentMotoristas: string[]): void {
+  try {
+    localStorage.setItem(VISTORIA_WHATSAPP_SENT_KEY, JSON.stringify({ dayKey, sentMotoristas }));
+  } catch {
+    /* ignore */
+  }
 }
 
 function readDailyBackupDone(): string {
@@ -145,6 +207,10 @@ function App() {
   }, [editIntentVersion, setActiveTab, hash]);
 
   useEffect(() => {
+    ensureVistoriaCloudStateSyncStarted();
+  }, []);
+
+  useEffect(() => {
     const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);
     window.addEventListener("online", onOnline);
@@ -154,6 +220,96 @@ function App() {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (isMobileRoute) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const runCheck = async () => {
+      if (cancelled) return;
+      const now = new Date();
+      if (now.getHours() < 14) return;
+      if (!isVistoriaCloudStateHydrated()) return;
+
+      const dayKey = localDayKeyNow();
+      const isoToday = isoDateFromDate(now);
+      const sentGate = readVistoriaWhatsappSentGate();
+      const sentSet = new Set(sentGate.dayKey === dayKey ? sentGate.sentMotoristas : []);
+      const contacts = loadVistoriaWhatsappContacts();
+      if (contacts.length === 0) return;
+
+      const detalheServicoBundle = await loadDetalheServicoBundleFromIdb();
+      if (!detalheServicoBundle) return;
+
+      const escaladosHoje = new Set(
+        listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, isoToday)
+          .filter((row) => row.servico)
+          .map((row) => row.motorista.trim().toLowerCase()),
+      );
+      if (escaladosHoje.size === 0) return;
+
+      const cloud = getVistoriaCloudState();
+      const viaturasPorMotorista = buildViaturasPorMotoristaMap(cloud.assignments);
+      const toSend: Array<{ motorista: string; telefone: string; pendentes: string[] }> = [];
+
+      for (const c of contacts) {
+        const motoristaNorm = c.motorista.trim().toLowerCase();
+        if (!motoristaNorm || !escaladosHoje.has(motoristaNorm)) continue;
+        if (sentSet.has(motoristaNorm)) continue;
+        const viaturas = resolveViaturasParaMotoristaEscala(c.motorista, viaturasPorMotorista);
+        if (viaturas.length === 0) continue;
+        const pendentes = viaturas.filter(
+          (v) =>
+            !cloud.inspections.some(
+              (i) =>
+                i.inspectionDate === isoToday &&
+                i.viatura.trim().toLowerCase() === v.trim().toLowerCase(),
+            ),
+        );
+        if (pendentes.length === 0) continue;
+        toSend.push({ motorista: c.motorista, telefone: c.telefone, pendentes });
+      }
+
+      if (toSend.length === 0) return;
+
+      const failedSends: string[] = [];
+      for (const row of toSend) {
+        const text =
+          `SOT 2.0 - Aviso de vistoria\n` +
+          `Motorista: ${row.motorista}\n` +
+          `Data: ${now.toLocaleDateString("pt-BR")}\n` +
+          `Ha viatura(s) pendente(s) de vistoria: ${row.pendentes.join(", ")}.\n` +
+          `Por favor, realize a vistoria o quanto antes.`;
+        const textResult = await sendWhatsAppTextMessage(row.telefone, text);
+        if (!textResult.ok) {
+          const templateResult = await sendWhatsAppTemplateHelloWorld(row.telefone);
+          if (!templateResult.ok) {
+            failedSends.push(`${row.motorista}: ${textResult.error}`);
+            continue;
+          }
+        }
+        sentSet.add(row.motorista.trim().toLowerCase());
+      }
+
+      writeVistoriaWhatsappSentGate(dayKey, [...sentSet]);
+      if (failedSends.length > 0) {
+        window.alert(
+          `Falha ao enviar ${failedSends.length} aviso(s) no WhatsApp API. Verifique token/permissoes/modelo.`,
+        );
+      }
+    };
+
+    void runCheck();
+    timer = window.setInterval(() => {
+      void runCheck();
+    }, 60_000);
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isMobileRoute]);
 
   const todayKey = localDayKeyNow();
   const shouldRequireDailyBackup =
