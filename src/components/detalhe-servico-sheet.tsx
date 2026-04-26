@@ -489,6 +489,7 @@ export function DetalheServicoSheet() {
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
   const [cloudSyncAt, setCloudSyncAt] = useState<Date | null>(null);
+  const [awaitingFirstCloudSnapshot, setAwaitingFirstCloudSnapshot] = useState(useCloud);
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
@@ -539,17 +540,19 @@ export function DetalheServicoSheet() {
   );
 
   useEffect(() => {
-    if (useCloud) {
-      // Modo estrito Firebase: ignora hidratação inicial por cache local.
-      setIdbReady(true);
-      hydratedRef.current = true;
-      return;
-    }
+    setAwaitingFirstCloudSnapshot(useCloud);
+    // Mesmo em modo Firebase-only, hidrata do IDB para evitar "sumiço" visual
+    // durante a transição até o primeiro snapshot remoto.
+    let cancelled = false;
     void loadDetalheServicoBundleFromIdb().then((b) => {
+      if (cancelled) return;
       setBundle(b);
       setIdbReady(true);
       hydratedRef.current = true;
     });
+    return () => {
+      cancelled = true;
+    };
   }, [useCloud]);
 
   const prevMonthSheet = useMemo(() => {
@@ -565,6 +568,7 @@ export function DetalheServicoSheet() {
     if (!useCloud || !idbReady) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
+    setAwaitingFirstCloudSnapshot(true);
     void (async () => {
       try {
         await ensureFirebaseAuth();
@@ -573,6 +577,7 @@ export function DetalheServicoSheet() {
           SOT_STATE_DOC.detalheServico,
           (payload) => {
             void (async () => {
+              setAwaitingFirstCloudSnapshot(false);
               if (payload === null) {
                 // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
@@ -588,10 +593,16 @@ export function DetalheServicoSheet() {
               void saveDetalheServicoBundleToIdb(merged);
             })();
           },
-          (err) => console.error("[SOT] Firestore detalhe serviço:", err),
+          (err) => {
+            setAwaitingFirstCloudSnapshot(false);
+            setCloudSyncStatus("error");
+            console.error("[SOT] Firestore detalhe serviço:", err);
+          },
           { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
+        setAwaitingFirstCloudSnapshot(false);
+        setCloudSyncStatus("error");
         console.error("[SOT] Firebase auth (detalhe serviço):", e);
       }
     })();
@@ -649,6 +660,7 @@ export function DetalheServicoSheet() {
     if (useCloud) return;
     setCloudSyncStatus("synced");
     setCloudSyncAt(null);
+    setAwaitingFirstCloudSnapshot(false);
   }, [useCloud]);
 
   useEffect(() => {
@@ -1350,29 +1362,40 @@ export function DetalheServicoSheet() {
                 {tableEditable ? "Edição ativa" : "Edição bloqueada"}
               </span>
               {useCloud ? (
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                    cloudSyncStatus === "syncing"
-                      ? "border-sky-300/70 bg-sky-100 text-sky-800"
+                <>
+                  {awaitingFirstCloudSnapshot ? (
+                    <span
+                      className="inline-flex items-center rounded-full border border-amber-300/80 bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-900"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Aguardando dados do Firebase (exibindo cache local)
+                    </span>
+                  ) : null}
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                      cloudSyncStatus === "syncing"
+                        ? "border-sky-300/70 bg-sky-100 text-sky-800"
+                        : cloudSyncStatus === "error"
+                          ? "border-red-300/80 bg-red-100 text-red-800"
+                          : "border-emerald-300/70 bg-emerald-100 text-emerald-800"
+                    }`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {cloudSyncStatus === "syncing"
+                      ? "Sincronizando..."
                       : cloudSyncStatus === "error"
-                        ? "border-red-300/80 bg-red-100 text-red-800"
-                        : "border-emerald-300/70 bg-emerald-100 text-emerald-800"
-                  }`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {cloudSyncStatus === "syncing"
-                    ? "Sincronizando..."
-                    : cloudSyncStatus === "error"
-                      ? "Erro de sincronização"
-                      : cloudSyncAt
-                        ? `Sincronizado às ${cloudSyncAt.toLocaleTimeString("pt-BR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}`
-                        : "Sincronizado"}
-                </span>
+                        ? "Erro de sincronização"
+                        : cloudSyncAt
+                          ? `Sincronizado às ${cloudSyncAt.toLocaleTimeString("pt-BR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })}`
+                          : "Sincronizado"}
+                  </span>
+                </>
               ) : null}
             </div>
             <div className="flex items-center gap-2">

@@ -49,6 +49,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 type SavePeriodMode = "full" | "month" | "year";
+type FirebaseActivationStrategy = "push-local-to-firebase" | "use-remote-as-source";
 
 const SETTINGS_SECTIONS = [
   { id: "settings-sync", label: "Modo de sincronização" },
@@ -170,6 +171,8 @@ export function SettingsPage() {
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
   const [fullBackupBusy, setFullBackupBusy] = useState(false);
   const [firebaseModeBusy, setFirebaseModeBusy] = useState(false);
+  const [firebaseActivationStrategy, setFirebaseActivationStrategy] =
+    useState<FirebaseActivationStrategy>("push-local-to-firebase");
   const [backupPreviewOpen, setBackupPreviewOpen] = useState(false);
   const [preparedBackup, setPreparedBackup] = useState<FirebaseFullBackup | null>(null);
   const [isOnline, setIsOnline] = useState(
@@ -545,10 +548,14 @@ export function SettingsPage() {
     }
     setFirebaseModeBusy(true);
     try {
-      await pushLocalOperationalStateToFirebase();
+      if (firebaseActivationStrategy === "push-local-to-firebase") {
+        await pushLocalOperationalStateToFirebase();
+      }
       setFirebaseOnlyEnabled(true);
       window.alert(
-        "Dados locais (saídas, catálogos, detalhe de serviço, vistoria em cache, etc.) foram enviados para o Firebase. O modo «somente Firebase» foi ativado.",
+        firebaseActivationStrategy === "push-local-to-firebase"
+          ? "Estratégia aplicada: enviar dados locais para o Firebase. O modo «somente Firebase» foi ativado."
+          : "Estratégia aplicada: usar dados remotos como fonte da verdade (sem enviar o estado local agora). O modo «somente Firebase» foi ativado.",
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -637,6 +644,30 @@ export function SettingsPage() {
                 <h3 id="settings-heading-sync" className="text-base font-semibold text-[hsl(var(--foreground))]">
                   Modo de sincronização
                 </h3>
+          <div className="space-y-1.5">
+            <label
+              className="text-sm font-medium text-[hsl(var(--foreground))]"
+              htmlFor="firebase-activation-strategy"
+            >
+              Estratégia ao ativar «somente Firebase»
+            </label>
+            <select
+              id="firebase-activation-strategy"
+              value={firebaseActivationStrategy}
+              disabled={firebaseModeBusy || firebaseOnlyEnabled}
+              onChange={(e) =>
+                setFirebaseActivationStrategy(e.target.value as FirebaseActivationStrategy)
+              }
+              className="h-10 w-full max-w-xl rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+            >
+              <option value="push-local-to-firebase">
+                Enviar estado local para o Firebase (atualizar nuvem antes de ativar)
+              </option>
+              <option value="use-remote-as-source">
+                Não enviar local agora; usar o Firebase remoto como fonte da verdade
+              </option>
+            </select>
+          </div>
           <label className="flex items-center gap-3 rounded-md border border-[hsl(var(--border))] p-3">
             <input
               type="checkbox"
@@ -652,9 +683,9 @@ export function SettingsPage() {
             </span>
           </label>
           <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            Ao ativar esta opção, o sistema envia primeiro todo o estado local (IndexedDB e cópias em
-            localStorage) para o Firebase e só depois passa a modo nuvem. Quando ativo: leitura/escrita na nuvem.
-            Quando desativado: apenas dados locais, sem sincronização com a nuvem.
+            A estratégia acima define o comportamento no momento da ativação. Quando ativo: leitura/escrita na
+            nuvem (cache local apenas para leitura/continuidade). Quando desativado: apenas dados locais, sem
+            sincronização com a nuvem.
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             <Button
