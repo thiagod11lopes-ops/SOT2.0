@@ -6,7 +6,7 @@ import { batchUpsertDepartures } from "./departuresFirestore";
 import { normalizeDepartureRows } from "../normalizeDepartures";
 import { idbGetJson, idbSetJson } from "../indexedDb";
 import { CUSTOM_LOCATIONS_STORAGE_KEY } from "../customLocationsStorage";
-import { normalizeDetalheServicoBundle } from "../detalheServicoBundle";
+import { loadDetalheServicoBundleFromIdb, normalizeDetalheServicoBundle } from "../detalheServicoBundle";
 import { normalizeVistoriaCloudPayloadForFirestore } from "../vistoriaCloudState";
 import type { DepartureRecord } from "../../types/departure";
 import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
@@ -219,8 +219,10 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
 
   await setSotStateDocWithRetry(SOT_STATE_DOC.alarmDismiss, toRecordMap(await getIdb(ALARM_DISMISS_IDB_KEY)));
 
-  const detalheRaw = await getIdb(DETALHE_SERVICO_IDB_KEY);
-  await setSotStateDocWithRetry(SOT_STATE_DOC.detalheServico, normalizeDetalheServicoBundle(detalheRaw));
+  // Usa o loader oficial (com normalização/migração), evitando publicar payload vazio
+  // quando houver dados legados ainda não materializados diretamente no IDB cru.
+  const detalheBundle = await loadDetalheServicoBundleFromIdb();
+  await setSotStateDocWithRetry(SOT_STATE_DOC.detalheServico, normalizeDetalheServicoBundle(detalheBundle));
 
   const inopRaw = await getIdb<unknown>(VIATURAS_INOPERANTES_IDB_KEY);
   const inopList = Array.isArray(inopRaw)
