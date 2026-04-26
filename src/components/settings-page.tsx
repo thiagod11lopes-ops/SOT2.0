@@ -27,6 +27,7 @@ import {
 import {
   readWhatsAppCloudApiConfig,
   saveWhatsAppCloudApiConfig,
+  saveWhatsAppProxyBaseUrl,
   sendWhatsAppTemplateHelloWorld,
   sendWhatsAppTextMessage,
 } from "../lib/whatsappCloudApi";
@@ -193,6 +194,7 @@ export function SettingsPage() {
   const [whatsMessageDraft, setWhatsMessageDraft] = useState<string>(() => loadVistoriaWhatsappMessageTemplate());
   const [whatsApiToken, setWhatsApiToken] = useState<string>(() => readWhatsAppCloudApiConfig().token);
   const [whatsApiPhoneNumberId, setWhatsApiPhoneNumberId] = useState<string>(() => readWhatsAppCloudApiConfig().phoneNumberId);
+  const [whatsApiProxyBaseUrl, setWhatsApiProxyBaseUrl] = useState<string>(() => readWhatsAppCloudApiConfig().proxyBaseUrl);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -515,11 +517,13 @@ export function SettingsPage() {
   function handleSaveWhatsApiConfig() {
     const token = whatsApiToken.trim();
     const phoneNumberId = whatsApiPhoneNumberId.trim();
-    if (!token || !phoneNumberId) {
-      window.alert("Preencha Access Token e Phone Number ID da Cloud API.");
+    const proxyBaseUrl = whatsApiProxyBaseUrl.trim();
+    if (!proxyBaseUrl && (!token || !phoneNumberId)) {
+      window.alert("Preencha Access Token + Phone Number ID, ou a URL base do Proxy.");
       return;
     }
     saveWhatsAppCloudApiConfig({ token, phoneNumberId });
+    saveWhatsAppProxyBaseUrl(proxyBaseUrl);
     window.alert("Configuração da API do WhatsApp salva neste navegador.");
   }
 
@@ -838,7 +842,7 @@ export function SettingsPage() {
                 </div>
                 <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.1] p-3 space-y-2">
                   <p className="text-sm font-medium text-[hsl(var(--foreground))]">Configuração da API (produção/pages)</p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_260px_auto] md:items-end">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_260px_1fr_auto] md:items-end">
                     <div className="space-y-1">
                       <label
                         className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
@@ -871,12 +875,28 @@ export function SettingsPage() {
                         placeholder="Ex.: 1141540469032095"
                       />
                     </div>
+                    <div className="space-y-1">
+                      <label
+                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                        htmlFor="vistoria-whats-api-proxy-url"
+                      >
+                        URL base do Proxy (recomendado)
+                      </label>
+                      <input
+                        id="vistoria-whats-api-proxy-url"
+                        type="text"
+                        value={whatsApiProxyBaseUrl}
+                        onChange={(e) => setWhatsApiProxyBaseUrl(e.target.value)}
+                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                        placeholder="https://seu-backend.onrender.com"
+                      />
+                    </div>
                     <Button type="button" variant="outline" className="h-10" onClick={handleSaveWhatsApiConfig}>
                       Salvar API
                     </Button>
                   </div>
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Use este bloco quando estiver em ambiente publicado (GitHub Pages) e o .env local não estiver disponível.
+                    Em GitHub Pages, prefira usar a URL do Proxy para evitar bloqueio CORS da Meta.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
