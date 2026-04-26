@@ -455,6 +455,7 @@ export function DetalheServicoSheet() {
     if (useCloud) {
       // Modo estrito Firebase: ignora hidratação inicial por cache local.
       setIdbReady(true);
+      hydratedRef.current = true;
       return;
     }
     void loadDetalheServicoBundleFromIdb().then((b) => {
@@ -548,6 +549,13 @@ export function DetalheServicoSheet() {
     }, 450);
     return () => window.clearTimeout(t);
   }, [bundle, useCloud, idbReady, tableEditable, pushBundleToCloud]);
+
+  useEffect(() => {
+    if (!useCloud || !idbReady || !hydratedRef.current) return;
+    if (tableEditable) return;
+    // Ao bloquear a edição, força uma gravação imediata para evitar perda por debounce pendente.
+    void pushBundleToCloud(bundle);
+  }, [tableEditable, useCloud, idbReady, bundle, pushBundleToCloud]);
 
   useEffect(() => {
     if (useCloud) return;
