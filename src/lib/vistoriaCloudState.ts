@@ -162,6 +162,11 @@ function normalizeCloudPayload(payload: unknown): VistoriaCloudState {
   };
 }
 
+/** Normaliza payload de vistoria (ex.: cópia local / backup) antes de gravar em `sot_state/vistoria`. */
+export function normalizeVistoriaCloudPayloadForFirestore(payload: unknown): VistoriaCloudState {
+  return normalizeCloudPayload(payload);
+}
+
 function dispatchChange() {
   try {
     window.dispatchEvent(new Event(EVENT_NAME));

@@ -109,7 +109,9 @@ function isMotoristaRM1(motorista: string): boolean {
 }
 
 function isMotoristaFC(motorista: string): boolean {
-  return motorista.toUpperCase().includes("FC");
+  const nome = motorista.trim().toUpperCase();
+  // Considera apenas FC como iniciais/posto no início do nome (ex.: "FC-Hélio", "FC Silva").
+  return /^FC(?:\b|[-\s])/.test(nome);
 }
 
 function tallyDayCellTokens(

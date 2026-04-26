@@ -1,10 +1,13 @@
 import { collection, doc, getDoc, getDocs, getFirestore } from "firebase/firestore";
 import { ensureFirebaseAuth } from "./auth";
 import { getFirebaseApp, isFirebaseConfigured } from "./config";
-import { SOT_STATE_DOC, type SotStateDocId } from "./sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, type SotStateDocId } from "./sotStateFirestore";
+import { batchUpsertDepartures } from "./departuresFirestore";
 import { normalizeDepartureRows } from "../normalizeDepartures";
-import { idbSetJson } from "../indexedDb";
+import { idbGetJson, idbSetJson } from "../indexedDb";
 import { CUSTOM_LOCATIONS_STORAGE_KEY } from "../customLocationsStorage";
+import { normalizeDetalheServicoBundle } from "../detalheServicoBundle";
+import { normalizeVistoriaCloudPayloadForFirestore } from "../vistoriaCloudState";
 import type { DepartureRecord } from "../../types/departure";
 import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
 
@@ -21,6 +24,10 @@ const APPEARANCE_IDB_KEY = "sot-appearance";
 const REPORT_EMAIL_IDB_KEY = "sot_departures_report_email";
 const ALARM_DISMISS_IDB_KEY = "sot-alarm-dismiss-v2";
 const DETALHE_SERVICO_IDB_KEY = "sot-detalhe-servico-bundle-v2";
+const VIATURAS_INOPERANTES_IDB_KEY = "sot-viaturas-inoperantes-v1";
+const VISTORIA_LOCAL_SHADOW_KEY = "sot_vistoria_cloud_shadow_v1";
+
+const IDB_READ_ALLOW_FIREBASE_ONLY = { allowWhenFirebaseOnlyOnline: true as const };
 
 export type FirebaseFullBackup = {
   type: "sot_full_backup";
@@ -149,6 +156,112 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
   if (rdvByDate && typeof rdvByDate === "object") {
     try {
       localStorage.setItem(RDV_LOCAL_STORAGE_KEY, JSON.stringify(rdvByDate));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Envia para o Firebase todo o estado operacional guardado localmente (IndexedDB + chaves em localStorage
+ * usadas pelo backup geral). Deve ser chamado **antes** de ativar «Usar somente dados do Firebase», para
+ * não perder dados carregados por backup local.
+ */
+export async function pushLocalOperationalStateToFirebase(): Promise<void> {
+  if (!isFirebaseConfigured()) throw new Error("Firebase não está configurado neste build.");
+  await ensureFirebaseAuth();
+
+  async function getIdb<T>(key: string): Promise<T | null> {
+    return idbGetJson<T>(key, IDB_READ_ALLOW_FIREBASE_ONLY);
+  }
+
+  const depRaw = await getIdb<unknown[]>(DEPARTURES_IDB_KEY);
+  const departures = normalizeDepartureRows(Array.isArray(depRaw) ? depRaw : []);
+  await batchUpsertDepartures(departures);
+
+  const catalog = toRecordMap(await getIdb(CATALOG_IDB_KEY));
+  await setSotStateDocWithRetry(SOT_STATE_DOC.catalog, catalog);
+
+  const avisos = toRecordMap(await getIdb(AVISOS_IDB_KEY));
+  await setSotStateDocWithRetry(SOT_STATE_DOC.avisos, avisos);
+
+  const limpezaRaw = await getIdb<unknown>(LIMPEZA_IDB_KEY);
+  const limpezaList = Array.isArray(limpezaRaw)
+    ? limpezaRaw.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  await setSotStateDocWithRetry(
+    SOT_STATE_DOC.limpezaPendente,
+    [...limpezaList].sort((a, b) => a.localeCompare(b, "pt-BR")),
+  );
+
+  await setSotStateDocWithRetry(SOT_STATE_DOC.oficina, toRecordMap(await getIdb(OFICINA_IDB_KEY)));
+  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, toRecordMap(await getIdb(OIL_IDB_KEY)));
+  await setSotStateDocWithRetry(
+    SOT_STATE_DOC.customLocations,
+    toRecordMap(await getIdb(CUSTOM_LOCATIONS_STORAGE_KEY)),
+  );
+
+  const escala = toRecordMap(await getIdb(ESCALA_IDB_KEY));
+  const integrantesRaw = await getIdb<unknown>(INTEGRANTES_IDB_KEY);
+  const integrantes = Array.isArray(integrantesRaw)
+    ? integrantesRaw.filter((x): x is string => typeof x === "string")
+    : [];
+  await setSotStateDocWithRetry(SOT_STATE_DOC.escalaPaoBundle, { escala, integrantes });
+
+  const motoristaPaoNome = String((await getIdb<string>(MOTORISTA_PAO_IDB_KEY)) ?? "").trim();
+  await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: motoristaPaoNome });
+
+  const appearanceMode = String((await getIdb<string>(APPEARANCE_IDB_KEY)) ?? "").trim() || "original";
+  await setSotStateDocWithRetry(SOT_STATE_DOC.appearance, { mode: appearanceMode });
+
+  const reportEmail = String((await getIdb<string>(REPORT_EMAIL_IDB_KEY)) ?? "").trim();
+  await setSotStateDocWithRetry(SOT_STATE_DOC.departuresReportEmail, { email: reportEmail });
+
+  await setSotStateDocWithRetry(SOT_STATE_DOC.alarmDismiss, toRecordMap(await getIdb(ALARM_DISMISS_IDB_KEY)));
+
+  const detalheRaw = await getIdb(DETALHE_SERVICO_IDB_KEY);
+  await setSotStateDocWithRetry(SOT_STATE_DOC.detalheServico, normalizeDetalheServicoBundle(detalheRaw));
+
+  const inopRaw = await getIdb<unknown>(VIATURAS_INOPERANTES_IDB_KEY);
+  const inopList = Array.isArray(inopRaw)
+    ? inopRaw.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  await setSotStateDocWithRetry(
+    SOT_STATE_DOC.viaturasInoperantes,
+    [...inopList].sort((a, b) => a.localeCompare(b, "pt-BR")),
+  );
+
+  if (typeof localStorage !== "undefined") {
+    try {
+      const rdvRaw = localStorage.getItem(RDV_LOCAL_STORAGE_KEY);
+      if (rdvRaw && rdvRaw.trim()) {
+        const rdvParsed = JSON.parse(rdvRaw) as unknown;
+        if (rdvParsed && typeof rdvParsed === "object") {
+          await setSotStateDocWithRetry(SOT_STATE_DOC.rdvByDate, rdvParsed);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const visRaw = localStorage.getItem(VISTORIA_LOCAL_SHADOW_KEY);
+      if (visRaw && visRaw.trim()) {
+        const visParsed = JSON.parse(visRaw) as unknown;
+        const vis = normalizeVistoriaCloudPayloadForFirestore(visParsed);
+        const hasData =
+          vis.assignments.length > 0 ||
+          vis.inspections.length > 0 ||
+          vis.resolvedIssues.length > 0 ||
+          vis.issueControls.length > 0 ||
+          vis.priorityOrderKeys.length > 0;
+        if (hasData || vis.updatedAt > 0) {
+          await setSotStateDocWithRetry(SOT_STATE_DOC.vistoria, {
+            ...vis,
+            updatedAt: Math.max(vis.updatedAt, Date.now()),
+          });
+        }
+      }
     } catch {
       /* ignore */
     }

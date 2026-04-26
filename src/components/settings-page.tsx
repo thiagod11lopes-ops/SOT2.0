@@ -10,6 +10,7 @@ import {
   type DetalheServicoBundle,
 } from "../lib/detalheServicoBundle";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
@@ -39,6 +40,7 @@ import {
   exportFullBackupFromFirebase,
   type FirebaseFullBackup,
   parseFullBackupJson,
+  pushLocalOperationalStateToFirebase,
   restoreFullBackupToLocal,
 } from "../lib/firebase/systemBackup";
 import { cn } from "../lib/utils";
@@ -167,6 +169,7 @@ export function SettingsPage() {
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
   const [fullBackupBusy, setFullBackupBusy] = useState(false);
+  const [firebaseModeBusy, setFirebaseModeBusy] = useState(false);
   const [backupPreviewOpen, setBackupPreviewOpen] = useState(false);
   const [preparedBackup, setPreparedBackup] = useState<FirebaseFullBackup | null>(null);
   const [isOnline, setIsOnline] = useState(
@@ -527,6 +530,36 @@ export function SettingsPage() {
     window.alert("Configuração da API do WhatsApp salva neste navegador.");
   }
 
+  async function handleFirebaseOnlyToggle(next: boolean) {
+    if (!next) {
+      setFirebaseOnlyEnabled(false);
+      return;
+    }
+    if (!isFirebaseConfigured()) {
+      window.alert("Firebase não está configurado neste build.");
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      window.alert("É necessário estar online para enviar os dados locais para o Firebase.");
+      return;
+    }
+    setFirebaseModeBusy(true);
+    try {
+      await pushLocalOperationalStateToFirebase();
+      setFirebaseOnlyEnabled(true);
+      window.alert(
+        "Dados locais (saídas, catálogos, detalhe de serviço, vistoria em cache, etc.) foram enviados para o Firebase. O modo «somente Firebase» foi ativado.",
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.alert(
+        `Não foi possível enviar tudo para o Firebase. O modo local mantém-se ativo.\n\nDetalhe: ${msg}`,
+      );
+    } finally {
+      setFirebaseModeBusy(false);
+    }
+  }
+
   function handleFullBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -608,16 +641,20 @@ export function SettingsPage() {
             <input
               type="checkbox"
               checked={firebaseOnlyEnabled}
-              onChange={(e) => setFirebaseOnlyEnabled(e.target.checked)}
+              disabled={firebaseModeBusy}
+              onChange={(e) => void handleFirebaseOnlyToggle(e.target.checked)}
               className="h-4 w-4"
             />
             <span className="text-sm">
-              Usar somente dados do Firebase (local apenas como cache de leitura)
+              {firebaseModeBusy
+                ? "A enviar dados locais para o Firebase…"
+                : "Usar somente dados do Firebase (local apenas como cache de leitura)"}
             </span>
           </label>
           <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            Quando ativo: o sistema lê/escreve na nuvem e não promove dados locais antigos para o Firebase no bootstrap.
-            Quando desativado: funciona apenas com dados locais (IndexedDB/localStorage), sem sincronização com a nuvem.
+            Ao ativar esta opção, o sistema envia primeiro todo o estado local (IndexedDB e cópias em
+            localStorage) para o Firebase e só depois passa a modo nuvem. Quando ativo: leitura/escrita na nuvem.
+            Quando desativado: apenas dados locais, sem sincronização com a nuvem.
           </p>
           <div className="flex flex-wrap gap-3 pt-1">
             <Button
