@@ -10,7 +10,9 @@ import {
   emptyRodapeAssinatura,
   emptyDetalheServicoBundle,
   type DetalheServicoBundle,
+  type DetalheServicoFeriasPeriodo,
 } from "../lib/detalheServicoBundle";
+import { DetalheServicoFeriasModal, type FeriasDraftByMotorKey } from "./detalhe-servico-ferias-modal";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
@@ -194,16 +196,20 @@ function buildMotoristaSelectOptions(catalog: string[], current: string): string
   return list;
 }
 
-/** Conta tokens «S» e «RO» nas células dos dias (mês atual); horas = 24×S + 8×RO. */
+/** Conta tokens «S» e «RO» nas células dos dias (mês atual); horas = 24×S + 8×RO. Ignora dias em férias. */
 function tallyDayCellTokens(
   rowCells: Record<string, string>,
+  motoristaDisplay: string,
   year: number,
   monthIndex: number,
   days: DayMeta[],
+  feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]>,
 ): { s: number; ro: number; horas: number } {
+  const feriasPeriods = feriasForMonth[normalizeMotoristaName(motoristaDisplay)];
   let s = 0;
   let ro = 0;
   for (const { day } of days) {
+    if (isDayInFeriasPeriods(year, monthIndex, day, feriasPeriods)) continue;
     const dk = dateKey(year, monthIndex, day);
     const raw = (rowCells[dk] ?? "").trim();
     if (!raw) continue;
@@ -251,6 +257,61 @@ function normalizeMotoristaName(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .toLowerCase();
+}
+
+function parseIsoDateLocal(iso: string): Date | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** Recorta um período às datas do mês `monthYear` (`YYYY-MM`); devolve `null` se não houver interseção. */
+function clipFeriasPeriodToMonth(
+  monthYear: string,
+  p: DetalheServicoFeriasPeriodo,
+): DetalheServicoFeriasPeriodo | null {
+  const { year, monthIndex } = parseMonthInput(monthYear);
+  const lastD = new Date(year, monthIndex + 1, 0).getDate();
+  const a0 = parseIsoDateLocal(p.inicio);
+  const b0 = parseIsoDateLocal(p.fim);
+  if (!a0 || !b0) return null;
+  let a = new Date(a0);
+  let b = new Date(b0);
+  a.setHours(0, 0, 0, 0);
+  b.setHours(0, 0, 0, 0);
+  if (a > b) [a, b] = [b, a];
+  const ms = new Date(year, monthIndex, 1);
+  const me = new Date(year, monthIndex, lastD);
+  ms.setHours(0, 0, 0, 0);
+  me.setHours(0, 0, 0, 0);
+  if (b < ms || a > me) return null;
+  const lo = a < ms ? ms : a;
+  const hi = b > me ? me : b;
+  return {
+    inicio: dateKey(year, monthIndex, lo.getDate()),
+    fim: dateKey(year, monthIndex, hi.getDate()),
+  };
+}
+
+function isDayInFeriasPeriods(
+  year: number,
+  monthIndex: number,
+  day: number,
+  periods: DetalheServicoFeriasPeriodo[] | undefined,
+): boolean {
+  if (!periods?.length) return false;
+  const t = new Date(year, monthIndex, day);
+  t.setHours(0, 0, 0, 0);
+  for (const p of periods) {
+    const a = parseIsoDateLocal(p.inicio);
+    const b = parseIsoDateLocal(p.fim);
+    if (!a || !b) continue;
+    a.setHours(0, 0, 0, 0);
+    b.setHours(0, 0, 0, 0);
+    if (a > b) continue;
+    if (t >= a && t <= b) return true;
+  }
+  return false;
 }
 
 function findLastWorkedDateInMonthByMotorista(
@@ -347,13 +408,17 @@ function buildServicosInvalidosPorDiaMap(args: {
   year: number;
   monthIndex: number;
   days: DayMeta[];
+  feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]>;
 }): Record<string, boolean> {
-  const { sheet, year, monthIndex, days } = args;
+  const { sheet, year, monthIndex, days, feriasForMonth } = args;
   const out: Record<string, boolean> = {};
   for (const { day } of days) {
     const dk = dateKey(year, monthIndex, day);
     let sCount = 0;
     for (const rowId of sheet.rows) {
+      const motor = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      const periods = feriasForMonth[normalizeMotoristaName(motor)];
+      if (isDayInFeriasPeriods(year, monthIndex, day, periods)) continue;
       const raw = sheet.cells[rowId]?.[dk] ?? "";
       if (cellContainsServicoToken(raw)) sCount += 1;
     }
@@ -372,6 +437,7 @@ function mergeRemoteBundlePreservingLocalMonths(
     sheets: { ...localBundle.sheets, ...remoteBundle.sheets },
     rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
     columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
+    feriasByMonth: { ...localBundle.feriasByMonth, ...remoteBundle.feriasByMonth },
   };
 }
 
@@ -420,6 +486,7 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
+  const [feriasModalOpen, setFeriasModalOpen] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
   const [cloudSyncAt, setCloudSyncAt] = useState<Date | null>(null);
 
@@ -439,6 +506,11 @@ export function DetalheServicoSheet() {
   /** Chaves: `motorista`, data `YYYY-MM-DD`, ou chaves das colunas extra (cargaHoraria, …). */
   const columnGray = useMemo(
     () => bundle.columnGrayByMonth[monthYear] ?? {},
+    [bundle, monthYear],
+  );
+
+  const feriasForMonth = useMemo(
+    () => bundle.feriasByMonth[monthYear] ?? {},
     [bundle, monthYear],
   );
 
@@ -629,6 +701,58 @@ export function DetalheServicoSheet() {
         columnGrayByMonth: { ...b.columnGrayByMonth, [mk]: next },
       };
     });
+  }, []);
+
+  const applyFeriasSave = useCallback((draft: FeriasDraftByMotorKey) => {
+    setBundle((b) => {
+      const mk = monthYearRef.current;
+      const sh = normalizeLoadedSheet(b.sheets[mk] ?? null);
+      const { year, monthIndex } = parseMonthInput(mk);
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+
+      const nextMonthFerias: Record<string, DetalheServicoFeriasPeriodo[]> = {};
+      for (const [k, periods] of Object.entries(draft)) {
+        const cleaned: DetalheServicoFeriasPeriodo[] = [];
+        for (const p of periods) {
+          const c = clipFeriasPeriodToMonth(mk, p);
+          if (c) cleaned.push(c);
+          if (cleaned.length >= 3) break;
+        }
+        if (cleaned.length > 0) nextMonthFerias[k] = cleaned;
+      }
+
+      const cells = structuredClone(sh.cells);
+      for (const rowId of sh.rows) {
+        const motor = (sh.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+        const motorKey = normalizeMotoristaName(motor);
+        const periods = nextMonthFerias[motorKey];
+        if (!periods?.length) continue;
+        for (let day = 1; day <= lastDay; day++) {
+          if (!isDayInFeriasPeriods(year, monthIndex, day, periods)) continue;
+          const dk = dateKey(year, monthIndex, day);
+          const cur = cells[rowId]?.[dk];
+          if (cur === undefined || cur === "") continue;
+          const rowCells = { ...(cells[rowId] ?? {}) };
+          delete rowCells[dk];
+          cells[rowId] = rowCells;
+        }
+      }
+
+      const nextFeriasByMonth = { ...b.feriasByMonth };
+      if (Object.keys(nextMonthFerias).length === 0) {
+        delete nextFeriasByMonth[mk];
+      } else {
+        nextFeriasByMonth[mk] = nextMonthFerias;
+      }
+
+      return {
+        ...b,
+        version: 1,
+        sheets: { ...b.sheets, [mk]: { rows: sh.rows, cells } },
+        feriasByMonth: nextFeriasByMonth,
+      };
+    });
+    setFeriasModalOpen(false);
   }, []);
 
   const handleMonthYearChange = useCallback((next: string) => {
@@ -845,6 +969,13 @@ export function DetalheServicoSheet() {
 
   const handleDayCellChange = useCallback(
     (rowId: string, key: string, day: number, value: string) => {
+      const motoristaFerias = (sheetRef.current.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      const feriasP =
+        bundleRef.current.feriasByMonth[monthYearRef.current]?.[
+          normalizeMotoristaName(motoristaFerias)
+        ];
+      if (isDayInFeriasPeriods(year, monthIndex, day, feriasP)) return;
+
       const prevValue = sheetRef.current.cells[rowId]?.[key] ?? "";
       const prevHasWork = cellContainsWorkToken(prevValue);
       const nextHasWork = cellContainsWorkToken(value);
@@ -1078,6 +1209,21 @@ export function DetalheServicoSheet() {
     return out;
   }, [catalogItems.motoristas, sheet.rows, sheet.cells]);
 
+  const motoristasCatalogFerias = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const n of catalogItems.motoristas) {
+      const t = n.trim();
+      if (!t) continue;
+      const k = normalizeMotoristaName(t);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(n);
+    }
+    out.sort((a, b) => a.localeCompare(b, "pt-PT"));
+    return out;
+  }, [catalogItems.motoristas]);
+
   const prevMonthRowsForEscala = useMemo(() => {
     if (!prevMonthSheet) return [];
     return prevMonthSheet.rows
@@ -1150,6 +1296,8 @@ export function DetalheServicoSheet() {
     [sheet, prevMonthSheet, year, monthIndex, days, prevMonthParsed.year, prevMonthParsed.monthIndex, prevDays],
   );
 
+  const lastCalendarDay = days[days.length - 1]?.day ?? 31;
+
   const servicosInvalidosPorDia = useMemo(
     () =>
       buildServicosInvalidosPorDiaMap({
@@ -1157,30 +1305,41 @@ export function DetalheServicoSheet() {
         year,
         monthIndex,
         days,
+        feriasForMonth,
       }),
-    [sheet, year, monthIndex, days],
+    [sheet, year, monthIndex, days, feriasForMonth],
   );
 
   return (
     <div className="w-full min-w-0 space-y-3">
-      <div className="flex flex-wrap items-end justify-end gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <Button
           type="button"
           variant="outline"
           className="shrink-0"
-          onClick={handleGerarPdfDetalheServico}
+          onClick={() => setFeriasModalOpen(true)}
         >
-          <FileDown className="h-4 w-4" aria-hidden />
-          Gerar PDF
+          Escala de Férias
         </Button>
-        <input
-          id="detalhe-servico-mes-ano"
-          type="month"
-          value={monthYear}
-          onChange={(e) => handleMonthYearChange(e.target.value)}
-          aria-label="Mês e ano"
-          className="h-10 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-        />
+        <div className="flex flex-wrap items-end justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={handleGerarPdfDetalheServico}
+          >
+            <FileDown className="h-4 w-4" aria-hidden />
+            Gerar PDF
+          </Button>
+          <input
+            id="detalhe-servico-mes-ano"
+            type="month"
+            value={monthYear}
+            onChange={(e) => handleMonthYearChange(e.target.value)}
+            aria-label="Mês e ano"
+            className="h-10 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          />
+        </div>
       </div>
 
       <div className="w-full min-w-0 pb-1">
@@ -1384,39 +1543,78 @@ export function DetalheServicoSheet() {
                         const dk = dateKey(year, monthIndex, day);
                         const colIndex = dayColIndex + 1;
                         const dayColGray = columnGray[dk] || isWeekend;
-                        const hasIntervaloViolation = Boolean(intervaloMinimoViolations[`${rowId}__${dk}`]);
+                        const periodsThisMotor =
+                          feriasForMonth[normalizeMotoristaName(motoristaVal)];
+                        const isFeriasDay = isDayInFeriasPeriods(
+                          year,
+                          monthIndex,
+                          day,
+                          periodsThisMotor,
+                        );
+                        const feriasPrev =
+                          day > 1 &&
+                          isDayInFeriasPeriods(year, monthIndex, day - 1, periodsThisMotor);
+                        const feriasNext =
+                          day < lastCalendarDay &&
+                          isDayInFeriasPeriods(year, monthIndex, day + 1, periodsThisMotor);
+                        const feriasBg = !tableEditable ? "bg-neutral-300/80" : "bg-neutral-200";
+                        const hasIntervaloViolation =
+                          !isFeriasDay &&
+                          Boolean(intervaloMinimoViolations[`${rowId}__${dk}`]);
                         const daySCountInvalidWhenLocked = !tableEditable && Boolean(servicosInvalidosPorDia[dk]);
                         return (
                           <td
                             key={dk}
                             className={`min-w-[2rem] max-w-[4.5rem] border px-[0.25em] py-[0.15em] text-center align-middle ${
-                              tableEditable && hasIntervaloViolation
-                                ? "border-amber-500/90 bg-amber-50/55 ring-1 ring-inset ring-amber-400/70"
-                                : daySCountInvalidWhenLocked
-                                  ? "detalhe-servico-coluna-alerta border-red-500/90 bg-red-100/70"
-                                : !tableEditable
-                                  ? columnGray[dk] || isWeekend
-                                    ? "border-[hsl(var(--border))] bg-neutral-300/80"
-                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)]"
-                                  : dayColGray
-                                    ? "border-[hsl(var(--border))] bg-neutral-200"
-                                    : "border-[hsl(var(--border))] bg-white"
+                              isFeriasDay
+                                ? `${feriasBg} border-[hsl(var(--border))] ${feriasPrev ? "border-l-0" : ""} ${feriasNext ? "border-r-0" : ""}`
+                                : tableEditable && hasIntervaloViolation
+                                  ? "border-amber-500/90 bg-amber-50/55 ring-1 ring-inset ring-amber-400/70"
+                                  : daySCountInvalidWhenLocked
+                                    ? "detalhe-servico-coluna-alerta border-red-500/90 bg-red-100/70"
+                                    : !tableEditable
+                                      ? columnGray[dk] || isWeekend
+                                        ? "border-[hsl(var(--border))] bg-neutral-300/80"
+                                        : "border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)]"
+                                      : dayColGray
+                                        ? "border-[hsl(var(--border))] bg-neutral-200"
+                                        : "border-[hsl(var(--border))] bg-white"
                             }`}
                           >
-                            <input
-                              type="text"
-                              name={`dia-${rowId}-${dk}`}
-                              autoComplete="off"
-                              readOnly={!tableEditable}
-                              className={`${inputClassDay} ${!tableEditable ? inputLockedClass : ""}`}
-                              data-det-sheet-row={rowIndex}
-                              data-det-sheet-col={colIndex}
-                              value={cells[rowId]?.[dk] ?? ""}
-                              onChange={(e) => handleDayCellChange(rowId, dk, day, e.target.value)}
-                              onFocus={onCellFocus}
-                              onBlur={(e) => onCellBlur(rowId, dk, e.target.value)}
-                              onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, colIndex)}
-                            />
+                            {isFeriasDay ? (
+                              <input
+                                type="text"
+                                name={`dia-${rowId}-${dk}`}
+                                autoComplete="off"
+                                readOnly
+                                aria-label="Férias"
+                                title="Férias"
+                                className={`${inputClassDay} ${inputLockedClass} placeholder:font-semibold placeholder:text-[hsl(var(--foreground))]/80`}
+                                data-det-sheet-row={rowIndex}
+                                data-det-sheet-col={colIndex}
+                                value=""
+                                placeholder={!feriasPrev ? "FÉRIAS" : "\u00a0"}
+                                onChange={() => {}}
+                                onFocus={onCellFocus}
+                                onBlur={() => {}}
+                                onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, colIndex)}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                name={`dia-${rowId}-${dk}`}
+                                autoComplete="off"
+                                readOnly={!tableEditable}
+                                className={`${inputClassDay} ${!tableEditable ? inputLockedClass : ""}`}
+                                data-det-sheet-row={rowIndex}
+                                data-det-sheet-col={colIndex}
+                                value={cells[rowId]?.[dk] ?? ""}
+                                onChange={(e) => handleDayCellChange(rowId, dk, day, e.target.value)}
+                                onFocus={onCellFocus}
+                                onBlur={(e) => onCellBlur(rowId, dk, e.target.value)}
+                                onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, colIndex)}
+                              />
+                            )}
                           </td>
                         );
                       })}
@@ -1427,9 +1625,11 @@ export function DetalheServicoSheet() {
                           const rm1 = isMotoristaRM1(motoristaVal);
                           const tally = tallyDayCellTokens(
                             cells[rowId] ?? {},
+                            motoristaVal,
                             year,
                             monthIndex,
                             days,
+                            feriasForMonth,
                           );
                           const cargaReadOnly = cellKey === KEY_CARGA_HORARIA && rm1;
                           const servRotReadOnly =
@@ -1777,6 +1977,16 @@ export function DetalheServicoSheet() {
           </div>,
           document.body,
         )}
+
+      <DetalheServicoFeriasModal
+        open={feriasModalOpen}
+        onOpenChange={setFeriasModalOpen}
+        monthYear={monthYear}
+        monthTitle={formatMonthYearTitlePt(monthYear)}
+        motoristasCatalog={motoristasCatalogFerias}
+        feriasForMonth={feriasForMonth}
+        onSave={applyFeriasSave}
+      />
 
       {intervaloModal &&
         createPortal(

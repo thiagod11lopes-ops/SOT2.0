@@ -5,11 +5,19 @@ import type {
   DetalheServicoSheetSnapshot,
 } from "./generateDetalheServicoMotoristaPdf";
 
+/** Período de férias (datas inclusivas, ISO `YYYY-MM-DD`). */
+export type DetalheServicoFeriasPeriodo = { inicio: string; fim: string };
+
+/** Por mês (`YYYY-MM`), mapa motorista (chave normalizada) → até 3 períodos. */
+export type DetalheServicoFeriasPorMes = Record<string, Record<string, DetalheServicoFeriasPeriodo[]>>;
+
 export type DetalheServicoBundle = {
   version: 1;
   sheets: Record<string, DetalheServicoSheetSnapshot>;
   rodapes: Record<string, DetalheServicoRodapeAssinatura>;
   columnGrayByMonth: Record<string, Record<string, boolean>>;
+  /** Férias por mês (opcional em dados antigos). */
+  feriasByMonth: DetalheServicoFeriasPorMes;
 };
 
 const IDB_KEY = "sot-detalhe-servico-bundle-v2";
@@ -23,7 +31,7 @@ export function emptyRodapeAssinatura(): DetalheServicoRodapeAssinatura {
 }
 
 export function emptyDetalheServicoBundle(): DetalheServicoBundle {
-  return { version: 1, sheets: {}, rodapes: {}, columnGrayByMonth: {} };
+  return { version: 1, sheets: {}, rodapes: {}, columnGrayByMonth: {}, feriasByMonth: {} };
 }
 
 function normalizeSheet(raw: unknown): DetalheServicoSheetSnapshot | null {
@@ -45,6 +53,36 @@ function normalizeRodape(raw: unknown): DetalheServicoRodapeAssinatura {
     postoGraduacao: typeof o.postoGraduacao === "string" ? o.postoGraduacao : "",
     funcao: typeof o.funcao === "string" ? o.funcao : "",
   };
+}
+
+function normalizeFeriasPeriodo(p: unknown): DetalheServicoFeriasPeriodo | null {
+  if (!p || typeof p !== "object") return null;
+  const o = p as Record<string, unknown>;
+  const inicio = typeof o.inicio === "string" ? o.inicio.trim() : "";
+  const fim = typeof o.fim === "string" ? o.fim.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) return null;
+  return { inicio, fim };
+}
+
+function normalizeFeriasByMonth(raw: unknown): DetalheServicoFeriasPorMes {
+  if (!raw || typeof raw !== "object") return {};
+  const out: DetalheServicoFeriasPorMes = {};
+  for (const [monthKey, monthVal] of Object.entries(raw as Record<string, unknown>)) {
+    if (!monthVal || typeof monthVal !== "object") continue;
+    const inner: Record<string, DetalheServicoFeriasPeriodo[]> = {};
+    for (const [motorKey, periods] of Object.entries(monthVal as Record<string, unknown>)) {
+      if (!Array.isArray(periods)) continue;
+      const list: DetalheServicoFeriasPeriodo[] = [];
+      for (const p of periods) {
+        const np = normalizeFeriasPeriodo(p);
+        if (np) list.push(np);
+        if (list.length >= 3) break;
+      }
+      if (list.length > 0) inner[motorKey] = list;
+    }
+    if (Object.keys(inner).length > 0) out[monthKey] = inner;
+  }
+  return out;
 }
 
 function normalizeColumnGrayMap(raw: unknown): Record<string, Record<string, boolean>> {
@@ -79,7 +117,8 @@ export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundl
     }
   }
   const columnGrayByMonth = normalizeColumnGrayMap(o.columnGrayByMonth);
-  return { version: 1, sheets, rodapes, columnGrayByMonth };
+  const feriasByMonth = normalizeFeriasByMonth(o.feriasByMonth);
+  return { version: 1, sheets, rodapes, columnGrayByMonth, feriasByMonth };
 }
 
 function rodapeHasContent(r: DetalheServicoRodapeAssinatura): boolean {
@@ -94,6 +133,9 @@ export function isDetalheServicoBundleEmpty(b: DetalheServicoBundle): boolean {
   if (Object.keys(b.sheets).length > 0) return false;
   if (Object.values(b.rodapes).some(rodapeHasContent)) return false;
   if (Object.keys(b.columnGrayByMonth).some((k) => Object.keys(b.columnGrayByMonth[k] ?? {}).length > 0)) {
+    return false;
+  }
+  if (Object.keys(b.feriasByMonth ?? {}).some((k) => Object.keys(b.feriasByMonth[k] ?? {}).length > 0)) {
     return false;
   }
   return true;
@@ -135,7 +177,7 @@ function migrateLegacyLocalStorageToBundle(): DetalheServicoBundle | null {
     }
   }
   if (!found) return null;
-  return { version: 1, sheets, rodapes, columnGrayByMonth: {} };
+  return { version: 1, sheets, rodapes, columnGrayByMonth: {}, feriasByMonth: {} };
 }
 
 function clearLegacyLocalStorageKeys(bundleKey: string): void {
