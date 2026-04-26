@@ -381,6 +381,8 @@ type IntervaloMinimoModalState = {
   dataMinimaPermitida: Date;
 };
 
+type CloudSyncStatus = "idle" | "syncing" | "synced" | "error";
+
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -405,6 +407,8 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
+  const [cloudSyncAt, setCloudSyncAt] = useState<Date | null>(null);
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
@@ -485,9 +489,13 @@ export function DetalheServicoSheet() {
                 // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
                 return;
               }
+              // Evita sobrescrever alterações locais em andamento por snapshot remoto atrasado.
+              if (tableEditableRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizeDetalheServicoBundle(payload);
               setBundle(next);
+              setCloudSyncStatus("synced");
+              setCloudSyncAt(new Date());
               void saveDetalheServicoBundleToIdb(next);
             })();
           },
@@ -509,6 +517,22 @@ export function DetalheServicoSheet() {
     void saveDetalheServicoBundleToIdb(bundle);
   }, [bundle, idbReady]);
 
+  const pushBundleToCloud = useCallback(
+    async (nextBundle: DetalheServicoBundle) => {
+      if (!useCloud || !hydratedRef.current || !idbReady) return;
+      setCloudSyncStatus("syncing");
+      try {
+        await setSotStateDoc(SOT_STATE_DOC.detalheServico, nextBundle);
+        setCloudSyncStatus("synced");
+        setCloudSyncAt(new Date());
+      } catch (e) {
+        setCloudSyncStatus("error");
+        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+      }
+    },
+    [useCloud, idbReady],
+  );
+
   useEffect(() => {
     if (!useCloud || !hydratedRef.current || !idbReady) return;
     if (applyingRemoteRef.current) {
@@ -516,18 +540,20 @@ export function DetalheServicoSheet() {
       return;
     }
     if (tableEditable) {
-      void setSotStateDoc(SOT_STATE_DOC.detalheServico, bundle).catch((e) => {
-        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
-      });
+      void pushBundleToCloud(bundle);
       return;
     }
     const t = window.setTimeout(() => {
-      void setSotStateDoc(SOT_STATE_DOC.detalheServico, bundle).catch((e) => {
-        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
-      });
+      void pushBundleToCloud(bundle);
     }, 450);
     return () => window.clearTimeout(t);
-  }, [bundle, useCloud, idbReady, tableEditable]);
+  }, [bundle, useCloud, idbReady, tableEditable, pushBundleToCloud]);
+
+  useEffect(() => {
+    if (useCloud) return;
+    setCloudSyncStatus("synced");
+    setCloudSyncAt(null);
+  }, [useCloud]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -1136,9 +1162,36 @@ export function DetalheServicoSheet() {
       <div className="w-full min-w-0 pb-1">
         <div className="h-fit w-full max-w-none border border-neutral-300/90 bg-white p-[0.75em] shadow-[0_2px_12px_rgba(0,0,0,0.1)] sm:p-[1em]">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[hsl(var(--border))]/70 pb-2">
-            <span className="text-sm font-medium text-[hsl(var(--foreground))]" id="detalhe-servico-edicao-label">
-              {tableEditable ? "Edição ativa" : "Edição bloqueada"}
-            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-[hsl(var(--foreground))]" id="detalhe-servico-edicao-label">
+                {tableEditable ? "Edição ativa" : "Edição bloqueada"}
+              </span>
+              {useCloud ? (
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                    cloudSyncStatus === "syncing"
+                      ? "border-sky-300/70 bg-sky-100 text-sky-800"
+                      : cloudSyncStatus === "error"
+                        ? "border-red-300/80 bg-red-100 text-red-800"
+                        : "border-emerald-300/70 bg-emerald-100 text-emerald-800"
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {cloudSyncStatus === "syncing"
+                    ? "Sincronizando..."
+                    : cloudSyncStatus === "error"
+                      ? "Erro de sincronização"
+                      : cloudSyncAt
+                        ? `Sincronizado às ${cloudSyncAt.toLocaleTimeString("pt-BR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}`
+                        : "Sincronizado"}
+                </span>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2">
               {tableEditable ? (
                 <Unlock className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
