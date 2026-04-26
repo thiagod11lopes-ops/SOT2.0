@@ -195,6 +195,7 @@ function App() {
   const [dailyBackupDoneKey, setDailyBackupDoneKey] = useState<string>(() => readDailyBackupDone());
   /** Força remontagem do Dashboard ao regressar à página inicial por inatividade. */
   const [homeRemountKey, setHomeRemountKey] = useState(0);
+  const [detalheServicoEditingActive, setDetalheServicoEditingActive] = useState(false);
 
   const handleTabChange = useCallback(
     (tab: string) => {
@@ -216,7 +217,18 @@ function App() {
 
   const isMobileRoute = hash.startsWith("#/saidas");
   const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
-  useIdleResetToHome(!isMobileRoute, handleIdleReturnHome);
+  useIdleResetToHome(!isMobileRoute && !detalheServicoEditingActive, handleIdleReturnHome);
+
+  useEffect(() => {
+    const onDetalheServicoEditing = (event: Event) => {
+      const custom = event as CustomEvent<{ editing?: boolean }>;
+      setDetalheServicoEditingActive(Boolean(custom.detail?.editing));
+    };
+    window.addEventListener("sot:detalhe-servico-editing", onDetalheServicoEditing as EventListener);
+    return () => {
+      window.removeEventListener("sot:detalhe-servico-editing", onDetalheServicoEditing as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (hash.startsWith("#/saidas")) return;

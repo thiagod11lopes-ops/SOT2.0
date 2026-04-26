@@ -1,4 +1,4 @@
-import { FileDown, Lock, Unlock } from "lucide-react";
+import { AlertTriangle, FileDown, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -112,6 +112,23 @@ function normalizeLoadedSheet(loaded: DetalheServicoSheetSnapshot | null): Detal
   return { rows: loaded.rows, cells: loaded.cells ?? {} };
 }
 
+/** Cria novo mês herdando apenas a coluna Motorista do mês anterior. */
+function buildNewMonthSheetFromPrevious(
+  previous: DetalheServicoSheetSnapshot | null | undefined,
+): DetalheServicoSheetSnapshot {
+  if (!previous || !Array.isArray(previous.rows) || previous.rows.length === 0) {
+    return { rows: [newRowId()], cells: {} };
+  }
+  const rows = previous.rows.map(() => newRowId());
+  const cells: Record<string, Record<string, string>> = {};
+  previous.rows.forEach((prevRowId, index) => {
+    const nextRowId = rows[index]!;
+    const motorista = (previous.cells?.[prevRowId]?.[KEY_MOTORISTA] ?? "").trim();
+    cells[nextRowId] = motorista ? { [KEY_MOTORISTA]: motorista } : {};
+  });
+  return { rows, cells };
+}
+
 /** Números dos dias em que esta linha não tem «S» nem «RO» (ordem cronológica). */
 function listDiasSemMarcacaoSingleRow(
   snapshot: DetalheServicoSheetSnapshot,
@@ -142,6 +159,19 @@ const COLUNAS_EXTRAS_EDICAO = [
 /** Contagem automática de carga horária quando o motorista contém RM1: cada S nos dias = 24h, cada RO = 8h. */
 function isMotoristaRM1(motorista: string): boolean {
   return motorista.toUpperCase().includes("RM1");
+}
+
+/** Regra da nova escala: somente motoristas cadastrados com "FC" no nome. */
+function shouldCountMotoristaDiasNaoTrabalhados(
+  motoristaNome: string,
+  motoristasCatalogo: string[],
+): boolean {
+  const nome = motoristaNome.trim();
+  if (!nome) return false;
+  const nomeNorm = normalizeMotoristaName(nome);
+  const isCadastrado = motoristasCatalogo.some((m) => normalizeMotoristaName(m) === nomeNorm);
+  if (!isCadastrado) return false;
+  return nome.toUpperCase().includes("FC");
 }
 
 /** Opções do select: catálogo da aba Motoristas + valor atual se ainda não estiver na lista. */
@@ -188,6 +218,120 @@ function parseHorasCargaTexto(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function isMotoristaComIntervaloMinimoObrigatorio(motorista: string): boolean {
+  const nome = motorista.toUpperCase();
+  return nome.includes("RM1") || nome.includes("FC");
+}
+
+function addDays(date: Date, daysToAdd: number): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + daysToAdd);
+  return d;
+}
+
+function formatDatePtBr(date: Date): string {
+  return date.toLocaleDateString("pt-BR");
+}
+
+function normalizeMotoristaName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function findLastWorkedDateInMonthByMotorista(
+  snapshot: DetalheServicoSheetSnapshot | null,
+  motorista: string,
+  year: number,
+  monthIndex: number,
+  monthDays: DayMeta[],
+): Date | null {
+  if (!snapshot || !motorista.trim()) return null;
+  const motoristaNorm = normalizeMotoristaName(motorista);
+  let lastDay: number | null = null;
+
+  for (const rowId of snapshot.rows) {
+    const nomeLinha = normalizeMotoristaName(snapshot.cells[rowId]?.[KEY_MOTORISTA] ?? "");
+    if (!nomeLinha || nomeLinha !== motoristaNorm) continue;
+    for (const { day } of monthDays) {
+      const dk = dateKey(year, monthIndex, day);
+      if (!cellContainsWorkToken(snapshot.cells[rowId]?.[dk] ?? "")) continue;
+      if (lastDay === null || day > lastDay) lastDay = day;
+    }
+  }
+
+  if (lastDay === null) return null;
+  return new Date(year, monthIndex, lastDay);
+}
+
+function listDiasSemMarcacaoByMotoristaNoMes(
+  snapshot: DetalheServicoSheetSnapshot | null,
+  motorista: string,
+  year: number,
+  monthIndex: number,
+  monthDays: DayMeta[],
+): number[] {
+  if (!snapshot) return [];
+  const nome = normalizeMotoristaName(motorista);
+  if (!nome) return [];
+  const matchingRows = snapshot.rows.filter(
+    (rowId) => normalizeMotoristaName(snapshot.cells[rowId]?.[KEY_MOTORISTA] ?? "") === nome,
+  );
+  if (matchingRows.length === 0) return [];
+  const out: number[] = [];
+  for (const { day } of monthDays) {
+    const dk = dateKey(year, monthIndex, day);
+    const hasWorkInAnyRow = matchingRows.some((rowId) => cellContainsWorkToken(snapshot.cells[rowId]?.[dk] ?? ""));
+    if (!hasWorkInAnyRow) out.push(day);
+  }
+  return out;
+}
+
+function buildIntervaloMinimoViolationsMap(args: {
+  sheet: DetalheServicoSheetSnapshot;
+  prevMonthSheet: DetalheServicoSheetSnapshot | null;
+  year: number;
+  monthIndex: number;
+  days: DayMeta[];
+  prevYear: number;
+  prevMonthIndex: number;
+  prevDays: DayMeta[];
+}): Record<string, boolean> {
+  const { sheet, prevMonthSheet, year, monthIndex, days, prevYear, prevMonthIndex, prevDays } = args;
+  const out: Record<string, boolean> = {};
+  if (!prevMonthSheet) return out;
+
+  for (const rowId of sheet.rows) {
+    const motorista = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+    if (!isMotoristaComIntervaloMinimoObrigatorio(motorista)) continue;
+
+    const ultimoServicoMesAnterior = findLastWorkedDateInMonthByMotorista(
+      prevMonthSheet,
+      motorista,
+      prevYear,
+      prevMonthIndex,
+      prevDays,
+    );
+    if (!ultimoServicoMesAnterior) continue;
+    const dataMinimaPermitida = addDays(ultimoServicoMesAnterior, 3);
+
+    for (const { day } of days) {
+      const dk = dateKey(year, monthIndex, day);
+      const dataCandidata = new Date(year, monthIndex, day);
+      dataCandidata.setHours(0, 0, 0, 0);
+      if (dataCandidata < dataMinimaPermitida) {
+        out[`${rowId}__${dk}`] = true;
+      }
+    }
+  }
+
+  return out;
+}
+
 type RowContextMenu =
   | { x: number; y: number; kind: "row"; rowIndex: number }
   | { x: number; y: number; kind: "empty" }
@@ -196,6 +340,16 @@ type RowContextMenu =
 
 /** Identificador de coluna para fundo cinza manual (mesmo tom dos fins de semana: neutral-200). */
 type ColumnContextMenu = { x: number; y: number; columnKey: string };
+
+type IntervaloMinimoModalState = {
+  rowId: string;
+  key: string;
+  nextValue: string;
+  motorista: string;
+  dataUltimoServico: Date;
+  dataTentativa: Date;
+  dataMinimaPermitida: Date;
+};
 
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -220,6 +374,7 @@ export function DetalheServicoSheet() {
   const [menu, setMenu] = useState<RowContextMenu | null>(null);
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
+  const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
@@ -330,13 +485,28 @@ export function DetalheServicoSheet() {
       applyingRemoteRef.current = false;
       return;
     }
+    if (tableEditable) {
+      void setSotStateDoc(SOT_STATE_DOC.detalheServico, bundle).catch((e) => {
+        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+      });
+      return;
+    }
     const t = window.setTimeout(() => {
       void setSotStateDoc(SOT_STATE_DOC.detalheServico, bundle).catch((e) => {
         console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
       });
     }, 450);
     return () => window.clearTimeout(t);
-  }, [bundle, useCloud, idbReady]);
+  }, [bundle, useCloud, idbReady, tableEditable]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("sot:detalhe-servico-editing", { detail: { editing: tableEditable } }),
+    );
+    return () => {
+      window.dispatchEvent(new CustomEvent("sot:detalhe-servico-editing", { detail: { editing: false } }));
+    };
+  }, [tableEditable]);
 
   const setSheet = useCallback((action: SetStateAction<DetalheServicoSheetSnapshot>) => {
     setBundle((b) => {
@@ -382,6 +552,16 @@ export function DetalheServicoSheet() {
   }, []);
 
   const handleMonthYearChange = useCallback((next: string) => {
+    setBundle((b) => {
+      if (b.sheets[next]) return b;
+      const prevKey = getPreviousMonthKey(next);
+      const nextSheet = buildNewMonthSheetFromPrevious(b.sheets[prevKey]);
+      return {
+        ...b,
+        version: 1,
+        sheets: { ...b.sheets, [next]: nextSheet },
+      };
+    });
     setMonthYear(next);
     setUndoStack([]);
   }, []);
@@ -583,6 +763,70 @@ export function DetalheServicoSheet() {
     setUndoStack((u) => [...u, before]);
   }, []);
 
+  const handleDayCellChange = useCallback(
+    (rowId: string, key: string, day: number, value: string) => {
+      const prevValue = sheetRef.current.cells[rowId]?.[key] ?? "";
+      const prevHasWork = cellContainsWorkToken(prevValue);
+      const nextHasWork = cellContainsWorkToken(value);
+      if (!nextHasWork || prevHasWork) {
+        setCellValue(rowId, key, value);
+        return;
+      }
+
+      const motorista = (sheetRef.current.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      if (!isMotoristaComIntervaloMinimoObrigatorio(motorista)) {
+        setCellValue(rowId, key, value);
+        return;
+      }
+
+      const ultimoServicoMesAnterior = findLastWorkedDateInMonthByMotorista(
+        prevMonthSheet,
+        motorista,
+        prevMonthParsed.year,
+        prevMonthParsed.monthIndex,
+        prevDays,
+      );
+      if (!ultimoServicoMesAnterior) {
+        setCellValue(rowId, key, value);
+        return;
+      }
+
+      const dataTentativa = new Date(year, monthIndex, day);
+      dataTentativa.setHours(0, 0, 0, 0);
+      const dataMinimaPermitida = addDays(ultimoServicoMesAnterior, 3);
+      if (dataTentativa >= dataMinimaPermitida) {
+        setCellValue(rowId, key, value);
+        return;
+      }
+
+      setIntervaloModal({
+        rowId,
+        key,
+        nextValue: value,
+        motorista,
+        dataUltimoServico: ultimoServicoMesAnterior,
+        dataTentativa,
+        dataMinimaPermitida,
+      });
+    },
+    [
+      monthIndex,
+      prevDays,
+      prevMonthParsed.year,
+      prevMonthParsed.monthIndex,
+      prevMonthSheet,
+      setCellValue,
+      year,
+    ],
+  );
+
+  const closeIntervaloModal = useCallback(() => setIntervaloModal(null), []);
+  const confirmIntervaloModal = useCallback(() => {
+    if (!intervaloModal) return;
+    setCellValue(intervaloModal.rowId, intervaloModal.key, intervaloModal.nextValue);
+    setIntervaloModal(null);
+  }, [intervaloModal, setCellValue]);
+
   /** colIndex 0 = Motorista; 1..days.length = dias; se edição ativa: +1,+2,+3 = carga horária, nº serviços, nº rotinas */
   const focusSheetCell = useCallback((rowIndex: number, colIndex: number) => {
     requestAnimationFrame(() => {
@@ -737,7 +981,7 @@ export function DetalheServicoSheet() {
     for (const n of catalogItems.motoristas) {
       const t = n.trim();
       if (!t) continue;
-      const k = t.toLowerCase();
+      const k = normalizeMotoristaName(t);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push(n);
@@ -745,7 +989,7 @@ export function DetalheServicoSheet() {
     for (const rid of sheet.rows) {
       const v = (sheet.cells[rid]?.[KEY_MOTORISTA] ?? "").trim();
       if (!v) continue;
-      const k = v.toLowerCase();
+      const k = normalizeMotoristaName(v);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push(v);
@@ -753,6 +997,78 @@ export function DetalheServicoSheet() {
     out.sort((a, b) => a.localeCompare(b, "pt-PT"));
     return out;
   }, [catalogItems.motoristas, sheet.rows, sheet.cells]);
+
+  const prevMonthRowsForEscala = useMemo(() => {
+    if (!prevMonthSheet) return [];
+    return prevMonthSheet.rows
+      .map((rowId, originalIndex) => ({ rowId, originalIndex }))
+      .filter(({ rowId }) =>
+        shouldCountMotoristaDiasNaoTrabalhados(
+          prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "",
+          catalogItems.motoristas,
+        ),
+      );
+  }, [prevMonthSheet, catalogItems.motoristas]);
+
+  const diasNaoTrabalhadosRowsAuto = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ motoristaNome: string; diasSoNumeros: number[]; originalIndex: number | null }> = [];
+
+    for (const rowId of sheet.rows) {
+      const motoristaNome = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      if (!shouldCountMotoristaDiasNaoTrabalhados(motoristaNome, catalogItems.motoristas)) continue;
+      const k = normalizeMotoristaName(motoristaNome);
+      if (seen.has(k)) continue;
+      seen.add(k);
+
+      const diasSoNumeros = listDiasSemMarcacaoByMotoristaNoMes(
+        prevMonthSheet,
+        motoristaNome,
+        prevMonthParsed.year,
+        prevMonthParsed.monthIndex,
+        prevDays,
+      );
+      out.push({ motoristaNome, diasSoNumeros, originalIndex: null });
+    }
+
+    if (out.length > 0) return out;
+
+    return prevMonthRowsForEscala.map(({ rowId, originalIndex }) => ({
+      motoristaNome: prevMonthSheet?.cells[rowId]?.[KEY_MOTORISTA] ?? "",
+      diasSoNumeros: listDiasSemMarcacaoSingleRow(
+        prevMonthSheet!,
+        rowId,
+        prevMonthParsed.year,
+        prevMonthParsed.monthIndex,
+        prevDays,
+      ),
+      originalIndex,
+    }));
+  }, [
+    sheet.rows,
+    sheet.cells,
+    catalogItems.motoristas,
+    prevMonthSheet,
+    prevMonthParsed.year,
+    prevMonthParsed.monthIndex,
+    prevDays,
+    prevMonthRowsForEscala,
+  ]);
+
+  const intervaloMinimoViolations = useMemo(
+    () =>
+      buildIntervaloMinimoViolationsMap({
+        sheet,
+        prevMonthSheet,
+        year,
+        monthIndex,
+        days,
+        prevYear: prevMonthParsed.year,
+        prevMonthIndex: prevMonthParsed.monthIndex,
+        prevDays,
+      }),
+    [sheet, prevMonthSheet, year, monthIndex, days, prevMonthParsed.year, prevMonthParsed.monthIndex, prevDays],
+  );
 
   return (
     <div className="w-full min-w-0 space-y-3">
@@ -945,17 +1261,20 @@ export function DetalheServicoSheet() {
                         const dk = dateKey(year, monthIndex, day);
                         const colIndex = dayColIndex + 1;
                         const dayColGray = columnGray[dk] || isWeekend;
+                        const hasIntervaloViolation = Boolean(intervaloMinimoViolations[`${rowId}__${dk}`]);
                         return (
                           <td
                             key={dk}
-                            className={`min-w-[2rem] max-w-[4.5rem] border border-[hsl(var(--border))] px-[0.25em] py-[0.15em] text-center align-middle ${
-                              !tableEditable
-                                ? columnGray[dk] || isWeekend
-                                  ? "bg-neutral-300/80"
-                                  : "bg-[hsl(var(--muted)/0.12)]"
-                                : dayColGray
-                                  ? "bg-neutral-200"
-                                  : "bg-white"
+                            className={`min-w-[2rem] max-w-[4.5rem] border px-[0.25em] py-[0.15em] text-center align-middle ${
+                              tableEditable && hasIntervaloViolation
+                                ? "border-amber-500/90 bg-amber-50/55 ring-1 ring-inset ring-amber-400/70"
+                                : !tableEditable
+                                  ? columnGray[dk] || isWeekend
+                                    ? "border-[hsl(var(--border))] bg-neutral-300/80"
+                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)]"
+                                  : dayColGray
+                                    ? "border-[hsl(var(--border))] bg-neutral-200"
+                                    : "border-[hsl(var(--border))] bg-white"
                             }`}
                           >
                             <input
@@ -967,7 +1286,7 @@ export function DetalheServicoSheet() {
                               data-det-sheet-row={rowIndex}
                               data-det-sheet-col={colIndex}
                               value={cells[rowId]?.[dk] ?? ""}
-                              onChange={(e) => setCellValue(rowId, dk, e.target.value)}
+                              onChange={(e) => handleDayCellChange(rowId, dk, day, e.target.value)}
                               onFocus={onCellFocus}
                               onBlur={(e) => onCellBlur(rowId, dk, e.target.value)}
                               onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, colIndex)}
@@ -1092,7 +1411,7 @@ export function DetalheServicoSheet() {
                   coluna mostra o número de um dia sem «S» nem «RO» nessa linha.
                 </caption>
                 <tbody>
-                  {prevMonthSheet.rows.length === 0 ? (
+                  {diasNaoTrabalhadosRowsAuto.length === 0 ? (
                     <tr>
                       <td
                         colSpan={2}
@@ -1103,17 +1422,15 @@ export function DetalheServicoSheet() {
                       </td>
                     </tr>
                   ) : (
-                    prevMonthSheet.rows.map((rowId, rowIndex) => {
-                      const motoristaNome = prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "";
-                      const diasSoNumeros = listDiasSemMarcacaoSingleRow(
-                        prevMonthSheet,
-                        rowId,
-                        prevMonthParsed.year,
-                        prevMonthParsed.monthIndex,
-                        prevDays,
-                      );
+                    diasNaoTrabalhadosRowsAuto.map(({ motoristaNome, diasSoNumeros, originalIndex }, rowIndex) => {
                       return (
-                        <tr key={rowId} onContextMenu={(e) => openDiasNaoRowMenu(e, rowIndex)}>
+                        <tr
+                          key={`${motoristaNome}-${rowIndex}`}
+                          onContextMenu={(e) => {
+                            if (originalIndex === null) return;
+                            openDiasNaoRowMenu(e, originalIndex);
+                          }}
+                        >
                           <th
                             scope="row"
                             className="sticky left-0 z-[1] w-auto max-w-[14rem] border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.15em] text-left align-middle font-normal shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]"
@@ -1143,7 +1460,7 @@ export function DetalheServicoSheet() {
                               });
                               return (
                                 <td
-                                  key={`${rowId}-${dayNum}`}
+                                  key={`${motoristaNome}-${dayNum}`}
                                   className="w-auto whitespace-nowrap border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.15em] text-center align-middle tabular-nums font-semibold text-[hsl(var(--foreground))]"
                                   title={titleDia}
                                 >
@@ -1331,6 +1648,66 @@ export function DetalheServicoSheet() {
                 ? "Remover cinza da coluna"
                 : "Deixar coluna cinza"}
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {intervaloModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[260] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-[3px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="detalhe-servico-intervalo-title"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) closeIntervaloModal();
+            }}
+          >
+            <div
+              className="w-full max-w-xl overflow-hidden rounded-2xl border border-violet-200/60 bg-[hsl(var(--card))] shadow-[0_24px_70px_rgba(10,10,40,0.45)]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 px-5 py-4 text-white">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/18">
+                    <AlertTriangle className="h-5 w-5" aria-hidden />
+                  </span>
+                  <div>
+                    <h3 id="detalhe-servico-intervalo-title" className="text-base font-semibold leading-tight">
+                      Intervalo minimo de 3 dias nao respeitado
+                    </h3>
+                    <p className="mt-0.5 text-xs text-white/90">
+                      Validacao para motoristas com RM1 ou FC
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 px-5 py-4">
+                <p className="text-sm text-[hsl(var(--foreground))]">
+                  O motorista <strong>{intervaloModal.motorista}</strong> teve o ultimo <strong>S/RO</strong> em{" "}
+                  <strong>{formatDatePtBr(intervaloModal.dataUltimoServico)}</strong> e so pode receber nova
+                  marcacao a partir de <strong>{formatDatePtBr(intervaloModal.dataMinimaPermitida)}</strong>.
+                </p>
+                <div className="rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Tentativa atual: <strong>{formatDatePtBr(intervaloModal.dataTentativa)}</strong>. Deseja
+                  continuar mesmo assim?
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)] px-5 py-4 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={closeIntervaloModal}>
+                  Cancelar edicao
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-700 hover:to-fuchsia-700"
+                  onClick={confirmIntervaloModal}
+                >
+                  Continuar mesmo assim
+                </Button>
+              </div>
+            </div>
           </div>,
           document.body,
         )}
