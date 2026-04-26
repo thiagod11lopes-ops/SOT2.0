@@ -362,6 +362,19 @@ function buildServicosInvalidosPorDiaMap(args: {
   return out;
 }
 
+function mergeRemoteBundlePreservingLocalMonths(
+  localBundle: DetalheServicoBundle,
+  remoteBundle: DetalheServicoBundle,
+): DetalheServicoBundle {
+  return {
+    ...remoteBundle,
+    version: 1,
+    sheets: { ...localBundle.sheets, ...remoteBundle.sheets },
+    rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
+    columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
+  };
+}
+
 type RowContextMenu =
   | { x: number; y: number; kind: "row"; rowIndex: number }
   | { x: number; y: number; kind: "empty" }
@@ -434,6 +447,8 @@ export function DetalheServicoSheet() {
 
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
+  const bundleRef = useRef(bundle);
+  bundleRef.current = bundle;
   const tableEditableRef = useRef(tableEditable);
   tableEditableRef.current = tableEditable;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
@@ -494,10 +509,11 @@ export function DetalheServicoSheet() {
               if (tableEditableRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizeDetalheServicoBundle(payload);
-              setBundle(next);
+              const merged = mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next);
+              setBundle(merged);
               setCloudSyncStatus("synced");
               setCloudSyncAt(new Date());
-              void saveDetalheServicoBundleToIdb(next);
+              void saveDetalheServicoBundleToIdb(merged);
             })();
           },
           (err) => console.error("[SOT] Firestore detalhe serviço:", err),
