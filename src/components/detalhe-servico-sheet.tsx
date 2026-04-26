@@ -1557,6 +1557,25 @@ export function DetalheServicoSheet() {
                         const feriasNext =
                           day < lastCalendarDay &&
                           isDayInFeriasPeriods(year, monthIndex, day + 1, periodsThisMotor);
+                        let isFeriasLabelDay = false;
+                        if (isFeriasDay) {
+                          let start = day;
+                          let end = day;
+                          while (
+                            start > 1 &&
+                            isDayInFeriasPeriods(year, monthIndex, start - 1, periodsThisMotor)
+                          ) {
+                            start -= 1;
+                          }
+                          while (
+                            end < lastCalendarDay &&
+                            isDayInFeriasPeriods(year, monthIndex, end + 1, periodsThisMotor)
+                          ) {
+                            end += 1;
+                          }
+                          const middle = Math.floor((start + end) / 2);
+                          isFeriasLabelDay = day === middle;
+                        }
                         const feriasBg = !tableEditable ? "bg-neutral-300/80" : "bg-neutral-200";
                         const hasIntervaloViolation =
                           !isFeriasDay &&
@@ -1593,7 +1612,7 @@ export function DetalheServicoSheet() {
                                 data-det-sheet-row={rowIndex}
                                 data-det-sheet-col={colIndex}
                                 value=""
-                                placeholder={!feriasPrev ? "FÉRIAS" : "\u00a0"}
+                                placeholder={isFeriasLabelDay ? "FÉRIAS" : "\u00a0"}
                                 onChange={() => {}}
                                 onFocus={onCellFocus}
                                 onBlur={() => {}}
