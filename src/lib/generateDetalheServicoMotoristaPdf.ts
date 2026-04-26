@@ -108,6 +108,10 @@ function isMotoristaRM1(motorista: string): boolean {
   return motorista.toUpperCase().includes("RM1");
 }
 
+function isMotoristaFC(motorista: string): boolean {
+  return motorista.toUpperCase().includes("FC");
+}
+
 function tallyDayCellTokens(
   rowCells: Record<string, string>,
   year: number,
@@ -422,8 +426,14 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
         : "Sem linhas na grelha desse mês.",
     ]);
   } else if (prevParsed) {
+    const prevMonthRowsFC = prevMonthSheet.rows.filter((rowId) =>
+      isMotoristaFC((prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim()),
+    );
+    if (prevMonthRowsFC.length === 0) {
+      body2.push(["—", "Sem motoristas com FC no mês anterior."]);
+    } else {
     const rowNums: number[][] = [];
-    for (const rowId of prevMonthSheet.rows) {
+    for (const rowId of prevMonthRowsFC) {
       rowNums.push(
         listDiasSemMarcacaoSingleRow(
           prevMonthSheet,
@@ -440,8 +450,8 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
     }
     if (maxLen === 0) maxLen = 1;
 
-    for (let i = 0; i < prevMonthSheet.rows.length; i++) {
-      const rowId = prevMonthSheet.rows[i]!;
+    for (let i = 0; i < prevMonthRowsFC.length; i++) {
+      const rowId = prevMonthRowsFC[i]!;
       const nome = (prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim() || "—";
       const nums = rowNums[i]!;
       const row: string[] = [nome];
@@ -454,6 +464,7 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
         }
       }
       body2.push(row);
+    }
     }
   }
   if (body2.length === 0) {
