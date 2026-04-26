@@ -102,6 +102,16 @@ function cellContainsWorkToken(raw: string): boolean {
   return tokens.some((t) => t === "S" || t === "RO");
 }
 
+/** True se a célula tiver token «S». */
+function cellContainsServicoToken(raw: string): boolean {
+  const tokens = raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean);
+  return tokens.includes("S");
+}
+
 function normalizeLoadedSheet(loaded: DetalheServicoSheetSnapshot | null): DetalheServicoSheetSnapshot {
   if (!loaded || !Array.isArray(loaded.rows)) {
     return { rows: [newRowId()], cells: {} };
@@ -329,6 +339,26 @@ function buildIntervaloMinimoViolationsMap(args: {
     }
   }
 
+  return out;
+}
+
+function buildServicosInvalidosPorDiaMap(args: {
+  sheet: DetalheServicoSheetSnapshot;
+  year: number;
+  monthIndex: number;
+  days: DayMeta[];
+}): Record<string, boolean> {
+  const { sheet, year, monthIndex, days } = args;
+  const out: Record<string, boolean> = {};
+  for (const { day } of days) {
+    const dk = dateKey(year, monthIndex, day);
+    let sCount = 0;
+    for (const rowId of sheet.rows) {
+      const raw = sheet.cells[rowId]?.[dk] ?? "";
+      if (cellContainsServicoToken(raw)) sCount += 1;
+    }
+    if (sCount !== 2) out[dk] = true;
+  }
   return out;
 }
 
@@ -1070,6 +1100,17 @@ export function DetalheServicoSheet() {
     [sheet, prevMonthSheet, year, monthIndex, days, prevMonthParsed.year, prevMonthParsed.monthIndex, prevDays],
   );
 
+  const servicosInvalidosPorDia = useMemo(
+    () =>
+      buildServicosInvalidosPorDiaMap({
+        sheet,
+        year,
+        monthIndex,
+        days,
+      }),
+    [sheet, year, monthIndex, days],
+  );
+
   return (
     <div className="w-full min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-end gap-3">
@@ -1141,13 +1182,18 @@ export function DetalheServicoSheet() {
                   {days.map(({ day, date, isWeekend }) => {
                     const dkHead = dateKey(year, monthIndex, day);
                     const headDayGray = columnGray[dkHead] || isWeekend;
+                    const daySCountInvalidWhenLocked = !tableEditable && Boolean(servicosInvalidosPorDia[dkHead]);
                     return (
                     <th
                       key={day}
                       scope="col"
                       onContextMenu={(e) => openColumnMenu(e, dkHead)}
-                      className={`cursor-context-menu border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center align-middle font-medium ${
-                        headDayGray ? "bg-neutral-200 text-[hsl(var(--foreground))]" : "bg-white"
+                      className={`cursor-context-menu border px-[0.35em] py-[0.2em] text-center align-middle font-medium ${
+                        daySCountInvalidWhenLocked
+                          ? "detalhe-servico-coluna-alerta border-red-500/90 bg-red-100/80 text-red-900"
+                          : headDayGray
+                            ? "border-[hsl(var(--border))] bg-neutral-200 text-[hsl(var(--foreground))]"
+                            : "border-[hsl(var(--border))] bg-white"
                       }`}
                       title={date.toLocaleDateString("pt-PT", {
                         weekday: "long",
@@ -1262,12 +1308,15 @@ export function DetalheServicoSheet() {
                         const colIndex = dayColIndex + 1;
                         const dayColGray = columnGray[dk] || isWeekend;
                         const hasIntervaloViolation = Boolean(intervaloMinimoViolations[`${rowId}__${dk}`]);
+                        const daySCountInvalidWhenLocked = !tableEditable && Boolean(servicosInvalidosPorDia[dk]);
                         return (
                           <td
                             key={dk}
                             className={`min-w-[2rem] max-w-[4.5rem] border px-[0.25em] py-[0.15em] text-center align-middle ${
                               tableEditable && hasIntervaloViolation
                                 ? "border-amber-500/90 bg-amber-50/55 ring-1 ring-inset ring-amber-400/70"
+                                : daySCountInvalidWhenLocked
+                                  ? "detalhe-servico-coluna-alerta border-red-500/90 bg-red-100/70"
                                 : !tableEditable
                                   ? columnGray[dk] || isWeekend
                                     ? "border-[hsl(var(--border))] bg-neutral-300/80"
