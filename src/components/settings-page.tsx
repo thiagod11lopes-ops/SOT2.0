@@ -43,6 +43,12 @@ import {
   pushLocalOperationalStateToFirebase,
   restoreFullBackupToLocal,
 } from "../lib/firebase/systemBackup";
+import {
+  loadMobileMotoristaCredentials,
+  removeMobileMotoristaCredential,
+  type MobileMotoristaCredential,
+  upsertMobileMotoristaCredential,
+} from "../lib/mobileMotoristaCredentials";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
@@ -57,6 +63,7 @@ const SETTINGS_SECTIONS = [
   { id: "settings-saidas", label: "Saídas" },
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
   { id: "settings-whatsapp-vistoria", label: "WhatsApp — vistoria" },
+  { id: "settings-mobile-motoristas", label: "Mobile — motoristas" },
   { id: "settings-vistoria-cal", label: "Vistoria — calendário" },
   { id: "settings-zona-risco", label: "Zona de risco" },
 ] as const;
@@ -201,6 +208,11 @@ export function SettingsPage() {
   const [whatsApiToken, setWhatsApiToken] = useState<string>(() => readWhatsAppCloudApiConfig().token);
   const [whatsApiPhoneNumberId, setWhatsApiPhoneNumberId] = useState<string>(() => readWhatsAppCloudApiConfig().phoneNumberId);
   const [whatsApiProxyBaseUrl, setWhatsApiProxyBaseUrl] = useState<string>(() => readWhatsAppCloudApiConfig().proxyBaseUrl);
+  const [mobileMotoristaCreds, setMobileMotoristaCreds] = useState<MobileMotoristaCredential[]>(
+    () => loadMobileMotoristaCredentials(),
+  );
+  const [mobileCredMotorista, setMobileCredMotorista] = useState("");
+  const [mobileCredSenha, setMobileCredSenha] = useState("");
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -531,6 +543,28 @@ export function SettingsPage() {
     saveWhatsAppCloudApiConfig({ token, phoneNumberId });
     saveWhatsAppProxyBaseUrl(proxyBaseUrl);
     window.alert("Configuração da API do WhatsApp salva neste navegador.");
+  }
+
+  function handleSaveMobileMotoristaCred() {
+    const motorista = mobileCredMotorista.trim();
+    const senha = mobileCredSenha.trim();
+    if (!motorista) {
+      window.alert("Selecione um motorista cadastrado.");
+      return;
+    }
+    if (!senha) {
+      window.alert("Digite a senha do motorista.");
+      return;
+    }
+    const next = upsertMobileMotoristaCredential({ motorista, senha });
+    setMobileMotoristaCreds(next);
+    setMobileCredSenha("");
+    window.alert("Credencial mobile guardada.");
+  }
+
+  function handleRemoveMobileMotoristaCred(motorista: string) {
+    const next = removeMobileMotoristaCredential(motorista);
+    setMobileMotoristaCreds(next);
   }
 
   async function handleFirebaseOnlyToggle(next: boolean) {
@@ -1054,6 +1088,80 @@ export function SettingsPage() {
                     ))}
                   </ul>
                 )}
+              </section>
+              ) : null}
+
+              {activeSectionId === "settings-mobile-motoristas" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-mobile-motoristas">
+                <h3
+                  id="settings-heading-mobile-motoristas"
+                  className="text-base font-semibold text-[hsl(var(--foreground))]"
+                >
+                  Mobile — cadastro de motoristas e senha
+                </h3>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Credenciais usadas pelo fluxo mobile. O motorista deve existir no catálogo.
+                </p>
+                <div className="grid gap-2 sm:max-w-xl">
+                  <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="mobile-motorista">
+                    Motorista
+                  </label>
+                  <select
+                    id="mobile-motorista"
+                    value={mobileCredMotorista}
+                    onChange={(e) => setMobileCredMotorista(e.target.value)}
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                  >
+                    <option value="">— Selecionar —</option>
+                    {motoristasCatalogo.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="mobile-senha">
+                    Senha
+                  </label>
+                  <input
+                    id="mobile-senha"
+                    type="password"
+                    value={mobileCredSenha}
+                    onChange={(e) => setMobileCredSenha(e.target.value)}
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                  />
+                  <div className="pt-1">
+                    <Button type="button" className="w-fit" onClick={handleSaveMobileMotoristaCred}>
+                      Guardar credencial
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2 pt-2">
+                  {mobileMotoristaCreds.length === 0 ? (
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Nenhuma credencial cadastrada.</p>
+                  ) : (
+                    mobileMotoristaCreds.map((row) => (
+                      <div
+                        key={row.motorista.toLowerCase()}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[hsl(var(--border))] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">{row.motorista}</p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            Atualizado em {new Date(row.updatedAt || Date.now()).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-red-300 text-red-700 hover:bg-red-50"
+                          onClick={() => handleRemoveMobileMotoristaCred(row.motorista)}
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </section>
               ) : null}
 

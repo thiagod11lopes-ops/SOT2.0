@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useMemo, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Ambulance, Building2, ClipboardCheck, ShieldCheck, Upload } from "lucide-react";
-import { useDepartures } from "../context/departures-context";
+import { Ambulance, Building2, ClipboardCheck, ShieldCheck, UserPlus } from "lucide-react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { CloudSyncIndicator } from "../components/cloud-sync-indicator";
 import { Button } from "../components/ui/button";
-import { mapSotBackupJsonToDepartures } from "../lib/sotBackupImport";
-import { normalizeDepartureRows } from "../lib/normalizeDepartures";
+import {
+  findMobileMotoristaCredentialByName,
+  loadActiveMobileMotorista,
+  setActiveMobileMotorista,
+  upsertMobileMotoristaCredential,
+} from "../lib/mobileMotoristaCredentials";
 import { VISTORIA_ADMINISTRATIVA_SENHA_PADRAO } from "../lib/vistoriaAdminMobile";
 import { cn } from "../lib/utils";
 import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
@@ -20,7 +23,6 @@ import { useMobileLoadingOverlay } from "./mobile-loading-context";
 
 export function SaidasLayout() {
   const { runWithTrackedProgress } = useMobileLoadingOverlay();
-  const { mergeDeparturesFromBackup } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
@@ -30,7 +32,12 @@ export function SaidasLayout() {
   const [vistoriaAdminStep, setVistoriaAdminStep] = useState<"motorista" | "senha">("motorista");
   const [vistoriaAdminMotoristaId, setVistoriaAdminMotoristaId] = useState("");
   const [vistoriaAdminSenha, setVistoriaAdminSenha] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [cadastroCredModalOpen, setCadastroCredModalOpen] = useState(false);
+  const [cadastroMotorista, setCadastroMotorista] = useState("");
+  const [cadastroSenha, setCadastroSenha] = useState("");
+  const [motoristaLogadoMobile, setMotoristaLogadoMobile] = useState<string | null>(
+    () => loadActiveMobileMotorista(),
+  );
 
   const motoristasCatalogoOrdenados = useMemo(() => {
     const seen = new Set<string>();
@@ -46,29 +53,45 @@ export function SaidasLayout() {
     return out.sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [catalogItems.motoristas]);
 
-  function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = String(reader.result ?? "");
-        const parsed: unknown = JSON.parse(text);
-        const rows = Array.isArray(parsed)
-          ? normalizeDepartureRows(parsed)
-          : mapSotBackupJsonToDepartures(parsed);
-        if (rows.length === 0) {
-          window.alert("Nenhuma saída reconhecida neste ficheiro.");
-          return;
-        }
-        mergeDeparturesFromBackup(rows);
-        window.alert(`${rows.length} registo(s) importado(s). Os que já existiam foram ignorados.`);
-      } catch {
-        window.alert("JSON inválido. Use o backup exportado pelo SOT ou um array de saídas.");
+  function closeCadastroCredModal() {
+    setCadastroCredModalOpen(false);
+    setCadastroMotorista("");
+    setCadastroSenha("");
+  }
+
+  function handleSalvarCadastroCred() {
+    const motorista = cadastroMotorista.trim();
+    const senha = cadastroSenha.trim();
+    if (!motorista) {
+      window.alert("Selecione um motorista cadastrado.");
+      return;
+    }
+    if (!senha) {
+      window.alert("Digite a senha do motorista.");
+      return;
+    }
+    const existing = findMobileMotoristaCredentialByName(motorista);
+    if (existing) {
+      if (existing.senha !== senha) {
+        window.alert("Senha incorreta para este motorista.");
+        return;
       }
-    };
-    reader.readAsText(f);
+    } else {
+      upsertMobileMotoristaCredential({ motorista, senha });
+    }
+    setActiveMobileMotorista(motorista);
+    setMotoristaLogadoMobile(motorista);
+    window.alert(
+      existing
+        ? `Login efetuado como ${motorista}.`
+        : `Senha criada e login efetuado como ${motorista}.`,
+    );
+    closeCadastroCredModal();
+  }
+
+  function handleLogoutMotoristaMobile() {
+    setActiveMobileMotorista(null);
+    setMotoristaLogadoMobile(null);
   }
 
   function closeVistoriaAdminModal() {
@@ -230,6 +253,74 @@ export function SaidasLayout() {
           </div>
         </div>
       ) : null}
+      {cadastroCredModalOpen ? (
+        <div
+          className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[520]`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cadastro-motorista-mobile-titulo"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeCadastroCredModal();
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="cadastro-motorista-mobile-titulo"
+              className="mb-1 text-lg font-semibold text-[hsl(var(--foreground))]"
+            >
+              Login do motorista (mobile)
+            </h2>
+            <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+              Selecione o seu nome e informe a senha para entrar. Se ainda não houver senha para esse motorista,
+              esta senha será criada e usada neste login.
+            </p>
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-[hsl(var(--foreground))]">Motorista</label>
+              <select
+                className="min-h-12 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+                value={cadastroMotorista}
+                onChange={(e) => setCadastroMotorista(e.target.value)}
+                aria-label="Selecionar motorista"
+              >
+                <option value="">— Selecionar —</option>
+                {motoristasCatalogoOrdenados.map((nome) => (
+                  <option key={nome} value={nome}>
+                    {nome}
+                  </option>
+                ))}
+              </select>
+              <label className="block text-sm font-medium text-[hsl(var(--foreground))]">Senha</label>
+              <input
+                type="password"
+                autoComplete="off"
+                value={cadastroSenha}
+                onChange={(e) => setCadastroSenha(e.target.value)}
+                className="min-h-12 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
+                aria-label="Senha do motorista mobile"
+              />
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  className="min-h-11 flex-1 rounded-xl border border-red-600/90 bg-red-500 font-semibold text-white"
+                  onClick={closeCadastroCredModal}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  className="min-h-11 flex-1 rounded-xl border border-emerald-600/90 bg-emerald-500 font-semibold text-white"
+                  onClick={handleSalvarCadastroCred}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <MobileVistoriaFullscreen
         open={vistoriaMobileOpen}
         onOpenChange={(next) => {
@@ -292,17 +383,35 @@ export function SaidasLayout() {
             </button>
             <button
               type="button"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => setCadastroCredModalOpen(true)}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
-              aria-label="Importar saídas (JSON)"
+              aria-label="Cadastro de motorista para acesso mobile"
+              title="Cadastro de motorista (mobile)"
             >
-              <Upload className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
+              <UserPlus className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
             </button>
           </div>
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFile} />
         </div>
-        <div className="mt-2 flex justify-center">
+        <div className="mt-2 flex flex-col items-center gap-1">
           <CloudSyncIndicator compact />
+          {motoristaLogadoMobile ? (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-emerald-300/80 bg-emerald-100/80 px-2 py-0.5 font-medium text-emerald-900">
+                Motorista logado: {motoristaLogadoMobile}
+              </span>
+              <button
+                type="button"
+                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-0.5 text-[hsl(var(--muted-foreground))]"
+                onClick={handleLogoutMotoristaMobile}
+              >
+                Sair
+              </button>
+            </div>
+          ) : (
+            <span className="text-[11px] text-[hsl(var(--muted-foreground))]">
+              Sem motorista logado
+            </span>
+          )}
         </div>
       </header>
 
