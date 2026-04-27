@@ -325,20 +325,27 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
 
-        <Card className={cn("min-w-0", departuresTableShadowClass)}>
-          <CardContent className="py-3">
-            <p className={cn("text-sm leading-snug", homeBodyEmphasisClass)}>
-              <strong>Motoristas de Serviço:</strong> <strong>S:</strong>{" "}
-              {motoristasServicoRotinaHoje.servico.length > 0
-                ? motoristasServicoRotinaHoje.servico.join(", ")
-                : "Nenhum motorista marcado hoje."}{" "}
-              | <strong>RO:</strong>{" "}
-              {motoristasServicoRotinaHoje.rotina.length > 0
-                ? motoristasServicoRotinaHoje.rotina.join(", ")
-                : "Nenhum motorista marcado hoje."}
-            </p>
-          </CardContent>
-        </Card>
+        <div className="flex w-full justify-center px-2">
+          <Card className={cn("w-fit max-w-full shrink-0", departuresTableShadowClass)}>
+            <CardContent className="px-5 py-3.5 text-center sm:px-6 sm:py-4">
+              <p
+                className={cn(
+                  "leading-snug [font-size:calc(0.875rem*1.3)] sm:[font-size:calc(1rem*1.3)]",
+                  homeBodyEmphasisClass,
+                )}
+              >
+                <strong>Motoristas de Serviço:</strong> <strong>S:</strong>{" "}
+                {motoristasServicoRotinaHoje.servico.length > 0
+                  ? motoristasServicoRotinaHoje.servico.join(", ")
+                  : "Nenhum motorista marcado hoje."}{" "}
+                | <strong>RO:</strong>{" "}
+                {motoristasServicoRotinaHoje.rotina.length > 0
+                  ? motoristasServicoRotinaHoje.rotina.join(", ")
+                  : "Nenhum motorista marcado hoje."}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>
             <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
