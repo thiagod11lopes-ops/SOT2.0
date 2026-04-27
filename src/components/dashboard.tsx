@@ -318,6 +318,22 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     return { servico, rotina };
   }, [detalheServicoBundle]);
 
+  const hasMotoristasServicoOuRotina =
+    motoristasServicoRotinaHoje.servico.length > 0 || motoristasServicoRotinaHoje.rotina.length > 0;
+  const showSaidasAdministrativasHoje = saidasAdministrativasHoje.length > 0;
+  const showAtraso = comAtraso.length > 0;
+  const showAndamento = emAndamento.length > 0;
+  const showAtrasoOuAndamento = showAtraso || showAndamento;
+
+  const hasViaturasOficinaRdvContent =
+    placasNaOficina.length > 0 || placasInoperantesRdv.length > 0 || placasDestacadasRdv.length > 0;
+  const showTrocasOleoHome = linhasProximasTrocasOleo.length > 0;
+  const showPendenciaLimpeza = placasPendenciaLimpeza.length > 0;
+  const showFainasGerais = fainasLinhas.length > 0;
+  const showGrupoOperacional =
+    !alarmeBloqueiaSecoesOperacionais &&
+    (hasViaturasOficinaRdvContent || showTrocasOleoHome || showPendenciaLimpeza || showFainasGerais);
+
   return (
     <div className="space-y-6">
       <section className="space-y-4">
@@ -325,30 +341,33 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
 
-        <div className="flex w-full justify-center px-2">
-          <Card className={cn("w-fit max-w-full shrink-0", departuresTableShadowClass)}>
-            <CardContent className="px-5 py-3.5 text-center sm:px-6 sm:py-4">
-              <p
-                className={cn(
-                  "leading-snug [font-size:calc(0.875rem*1.3)] sm:[font-size:calc(1rem*1.3)]",
-                  homeBodyEmphasisClass,
-                )}
-              >
-                <strong>Motoristas de Serviço:</strong>{" "}
-                {motoristasServicoRotinaHoje.servico.length > 0
-                  ? motoristasServicoRotinaHoje.servico.join(", ")
-                  : "Nenhum motorista marcado hoje."}
-                {" | "}
-                <strong>Motoristas de Rotina:</strong>{" "}
-                {motoristasServicoRotinaHoje.rotina.length > 0
-                  ? motoristasServicoRotinaHoje.rotina.join(", ")
-                  : "Nenhum motorista marcado hoje."}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {hasMotoristasServicoOuRotina ? (
+          <div className="flex w-full justify-center px-2">
+            <Card className={cn("w-fit max-w-full shrink-0", departuresTableShadowClass)}>
+              <CardContent className="px-5 py-3.5 text-center sm:px-6 sm:py-4">
+                <p
+                  className={cn(
+                    "leading-snug [font-size:calc(0.875rem*1.3)] sm:[font-size:calc(1rem*1.3)]",
+                    homeBodyEmphasisClass,
+                  )}
+                >
+                  <strong>Motoristas de Serviço:</strong>{" "}
+                  {motoristasServicoRotinaHoje.servico.length > 0
+                    ? motoristasServicoRotinaHoje.servico.join(", ")
+                    : "Nenhum motorista marcado hoje."}
+                  {" | "}
+                  <strong>Motoristas de Rotina:</strong>{" "}
+                  {motoristasServicoRotinaHoje.rotina.length > 0
+                    ? motoristasServicoRotinaHoje.rotina.join(", ")
+                    : "Nenhum motorista marcado hoje."}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
 
-        <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>
+        {showSaidasAdministrativasHoje ? (
+          <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>
             <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]")}>
@@ -368,14 +387,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="flex flex-col pt-0">
-              {saidasAdministrativasHoje.length === 0 ? (
-                <div className="py-4">
-                  <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                    Nenhuma saída administrativa para hoje.
-                  </p>
-                </div>
-              ) : (
-                <div className="home-dashboard-departures-panel max-h-[min(72vh,42rem)] w-full overflow-auto rounded-md border border-[hsl(var(--border))]">
+              <div className="home-dashboard-departures-panel max-h-[min(72vh,42rem)] w-full overflow-auto rounded-md border border-[hsl(var(--border))]">
                     <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
@@ -441,12 +453,19 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     </TableBody>
                   </Table>
                 </div>
-              )}
             </CardContent>
           </Card>
+        ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className={cn("min-w-0", departuresTableShadowClass)}>
+        {showAtrasoOuAndamento ? (
+          <div
+            className={cn(
+              "grid w-full min-w-0 items-stretch gap-4",
+              showAtraso && showAndamento ? "lg:grid-cols-2" : "grid-cols-1",
+            )}
+          >
+            {showAtraso ? (
+          <Card className={cn("min-w-0 h-full", departuresTableShadowClass, showAtraso && !showAndamento && "w-full")}>
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={homeCardTitleClass}>Saídas com Atraso</CardTitle>
@@ -464,12 +483,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              {comAtraso.length === 0 ? (
-                <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                  Nenhuma saída com atraso para hoje.
-                </p>
-              ) : (
-                <div className="home-dashboard-departures-panel overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -506,11 +520,12 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     </TableBody>
                   </Table>
                 </div>
-              )}
             </CardContent>
           </Card>
+            ) : null}
 
-          <Card className={cn("min-w-0", departuresTableShadowClass)}>
+            {showAndamento ? (
+          <Card className={cn("min-w-0 h-full", departuresTableShadowClass, !showAtraso && showAndamento && "w-full")}>
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={homeCardTitleClass}>Saídas em Andamento</CardTitle>
@@ -528,12 +543,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              {emAndamento.length === 0 ? (
-                <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                  Nenhuma saída em andamento para hoje.
-                </p>
-              ) : (
-                <div className="home-dashboard-departures-panel overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -577,25 +587,21 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     </TableBody>
                   </Table>
                 </div>
-              )}
             </CardContent>
           </Card>
+            ) : null}
         </div>
+        ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {!alarmeBloqueiaSecoesOperacionais ? (
+        {showGrupoOperacional ? (
+        <div className="grid w-full min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(17.5rem,1fr))]">
+            {hasViaturasOficinaRdvContent ? (
             <Card className={departuresTableShadowClass}>
               <CardContent className="flex items-start justify-between gap-3">
                 <div className="home-dashboard-fluid-card min-w-0 flex-1 space-y-4">
+                  {placasNaOficina.length > 0 ? (
                   <div>
                     <p className={homeFluidCardTitleClass}>Viaturas na Oficina</p>
-                    {placasNaOficina.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        {!rdvFrotaHome.isoDate
-                          ? "Grave um relatório diário para listar viaturas aqui."
-                          : "Nenhuma viatura marcada na coluna Oficina neste relatório."}
-                      </p>
-                    ) : (
                       <ul className="mt-2 flex flex-wrap gap-1.5">
                         {placasNaOficina.map(({ placa, observacao }) => {
                           const tip = observacao.trim();
@@ -614,18 +620,16 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           );
                         })}
                       </ul>
-                    )}
                   </div>
+                  ) : null}
 
-                  <div className="border-t border-[hsl(var(--border))] pt-3">
+                  {placasInoperantesRdv.length > 0 ? (
+                  <div
+                    className={cn(
+                      placasNaOficina.length > 0 && "border-t border-[hsl(var(--border))] pt-3",
+                    )}
+                  >
                     <p className={homeFluidCardTitleClass}>Viaturas Inoperantes</p>
-                    {placasInoperantesRdv.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        {!rdvFrotaHome.isoDate
-                          ? "Grave um relatório diário para listar viaturas aqui."
-                          : "Nenhuma viatura com situação Inoperante neste relatório."}
-                      </p>
-                    ) : (
                       <ul className="mt-2 flex flex-wrap gap-1.5">
                         {placasInoperantesRdv.map(({ placa, observacao }) => {
                           const tip = observacao.trim();
@@ -644,11 +648,16 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           );
                         })}
                       </ul>
-                    )}
                   </div>
+                  ) : null}
 
                   {placasDestacadasRdv.length > 0 ? (
-                    <div className="border-t border-[hsl(var(--border))] pt-3">
+                    <div
+                      className={cn(
+                        (placasNaOficina.length > 0 || placasInoperantesRdv.length > 0) &&
+                          "border-t border-[hsl(var(--border))] pt-3",
+                      )}
+                    >
                       <p className={homeFluidCardTitleClass}>Viaturas Destacadas</p>
                       <ul className="mt-2 flex flex-wrap gap-1.5">
                         {placasDestacadasRdv.map((placa) => (
@@ -671,23 +680,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 </div>
               </CardContent>
             </Card>
-          ) : null}
+            ) : null}
 
-          {!alarmeBloqueiaSecoesOperacionais ? (
-            <>
+              {showTrocasOleoHome ? (
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Próximas Trocas de Óleo</p>
-                    {placasCatalogo.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Cadastre viaturas em <strong>Frota e Pessoal</strong> para acompanhar trocas de óleo.
-                      </p>
-                    ) : linhasProximasTrocasOleo.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Nenhuma viatura está próxima do prazo de troca de óleo.
-                      </p>
-                    ) : (
                       <ul className="mt-2 space-y-2">
                         {linhasProximasTrocasOleo.map(({ placa, st }) => (
                           <li
@@ -703,7 +702,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           </li>
                         ))}
                       </ul>
-                    )}
                   </div>
                   <Button
                     type="button"
@@ -716,16 +714,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </Button>
                 </CardContent>
               </Card>
+              ) : null}
 
+              {showPendenciaLimpeza ? (
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Viaturas com pendência de limpeza.</p>
-                    {placasPendenciaLimpeza.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Nenhuma viatura marcada em Frota e Pessoal → Cadastrar Viatura.
-                      </p>
-                    ) : (
                       <ul className="mt-2 flex flex-wrap gap-1.5">
                         {placasPendenciaLimpeza.map((placa) => (
                           <li
@@ -739,7 +734,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           </li>
                         ))}
                       </ul>
-                    )}
                   </div>
                   <Button
                     type="button"
@@ -752,16 +746,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </Button>
                 </CardContent>
               </Card>
+              ) : null}
 
+              {showFainasGerais ? (
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Fainas Gerais</p>
-                    {fainasLinhas.length === 0 ? (
-                      <p className={cn("mt-2", homeBodyEmphasisClass)}>
-                        Nenhuma faina cadastrada. Use a aba <strong>Avisos</strong>.
-                      </p>
-                    ) : (
                       <ul className="mt-2 space-y-2">
                         {fainasLinhas.map((linha, i) => (
                           <li
@@ -775,7 +766,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                           </li>
                         ))}
                       </ul>
-                    )}
                   </div>
                   <Button
                     type="button"
@@ -788,9 +778,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   </Button>
                 </CardContent>
               </Card>
-            </>
-          ) : null}
+              ) : null}
         </div>
+        ) : null}
       </section>
 
       {limpezaModalOpen ? (
