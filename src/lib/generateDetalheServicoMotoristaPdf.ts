@@ -107,8 +107,9 @@ function listDiasSemMarcacaoSingleRow(
   return out;
 }
 
-function isMotoristaRM1(motorista: string): boolean {
-  return motorista.toUpperCase().includes("RM1");
+function isMotoristaCargaHorariaAutomatica(motorista: string): boolean {
+  const nome = motorista.toUpperCase().trim();
+  return nome.includes("RM1") || /^FC(?:\b|[-\s])/.test(nome);
 }
 
 function isMotoristaFC(motorista: string): boolean {
@@ -439,7 +440,7 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
     for (const rowId of sheet.rows) {
       const rowCells = sheet.cells[rowId] ?? {};
       const motoristaVal = rowCells[KEY_MOTORISTA] ?? "";
-      const rm1 = isMotoristaRM1(motoristaVal);
+      const cargaAutoPorMotorista = isMotoristaCargaHorariaAutomatica(motoristaVal);
       const motorFerias = (feriasForMonth ?? {})[normalizeMotoristaName(motoristaVal)];
       const tally = tallyDayCellTokens(rowCells, motoristaVal, year, monthIndex, days, feriasForMonth ?? {});
       const cells: string[] = [motoristaVal.trim() || "—"];
@@ -468,10 +469,10 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       if (tableEditable) {
         for (const { key: cellKey } of COLUNAS_EXTRAS_EDICAO) {
           let v = rowCells[cellKey] ?? "";
-          if (cellKey === KEY_CARGA_HORARIA && rm1) v = String(tally.horas);
+          if (cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista) v = String(tally.horas);
           else if (cellKey === KEY_NUM_SERVICOS) v = String(tally.s);
           else if (cellKey === KEY_NUM_ROTINAS) v = String(tally.ro);
-          else if (cellKey === KEY_CARGA_HORARIA && !rm1) {
+          else if (cellKey === KEY_CARGA_HORARIA && !cargaAutoPorMotorista) {
             const n = parseHorasCargaTexto(rowCells[KEY_CARGA_HORARIA] ?? "");
             v = n !== null ? String(n) : v;
           }

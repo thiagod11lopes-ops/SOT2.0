@@ -168,9 +168,10 @@ const COLUNAS_EXTRAS_EDICAO = [
   { key: KEY_NUM_ROTINAS, titulo: "Nº de Rotinas" },
 ] as const;
 
-/** Contagem automática de carga horária quando o motorista contém RM1: cada S nos dias = 24h, cada RO = 8h. */
-function isMotoristaRM1(motorista: string): boolean {
-  return motorista.toUpperCase().includes("RM1");
+/** Contagem automática de carga horária para RM1/FC: cada S = 24h, cada RO = 8h. */
+function isMotoristaCargaHorariaAutomatica(motorista: string): boolean {
+  const nome = motorista.toUpperCase().trim();
+  return nome.includes("RM1") || /^FC(?:\b|[-\s])/.test(nome);
 }
 
 /** Regra da nova escala: somente motoristas cadastrados com "FC" no nome. */
@@ -1478,7 +1479,7 @@ export function DetalheServicoSheet() {
                         onContextMenu={(e) => openColumnMenu(e, key)}
                         title={
                           key === KEY_CARGA_HORARIA
-                            ? "Com «RM1» no motorista: total = 24h por «S» e 8h por «RO» nas células dos dias (mês atual)."
+                            ? "Com «RM1» ou «FC» no motorista: total = 24h por «S» e 8h por «RO» nas células dos dias (mês atual)."
                             : key === KEY_NUM_SERVICOS
                               ? "Contagem automática de «S» nas células dos dias (mês atual)."
                               : key === KEY_NUM_ROTINAS
@@ -1667,7 +1668,7 @@ export function DetalheServicoSheet() {
                         COLUNAS_EXTRAS_EDICAO.map(({ key: cellKey }, extraIdx) => {
                           const colIndex = days.length + 1 + extraIdx;
                           const motoristaVal = cells[rowId]?.[KEY_MOTORISTA] ?? "";
-                          const rm1 = isMotoristaRM1(motoristaVal);
+                          const cargaAutoPorMotorista = isMotoristaCargaHorariaAutomatica(motoristaVal);
                           const tally = tallyDayCellTokens(
                             cells[rowId] ?? {},
                             motoristaVal,
@@ -1676,12 +1677,13 @@ export function DetalheServicoSheet() {
                             days,
                             feriasForMonth,
                           );
-                          const cargaReadOnly = cellKey === KEY_CARGA_HORARIA && rm1;
+                          const cargaReadOnly =
+                            cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista;
                           const servRotReadOnly =
                             cellKey === KEY_NUM_SERVICOS || cellKey === KEY_NUM_ROTINAS;
                           const autoReadOnly = cargaReadOnly || servRotReadOnly;
                           let displayValue = cells[rowId]?.[cellKey] ?? "";
-                          if (cellKey === KEY_CARGA_HORARIA && rm1) {
+                          if (cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista) {
                             displayValue = String(tally.horas);
                           } else if (cellKey === KEY_NUM_SERVICOS) {
                             displayValue = String(tally.s);
@@ -1691,7 +1693,7 @@ export function DetalheServicoSheet() {
                           const inputReadOnly = !tableEditable || autoReadOnly;
                           const horasCargaNum =
                             cellKey === KEY_CARGA_HORARIA
-                              ? rm1
+                              ? cargaAutoPorMotorista
                                 ? tally.horas
                                 : parseHorasCargaTexto(cells[rowId]?.[KEY_CARGA_HORARIA] ?? "")
                               : null;
@@ -1700,9 +1702,9 @@ export function DetalheServicoSheet() {
                             horasCargaNum !== null &&
                             horasCargaNum > LIMITE_CARGA_HORAS_ALERTA;
                           const titleAuto =
-                            cellKey === KEY_CARGA_HORARIA && rm1
+                            cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista
                               ? `Calculado: 24h × «S» + 8h × «RO» (células dos dias)${cargaExcedeLimite ? ` — acima de ${LIMITE_CARGA_HORAS_ALERTA}h` : ""}`
-                              : cellKey === KEY_CARGA_HORARIA && !rm1 && cargaExcedeLimite
+                              : cellKey === KEY_CARGA_HORARIA && !cargaAutoPorMotorista && cargaExcedeLimite
                                 ? `Valor acima de ${LIMITE_CARGA_HORAS_ALERTA} horas`
                                 : cellKey === KEY_NUM_SERVICOS
                                   ? "Contagem de «S» nas células dos dias"
