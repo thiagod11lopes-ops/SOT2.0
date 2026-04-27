@@ -61,6 +61,14 @@ const emptyState: CatalogItemsState = {
 
 type StoredCatalog = Partial<CatalogItemsState> & { viaturas?: string[] };
 
+function canonicalizeMotoristaName(value: string): string {
+  const t = value.trim();
+  if (!t) return t;
+  // Ajuste de nomenclatura preservando equivalência textual (mesmo nome ignorando caixa).
+  if (t.toUpperCase() === "MN PRADO") return "MN Prado";
+  return t;
+}
+
 function normalizeCatalogState(parsed: StoredCatalog | null | undefined): CatalogItemsState {
   let administrativas = Array.isArray(parsed?.viaturasAdministrativas)
     ? parsed.viaturasAdministrativas
@@ -75,7 +83,9 @@ function normalizeCatalogState(parsed: StoredCatalog | null | undefined): Catalo
     responsaveis: Array.isArray(parsed?.responsaveis) ? parsed.responsaveis : [],
     oms: Array.isArray(parsed?.oms) ? parsed.oms : [],
     hospitais: Array.isArray(parsed?.hospitais) ? parsed.hospitais : [],
-    motoristas: Array.isArray(parsed?.motoristas) ? parsed.motoristas : [],
+    motoristas: Array.isArray(parsed?.motoristas)
+      ? parsed.motoristas.map(canonicalizeMotoristaName)
+      : [],
     viaturasAdministrativas: administrativas,
     ambulancias,
   };
@@ -295,11 +305,13 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(
     (category: CatalogCategory, value: string): boolean => {
-      const t = value.trim();
+      const normalizedValue =
+        category === "motoristas" ? canonicalizeMotoristaName(value) : value;
+      const t = normalizedValue.trim();
       if (!t) return false;
       let added = false;
       setItems((prev) => {
-        const next = dedupeAdd(prev[category], value);
+        const next = dedupeAdd(prev[category], normalizedValue);
         if (next === prev[category]) return prev;
         added = true;
         return { ...prev, [category]: next };
