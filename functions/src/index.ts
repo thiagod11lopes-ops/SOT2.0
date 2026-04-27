@@ -30,6 +30,7 @@ const DEFAULT_CONFIG: Required<AlarmesConfig> = {
 const WEB_PUSH_VAPID_PUBLIC_KEY = defineSecret("WEB_PUSH_VAPID_PUBLIC_KEY");
 const WEB_PUSH_VAPID_PRIVATE_KEY = defineSecret("WEB_PUSH_VAPID_PRIVATE_KEY");
 const WEB_PUSH_SUBJECT = defineSecret("WEB_PUSH_SUBJECT");
+const ALARM_TZ = "America/Sao_Paulo";
 
 function driverKey(input: string): string {
   return String(input || "")
@@ -135,6 +136,30 @@ function dateKeyFromLocal(now: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+function getSaoPauloNowParts(now: Date): { dayKey: string; hour: number; minute: number } {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ALARM_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const values = new Map(parts.map((p) => [p.type, p.value]));
+  const year = values.get("year") ?? "0000";
+  const month = values.get("month") ?? "01";
+  const day = values.get("day") ?? "01";
+  const hour = Number(values.get("hour") ?? "0");
+  const minute = Number(values.get("minute") ?? "0");
+  return {
+    dayKey: `${year}-${month}-${day}`,
+    hour: Number.isFinite(hour) ? hour : 0,
+    minute: Number.isFinite(minute) ? minute : 0,
+  };
+}
+
 export const processMobileAlarmPush = onSchedule(
   {
     schedule: "every 1 minutes",
@@ -154,7 +179,8 @@ export const processMobileAlarmPush = onSchedule(
 
     const now = new Date();
     const nowMs = now.getTime();
-    const dayKey = dateKeyFromLocal(now);
+    const saoPauloNow = getSaoPauloNowParts(now);
+    const dayKey = saoPauloNow.dayKey;
 
     if (config.beforeDepartureEnabled) {
       const depSnap = await db.collection("departures").get();
@@ -176,7 +202,7 @@ export const processMobileAlarmPush = onSchedule(
 
     if (config.vistoriaPendenteEnabled) {
       const [hh, mm] = config.vistoriaPendenteTime.split(":").map((x) => Number(x));
-      const shouldRunNow = now.getHours() === hh && now.getMinutes() === mm;
+      const shouldRunNow = saoPauloNow.hour === hh && saoPauloNow.minute === mm;
       if (shouldRunNow) {
         const vistoriaState = (await db.collection("sot_state").doc("vistoria").get()).data()?.payload as
           | { inspections?: Array<{ inspectionDate?: string; motorista?: string; viatura?: string }>; assignments?: Array<{ motorista?: string; viatura?: string }> }
@@ -227,6 +253,15 @@ export const processMobileAlarmPush = onSchedule(
 
     await db.collection("sot_state").doc("alarmesPushHeartbeat").set({
       payload: { ranAt: Timestamp.now(), dayKey },
+    });
+    logger.info("processMobileAlarmPush tick", {
+      dayKey,
+      hour: saoPauloNow.hour,
+      minute: saoPauloNow.minute,
+      subscriptions: subscriptionsByDriver.size,
+      beforeDepartureEnabled: config.beforeDepartureEnabled,
+      vistoriaPendenteEnabled: config.vistoriaPendenteEnabled,
+      vistoriaPendenteTime: config.vistoriaPendenteTime,
     });
   },
 );
