@@ -83,6 +83,26 @@ function issueRowKey(rowId: string): string {
   return rowId;
 }
 
+/** Itens que deixam de existir em Estado das Viaturas / calendário ao remover o registo. */
+function describeInspectionDeletionImpact(ins: VistoriaInspection): string[] {
+  const lines: string[] = [];
+  for (const { key, label } of CHECKLIST_ITEMS) {
+    if (ins.checklist[key] === "Alterações") {
+      lines.push(`${label} (Anotações)`);
+    }
+  }
+  const loc = ins.localizacaoViatura;
+  if (loc === "Na Oficina" || loc === "Destacada") {
+    lines.push(`Localização: ${loc}`);
+  }
+  if (lines.length === 0) {
+    lines.push(
+      "Sem itens em «Alterações» nem localização na oficina/destacada — remove-se o registo completo da vistoria.",
+    );
+  }
+  return lines;
+}
+
 type VtrSituacaoPendenteRow = {
   rowId: string;
   inspectionId: string;
@@ -409,6 +429,12 @@ export function VistoriaPage() {
   const priorityRemoveModalTitleId = useId();
   const [confirmEditInspection, setConfirmEditInspection] = useState<{ motorista: string; viatura: string } | null>(null);
   const confirmEditInspectionTitleId = useId();
+  const [deleteInspectionPreview, setDeleteInspectionPreview] = useState<{
+    iso: string;
+    viatura: string;
+    inspections: VistoriaInspection[];
+  } | null>(null);
+  const deleteInspectionPreviewTitleId = useId();
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
   const [estadoVtrDeletedMap, setEstadoVtrDeletedMap] = useState<Record<string, number>>(() => loadEstadoVtrDeletedMap());
   const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
@@ -1270,25 +1296,26 @@ export function VistoriaPage() {
     setInspectionOpen(true);
   }
 
-  async function handleDeleteVistoriaRealizadaParaDataViatura() {
+  function openDeleteInspectionPreview() {
     const target = confirmEditInspection;
     if (!target) return;
     const iso = selectedInspectionDate;
     const viNorm = target.viatura.trim().toLowerCase();
-    const idsPreview = inspections.filter(
+    const toRemove = inspections.filter(
       (i) => i.inspectionDate === iso && i.viatura.trim().toLowerCase() === viNorm,
     );
-    if (idsPreview.length === 0) {
+    if (toRemove.length === 0) {
       window.alert("Não foi encontrada vistoria para remover.");
       return;
     }
-    if (
-      !window.confirm(
-        "Esta ação remove definitivamente a vistoria desta viatura nesta data. O registo deixa de aparecer em Estado das Viaturas e a placa volta a vermelho. Continuar?",
-      )
-    ) {
-      return;
-    }
+    setDeleteInspectionPreview({ iso, viatura: target.viatura, inspections: toRemove });
+  }
+
+  async function confirmDeleteInspectionFromPreview() {
+    const preview = deleteInspectionPreview;
+    if (!preview) return;
+    const { iso, viatura } = preview;
+    const viNorm = viatura.trim().toLowerCase();
     try {
       await updateVistoriaCloudState((prev) => {
         const idSet = new Set(
@@ -1311,6 +1338,7 @@ export function VistoriaPage() {
         window.alert("A vistoria não foi removida (os dados podem ter sido atualizados). Tente novamente.");
         return;
       }
+      setDeleteInspectionPreview(null);
       setConfirmEditInspection(null);
     } catch (err) {
       console.error("[SOT] Falha ao excluir vistoria:", err);
@@ -1744,7 +1772,7 @@ export function VistoriaPage() {
                   type="button"
                   variant="outline"
                   className="border-red-600/90 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
-                  onClick={() => void handleDeleteVistoriaRealizadaParaDataViatura()}
+                  onClick={() => openDeleteInspectionPreview()}
                 >
                   Excluir vistoria realizada
                 </Button>
@@ -1757,6 +1785,77 @@ export function VistoriaPage() {
                   }}
                 >
                   Editar vistoria
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {deleteInspectionPreview ? (
+        <div
+          className="fixed inset-0 z-[125] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={deleteInspectionPreviewTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDeleteInspectionPreview(null);
+          }}
+        >
+          <Card className="w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
+            <CardHeader className="shrink-0 border-b border-[hsl(var(--border))]">
+              <CardTitle id={deleteInspectionPreviewTitleId}>Confirmar exclusão</CardTitle>
+              <p className="text-sm font-normal text-[hsl(var(--muted-foreground))]">
+                Será apagado o registo da viatura <strong>{deleteInspectionPreview.viatura}</strong> em{" "}
+                <strong>{formatIsoDatePtBr(deleteInspectionPreview.iso)}</strong>. A placa volta a vermelho e deixa de
+                aparecer em Estado das Viaturas.
+              </p>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                  O que será removido
+                </p>
+                <ul className="space-y-3">
+                  {[...deleteInspectionPreview.inspections]
+                    .sort((a, b) => b.createdAt - a.createdAt)
+                    .map((ins) => {
+                      const impact = describeInspectionDeletionImpact(ins);
+                      return (
+                        <li
+                          key={ins.id}
+                          className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.12] p-3 text-sm"
+                        >
+                          <p className="font-semibold text-[hsl(var(--foreground))]">
+                            {ins.motorista.trim() || "—"} · {ins.viatura.trim() || "—"}
+                          </p>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            {formatIsoDatePtBr(ins.inspectionDate)}
+                            {ins.vistoriaAdministrativa ? " · Administrativa" : ""}
+                          </p>
+                          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[hsl(var(--foreground))]">
+                            {impact.map((line, li) => (
+                              <li key={`${ins.id}-${li}`}>{line}</li>
+                            ))}
+                          </ul>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Também serão removidas as marcações de controlo (problema, prioridade, imprimir) e resoluções ligadas a
+                estes registos.
+              </p>
+              <div className="flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-4 sm:flex-row sm:justify-end">
+                <Button type="button" variant="ghost" onClick={() => setDeleteInspectionPreview(null)}>
+                  Voltar
+                </Button>
+                <Button
+                  type="button"
+                  className="border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => void confirmDeleteInspectionFromPreview()}
+                >
+                  Apagar definitivamente
                 </Button>
               </div>
             </CardContent>
