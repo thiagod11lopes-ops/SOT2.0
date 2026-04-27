@@ -215,6 +215,30 @@ export function SaidasLayout() {
     closeCadastroCredModal();
   }
 
+  async function handlePermitirNotificacoesNoLogin() {
+    const permission = await requestNotificationPermissionIfNeeded();
+    if (permission !== "granted") {
+      if (permission === "denied") {
+        window.alert("Notificações bloqueadas neste navegador. Ative nas permissões do sistema/navegador.");
+      } else if (permission === "unsupported") {
+        window.alert("Este dispositivo/navegador não suporta notificações push.");
+      }
+      return;
+    }
+    const motorista = cadastroMotorista.trim() || motoristaLogadoMobile?.trim() || "";
+    if (!motorista) {
+      window.alert("Permissão concedida. Agora selecione o motorista e toque em Guardar para finalizar o login.");
+      return;
+    }
+    const subscription = await ensurePushSubscription();
+    if (!subscription) {
+      window.alert("Permissão concedida, mas não foi possível registrar o dispositivo para push.");
+      return;
+    }
+    await saveMobilePushSubscriptionForMotorista(motorista, subscription);
+    window.alert(`Notificações ativadas para ${motorista} neste celular.`);
+  }
+
   function handleLogoutMotoristaMobile() {
     if (motoristaLogadoMobile?.trim()) {
       void disableMobilePushSubscriptionForMotorista(motoristaLogadoMobile);
@@ -564,6 +588,17 @@ export function SaidasLayout() {
                 className="min-h-12 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-base text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/40"
                 aria-label="Senha do motorista mobile"
               />
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  className="min-h-11 flex-1 rounded-xl border border-sky-600/90 bg-sky-500 font-semibold text-white"
+                  onClick={() => {
+                    void handlePermitirNotificacoesNoLogin();
+                  }}
+                >
+                  Permitir notificações
+                </Button>
+              </div>
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button
                   type="button"
