@@ -22,6 +22,8 @@ import {
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
+import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
+import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
 import { parseHhMm } from "../lib/timeInput";
 import { fraseProximaTrocaOleo, rotuloViaturaPlaca } from "../lib/homeTickerStrings";
 import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
@@ -161,6 +163,13 @@ function formatIsoDatePtBrShort(iso: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function isoDateFromDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegistro> }) {
   const { setActiveTab, requestFleetManutencoesTab, requestAvisosFainasGeraisOpen } = useAppTab();
   const { items } = useCatalogItems();
@@ -191,6 +200,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
+  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
 
@@ -213,6 +223,17 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     const on = () => setRdvOficinaTick((t) => t + 1);
     window.addEventListener(RDV_STORAGE_EVENT, on);
     return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadDetalheServicoBundleFromIdb().then((bundle) => {
+      if (cancelled) return;
+      setDetalheServicoBundle(bundle);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /** Oficina, Inoperante e Destacada no RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
@@ -283,6 +304,19 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     });
     return groupDeparturesForListDisplay(sorted);
   }, [departuresAtivas]);
+
+  const motoristasServicoRotinaHoje = useMemo(() => {
+    if (!detalheServicoBundle) return { servico: [] as string[], rotina: [] as string[] };
+    const isoHoje = isoDateFromDate(new Date());
+    const marcados = listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, isoHoje);
+    const servico = [...new Set(marcados.filter((m) => m.servico).map((m) => m.motorista.trim()).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b, "pt-BR"),
+    );
+    const rotina = [...new Set(marcados.filter((m) => m.rotina).map((m) => m.motorista.trim()).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b, "pt-BR"),
+    );
+    return { servico, rotina };
+  }, [detalheServicoBundle]);
 
   return (
     <div className="space-y-6">
@@ -699,6 +733,21 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
+                    <p className={homeFluidCardTitleClass}>Motoristas de Serviço</p>
+                    <div className="mt-2 space-y-2 border-b border-[hsl(var(--border))] pb-3">
+                      <p className={cn("text-sm", homeBodyEmphasisClass)}>
+                        <strong>Serviço (S):</strong>{" "}
+                        {motoristasServicoRotinaHoje.servico.length > 0
+                          ? motoristasServicoRotinaHoje.servico.join(", ")
+                          : "Nenhum motorista marcado hoje."}
+                      </p>
+                      <p className={cn("text-sm", homeBodyEmphasisClass)}>
+                        <strong>Rotina (RO):</strong>{" "}
+                        {motoristasServicoRotinaHoje.rotina.length > 0
+                          ? motoristasServicoRotinaHoje.rotina.join(", ")
+                          : "Nenhum motorista marcado hoje."}
+                      </p>
+                    </div>
                     <p className={homeFluidCardTitleClass}>Fainas Gerais</p>
                     {fainasLinhas.length === 0 ? (
                       <p className={cn("mt-2", homeBodyEmphasisClass)}>

@@ -1,4 +1,4 @@
-import { AlertTriangle, FileDown, Lock, Unlock } from "lucide-react";
+import { AlertTriangle, FileDown, Lock, Unlock, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -21,6 +21,7 @@ import {
   type DetalheServicoRodapeAssinatura,
   type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
+import { parseDetalheServicoPdfImport } from "../lib/parseDetalheServicoPdfImport";
 import { Button } from "./ui/button";
 
 function monthInputValue(d: Date): string {
@@ -514,6 +515,7 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [showRoTokens, setShowRoTokens] = useState(true);
+  const [importingOriginalPdf, setImportingOriginalPdf] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
@@ -555,6 +557,7 @@ export function DetalheServicoSheet() {
   tableEditableRef.current = tableEditable;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
+  const originalPdfInputRef = useRef<HTMLInputElement>(null);
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
@@ -830,6 +833,35 @@ export function DetalheServicoSheet() {
       },
     });
   }, [monthYear, sheet, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
+
+  const handleImportOriginalClick = useCallback(() => {
+    if (importingOriginalPdf) return;
+    originalPdfInputRef.current?.click();
+  }, [importingOriginalPdf]);
+
+  const handleImportOriginalPdf = useCallback(
+    async (file: File) => {
+      setImportingOriginalPdf(true);
+      try {
+        const parsed = await parseDetalheServicoPdfImport(file, monthYearRef.current);
+        setBundle((b) => ({
+          ...b,
+          version: 1,
+          sheets: { ...b.sheets, [parsed.monthYear ?? monthYearRef.current]: parsed.sheet },
+        }));
+        if (parsed.monthYear && parsed.monthYear !== monthYearRef.current) {
+          setMonthYear(parsed.monthYear);
+          setUndoStack([]);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Não foi possível ler o PDF selecionado.";
+        window.alert(msg);
+      } finally {
+        setImportingOriginalPdf(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     setUndoStack([]);
@@ -1369,14 +1401,38 @@ export function DetalheServicoSheet() {
   return (
     <div className="w-full min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0"
-          onClick={() => setFeriasModalOpen(true)}
-        >
-          Escala de Férias
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => setFeriasModalOpen(true)}
+          >
+            Escala de Férias
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={handleImportOriginalClick}
+            disabled={importingOriginalPdf}
+            title="Carregar Detalhe de Serviço por PDF"
+          >
+            <Upload className="h-4 w-4" aria-hidden />
+            {importingOriginalPdf ? "Lendo PDF..." : "Original"}
+          </Button>
+          <input
+            ref={originalPdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImportOriginalPdf(file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
         <div className="flex flex-wrap items-end justify-end gap-3">
           <Button
             type="button"
