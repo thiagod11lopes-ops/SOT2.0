@@ -158,6 +158,65 @@ type EstadoViaturaRow = {
   itemKey?: ChecklistKey;
 };
 
+function collectPriorityControlKeysForRow(row: VtrSituacaoPendenteRow): Set<string> {
+  const keys = new Set<string>();
+  keys.add(`${row.inspectionId}:${row.itemKey}`);
+  for (const ref of row.relatedIssueRefs) keys.add(`${ref.inspectionId}:${ref.itemKey}`);
+  return keys;
+}
+
+function findEstadoViaturaRowForPendente(
+  estadoRows: EstadoViaturaRow[],
+  pendente: VtrSituacaoPendenteRow,
+): EstadoViaturaRow | undefined {
+  const v = pendente.viatura.trim().toLowerCase();
+  if (pendente.rowId.endsWith("::mobile-localizacao")) {
+    return estadoRows.find(
+      (r) => r.rowKind === "localizacao" && r.viatura.trim().toLowerCase() === v,
+    );
+  }
+  return estadoRows.find(
+    (r) =>
+      r.rowKind === "item" &&
+      r.itemKey === pendente.itemKey &&
+      r.viatura.trim().toLowerCase() === v,
+  );
+}
+
+function buildSyntheticEstadoRowForPendente(pendente: VtrSituacaoPendenteRow): EstadoViaturaRow {
+  const v = pendente.viatura.trim().toLowerCase();
+  const createdAt = Date.now();
+  if (pendente.rowId.endsWith("::mobile-localizacao")) {
+    return {
+      rowId: `${v}::localizacao`,
+      inspectionId: pendente.inspectionId,
+      viatura: pendente.viatura,
+      vistoriador: pendente.motorista,
+      inspectionDate: pendente.inspectionDate,
+      createdAt,
+      observacoes: { kind: "localizacao", prefix: "Localização da viatura:", value: "Na Oficina" },
+      rubrica: "",
+      rowKind: "localizacao",
+    };
+  }
+  return {
+    rowId: `${v}::item::${pendente.itemKey}`,
+    inspectionId: pendente.inspectionId,
+    viatura: pendente.viatura,
+    vistoriador: pendente.motorista,
+    inspectionDate: pendente.inspectionDate,
+    createdAt,
+    observacoes: {
+      kind: "item",
+      itemLabel: pendente.itemLabel,
+      body: pendente.observacao.trim() || "sem observação",
+    },
+    rubrica: "",
+    rowKind: "item",
+    itemKey: pendente.itemKey,
+  };
+}
+
 function loadOrCreateEstadoVtrCutoffMs(): number {
   if (typeof localStorage === "undefined") return Date.now();
   try {
@@ -353,6 +412,8 @@ export function VistoriaPage() {
   const confirmOkClearsNoteTitleId = useId();
   const [confirmDeleteEstadoRow, setConfirmDeleteEstadoRow] = useState<EstadoViaturaRow | null>(null);
   const confirmDeleteEstadoRowTitleId = useId();
+  const [priorityRemoveModalRow, setPriorityRemoveModalRow] = useState<VtrSituacaoPendenteRow | null>(null);
+  const priorityRemoveModalTitleId = useId();
   const [confirmEditInspection, setConfirmEditInspection] = useState<{ motorista: string; viatura: string } | null>(null);
   const confirmEditInspectionTitleId = useId();
   const [estadoVtrCutoffMs] = useState<number>(() => loadOrCreateEstadoVtrCutoffMs());
@@ -1048,55 +1109,90 @@ export function VistoriaPage() {
     }
   }
 
-  function finalizeDeleteEstadoRow(row: EstadoViaturaRow) {
+  async function finalizeDeleteEstadoRow(row: EstadoViaturaRow, stripPriorityRowKey?: string) {
     const deletedAt = Date.now();
     setEstadoVtrDeletedMap((prev) => ({ ...prev, [row.rowId]: deletedAt }));
     const viaturaNorm = row.viatura.trim().toLowerCase();
     const targetItemKey = row.itemKey;
-    updateVistoriaCloudState((prev) => ({
-      ...prev,
-      inspections: prev.inspections.map((ins) => {
-        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
-        if (!sameViatura) return ins;
-        if (row.rowKind === "item" && targetItemKey) {
-          if (ins.checklist[targetItemKey] !== "Alterações") return ins;
-          return {
-            ...ins,
-            checklist: { ...ins.checklist, [targetItemKey]: "" },
-            checklistNotes: { ...ins.checklistNotes, [targetItemKey]: "" },
-          };
-        }
-        if (row.rowKind === "localizacao") {
-          if (
-            ins.localizacaoViatura === "A Bordo" ||
-            ins.localizacaoViatura === "Na Oficina" ||
-            ins.localizacaoViatura === "Destacada"
-          ) {
-            return { ...ins, localizacaoViatura: "A Bordo" };
+    try {
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        inspections: prev.inspections.map((ins) => {
+          const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+          if (!sameViatura) return ins;
+          if (row.rowKind === "item" && targetItemKey) {
+            if (ins.checklist[targetItemKey] !== "Alterações") return ins;
+            return {
+              ...ins,
+              checklist: { ...ins.checklist, [targetItemKey]: "" },
+              checklistNotes: { ...ins.checklistNotes, [targetItemKey]: "" },
+            };
+          }
+          if (row.rowKind === "localizacao") {
+            if (
+              ins.localizacaoViatura === "A Bordo" ||
+              ins.localizacaoViatura === "Na Oficina" ||
+              ins.localizacaoViatura === "Destacada"
+            ) {
+              return { ...ins, localizacaoViatura: "A Bordo" };
+            }
+            return ins;
           }
           return ins;
-        }
-        return ins;
-      }),
-      issueControls: prev.issueControls.filter((ctrl) => {
-        const ins = prev.inspections.find((i) => i.id === ctrl.inspectionId);
-        if (!ins) return false;
-        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
-        if (!sameViatura) return true;
-        if (row.rowKind === "item" && targetItemKey) return ctrl.itemKey !== targetItemKey;
-        if (row.rowKind === "localizacao") return ctrl.itemKey !== "outros";
-        return ctrl.inspectionId !== row.inspectionId;
-      }),
-      resolvedIssues: prev.resolvedIssues.filter((res) => {
-        const ins = prev.inspections.find((i) => i.id === res.inspectionId);
-        if (!ins) return false;
-        const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
-        if (!sameViatura) return true;
-        if (row.rowKind === "item" && targetItemKey) return res.itemKey !== targetItemKey;
-        if (row.rowKind === "localizacao") return res.itemKey !== "outros";
-        return res.inspectionId !== row.inspectionId;
-      }),
-    }));
+        }),
+        issueControls: prev.issueControls.filter((ctrl) => {
+          const ins = prev.inspections.find((i) => i.id === ctrl.inspectionId);
+          if (!ins) return false;
+          const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+          if (!sameViatura) return true;
+          if (row.rowKind === "item" && targetItemKey) return ctrl.itemKey !== targetItemKey;
+          if (row.rowKind === "localizacao") return ctrl.itemKey !== "outros";
+          return ctrl.inspectionId !== row.inspectionId;
+        }),
+        resolvedIssues: prev.resolvedIssues.filter((res) => {
+          const ins = prev.inspections.find((i) => i.id === res.inspectionId);
+          if (!ins) return false;
+          const sameViatura = ins.viatura.trim().toLowerCase() === viaturaNorm;
+          if (!sameViatura) return true;
+          if (row.rowKind === "item" && targetItemKey) return res.itemKey !== targetItemKey;
+          if (row.rowKind === "localizacao") return res.itemKey !== "outros";
+          return res.inspectionId !== row.inspectionId;
+        }),
+        ...(stripPriorityRowKey
+          ? {
+              priorityOrderKeys: prev.priorityOrderKeys.filter((k) => k !== stripPriorityRowKey),
+            }
+          : {}),
+      }));
+    } catch (err) {
+      console.error("[SOT] Falha ao excluir linha de estado / sincronizar:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+      throw err;
+    }
+  }
+
+  async function handleRemovePendenteFromPrioritiesOnly(row: VtrSituacaoPendenteRow) {
+    const rk = issueRowKey(row.rowId);
+    const keySet = collectPriorityControlKeysForRow(row);
+    setIssueControls((prev) =>
+      prev.map((c) =>
+        keySet.has(`${c.inspectionId}:${c.itemKey}`) ? { ...c, priorityMarked: false } : c,
+      ),
+    );
+    setPriorityOrderKeys((prev) => prev.filter((k) => k !== rk));
+    try {
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        issueControls: prev.issueControls.map((c) =>
+          keySet.has(`${c.inspectionId}:${c.itemKey}`) ? { ...c, priorityMarked: false } : c,
+        ),
+        priorityOrderKeys: prev.priorityOrderKeys.filter((k) => k !== rk),
+      }));
+    } catch (err) {
+      console.error("[SOT] Falha ao retirar prioridade:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+      throw err;
+    }
   }
 
   useEffect(() => {
@@ -1852,6 +1948,20 @@ export function VistoriaPage() {
                           {renderAnotacaoSituacao(row)}
                         </div>
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-0.5 h-8 w-8 shrink-0 border-[hsl(var(--border))] p-0 text-[hsl(var(--muted-foreground))] hover:border-red-600/80 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40"
+                        aria-label="Remover prioridade"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPriorityRemoveModalRow(row);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </li>
                   );
                 })}
@@ -1894,11 +2004,95 @@ export function VistoriaPage() {
                   type="button"
                   className="flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
                   onClick={() => {
-                    finalizeDeleteEstadoRow(confirmDeleteEstadoRow);
-                    setConfirmDeleteEstadoRow(null);
+                    void (async () => {
+                      try {
+                        await finalizeDeleteEstadoRow(confirmDeleteEstadoRow);
+                        setConfirmDeleteEstadoRow(null);
+                      } catch {
+                        /* alert já mostrado em finalizeDeleteEstadoRow */
+                      }
+                    })();
                   }}
                 >
                   Excluir
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {priorityRemoveModalRow ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={priorityRemoveModalTitleId}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPriorityRemoveModalRow(null);
+          }}
+        >
+          <Card className="w-full max-w-md border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl">
+            <CardHeader>
+              <CardTitle id={priorityRemoveModalTitleId}>Remover item de prioridades</CardTitle>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Escolha como pretende tratar este item. «Resolvido» apaga o registo de alterações da mesma forma que na
+                tabela Estado das Viaturas (deixa de aparecer nas duas abas). «Excluir de Prioridades» apenas desmarca a
+                prioridade e mantém o item em Estado das Viaturas.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 p-3 text-sm">
+                <p>
+                  <span className="font-semibold">Viatura:</span> {priorityRemoveModalRow.viatura || "—"}
+                </p>
+                <p>
+                  <span className="font-semibold">Data:</span>{" "}
+                  {formatIsoDatePtBr(priorityRemoveModalRow.inspectionDate)}
+                </p>
+                <p className="mt-1 font-semibold text-[hsl(var(--foreground))]">{priorityRemoveModalRow.itemLabel}</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button type="button" variant="outline" className="sm:flex-1" onClick={() => setPriorityRemoveModalRow(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="sm:flex-1 border-[hsl(var(--border))]"
+                  onClick={() => {
+                    void (async () => {
+                      const r = priorityRemoveModalRow;
+                      if (!r) return;
+                      try {
+                        await handleRemovePendenteFromPrioritiesOnly(r);
+                        setPriorityRemoveModalRow(null);
+                      } catch {
+                        /* alert já mostrado */
+                      }
+                    })();
+                  }}
+                >
+                  Excluir de Prioridades
+                </Button>
+                <Button
+                  type="button"
+                  className="sm:flex-1 border border-red-700/90 bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => {
+                    void (async () => {
+                      const r = priorityRemoveModalRow;
+                      if (!r) return;
+                      const estadoRow =
+                        findEstadoViaturaRowForPendente(estadoViaturasRows, r) ?? buildSyntheticEstadoRowForPendente(r);
+                      try {
+                        await finalizeDeleteEstadoRow(estadoRow, issueRowKey(r.rowId));
+                        setPriorityRemoveModalRow(null);
+                      } catch {
+                        /* alert já mostrado em finalizeDeleteEstadoRow */
+                      }
+                    })();
+                  }}
+                >
+                  Resolvido
                 </Button>
               </div>
             </CardContent>
