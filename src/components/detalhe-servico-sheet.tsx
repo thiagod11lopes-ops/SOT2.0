@@ -198,6 +198,23 @@ const COLUNAS_EXTRAS_EDICAO = [
   { key: KEY_NUM_ROTINAS, titulo: "Nº de Rotinas" },
 ] as const;
 
+const DAY_CELL_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True se existir célula de dia com «S»/«RO» cancelados pelo X vermelho. */
+function sheetHasCrossedServicoDayCells(snapshot: DetalheServicoSheetSnapshot): boolean {
+  const skip = new Set<string>([KEY_MOTORISTA, KEY_CARGA_HORARIA, KEY_NUM_SERVICOS, KEY_NUM_ROTINAS]);
+  for (const rowId of snapshot.rows) {
+    const row = snapshot.cells[rowId];
+    if (!row) continue;
+    for (const [key, val] of Object.entries(row)) {
+      if (skip.has(key)) continue;
+      if (!DAY_CELL_KEY_RE.test(key)) continue;
+      if (parseDayCellTokens(String(val ?? "")).some((t) => t.crossed)) return true;
+    }
+  }
+  return false;
+}
+
 /** Contagem automática de carga horária para RM1/FC: cada S = 24h, cada RO = 8h. */
 function isMotoristaCargaHorariaAutomatica(motorista: string): boolean {
   const nome = motorista.toUpperCase().trim();
@@ -856,8 +873,12 @@ export function DetalheServicoSheet() {
   }, [monthYear]);
 
   useEffect(() => {
-    setMostrarAlteracoesAposX(false);
-  }, [monthYear]);
+    if (sheetHasCrossedServicoDayCells(sheetLive)) {
+      setMostrarAlteracoesAposX(true);
+    } else {
+      setMostrarAlteracoesAposX(false);
+    }
+  }, [sheetLive]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeColumnMenu = useCallback(() => setColumnMenu(null), []);
@@ -1448,7 +1469,7 @@ export function DetalheServicoSheet() {
           >
             {originalBaseline
               ? mostrarAlteracoesAposX
-                ? "Alterações (após X)"
+                ? "Alterações no Detalhe"
                 : "Detalhe original"
               : "Detalhe (sem X ainda)"}
           </span>
@@ -1463,7 +1484,7 @@ export function DetalheServicoSheet() {
                 ? "Disponível após o primeiro duplo clique (X) em S ou RO neste mês."
                 : mostrarAlteracoesAposX
                   ? "Mostrar o detalhe original (antes do primeiro X)"
-                  : "Mostrar alterações desde o primeiro X"
+                  : "Mostrar alterações no detalhe (com X vermelho)"
             }
             className={`relative inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 ${
               mostrarAlteracoesAposX
