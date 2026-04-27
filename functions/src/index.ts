@@ -129,13 +129,6 @@ async function sendPushToDriver(
   await Promise.allSettled(subs.map((s) => webpush.sendNotification(s, payload)));
 }
 
-function dateKeyFromLocal(now: Date): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 function getSaoPauloNowParts(now: Date): { dayKey: string; hour: number; minute: number } {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: ALARM_TZ,
