@@ -56,6 +56,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 type SavePeriodMode = "full" | "month" | "year";
 type FirebaseActivationStrategy = "push-local-to-firebase" | "use-remote-as-source";
+type AlarmesConfig = {
+  beforeDepartureEnabled: boolean;
+  beforeDepartureMinutes: number;
+  vistoriaPendenteEnabled: boolean;
+  vistoriaPendenteTime: string;
+};
 
 const SETTINGS_SECTIONS = [
   { id: "settings-sync", label: "Modo de sincronização" },
@@ -63,6 +69,7 @@ const SETTINGS_SECTIONS = [
   { id: "settings-saidas", label: "Saídas" },
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
   { id: "settings-whatsapp-vistoria", label: "WhatsApp — vistoria" },
+  { id: "settings-alarmes", label: "Alarmes" },
   { id: "settings-mobile-motoristas", label: "Mobile — motoristas" },
   { id: "settings-vistoria-cal", label: "Vistoria — calendário" },
   { id: "settings-zona-risco", label: "Zona de risco" },
@@ -79,9 +86,16 @@ type VistoriaWhatsappContact = {
 const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
 const VISTORIA_WHATSAPP_TRIGGER_TIME_KEY = "sot_vistoria_whatsapp_trigger_time_v1";
 const VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY = "sot_vistoria_whatsapp_message_template_v1";
+const ALARMES_CONFIG_KEY = "sot_alarmes_config_v1";
 const DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME = "14:00";
 const DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE =
   "SOT 2.0 - Aviso de vistoria\nMotorista: {motorista}\nData: {data}\nHá viatura(s) pendente(s) de vistoria: {placas}.\nPor favor, realize a vistoria o quanto antes.";
+const DEFAULT_ALARMES_CONFIG: AlarmesConfig = {
+  beforeDepartureEnabled: false,
+  beforeDepartureMinutes: 15,
+  vistoriaPendenteEnabled: false,
+  vistoriaPendenteTime: "14:00",
+};
 
 function normalizePhone(input: string): string {
   return input.replace(/\D/g, "");
@@ -130,6 +144,30 @@ function loadVistoriaWhatsappMessageTemplate(): string {
     return raw.trim() ? raw : DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
   } catch {
     return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
+  }
+}
+
+function loadAlarmesConfig(): AlarmesConfig {
+  if (typeof localStorage === "undefined") return DEFAULT_ALARMES_CONFIG;
+  try {
+    const raw = localStorage.getItem(ALARMES_CONFIG_KEY);
+    if (!raw) return DEFAULT_ALARMES_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<AlarmesConfig>;
+    const minutesNum = Number(parsed.beforeDepartureMinutes);
+    const beforeDepartureMinutes =
+      Number.isFinite(minutesNum) && minutesNum >= 0 ? Math.floor(minutesNum) : DEFAULT_ALARMES_CONFIG.beforeDepartureMinutes;
+    const vistoriaPendenteTime =
+      typeof parsed.vistoriaPendenteTime === "string" && /^\d{2}:\d{2}$/.test(parsed.vistoriaPendenteTime)
+        ? parsed.vistoriaPendenteTime
+        : DEFAULT_ALARMES_CONFIG.vistoriaPendenteTime;
+    return {
+      beforeDepartureEnabled: Boolean(parsed.beforeDepartureEnabled),
+      beforeDepartureMinutes,
+      vistoriaPendenteEnabled: Boolean(parsed.vistoriaPendenteEnabled),
+      vistoriaPendenteTime,
+    };
+  } catch {
+    return DEFAULT_ALARMES_CONFIG;
   }
 }
 
@@ -208,6 +246,7 @@ export function SettingsPage() {
   const [whatsApiToken, setWhatsApiToken] = useState<string>(() => readWhatsAppCloudApiConfig().token);
   const [whatsApiPhoneNumberId, setWhatsApiPhoneNumberId] = useState<string>(() => readWhatsAppCloudApiConfig().phoneNumberId);
   const [whatsApiProxyBaseUrl, setWhatsApiProxyBaseUrl] = useState<string>(() => readWhatsAppCloudApiConfig().proxyBaseUrl);
+  const [alarmesConfig, setAlarmesConfig] = useState<AlarmesConfig>(() => loadAlarmesConfig());
   const [mobileMotoristaCreds, setMobileMotoristaCreds] = useState<MobileMotoristaCredential[]>(
     () => loadMobileMotoristaCredentials(),
   );
@@ -299,6 +338,13 @@ export function SettingsPage() {
       /* ignore */
     }
   }, [vistoriaWhatsappMessageTemplate]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(ALARMES_CONFIG_KEY, JSON.stringify(alarmesConfig));
+    } catch {
+      /* ignore */
+    }
+  }, [alarmesConfig]);
   const ambulancias = useMemo(
     () => departures.filter((d) => d.tipo === "Ambulância"),
     [departures],
@@ -1088,6 +1134,126 @@ export function SettingsPage() {
                     ))}
                   </ul>
                 )}
+              </section>
+              ) : null}
+
+              {activeSectionId === "settings-alarmes" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-alarmes">
+                <h3 id="settings-heading-alarmes" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Alarmes
+                </h3>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Configure alarmes personalizados por regras operacionais do SOT. As definições desta aba ficam
+                  guardadas neste navegador.
+                </p>
+
+                <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.08] p-3 sm:p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                        Alarme minutos antes de qualquer saída cadastrada
+                      </p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Dispara antes do horário de cada saída em que o motorista estiver atribuído.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={alarmesConfig.beforeDepartureEnabled}
+                      onClick={() =>
+                        setAlarmesConfig((prev) => ({
+                          ...prev,
+                          beforeDepartureEnabled: !prev.beforeDepartureEnabled,
+                        }))
+                      }
+                      className={`relative inline-flex h-7 w-[3.2rem] shrink-0 items-center rounded-full border px-0.5 transition-colors ${
+                        alarmesConfig.beforeDepartureEnabled
+                          ? "border-emerald-600/45 bg-emerald-500/20"
+                          : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          alarmesConfig.beforeDepartureEnabled ? "translate-x-[1.08rem]" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="max-w-xs">
+                    <label className="text-xs font-medium text-[hsl(var(--foreground))]" htmlFor="alarme-minutos-saida">
+                      Minutos antes da saída
+                    </label>
+                    <input
+                      id="alarme-minutos-saida"
+                      type="number"
+                      min={0}
+                      max={720}
+                      value={alarmesConfig.beforeDepartureMinutes}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setAlarmesConfig((prev) => ({
+                          ...prev,
+                          beforeDepartureMinutes: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0,
+                        }));
+                      }}
+                      className="mt-1 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.08] p-3 sm:p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                        Alarme de vistoria não realizada
+                      </p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Dispara no horário definido apenas no dia em que o motorista estiver de serviço com
+                        <strong> S</strong> no Detalhe de Serviço e com viaturas vinculadas ainda em vermelho.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={alarmesConfig.vistoriaPendenteEnabled}
+                      onClick={() =>
+                        setAlarmesConfig((prev) => ({
+                          ...prev,
+                          vistoriaPendenteEnabled: !prev.vistoriaPendenteEnabled,
+                        }))
+                      }
+                      className={`relative inline-flex h-7 w-[3.2rem] shrink-0 items-center rounded-full border px-0.5 transition-colors ${
+                        alarmesConfig.vistoriaPendenteEnabled
+                          ? "border-emerald-600/45 bg-emerald-500/20"
+                          : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          alarmesConfig.vistoriaPendenteEnabled ? "translate-x-[1.08rem]" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="max-w-xs">
+                    <label className="text-xs font-medium text-[hsl(var(--foreground))]" htmlFor="alarme-vistoria-hora">
+                      Horário do alarme
+                    </label>
+                    <input
+                      id="alarme-vistoria-hora"
+                      type="time"
+                      value={alarmesConfig.vistoriaPendenteTime}
+                      onChange={(e) =>
+                        setAlarmesConfig((prev) => ({
+                          ...prev,
+                          vistoriaPendenteTime: e.target.value,
+                        }))
+                      }
+                      className="mt-1 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                    />
+                  </div>
+                </div>
               </section>
               ) : null}
 
