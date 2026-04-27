@@ -114,6 +114,17 @@ function cellContainsServicoToken(raw: string): boolean {
   return tokens.includes("S");
 }
 
+/** Remove tokens «RO» de um valor de célula, preservando os demais. */
+function stripRoTokens(raw: string): string {
+  const tokens = raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const withoutRo = tokens.filter((t) => t.toUpperCase() !== "RO");
+  return withoutRo.join(" ");
+}
+
 function normalizeLoadedSheet(loaded: DetalheServicoSheetSnapshot | null): DetalheServicoSheetSnapshot {
   if (!loaded || !Array.isArray(loaded.rows)) {
     return { rows: [newRowId()], cells: {} };
@@ -486,6 +497,7 @@ export function DetalheServicoSheet() {
   const [menu, setMenu] = useState<RowContextMenu | null>(null);
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
+  const [showRoTokens, setShowRoTokens] = useState(true);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
@@ -1403,6 +1415,35 @@ export function DetalheServicoSheet() {
               ) : null}
             </div>
             <div className="flex items-center gap-2">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]" id="detalhe-servico-ro-toggle-label">
+                {showRoTokens ? "RO visivel" : "RO oculto"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showRoTokens}
+                aria-labelledby="detalhe-servico-ro-toggle-label"
+                title={
+                  tableEditable
+                    ? "Bloqueie a edição para alternar a visualização de RO."
+                    : showRoTokens
+                      ? "Ocultar todos os RO da planilha"
+                      : "Exibir novamente os RO da planilha"
+                }
+                disabled={tableEditable}
+                className={`relative inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 ${
+                  showRoTokens
+                    ? "border-emerald-600/45 bg-emerald-500/20"
+                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+                } ${tableEditable ? "cursor-not-allowed opacity-60" : ""}`}
+                onClick={() => setShowRoTokens((v) => !v)}
+              >
+                <span
+                  className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                    showRoTokens ? "translate-x-[1.125rem]" : "translate-x-0"
+                  }`}
+                />
+              </button>
               {tableEditable ? (
                 <Unlock className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
               ) : (
@@ -1654,7 +1695,11 @@ export function DetalheServicoSheet() {
                                 className={`${inputClassDay} ${!tableEditable ? inputLockedClass : ""}`}
                                 data-det-sheet-row={rowIndex}
                                 data-det-sheet-col={colIndex}
-                                value={cells[rowId]?.[dk] ?? ""}
+                                value={
+                                  showRoTokens
+                                    ? (cells[rowId]?.[dk] ?? "")
+                                    : stripRoTokens(cells[rowId]?.[dk] ?? "")
+                                }
                                 onChange={(e) => handleDayCellChange(rowId, dk, day, e.target.value)}
                                 onFocus={onCellFocus}
                                 onBlur={(e) => onCellBlur(rowId, dk, e.target.value)}
