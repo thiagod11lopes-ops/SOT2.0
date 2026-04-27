@@ -334,11 +334,12 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                   homeBodyEmphasisClass,
                 )}
               >
-                <strong>Motoristas de Serviço:</strong> <strong>S:</strong>{" "}
+                <strong>Motoristas de Serviço:</strong>{" "}
                 {motoristasServicoRotinaHoje.servico.length > 0
                   ? motoristasServicoRotinaHoje.servico.join(", ")
-                  : "Nenhum motorista marcado hoje."}{" "}
-                | <strong>RO:</strong>{" "}
+                  : "Nenhum motorista marcado hoje."}
+                {" | "}
+                <strong>Motoristas de Rotina:</strong>{" "}
                 {motoristasServicoRotinaHoje.rotina.length > 0
                   ? motoristasServicoRotinaHoje.rotina.join(", ")
                   : "Nenhum motorista marcado hoje."}

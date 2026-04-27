@@ -2,13 +2,12 @@ import { listMotoristasComServicoOuRotinaNoDia } from "./detalheServicoDayMarker
 import type { DetalheServicoBundle } from "./detalheServicoBundle";
 import {
   normalizeDriverKey,
-  nomesMotoristaVistoriaEquivalentes,
   resolveViaturasParaMotoristaEscala,
   type VistoriaAssignment,
   type VistoriaInspection,
 } from "./vistoriaInspectionShared";
 
-/** Mesma lógica da aba Vistoriar — cores do calendário ao lado da data da vistoria. */
+/** Mesma lógica da aba Vistoriar (modal «Motoristas com S…»): cor do dia pela vistoria na data + viatura. */
 export type VistoriaCalendarDayTint = "neutral" | "green" | "orange" | "red";
 
 export function buildViaturasPorMotoristaMap(
@@ -61,10 +60,7 @@ export function getVistoriaCalendarDayTintForIso(
     for (const v of vtrs) {
       totalPlacas++;
       const ok = inspections.some(
-        (i) =>
-          i.inspectionDate === iso &&
-          nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
-          i.viatura.trim() === v.trim(),
+        (i) => i.inspectionDate === iso && i.viatura.trim() === v.trim(),
       );
       if (ok) placasVistoriadas++;
     }
@@ -77,7 +73,7 @@ export function getVistoriaCalendarDayTintForIso(
 }
 
 /**
- * Vistorias de um único dia que contam para o calendário (escala «S» + vínculo viatura).
+ * Vistorias de um único dia que contam para o calendário (escala «S» + viatura sob responsabilidade).
  */
 export function collectInspectionIdsMatchingCalendarForIso(
   inspections: readonly VistoriaInspection[],
@@ -103,7 +99,6 @@ export function collectInspectionIdsMatchingCalendarForIso(
     if (ins.inspectionDate !== iso) continue;
     let counted = false;
     for (const motorista of relevant) {
-      if (!nomesMotoristaVistoriaEquivalentes(ins.motorista, motorista)) continue;
       const vtrs = resolveViaturasParaMotoristaEscala(motorista, viaturasPorMotorista);
       if (vtrs.some((v) => v.trim() === ins.viatura.trim())) {
         counted = true;
