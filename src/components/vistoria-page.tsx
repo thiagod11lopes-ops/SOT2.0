@@ -1270,6 +1270,54 @@ export function VistoriaPage() {
     setInspectionOpen(true);
   }
 
+  async function handleDeleteVistoriaRealizadaParaDataViatura() {
+    const target = confirmEditInspection;
+    if (!target) return;
+    const iso = selectedInspectionDate;
+    const viNorm = target.viatura.trim().toLowerCase();
+    const idsPreview = inspections.filter(
+      (i) => i.inspectionDate === iso && i.viatura.trim().toLowerCase() === viNorm,
+    );
+    if (idsPreview.length === 0) {
+      window.alert("Não foi encontrada vistoria para remover.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Esta ação remove definitivamente a vistoria desta viatura nesta data. O registo deixa de aparecer em Estado das Viaturas e a placa volta a vermelho. Continuar?",
+      )
+    ) {
+      return;
+    }
+    try {
+      await updateVistoriaCloudState((prev) => {
+        const idSet = new Set(
+          prev.inspections
+            .filter((i) => i.inspectionDate === iso && i.viatura.trim().toLowerCase() === viNorm)
+            .map((i) => i.id),
+        );
+        if (idSet.size === 0) return prev;
+        return {
+          ...prev,
+          inspections: prev.inspections.filter((i) => !idSet.has(i.id)),
+          resolvedIssues: prev.resolvedIssues.filter((r) => !idSet.has(r.inspectionId)),
+          issueControls: prev.issueControls.filter((c) => !idSet.has(c.inspectionId)),
+        };
+      });
+      const aindaExiste = getVistoriaCloudState().inspections.some(
+        (i) => i.inspectionDate === iso && i.viatura.trim().toLowerCase() === viNorm,
+      );
+      if (aindaExiste) {
+        window.alert("A vistoria não foi removida (os dados podem ter sido atualizados). Tente novamente.");
+        return;
+      }
+      setConfirmEditInspection(null);
+    } catch (err) {
+      console.error("[SOT] Falha ao excluir vistoria:", err);
+      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
+    }
+  }
+
   async function handleSaveInspection() {
     const motoristaRef = inspectionMotorista.trim();
     const viaturaRef = inspectionViatura.trim();
@@ -1685,11 +1733,20 @@ export function VistoriaPage() {
             <CardContent className="space-y-4">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
                 A viatura <strong>{confirmEditInspection.viatura}</strong> já possui vistoria concluída para esta data.
-                Deseja editar essa vistoria?
+                Pode editar o registo ou excluí-lo: ao excluir, a placa volta a vermelho e o registo deixa de aparecer em
+                Estado das Viaturas.
               </p>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <Button type="button" variant="ghost" onClick={() => setConfirmEditInspection(null)}>
                   Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-red-600/90 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                  onClick={() => void handleDeleteVistoriaRealizadaParaDataViatura()}
+                >
+                  Excluir vistoria realizada
                 </Button>
                 <Button
                   type="button"
