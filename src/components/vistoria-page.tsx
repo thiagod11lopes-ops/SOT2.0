@@ -158,13 +158,6 @@ type EstadoViaturaRow = {
   itemKey?: ChecklistKey;
 };
 
-function collectPriorityControlKeysForRow(row: VtrSituacaoPendenteRow): Set<string> {
-  const keys = new Set<string>();
-  keys.add(`${row.inspectionId}:${row.itemKey}`);
-  for (const ref of row.relatedIssueRefs) keys.add(`${ref.inspectionId}:${ref.itemKey}`);
-  return keys;
-}
-
 function findEstadoViaturaRowForPendente(
   estadoRows: EstadoViaturaRow[],
   pendente: VtrSituacaoPendenteRow,
@@ -421,6 +414,7 @@ export function VistoriaPage() {
   const [rubricaRefResolvedMap, setRubricaRefResolvedMap] = useState<Record<string, string>>({});
   const [estadoViaturasFilterViatura, setEstadoViaturasFilterViatura] = useState("");
   const [estadoViaturasFilterDate, setEstadoViaturasFilterDate] = useState("");
+  const [estadoViaturasSortBy, setEstadoViaturasSortBy] = useState<"data" | "placa">("data");
   const ignoreEstadoVtrLocal = isOnline && isFirebaseOnlyOnlineActive();
 
   const viaturas = useMemo(() => {
@@ -964,13 +958,31 @@ export function VistoriaPage() {
     });
   }, [estadoViaturasRows, estadoViaturasFilterViatura, estadoViaturasFilterDate]);
 
+  const estadoViaturasRowsOrdered = useMemo(() => {
+    const rows = [...estadoViaturasRowsFiltered];
+    if (estadoViaturasSortBy === "placa") {
+      rows.sort((a, b) => {
+        const byPlaca = a.viatura.localeCompare(b.viatura, "pt-BR");
+        if (byPlaca !== 0) return byPlaca;
+        return b.inspectionDate.localeCompare(a.inspectionDate);
+      });
+    } else {
+      rows.sort((a, b) => {
+        const byDate = b.inspectionDate.localeCompare(a.inspectionDate);
+        if (byDate !== 0) return byDate;
+        return a.viatura.localeCompare(b.viatura, "pt-BR");
+      });
+    }
+    return rows;
+  }, [estadoViaturasRowsFiltered, estadoViaturasSortBy]);
+
   const estadoViaturasRowsPrintable = useMemo(() => {
-    return estadoViaturasRowsFiltered.filter((row) => {
+    return estadoViaturasRowsOrdered.filter((row) => {
       const controlKey = `${row.inspectionId}:${row.itemKey ?? "outros"}`;
       const control = issueControlMap.get(controlKey);
       return control?.printMarked === true;
     });
-  }, [estadoViaturasRowsFiltered, issueControlMap]);
+  }, [estadoViaturasRowsOrdered, issueControlMap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1166,30 +1178,6 @@ export function VistoriaPage() {
       }));
     } catch (err) {
       console.error("[SOT] Falha ao excluir linha de estado / sincronizar:", err);
-      window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
-      throw err;
-    }
-  }
-
-  async function handleRemovePendenteFromPrioritiesOnly(row: VtrSituacaoPendenteRow) {
-    const rk = issueRowKey(row.rowId);
-    const keySet = collectPriorityControlKeysForRow(row);
-    setIssueControls((prev) =>
-      prev.map((c) =>
-        keySet.has(`${c.inspectionId}:${c.itemKey}`) ? { ...c, priorityMarked: false } : c,
-      ),
-    );
-    setPriorityOrderKeys((prev) => prev.filter((k) => k !== rk));
-    try {
-      await updateVistoriaCloudState((prev) => ({
-        ...prev,
-        issueControls: prev.issueControls.map((c) =>
-          keySet.has(`${c.inspectionId}:${c.itemKey}`) ? { ...c, priorityMarked: false } : c,
-        ),
-        priorityOrderKeys: prev.priorityOrderKeys.filter((k) => k !== rk),
-      }));
-    } catch (err) {
-      console.error("[SOT] Falha ao retirar prioridade:", err);
       window.alert("Falha ao salvar no Firebase. Verifique a conexão e tente novamente.");
       throw err;
     }
@@ -1724,52 +1712,67 @@ export function VistoriaPage() {
             <CardTitle>Estado das Viaturas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                  Viatura
-                </span>
-                <select
-                  value={estadoViaturasFilterViatura}
-                  onChange={(e) => setEstadoViaturasFilterViatura(e.target.value)}
-                  className="h-10 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
-                >
-                  <option value="">Todas as viaturas</option>
-                  {viaturas.map((viatura) => (
-                    <option key={viatura} value={viatura}>
-                      {viatura}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                  Data
-                </span>
-                <div className="relative">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                  <input
-                    type="text"
-                    value={estadoViaturasFilterDate}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
-                      const p1 = digits.slice(0, 2);
-                      const p2 = digits.slice(2, 4);
-                      const p3 = digits.slice(4, 8);
-                      const masked = [p1, p2, p3].filter(Boolean).join("/");
-                      setEstadoViaturasFilterDate(masked);
-                    }}
-                    inputMode="numeric"
-                    placeholder="dd/mm/aaaa"
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
-                  />
-                </div>
-              </label>
-              <div className="flex items-end gap-2">
+            <div className="mb-4 space-y-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                    Viatura
+                  </span>
+                  <select
+                    value={estadoViaturasFilterViatura}
+                    onChange={(e) => setEstadoViaturasFilterViatura(e.target.value)}
+                    className="h-10 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                  >
+                    <option value="">Todas as viaturas</option>
+                    {viaturas.map((viatura) => (
+                      <option key={viatura} value={viatura}>
+                        {viatura}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                    Data
+                  </span>
+                  <div className="relative">
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                    <input
+                      type="text"
+                      value={estadoViaturasFilterDate}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+                        const p1 = digits.slice(0, 2);
+                        const p2 = digits.slice(2, 4);
+                        const p3 = digits.slice(4, 8);
+                        const masked = [p1, p2, p3].filter(Boolean).join("/");
+                        setEstadoViaturasFilterDate(masked);
+                      }}
+                      inputMode="numeric"
+                      placeholder="dd/mm/aaaa"
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                    />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                    Ordenar por
+                  </span>
+                  <select
+                    value={estadoViaturasSortBy}
+                    onChange={(e) => setEstadoViaturasSortBy(e.target.value === "placa" ? "placa" : "data")}
+                    className="h-10 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))]"
+                  >
+                    <option value="data">Data (mais recente primeiro)</option>
+                    <option value="placa">Placa (A–Z)</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 flex-1"
+                  className="h-10 min-w-[10rem] flex-1 sm:flex-none"
                   onClick={() => {
                     setEstadoViaturasFilterViatura("");
                     setEstadoViaturasFilterDate("");
@@ -1779,7 +1782,7 @@ export function VistoriaPage() {
                 </Button>
                 <Button
                   type="button"
-                  className="h-10 flex-1"
+                  className="h-10 min-w-[10rem] flex-1 sm:flex-none"
                   onClick={() => {
                     void handleGenerateEstadoViaturasPdf();
                   }}
@@ -1808,7 +1811,7 @@ export function VistoriaPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {estadoViaturasRowsFiltered.map((row, index) => (
+                    {estadoViaturasRowsOrdered.map((row, index) => (
                       <TableRow key={row.rowId} className={index % 2 === 0 ? "bg-transparent" : "bg-[hsl(var(--muted))/0.15]"}>
                         {(() => {
                           const controlKey = `${row.inspectionId}:${row.itemKey ?? "outros"}`;
@@ -2035,9 +2038,8 @@ export function VistoriaPage() {
             <CardHeader>
               <CardTitle id={priorityRemoveModalTitleId}>Remover item de prioridades</CardTitle>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Escolha como pretende tratar este item. «Resolvido» apaga o registo de alterações da mesma forma que na
-                tabela Estado das Viaturas (deixa de aparecer nas duas abas). «Excluir de Prioridades» apenas desmarca a
-                prioridade e mantém o item em Estado das Viaturas.
+                «Resolvido» apaga o registo de alterações da mesma forma que na tabela Estado das Viaturas: o item deixa
+                de aparecer em Prioridades e em Estado das Viaturas.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -2051,28 +2053,9 @@ export function VistoriaPage() {
                 </p>
                 <p className="mt-1 font-semibold text-[hsl(var(--foreground))]">{priorityRemoveModalRow.itemLabel}</p>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button type="button" variant="outline" className="sm:flex-1" onClick={() => setPriorityRemoveModalRow(null)}>
                   Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="sm:flex-1 border-[hsl(var(--border))]"
-                  onClick={() => {
-                    void (async () => {
-                      const r = priorityRemoveModalRow;
-                      if (!r) return;
-                      try {
-                        await handleRemovePendenteFromPrioritiesOnly(r);
-                        setPriorityRemoveModalRow(null);
-                      } catch {
-                        /* alert já mostrado */
-                      }
-                    })();
-                  }}
-                >
-                  Excluir de Prioridades
                 </Button>
                 <Button
                   type="button"
