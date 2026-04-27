@@ -2,6 +2,7 @@
   "name": "sot-functions",
   "private": true,
   "type": "module",
+  "main": "lib/index.js",
   "engines": {
     "node": "20"
   },
