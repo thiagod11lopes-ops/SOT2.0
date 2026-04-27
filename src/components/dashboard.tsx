@@ -734,19 +734,31 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Motoristas de Serviço</p>
-                    <div className="mt-2 space-y-2 border-b border-[hsl(var(--border))] pb-3">
-                      <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                        <strong>Serviço (S):</strong>{" "}
-                        {motoristasServicoRotinaHoje.servico.length > 0
-                          ? motoristasServicoRotinaHoje.servico.join(", ")
-                          : "Nenhum motorista marcado hoje."}
-                      </p>
-                      <p className={cn("text-sm", homeBodyEmphasisClass)}>
-                        <strong>Rotina (RO):</strong>{" "}
-                        {motoristasServicoRotinaHoje.rotina.length > 0
-                          ? motoristasServicoRotinaHoje.rotina.join(", ")
-                          : "Nenhum motorista marcado hoje."}
-                      </p>
+                    <div className="mt-2 border-b border-[hsl(var(--border))] pb-3">
+                      <ul className="space-y-2">
+                        <li
+                          className={cn(
+                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 leading-snug",
+                            homeBodyEmphasisClass,
+                          )}
+                        >
+                          <strong>Serviço (S):</strong>{" "}
+                          {motoristasServicoRotinaHoje.servico.length > 0
+                            ? motoristasServicoRotinaHoje.servico.join(", ")
+                            : "Nenhum motorista marcado hoje."}
+                        </li>
+                        <li
+                          className={cn(
+                            "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2 leading-snug",
+                            homeBodyEmphasisClass,
+                          )}
+                        >
+                          <strong>Rotina (RO):</strong>{" "}
+                          {motoristasServicoRotinaHoje.rotina.length > 0
+                            ? motoristasServicoRotinaHoje.rotina.join(", ")
+                            : "Nenhum motorista marcado hoje."}
+                        </li>
+                      </ul>
                     </div>
                     <p className={homeFluidCardTitleClass}>Fainas Gerais</p>
                     {fainasLinhas.length === 0 ? (
