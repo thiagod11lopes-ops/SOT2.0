@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Ambulance, Building2, ClipboardCheck, ShieldCheck, UserPlus } from "lucide-react";
+import { useDepartures } from "../context/departures-context";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { CloudSyncIndicator } from "../components/cloud-sync-indicator";
 import { Button } from "../components/ui/button";
@@ -12,6 +13,20 @@ import {
 } from "../lib/mobileMotoristaCredentials";
 import { VISTORIA_ADMINISTRATIVA_SENHA_PADRAO } from "../lib/vistoriaAdminMobile";
 import { cn } from "../lib/utils";
+import { loadDetalheServicoBundleFromIdb } from "../lib/detalheServicoBundle";
+import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
+import { getVistoriaCloudState, subscribeVistoriaCloudStateChange } from "../lib/vistoriaCloudState";
+import { normalizeDriverKey, nomesMotoristaVistoriaEquivalentes, resolveViaturasParaMotoristaEscala } from "../lib/vistoriaInspectionShared";
+import {
+  clearPushSubscription,
+  ensurePushSubscription,
+  requestNotificationPermissionIfNeeded,
+  showLocalAlarmNotification,
+} from "../lib/mobilePushNotifications";
+import {
+  disableMobilePushSubscriptionForMotorista,
+  saveMobilePushSubscriptionForMotorista,
+} from "../lib/firebase/mobilePushSubscriptions";
 import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
 import { MobileVistoriaFullscreen } from "./mobile-vistoria-fullscreen";
 import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico-modal";
@@ -21,8 +36,75 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
 
+type AlarmesConfig = {
+  beforeDepartureEnabled: boolean;
+  beforeDepartureMinutes: number;
+  beforeDepartureSound: "som1" | "som2" | "som3" | "som4" | "som5";
+  vistoriaPendenteEnabled: boolean;
+  vistoriaPendenteTime: string;
+  vistoriaPendenteSound: "som1" | "som2" | "som3" | "som4" | "som5";
+};
+
+const ALARMES_CONFIG_KEY = "sot_alarmes_config_v1";
+const DEFAULT_ALARMES_CONFIG: AlarmesConfig = {
+  beforeDepartureEnabled: false,
+  beforeDepartureMinutes: 15,
+  beforeDepartureSound: "som1",
+  vistoriaPendenteEnabled: false,
+  vistoriaPendenteTime: "14:00",
+  vistoriaPendenteSound: "som1",
+};
+
+function loadAlarmesConfig(): AlarmesConfig {
+  if (typeof localStorage === "undefined") return DEFAULT_ALARMES_CONFIG;
+  try {
+    const raw = localStorage.getItem(ALARMES_CONFIG_KEY);
+    if (!raw) return DEFAULT_ALARMES_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<AlarmesConfig>;
+    const n = Number(parsed.beforeDepartureMinutes);
+    const isValidSound = (s: unknown): s is AlarmesConfig["beforeDepartureSound"] =>
+      s === "som1" || s === "som2" || s === "som3" || s === "som4" || s === "som5";
+    return {
+      beforeDepartureEnabled: Boolean(parsed.beforeDepartureEnabled),
+      beforeDepartureMinutes: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 15,
+      beforeDepartureSound: isValidSound(parsed.beforeDepartureSound)
+        ? parsed.beforeDepartureSound
+        : DEFAULT_ALARMES_CONFIG.beforeDepartureSound,
+      vistoriaPendenteEnabled: Boolean(parsed.vistoriaPendenteEnabled),
+      vistoriaPendenteTime:
+        typeof parsed.vistoriaPendenteTime === "string" && /^\d{2}:\d{2}$/.test(parsed.vistoriaPendenteTime)
+          ? parsed.vistoriaPendenteTime
+          : "14:00",
+      vistoriaPendenteSound: isValidSound(parsed.vistoriaPendenteSound)
+        ? parsed.vistoriaPendenteSound
+        : DEFAULT_ALARMES_CONFIG.vistoriaPendenteSound,
+    };
+  } catch {
+    return DEFAULT_ALARMES_CONFIG;
+  }
+}
+
+function todayIsoLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function parsePtBrDateAndTimeToLocal(datePtBr: string, timeHhMm: string): Date | null {
+  const dm = datePtBr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const tm = timeHhMm.match(/^(\d{2}):(\d{2})$/);
+  if (!dm || !tm) return null;
+  const day = Number(dm[1]);
+  const month = Number(dm[2]) - 1;
+  const year = Number(dm[3]);
+  const hour = Number(tm[1]);
+  const minute = Number(tm[2]);
+  if (!Number.isFinite(day + month + year + hour + minute)) return null;
+  return new Date(year, month, day, hour, minute, 0, 0);
+}
+
 export function SaidasLayout() {
   const { runWithTrackedProgress } = useMobileLoadingOverlay();
+  const { departures } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
@@ -38,6 +120,50 @@ export function SaidasLayout() {
   const [motoristaLogadoMobile, setMotoristaLogadoMobile] = useState<string | null>(
     () => loadActiveMobileMotorista(),
   );
+  const [alarmToast, setAlarmToast] = useState<{ title: string; body: string } | null>(null);
+  const alarmesStateRef = useRef<{ lastDepartureKey: string; lastVistoriaKey: string }>({
+    lastDepartureKey: "",
+    lastVistoriaKey: "",
+  });
+
+  function playAlarmBeep(sound: AlarmesConfig["beforeDepartureSound"]) {
+    if (typeof window === "undefined") return;
+    const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const now = ctx.currentTime;
+      const freq =
+        sound === "som1" ? 880 : sound === "som2" ? 740 : sound === "som3" ? 988 : sound === "som4" ? 660 : 523;
+      const duration = sound === "som5" ? 0.42 : sound === "som3" ? 0.24 : 0.3;
+      osc.frequency.value = freq;
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+      if (sound === "som4") {
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.linearRampToValueAtTime(freq * 1.35, now + duration * 0.75);
+      }
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+      window.setTimeout(() => void ctx.close(), 650);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function notifyAlarm(title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void {
+    if (typeof window === "undefined") return;
+    playAlarmBeep(sound);
+    setAlarmToast({ title, body });
+    void showLocalAlarmNotification(title, { body, tag: "sot-mobile-alarm", requireInteraction: true });
+  }
 
   const motoristasCatalogoOrdenados = useMemo(() => {
     const seen = new Set<string>();
@@ -90,6 +216,10 @@ export function SaidasLayout() {
   }
 
   function handleLogoutMotoristaMobile() {
+    if (motoristaLogadoMobile?.trim()) {
+      void disableMobilePushSubscriptionForMotorista(motoristaLogadoMobile);
+      void clearPushSubscription();
+    }
     setActiveMobileMotorista(null);
     setMotoristaLogadoMobile(null);
   }
@@ -159,6 +289,139 @@ export function SaidasLayout() {
       { label: "Sincronizando calendário e placas com o Firebase...", minDurationMs: 300 },
     );
   }
+
+  useEffect(() => {
+    if (!alarmToast) return;
+    const t = window.setTimeout(() => setAlarmToast(null), 7000);
+    return () => window.clearTimeout(t);
+  }, [alarmToast]);
+
+  useEffect(() => {
+    void requestNotificationPermissionIfNeeded();
+  }, []);
+
+  useEffect(() => {
+    if (!motoristaLogadoMobile?.trim()) return;
+    let cancelled = false;
+    void (async () => {
+      const permission = await requestNotificationPermissionIfNeeded();
+      if (cancelled || permission !== "granted") return;
+      const subscription = await ensurePushSubscription();
+      if (cancelled || !subscription) return;
+      await saveMobilePushSubscriptionForMotorista(motoristaLogadoMobile, subscription);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [motoristaLogadoMobile]);
+
+  useEffect(() => {
+    if (!motoristaLogadoMobile?.trim()) return;
+    const motoristaLogado = motoristaLogadoMobile.trim();
+    let cancelled = false;
+    let timer: number | null = null;
+    let vistoriaCloudTick = 0;
+    const unsubVistoria = subscribeVistoriaCloudStateChange(() => {
+      vistoriaCloudTick += 1;
+    });
+
+    function driverMatchesDepartureField(field: string, motorista: string): boolean {
+      const nk = normalizeDriverKey(motorista);
+      if (!nk) return false;
+      const tokens = field
+        .split(/[;,/]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      return tokens.some((t) => normalizeDriverKey(t) === nk);
+    }
+
+    async function tick() {
+      if (cancelled) return;
+      const config = loadAlarmesConfig();
+      const motorista = motoristaLogado;
+      const now = new Date();
+      const dayIso = todayIsoLocal();
+
+      if (config.beforeDepartureEnabled) {
+        const leadMin = Math.max(0, config.beforeDepartureMinutes);
+        for (const row of departures) {
+          if (!driverMatchesDepartureField(row.motoristas ?? "", motorista)) continue;
+          const time = (row.horaSaida || row.horaPedido || "").trim();
+          const date = (row.dataSaida || row.dataPedido || "").trim();
+          const dt = parsePtBrDateAndTimeToLocal(date, time);
+          if (!dt) continue;
+          const alarmAt = new Date(dt.getTime() - leadMin * 60_000);
+          const delta = now.getTime() - alarmAt.getTime();
+          if (delta < 0 || delta > 60_000) continue;
+          const fireKey = `dep:${dayIso}:${row.id}:${leadMin}`;
+          if (alarmesStateRef.current.lastDepartureKey === fireKey) continue;
+          alarmesStateRef.current.lastDepartureKey = fireKey;
+          notifyAlarm(
+            "Alarme de saída",
+            `${motorista}: saída às ${time || "--:--"} (${leadMin} min antes).`,
+            config.beforeDepartureSound,
+          );
+          break;
+        }
+      }
+
+      if (config.vistoriaPendenteEnabled && /^\d{2}:\d{2}$/.test(config.vistoriaPendenteTime)) {
+        const [hh, mm] = config.vistoriaPendenteTime.split(":").map(Number);
+        const shouldCheckNow = now.getHours() === hh && now.getMinutes() === mm;
+        if (shouldCheckNow) {
+          const bundle = await loadDetalheServicoBundleFromIdb();
+          const marcados = listMotoristasComServicoOuRotinaNoDia(bundle, dayIso);
+          const hasServicoHoje = marcados.some(
+            (m) => m.servico && normalizeDriverKey(m.motorista) === normalizeDriverKey(motorista),
+          );
+          if (hasServicoHoje) {
+            const cloud = getVistoriaCloudState();
+            const map = new Map<string, string[]>();
+            for (const a of cloud.assignments) {
+              const key = normalizeDriverKey(a.motorista);
+              if (!key) continue;
+              if (!map.has(key)) map.set(key, []);
+              map.get(key)!.push(a.viatura);
+            }
+            const viaturasEsperadas = resolveViaturasParaMotoristaEscala(motorista, map);
+            if (viaturasEsperadas.length > 0) {
+              const vistoriadas = viaturasEsperadas.filter((v) =>
+                cloud.inspections.some(
+                  (i) =>
+                    i.inspectionDate === dayIso &&
+                    nomesMotoristaVistoriaEquivalentes(i.motorista, motorista) &&
+                    i.viatura.trim() === v.trim(),
+                ),
+              );
+              const pendentes = viaturasEsperadas.filter(
+                (v) => !vistoriadas.some((ok) => ok.trim() === v.trim()),
+              );
+              if (pendentes.length > 0) {
+                const fireKey = `vis:${dayIso}:${motorista}:${vistoriaCloudTick}`;
+                if (alarmesStateRef.current.lastVistoriaKey !== fireKey) {
+                  alarmesStateRef.current.lastVistoriaKey = fireKey;
+                  notifyAlarm(
+                    "Alarme de vistoria pendente",
+                    `${motorista}: viatura(s) ainda pendente(s): ${pendentes.join(", ")}.`,
+                    config.vistoriaPendenteSound,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+
+      timer = window.setTimeout(tick, 20_000);
+    }
+
+    timer = window.setTimeout(tick, 1000);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      unsubVistoria();
+    };
+  }, [motoristaLogadoMobile, departures]);
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
@@ -455,6 +718,14 @@ export function SaidasLayout() {
           </NavLink>
         </div>
       </nav>
+      {alarmToast ? (
+        <div className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-top)+0.65rem)] z-[560] flex justify-center px-3">
+          <div className="w-full max-w-lg rounded-xl border border-amber-300/80 bg-amber-100/95 px-3 py-2 shadow-lg backdrop-blur">
+            <p className="text-sm font-semibold text-amber-900">{alarmToast.title}</p>
+            <p className="text-xs text-amber-900/90">{alarmToast.body}</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

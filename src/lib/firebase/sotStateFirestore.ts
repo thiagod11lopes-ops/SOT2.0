@@ -25,6 +25,8 @@ export const SOT_STATE_DOC = {
   appearance: "appearance",
   departuresReportEmail: "departuresReportEmail",
   alarmDismiss: "alarmDismiss",
+  /** Configuração global dos alarmes mobile para envio push pelo backend. */
+  alarmesConfig: "alarmesConfig",
   /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
   detalheServico: "detalheServico",
   /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */

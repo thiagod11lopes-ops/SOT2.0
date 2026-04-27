@@ -3,7 +3,6 @@ import { useDeparturesReportEmail } from "../context/departures-report-email-con
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import { useCatalogItems } from "../context/catalog-items-context";
-import { Loader2 } from "lucide-react";
 import {
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
@@ -11,7 +10,7 @@ import {
 } from "../lib/detalheServicoBundle";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import {
@@ -25,13 +24,6 @@ import {
   isVistoriaCloudStateHydrated,
   subscribeVistoriaCloudStateChange,
 } from "../lib/vistoriaCloudState";
-import {
-  readWhatsAppCloudApiConfig,
-  saveWhatsAppCloudApiConfig,
-  saveWhatsAppProxyBaseUrl,
-  sendWhatsAppTemplateHelloWorld,
-  sendWhatsAppTextMessage,
-} from "../lib/whatsappCloudApi";
 import type { DepartureRecord } from "../types/departure";
 import type { DeparturesExportFile } from "../lib/adminDeparturesExport";
 import { parseDeparturesFromImportFile } from "../lib/adminDeparturesExport";
@@ -49,6 +41,12 @@ import {
   type MobileMotoristaCredential,
   upsertMobileMotoristaCredential,
 } from "../lib/mobileMotoristaCredentials";
+import {
+  ensureMobilePushServiceWorkerRegistered,
+  isNotificationSupported,
+  requestNotificationPermissionIfNeeded,
+  showLocalAlarmNotification,
+} from "../lib/mobilePushNotifications";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
@@ -59,8 +57,10 @@ type FirebaseActivationStrategy = "push-local-to-firebase" | "use-remote-as-sour
 type AlarmesConfig = {
   beforeDepartureEnabled: boolean;
   beforeDepartureMinutes: number;
+  beforeDepartureSound: "som1" | "som2" | "som3" | "som4" | "som5";
   vistoriaPendenteEnabled: boolean;
   vistoriaPendenteTime: string;
+  vistoriaPendenteSound: "som1" | "som2" | "som3" | "som4" | "som5";
 };
 
 const SETTINGS_SECTIONS = [
@@ -68,7 +68,6 @@ const SETTINGS_SECTIONS = [
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
-  { id: "settings-whatsapp-vistoria", label: "WhatsApp — vistoria" },
   { id: "settings-alarmes", label: "Alarmes" },
   { id: "settings-mobile-motoristas", label: "Mobile — motoristas" },
   { id: "settings-vistoria-cal", label: "Vistoria — calendário" },
@@ -78,74 +77,15 @@ const SETTINGS_SECTIONS = [
 const SETTINGS_PANEL_CLASS =
   "space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm sm:p-5";
 
-type VistoriaWhatsappContact = {
-  motorista: string;
-  telefone: string;
-};
-
-const VISTORIA_WHATSAPP_CONTACTS_KEY = "sot_vistoria_whatsapp_contacts_v1";
-const VISTORIA_WHATSAPP_TRIGGER_TIME_KEY = "sot_vistoria_whatsapp_trigger_time_v1";
-const VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY = "sot_vistoria_whatsapp_message_template_v1";
 const ALARMES_CONFIG_KEY = "sot_alarmes_config_v1";
-const DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME = "14:00";
-const DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE =
-  "SOT 2.0 - Aviso de vistoria\nMotorista: {motorista}\nData: {data}\nHá viatura(s) pendente(s) de vistoria: {placas}.\nPor favor, realize a vistoria o quanto antes.";
 const DEFAULT_ALARMES_CONFIG: AlarmesConfig = {
   beforeDepartureEnabled: false,
   beforeDepartureMinutes: 15,
+  beforeDepartureSound: "som1",
   vistoriaPendenteEnabled: false,
   vistoriaPendenteTime: "14:00",
+  vistoriaPendenteSound: "som1",
 };
-
-function normalizePhone(input: string): string {
-  return input.replace(/\D/g, "");
-}
-
-function formatPhone(input: string): string {
-  const digits = normalizePhone(input).slice(0, 13);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  return `+${digits.slice(0, 2)} (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
-}
-
-function loadVistoriaWhatsappContacts(): VistoriaWhatsappContact[] {
-  if (typeof localStorage === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(VISTORIA_WHATSAPP_CONTACTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((row) => ({
-        motorista: String(row.motorista ?? "").trim(),
-        telefone: normalizePhone(String(row.telefone ?? "")),
-      }))
-      .filter((row) => row.motorista && row.telefone);
-  } catch {
-    return [];
-  }
-}
-
-function loadVistoriaWhatsappTriggerTime(): string {
-  if (typeof localStorage === "undefined") return DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
-  try {
-    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_TRIGGER_TIME_KEY) ?? "").trim();
-    return /^\d{2}:\d{2}$/.test(raw) ? raw : DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
-  } catch {
-    return DEFAULT_VISTORIA_WHATSAPP_TRIGGER_TIME;
-  }
-}
-
-function loadVistoriaWhatsappMessageTemplate(): string {
-  if (typeof localStorage === "undefined") return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
-  try {
-    const raw = String(localStorage.getItem(VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY) ?? "");
-    return raw.trim() ? raw : DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
-  } catch {
-    return DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE;
-  }
-}
 
 function loadAlarmesConfig(): AlarmesConfig {
   if (typeof localStorage === "undefined") return DEFAULT_ALARMES_CONFIG;
@@ -160,11 +100,19 @@ function loadAlarmesConfig(): AlarmesConfig {
       typeof parsed.vistoriaPendenteTime === "string" && /^\d{2}:\d{2}$/.test(parsed.vistoriaPendenteTime)
         ? parsed.vistoriaPendenteTime
         : DEFAULT_ALARMES_CONFIG.vistoriaPendenteTime;
+    const isValidSound = (s: unknown): s is AlarmesConfig["beforeDepartureSound"] =>
+      s === "som1" || s === "som2" || s === "som3" || s === "som4" || s === "som5";
     return {
       beforeDepartureEnabled: Boolean(parsed.beforeDepartureEnabled),
       beforeDepartureMinutes,
+      beforeDepartureSound: isValidSound(parsed.beforeDepartureSound)
+        ? parsed.beforeDepartureSound
+        : DEFAULT_ALARMES_CONFIG.beforeDepartureSound,
       vistoriaPendenteEnabled: Boolean(parsed.vistoriaPendenteEnabled),
       vistoriaPendenteTime,
+      vistoriaPendenteSound: isValidSound(parsed.vistoriaPendenteSound)
+        ? parsed.vistoriaPendenteSound
+        : DEFAULT_ALARMES_CONFIG.vistoriaPendenteSound,
     };
   } catch {
     return DEFAULT_ALARMES_CONFIG;
@@ -229,24 +177,13 @@ export function SettingsPage() {
   const [kmSenhaNova, setKmSenhaNova] = useState("");
   const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string>(SETTINGS_SECTIONS[0].id);
-  const [whatsMotorista, setWhatsMotorista] = useState("");
-  const [whatsTelefone, setWhatsTelefone] = useState("");
-  const [vistoriaWhatsappContacts, setVistoriaWhatsappContacts] = useState<VistoriaWhatsappContact[]>(
-    () => loadVistoriaWhatsappContacts(),
-  );
-  const [testingWhatsappMotorista, setTestingWhatsappMotorista] = useState<string | null>(null);
-  const [vistoriaWhatsappTriggerTime, setVistoriaWhatsappTriggerTime] = useState<string>(() =>
-    loadVistoriaWhatsappTriggerTime(),
-  );
-  const [vistoriaWhatsappMessageTemplate, setVistoriaWhatsappMessageTemplate] = useState<string>(() =>
-    loadVistoriaWhatsappMessageTemplate(),
-  );
-  const [whatsMessageModalOpen, setWhatsMessageModalOpen] = useState(false);
-  const [whatsMessageDraft, setWhatsMessageDraft] = useState<string>(() => loadVistoriaWhatsappMessageTemplate());
-  const [whatsApiToken, setWhatsApiToken] = useState<string>(() => readWhatsAppCloudApiConfig().token);
-  const [whatsApiPhoneNumberId, setWhatsApiPhoneNumberId] = useState<string>(() => readWhatsAppCloudApiConfig().phoneNumberId);
-  const [whatsApiProxyBaseUrl, setWhatsApiProxyBaseUrl] = useState<string>(() => readWhatsAppCloudApiConfig().proxyBaseUrl);
   const [alarmesConfig, setAlarmesConfig] = useState<AlarmesConfig>(() => loadAlarmesConfig());
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (!isNotificationSupported()) return "unsupported";
+    return Notification.permission;
+  });
+  const [alarmPreviewTarget, setAlarmPreviewTarget] = useState<"beforeDeparture" | "vistoriaPendente" | null>(null);
+  const alarmPreviewTimerRef = useRef<number | null>(null);
   const [mobileMotoristaCreds, setMobileMotoristaCreds] = useState<MobileMotoristaCredential[]>(
     () => loadMobileMotoristaCredentials(),
   );
@@ -319,32 +256,110 @@ export function SettingsPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(VISTORIA_WHATSAPP_CONTACTS_KEY, JSON.stringify(vistoriaWhatsappContacts));
-    } catch {
-      /* ignore */
-    }
-  }, [vistoriaWhatsappContacts]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(VISTORIA_WHATSAPP_TRIGGER_TIME_KEY, vistoriaWhatsappTriggerTime);
-    } catch {
-      /* ignore */
-    }
-  }, [vistoriaWhatsappTriggerTime]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(VISTORIA_WHATSAPP_MESSAGE_TEMPLATE_KEY, vistoriaWhatsappMessageTemplate);
-    } catch {
-      /* ignore */
-    }
-  }, [vistoriaWhatsappMessageTemplate]);
-  useEffect(() => {
-    try {
       localStorage.setItem(ALARMES_CONFIG_KEY, JSON.stringify(alarmesConfig));
     } catch {
       /* ignore */
     }
   }, [alarmesConfig]);
+  useEffect(() => {
+    if (!isOnline || !isFirebaseConfigured()) return;
+    void setSotStateDocWithRetry(SOT_STATE_DOC.alarmesConfig, alarmesConfig).catch((err) => {
+      console.error("[SOT] salvar alarmesConfig no Firebase:", err);
+    });
+  }, [alarmesConfig, isOnline]);
+
+  function playAlarmBeepSample(sound: AlarmesConfig["beforeDepartureSound"]) {
+    try {
+      const audioContext =
+        new (window.AudioContext ||
+          (
+            window as unknown as {
+              webkitAudioContext?: typeof AudioContext;
+            }
+          ).webkitAudioContext)();
+      const now = audioContext.currentTime;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = sound === "som2" ? "triangle" : sound === "som3" ? "square" : "sine";
+      const baseFrequency =
+        sound === "som1" ? 880 : sound === "som2" ? 740 : sound === "som3" ? 988 : sound === "som4" ? 660 : 523;
+      const duration = sound === "som5" ? 0.42 : sound === "som3" ? 0.24 : 0.3;
+      oscillator.frequency.setValueAtTime(baseFrequency, now);
+      if (sound === "som4") {
+        oscillator.frequency.linearRampToValueAtTime(baseFrequency * 1.28, now + duration * 0.7);
+      } else if (sound === "som5") {
+        oscillator.frequency.linearRampToValueAtTime(baseFrequency * 0.82, now + duration);
+      }
+      gainNode.gain.setValueAtTime(0.0001, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.03);
+      window.setTimeout(() => {
+        void audioContext.close();
+      }, Math.max(500, Math.ceil((duration + 0.1) * 1000)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function stopAlarmPreview() {
+    if (alarmPreviewTimerRef.current !== null) {
+      window.clearInterval(alarmPreviewTimerRef.current);
+      alarmPreviewTimerRef.current = null;
+    }
+    setAlarmPreviewTarget(null);
+  }
+
+  function startAlarmPreview(target: "beforeDeparture" | "vistoriaPendente", sound: AlarmesConfig["beforeDepartureSound"]) {
+    stopAlarmPreview();
+    playAlarmBeepSample(sound);
+    alarmPreviewTimerRef.current = window.setInterval(() => {
+      playAlarmBeepSample(sound);
+    }, 950);
+    setAlarmPreviewTarget(target);
+  }
+
+  function toggleAlarmPreview(target: "beforeDeparture" | "vistoriaPendente", sound: AlarmesConfig["beforeDepartureSound"]) {
+    if (alarmPreviewTarget === target) {
+      stopAlarmPreview();
+      return;
+    }
+    startAlarmPreview(target, sound);
+  }
+
+  async function handleEnableNotifications() {
+    const permission = await requestNotificationPermissionIfNeeded();
+    setNotifPermission(permission);
+    if (permission === "granted") {
+      await ensureMobilePushServiceWorkerRegistered();
+      window.alert("Notificações ativadas neste dispositivo.");
+      return;
+    }
+    if (permission === "denied") {
+      window.alert("As notificações estão bloqueadas. Permita no navegador/sistema para receber alarmes com a tela bloqueada.");
+      return;
+    }
+    if (permission === "unsupported") {
+      window.alert("Este navegador não suporta notificações push.");
+    }
+  }
+
+  async function handleTestNotification() {
+    if (notifPermission !== "granted") {
+      await handleEnableNotifications();
+      return;
+    }
+    await showLocalAlarmNotification("Teste de alarme SOT 2.0", {
+      body: "Notificação de teste recebida com sucesso.",
+      tag: "sot-mobile-test",
+      requireInteraction: true,
+    });
+  }
+
+  useEffect(() => () => stopAlarmPreview(), []);
   const ambulancias = useMemo(
     () => departures.filter((d) => d.tipo === "Ambulância"),
     [departures],
@@ -513,82 +528,6 @@ export function SettingsPage() {
     window.alert(
       "Senha guardada. Será pedida ao alterar KM saída, KM chegada ou hora de chegada nas abas Saídas Administrativas e Ambulância.",
     );
-  }
-
-  function handleAddVistoriaWhatsappContact() {
-    const motorista = whatsMotorista.trim();
-    const telefone = normalizePhone(whatsTelefone);
-    if (!motorista) {
-      window.alert("Selecione um motorista.");
-      return;
-    }
-    if (telefone.length < 10) {
-      window.alert("Informe um número de telefone válido com DDD.");
-      return;
-    }
-    setVistoriaWhatsappContacts((prev) => {
-      const already = prev.some((row) => row.motorista.toLowerCase() === motorista.toLowerCase());
-      if (already) {
-        return prev.map((row) =>
-          row.motorista.toLowerCase() === motorista.toLowerCase() ? { ...row, telefone } : row,
-        );
-      }
-      return [...prev, { motorista, telefone }].sort((a, b) => a.motorista.localeCompare(b.motorista, "pt-BR"));
-    });
-    setWhatsTelefone("");
-  }
-
-  function handleRemoveVistoriaWhatsappContact(motorista: string) {
-    setVistoriaWhatsappContacts((prev) => prev.filter((row) => row.motorista !== motorista));
-  }
-
-  async function handleTestVistoriaWhatsappContact(row: VistoriaWhatsappContact) {
-    setTestingWhatsappMotorista(row.motorista);
-    const now = new Date();
-    const text =
-      `SOT 2.0 - Mensagem de teste\n` +
-      `Motorista: ${row.motorista}\n` +
-      `Data: ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR")}\n` +
-      `Envio imediato de teste do WhatsApp da vistoria.`;
-    const textResult = await sendWhatsAppTextMessage(row.telefone, text);
-    if (!textResult.ok) {
-      const templateResult = await sendWhatsAppTemplateHelloWorld(row.telefone);
-      if (!templateResult.ok) {
-        window.alert(`Falha no envio de teste via WhatsApp API: ${textResult.error}`);
-        setTestingWhatsappMotorista(null);
-        return;
-      }
-      window.alert(
-        `Teste enviado para ${row.motorista} com template padrao (a conta pode estar fora da janela de 24h).`,
-      );
-      setTestingWhatsappMotorista(null);
-      return;
-    }
-    window.alert(`Mensagem de teste enviada imediatamente para ${row.motorista}.`);
-    setTestingWhatsappMotorista(null);
-  }
-
-  function handleSaveWhatsMessageTemplate() {
-    const trimmed = whatsMessageDraft.trim();
-    if (!trimmed) {
-      window.alert("A mensagem automática não pode ficar vazia.");
-      return;
-    }
-    setVistoriaWhatsappMessageTemplate(trimmed);
-    setWhatsMessageModalOpen(false);
-  }
-
-  function handleSaveWhatsApiConfig() {
-    const token = whatsApiToken.trim();
-    const phoneNumberId = whatsApiPhoneNumberId.trim();
-    const proxyBaseUrl = whatsApiProxyBaseUrl.trim();
-    if (!proxyBaseUrl && (!token || !phoneNumberId)) {
-      window.alert("Preencha Access Token + Phone Number ID, ou a URL base do Proxy.");
-      return;
-    }
-    saveWhatsAppCloudApiConfig({ token, phoneNumberId });
-    saveWhatsAppProxyBaseUrl(proxyBaseUrl);
-    window.alert("Configuração da API do WhatsApp salva neste navegador.");
   }
 
   function handleSaveMobileMotoristaCred() {
@@ -952,191 +891,6 @@ export function SettingsPage() {
               </section>
               ) : null}
 
-              {activeSectionId === "settings-whatsapp-vistoria" ? (
-              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-whatsapp-vistoria">
-                <h3 id="settings-heading-whatsapp-vistoria" className="text-base font-semibold text-[hsl(var(--foreground))]">
-                  WhatsApp — vistoria
-                </h3>
-                <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
-                  Cadastre os contatos dos motoristas para aviso de vistoria no WhatsApp.
-                </p>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-trigger-time">
-                      Horário de disparo
-                    </label>
-                    <input
-                      id="vistoria-whats-trigger-time"
-                      type="time"
-                      value={vistoriaWhatsappTriggerTime}
-                      onChange={(e) => setVistoriaWhatsappTriggerTime(e.target.value)}
-                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                    />
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    A mensagem automática será avaliada todos os dias a partir desse horário.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10"
-                    onClick={() => {
-                      setWhatsMessageDraft(vistoriaWhatsappMessageTemplate);
-                      setWhatsMessageModalOpen(true);
-                    }}
-                  >
-                    Editar mensagem automática
-                  </Button>
-                </div>
-                <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.1] p-3 space-y-2">
-                  <p className="text-sm font-medium text-[hsl(var(--foreground))]">Configuração da API (produção/pages)</p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_260px_1fr_auto] md:items-end">
-                    <div className="space-y-1">
-                      <label
-                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
-                        htmlFor="vistoria-whats-api-token"
-                      >
-                        Access Token
-                      </label>
-                      <input
-                        id="vistoria-whats-api-token"
-                        type="password"
-                        value={whatsApiToken}
-                        onChange={(e) => setWhatsApiToken(e.target.value)}
-                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                        placeholder="Cole o token da Cloud API"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label
-                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
-                        htmlFor="vistoria-whats-api-phone-id"
-                      >
-                        Phone Number ID
-                      </label>
-                      <input
-                        id="vistoria-whats-api-phone-id"
-                        type="text"
-                        value={whatsApiPhoneNumberId}
-                        onChange={(e) => setWhatsApiPhoneNumberId(e.target.value)}
-                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                        placeholder="Ex.: 1141540469032095"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label
-                        className="text-xs font-medium text-[hsl(var(--muted-foreground))]"
-                        htmlFor="vistoria-whats-api-proxy-url"
-                      >
-                        URL base do Proxy (recomendado)
-                      </label>
-                      <input
-                        id="vistoria-whats-api-proxy-url"
-                        type="text"
-                        value={whatsApiProxyBaseUrl}
-                        onChange={(e) => setWhatsApiProxyBaseUrl(e.target.value)}
-                        className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                        placeholder="https://seu-backend.onrender.com"
-                      />
-                    </div>
-                    <Button type="button" variant="outline" className="h-10" onClick={handleSaveWhatsApiConfig}>
-                      Salvar API
-                    </Button>
-                  </div>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Em GitHub Pages, prefira usar a URL do Proxy para evitar bloqueio CORS da Meta.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-motorista">
-                      Motorista
-                    </label>
-                    <select
-                      id="vistoria-whats-motorista"
-                      value={whatsMotorista}
-                      onChange={(e) => setWhatsMotorista(e.target.value)}
-                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                    >
-                      <option value="">Selecione</option>
-                      {motoristasCatalogo.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="vistoria-whats-telefone">
-                      Telefone (WhatsApp)
-                    </label>
-                    <input
-                      id="vistoria-whats-telefone"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="(11) 99999-9999"
-                      value={formatPhone(whatsTelefone)}
-                      onChange={(e) => setWhatsTelefone(e.target.value)}
-                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
-                    />
-                  </div>
-                  <Button type="button" variant="default" className="h-10" onClick={handleAddVistoriaWhatsappContact}>
-                    Salvar contato
-                  </Button>
-                </div>
-                {motoristasCatalogo.length === 0 ? (
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Cadastre motoristas em <strong>Frota e Pessoal</strong> para habilitar o seletor.
-                  </p>
-                ) : null}
-                {vistoriaWhatsappContacts.length === 0 ? (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum contato de motorista cadastrado.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {vistoriaWhatsappContacts.map((row) => (
-                      <li
-                        key={row.motorista}
-                        className="flex items-center justify-between gap-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.15] px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">{row.motorista}</p>
-                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{formatPhone(row.telefone)}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            disabled={testingWhatsappMotorista === row.motorista}
-                            onClick={() => {
-                              void handleTestVistoriaWhatsappContact(row);
-                            }}
-                          >
-                            {testingWhatsappMotorista === row.motorista ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Enviando...
-                              </span>
-                            ) : (
-                              "Teste"
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 border-red-300 text-red-700 hover:bg-red-50"
-                            onClick={() => handleRemoveVistoriaWhatsappContact(row.motorista)}
-                          >
-                            Remover
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-              ) : null}
-
               {activeSectionId === "settings-alarmes" ? (
               <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-alarmes">
                 <h3 id="settings-heading-alarmes" className="text-base font-semibold text-[hsl(var(--foreground))]">
@@ -1200,6 +954,42 @@ export function SettingsPage() {
                       className="mt-1 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
                     />
                   </div>
+                  <div className="max-w-md">
+                    <label className="text-xs font-medium text-[hsl(var(--foreground))]" htmlFor="alarme-som-saida">
+                      Som do alarme
+                    </label>
+                    <div className="mt-1 flex gap-2">
+                      <select
+                        id="alarme-som-saida"
+                        value={alarmesConfig.beforeDepartureSound}
+                        onChange={(e) => {
+                          const nextSound = e.target.value as AlarmesConfig["beforeDepartureSound"];
+                          setAlarmesConfig((prev) => ({
+                            ...prev,
+                            beforeDepartureSound: nextSound,
+                          }));
+                          if (alarmPreviewTarget === "beforeDeparture") {
+                            startAlarmPreview("beforeDeparture", nextSound);
+                          }
+                        }}
+                        className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                      >
+                        <option value="som1">Som 1</option>
+                        <option value="som2">Som 2</option>
+                        <option value="som3">Som 3</option>
+                        <option value="som4">Som 4</option>
+                        <option value="som5">Som 5</option>
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 min-w-[6rem]"
+                        onClick={() => toggleAlarmPreview("beforeDeparture", alarmesConfig.beforeDepartureSound)}
+                      >
+                        {alarmPreviewTarget === "beforeDeparture" ? "Pause" : "Play"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.08] p-3 sm:p-4">
@@ -1252,6 +1042,72 @@ export function SettingsPage() {
                       }
                       className="mt-1 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
                     />
+                  </div>
+                  <div className="max-w-md">
+                    <label className="text-xs font-medium text-[hsl(var(--foreground))]" htmlFor="alarme-vistoria-som">
+                      Som do alarme
+                    </label>
+                    <div className="mt-1 flex gap-2">
+                      <select
+                        id="alarme-vistoria-som"
+                        value={alarmesConfig.vistoriaPendenteSound}
+                        onChange={(e) => {
+                          const nextSound = e.target.value as AlarmesConfig["vistoriaPendenteSound"];
+                          setAlarmesConfig((prev) => ({
+                            ...prev,
+                            vistoriaPendenteSound: nextSound,
+                          }));
+                          if (alarmPreviewTarget === "vistoriaPendente") {
+                            startAlarmPreview("vistoriaPendente", nextSound);
+                          }
+                        }}
+                        className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                      >
+                        <option value="som1">Som 1</option>
+                        <option value="som2">Som 2</option>
+                        <option value="som3">Som 3</option>
+                        <option value="som4">Som 4</option>
+                        <option value="som5">Som 5</option>
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 min-w-[6rem]"
+                        onClick={() => toggleAlarmPreview("vistoriaPendente", alarmesConfig.vistoriaPendenteSound)}
+                      >
+                        {alarmPreviewTarget === "vistoriaPendente" ? "Pause" : "Play"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.08] p-3 sm:p-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                    Notificações para app em segundo plano/fechado (PWA)
+                  </p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    Para receber avisos com o app fechado, é necessário ativar notificações e configurar envio push no servidor.
+                    No Android funciona melhor; no iPhone há restrições do sistema.
+                  </p>
+                  <p className="text-xs">
+                    Estado atual:{" "}
+                    <strong>
+                      {notifPermission === "granted"
+                        ? "Permitido"
+                        : notifPermission === "denied"
+                          ? "Bloqueado"
+                          : notifPermission === "default"
+                            ? "Pendente"
+                            : "Não suportado"}
+                    </strong>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={() => void handleEnableNotifications()}>
+                      Ativar notificações
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => void handleTestNotification()}>
+                      Testar notificação
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -1426,41 +1282,6 @@ export function SettingsPage() {
           assignments={vistoriaCloudSnapshot.assignments}
           inspections={vistoriaCloudSnapshot.inspections}
         />
-      ) : null}
-      {whatsMessageModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <Card className="w-full max-w-2xl">
-            <CardHeader className="border-b border-[hsl(var(--border))]">
-              <CardTitle>Mensagem automática de vistoria</CardTitle>
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Variáveis disponíveis: {"{motorista}"}, {"{data}"}, {"{placas}"}.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4">
-              <textarea
-                value={whatsMessageDraft}
-                onChange={(e) => setWhatsMessageDraft(e.target.value)}
-                rows={8}
-                className="w-full rounded-md border border-[hsl(var(--border))] bg-white p-3 text-sm"
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setWhatsMessageDraft(DEFAULT_VISTORIA_WHATSAPP_MESSAGE_TEMPLATE)}
-                >
-                  Restaurar padrão
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setWhatsMessageModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="button" onClick={handleSaveWhatsMessageTemplate}>
-                  Salvar mensagem
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       ) : null}
     </>
   );
