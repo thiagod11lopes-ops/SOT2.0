@@ -18,6 +18,11 @@ export type DetalheServicoBundle = {
   columnGrayByMonth: Record<string, Record<string, boolean>>;
   /** Férias por mês (opcional em dados antigos). */
   feriasByMonth: DetalheServicoFeriasPorMes;
+  /**
+   * Snapshot da grelha do mês antes da primeira marcação com X em «S»/«RO» (ver `detalhe-servico-sheet`).
+   * Usado para alternar entre o detalhe original e as alterações posteriores.
+   */
+  originalSheetBeforeFirstXByMonth?: Record<string, DetalheServicoSheetSnapshot>;
 };
 
 const IDB_KEY = "sot-detalhe-servico-bundle-v2";
@@ -118,7 +123,23 @@ export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundl
   }
   const columnGrayByMonth = normalizeColumnGrayMap(o.columnGrayByMonth);
   const feriasByMonth = normalizeFeriasByMonth(o.feriasByMonth);
-  return { version: 1, sheets, rodapes, columnGrayByMonth, feriasByMonth };
+  const originalSheetBeforeFirstXByMonth: Record<string, DetalheServicoSheetSnapshot> = {};
+  if (o.originalSheetBeforeFirstXByMonth && typeof o.originalSheetBeforeFirstXByMonth === "object") {
+    for (const [k, v] of Object.entries(o.originalSheetBeforeFirstXByMonth as Record<string, unknown>)) {
+      const s = normalizeSheet(v);
+      if (s) originalSheetBeforeFirstXByMonth[k] = s;
+    }
+  }
+  return {
+    version: 1,
+    sheets,
+    rodapes,
+    columnGrayByMonth,
+    feriasByMonth,
+    ...(Object.keys(originalSheetBeforeFirstXByMonth).length > 0
+      ? { originalSheetBeforeFirstXByMonth }
+      : {}),
+  };
 }
 
 function rodapeHasContent(r: DetalheServicoRodapeAssinatura): boolean {

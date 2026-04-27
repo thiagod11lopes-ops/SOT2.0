@@ -1,4 +1,4 @@
-import { AlertTriangle, FileDown, Lock, Unlock, Upload } from "lucide-react";
+import { AlertTriangle, FileDown, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -21,7 +21,6 @@ import {
   type DetalheServicoRodapeAssinatura,
   type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
-import { parseDetalheServicoPdfImport } from "../lib/parseDetalheServicoPdfImport";
 import { Button } from "./ui/button";
 
 function monthInputValue(d: Date): string {
@@ -467,6 +466,10 @@ function mergeRemoteBundlePreservingLocalMonths(
     rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
     columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
     feriasByMonth: { ...localBundle.feriasByMonth, ...remoteBundle.feriasByMonth },
+    originalSheetBeforeFirstXByMonth: {
+      ...(localBundle.originalSheetBeforeFirstXByMonth ?? {}),
+      ...(remoteBundle.originalSheetBeforeFirstXByMonth ?? {}),
+    },
   };
 }
 
@@ -515,7 +518,8 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [showRoTokens, setShowRoTokens] = useState(true);
-  const [importingOriginalPdf, setImportingOriginalPdf] = useState(false);
+  /** `true` = grelha atual (alterações, X vermelho, etc.). `false` = snapshot antes do primeiro X no mês (se existir). */
+  const [mostrarAlteracoesAposX, setMostrarAlteracoesAposX] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
@@ -524,11 +528,24 @@ export function DetalheServicoSheet() {
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
+  const viewingOriginalRef = useRef(false);
 
-  const sheet = useMemo(
+  const sheetLive = useMemo(
     () => normalizeLoadedSheet(bundle.sheets[monthYear] ?? null),
     [bundle, monthYear],
   );
+
+  const originalBaseline = useMemo(
+    () => bundle.originalSheetBeforeFirstXByMonth?.[monthYear] ?? null,
+    [bundle, monthYear],
+  );
+
+  const displaySheet = useMemo(() => {
+    if (mostrarAlteracoesAposX || !originalBaseline) return sheetLive;
+    return normalizeLoadedSheet(originalBaseline);
+  }, [sheetLive, originalBaseline, mostrarAlteracoesAposX]);
+
+  const viewingOriginal = Boolean(originalBaseline) && !mostrarAlteracoesAposX;
 
   const rodapeAssinatura = useMemo(
     () => bundle.rodapes[monthYear] ?? emptyRodapeAssinatura(),
@@ -549,15 +566,15 @@ export function DetalheServicoSheet() {
   const rodapeAssinaturaRef = useRef(rodapeAssinatura);
   rodapeAssinaturaRef.current = rodapeAssinatura;
 
-  const sheetRef = useRef(sheet);
-  sheetRef.current = sheet;
+  const sheetRef = useRef(sheetLive);
+  sheetRef.current = sheetLive;
   const bundleRef = useRef(bundle);
   bundleRef.current = bundle;
   const tableEditableRef = useRef(tableEditable);
   tableEditableRef.current = tableEditable;
+  viewingOriginalRef.current = viewingOriginal;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
-  const originalPdfInputRef = useRef<HTMLInputElement>(null);
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
@@ -820,7 +837,7 @@ export function DetalheServicoSheet() {
     const rodape = rodapeAssinaturaRef.current;
     downloadDetalheServicoMotoristaPdf({
       monthYear,
-      sheet,
+      sheet: sheetLive,
       tableEditable,
       showRoTokens,
       prevMonthSheet,
@@ -832,39 +849,14 @@ export function DetalheServicoSheet() {
         funcao: rodape.funcao,
       },
     });
-  }, [monthYear, sheet, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
-
-  const handleImportOriginalClick = useCallback(() => {
-    if (importingOriginalPdf) return;
-    originalPdfInputRef.current?.click();
-  }, [importingOriginalPdf]);
-
-  const handleImportOriginalPdf = useCallback(
-    async (file: File) => {
-      setImportingOriginalPdf(true);
-      try {
-        const parsed = await parseDetalheServicoPdfImport(file, monthYearRef.current);
-        setBundle((b) => ({
-          ...b,
-          version: 1,
-          sheets: { ...b.sheets, [parsed.monthYear ?? monthYearRef.current]: parsed.sheet },
-        }));
-        if (parsed.monthYear && parsed.monthYear !== monthYearRef.current) {
-          setMonthYear(parsed.monthYear);
-          setUndoStack([]);
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Não foi possível ler o PDF selecionado.";
-        window.alert(msg);
-      } finally {
-        setImportingOriginalPdf(false);
-      }
-    },
-    [],
-  );
+  }, [monthYear, sheetLive, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
 
   useEffect(() => {
     setUndoStack([]);
+  }, [monthYear]);
+
+  useEffect(() => {
+    setMostrarAlteracoesAposX(false);
   }, [monthYear]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -1044,16 +1036,44 @@ export function DetalheServicoSheet() {
     setUndoStack((u) => [...u, before]);
   }, []);
 
-  const onDayCellDoubleClickToggleCrossed = useCallback(
-    (rowId: string, key: string) => {
-      if (!tableEditableRef.current) return;
-      const current = sheetRef.current.cells[rowId]?.[key] ?? "";
+  const onDayCellDoubleClickToggleCrossed = useCallback((rowId: string, key: string) => {
+    if (!tableEditableRef.current) return;
+    if (viewingOriginalRef.current) return;
+    setBundle((b) => {
+      const mk = monthYearRef.current;
+      const prevSheet = normalizeLoadedSheet(b.sheets[mk] ?? null);
+      const current = prevSheet.cells[rowId]?.[key] ?? "";
       const toggled = toggleCrossedSingleServicoToken(current);
-      if (toggled === null) return;
-      setCellValue(rowId, key, toggled);
-    },
-    [setCellValue],
-  );
+      if (toggled === null) return b;
+
+      const tokens = parseDayCellTokens(current);
+      const only = tokens.length === 1 ? tokens[0] : null;
+      const applyingCross =
+        Boolean(only) &&
+        !only!.crossed &&
+        (only!.token === "S" || only!.token === "RO") &&
+        toggled.toUpperCase().startsWith(CROSSED_TOKEN_PREFIX);
+
+      let nextOriginal = b.originalSheetBeforeFirstXByMonth;
+      if (applyingCross && !nextOriginal?.[mk]) {
+        nextOriginal = { ...(nextOriginal ?? {}), [mk]: cloneSheet(prevSheet) };
+      }
+
+      const nextCells = {
+        ...prevSheet.cells,
+        [rowId]: { ...(prevSheet.cells[rowId] ?? {}), [key]: toggled },
+      };
+
+      return {
+        ...b,
+        version: 1,
+        sheets: { ...b.sheets, [mk]: { rows: prevSheet.rows, cells: nextCells } },
+        ...(nextOriginal !== b.originalSheetBeforeFirstXByMonth
+          ? { originalSheetBeforeFirstXByMonth: nextOriginal }
+          : {}),
+      };
+    });
+  }, []);
 
   const handleDayCellChange = useCallback(
     (rowId: string, key: string, day: number, value: string) => {
@@ -1215,12 +1235,20 @@ export function DetalheServicoSheet() {
   }, [menu, columnMenu, closeMenu, closeColumnMenu]);
 
   function openRowMenu(e: React.MouseEvent, rowIndex: number) {
+    if (viewingOriginal) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     setColumnMenu(null);
     setMenu({ x: e.clientX, y: e.clientY, kind: "row", rowIndex });
   }
 
   function openEmptyMenu(e: React.MouseEvent) {
+    if (viewingOriginal) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     setColumnMenu(null);
     setMenu({ x: e.clientX, y: e.clientY, kind: "empty" });
@@ -1239,6 +1267,10 @@ export function DetalheServicoSheet() {
   }
 
   function openColumnMenu(e: React.MouseEvent, columnKey: string) {
+    if (viewingOriginal) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     setMenu(null);
@@ -1271,7 +1303,7 @@ export function DetalheServicoSheet() {
   const inputClassDay = `${inputClass} text-center`;
   const inputLockedClass = "cursor-default";
 
-  const { rows, cells } = sheet;
+  const { rows, cells } = displaySheet;
 
   /** Catálogo Motoristas + nomes já existentes na grelha (evita select vazio antes do IDB/sync). */
   const motoristasCatalogEGrilha = useMemo(() => {
@@ -1285,8 +1317,8 @@ export function DetalheServicoSheet() {
       seen.add(k);
       out.push(n);
     }
-    for (const rid of sheet.rows) {
-      const v = (sheet.cells[rid]?.[KEY_MOTORISTA] ?? "").trim();
+    for (const rid of sheetLive.rows) {
+      const v = (sheetLive.cells[rid]?.[KEY_MOTORISTA] ?? "").trim();
       if (!v) continue;
       const k = normalizeMotoristaName(v);
       if (seen.has(k)) continue;
@@ -1295,7 +1327,7 @@ export function DetalheServicoSheet() {
     }
     out.sort((a, b) => a.localeCompare(b, "pt-PT"));
     return out;
-  }, [catalogItems.motoristas, sheet.rows, sheet.cells]);
+  }, [catalogItems.motoristas, sheetLive.rows, sheetLive.cells]);
 
   const motoristasCatalogFerias = useMemo(() => {
     const seen = new Set<string>();
@@ -1328,8 +1360,8 @@ export function DetalheServicoSheet() {
     const seen = new Set<string>();
     const out: Array<{ motoristaNome: string; diasSoNumeros: number[]; originalIndex: number | null }> = [];
 
-    for (const rowId of sheet.rows) {
-      const motoristaNome = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+    for (const rowId of sheetLive.rows) {
+      const motoristaNome = (sheetLive.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
       if (!shouldCountMotoristaDiasNaoTrabalhados(motoristaNome, catalogItems.motoristas)) continue;
       const k = normalizeMotoristaName(motoristaNome);
       if (seen.has(k)) continue;
@@ -1359,8 +1391,8 @@ export function DetalheServicoSheet() {
       originalIndex,
     }));
   }, [
-    sheet.rows,
-    sheet.cells,
+    sheetLive.rows,
+    sheetLive.cells,
     catalogItems.motoristas,
     prevMonthSheet,
     prevMonthParsed.year,
@@ -1372,7 +1404,7 @@ export function DetalheServicoSheet() {
   const intervaloMinimoViolations = useMemo(
     () =>
       buildIntervaloMinimoViolationsMap({
-        sheet,
+        sheet: sheetLive,
         prevMonthSheet,
         year,
         monthIndex,
@@ -1381,7 +1413,7 @@ export function DetalheServicoSheet() {
         prevMonthIndex: prevMonthParsed.monthIndex,
         prevDays,
       }),
-    [sheet, prevMonthSheet, year, monthIndex, days, prevMonthParsed.year, prevMonthParsed.monthIndex, prevDays],
+    [sheetLive, prevMonthSheet, year, monthIndex, days, prevMonthParsed.year, prevMonthParsed.monthIndex, prevDays],
   );
 
   const lastCalendarDay = days[days.length - 1]?.day ?? 31;
@@ -1389,13 +1421,13 @@ export function DetalheServicoSheet() {
   const servicosInvalidosPorDia = useMemo(
     () =>
       buildServicosInvalidosPorDiaMap({
-        sheet,
+        sheet: sheetLive,
         year,
         monthIndex,
         days,
         feriasForMonth,
       }),
-    [sheet, year, monthIndex, days, feriasForMonth],
+    [sheetLive, year, monthIndex, days, feriasForMonth],
   );
 
   return (
@@ -1410,28 +1442,42 @@ export function DetalheServicoSheet() {
           >
             Escala de Férias
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0"
-            onClick={handleImportOriginalClick}
-            disabled={importingOriginalPdf}
-            title="Carregar Detalhe de Serviço por PDF"
+          <span
+            className="text-xs text-[hsl(var(--muted-foreground))]"
+            id="detalhe-servico-original-toggle-label"
           >
-            <Upload className="h-4 w-4" aria-hidden />
-            {importingOriginalPdf ? "Lendo PDF..." : "Original"}
-          </Button>
-          <input
-            ref={originalPdfInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImportOriginalPdf(file);
-              e.currentTarget.value = "";
-            }}
-          />
+            {originalBaseline
+              ? mostrarAlteracoesAposX
+                ? "Alterações (após X)"
+                : "Detalhe original"
+              : "Detalhe (sem X ainda)"}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mostrarAlteracoesAposX}
+            aria-labelledby="detalhe-servico-original-toggle-label"
+            disabled={!originalBaseline}
+            title={
+              !originalBaseline
+                ? "Disponível após o primeiro duplo clique (X) em S ou RO neste mês."
+                : mostrarAlteracoesAposX
+                  ? "Mostrar o detalhe original (antes do primeiro X)"
+                  : "Mostrar alterações desde o primeiro X"
+            }
+            className={`relative inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 ${
+              mostrarAlteracoesAposX
+                ? "border-emerald-600/45 bg-emerald-500/20"
+                : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+            } ${!originalBaseline ? "cursor-not-allowed opacity-60" : ""}`}
+            onClick={() => setMostrarAlteracoesAposX((v) => !v)}
+          >
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                mostrarAlteracoesAposX ? "translate-x-[1.125rem]" : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-3">
           <Button
@@ -1639,7 +1685,7 @@ export function DetalheServicoSheet() {
                       motoristaVal,
                     );
                     const useMotoristaSelect =
-                      tableEditable && motoristaOpts.length > 0;
+                      tableEditable && motoristaOpts.length > 0 && !viewingOriginal;
                     return (
                     <tr key={rowId} onContextMenu={(e) => openRowMenu(e, rowIndex)}>
                       <td
@@ -1679,8 +1725,8 @@ export function DetalheServicoSheet() {
                             name={`motorista-${rowId}`}
                             autoComplete="off"
                             placeholder="—"
-                            readOnly={!tableEditable}
-                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""}`}
+                            readOnly={!tableEditable || viewingOriginal}
+                            className={`${inputClass} ${!tableEditable || viewingOriginal ? inputLockedClass : ""}`}
                             data-det-sheet-row={rowIndex}
                             data-det-sheet-col={0}
                             value={motoristaVal}
@@ -1775,8 +1821,8 @@ export function DetalheServicoSheet() {
                                 type="text"
                                 name={`dia-${rowId}-${dk}`}
                                 autoComplete="off"
-                                readOnly={!tableEditable}
-                                className={`${inputClassDay} ${!tableEditable ? inputLockedClass : ""}`}
+                                readOnly={!tableEditable || viewingOriginal}
+                                className={`${inputClassDay} ${!tableEditable || viewingOriginal ? inputLockedClass : ""}`}
                                 data-det-sheet-row={rowIndex}
                                 data-det-sheet-col={colIndex}
                                 value={
@@ -1839,7 +1885,7 @@ export function DetalheServicoSheet() {
                           } else if (cellKey === KEY_NUM_ROTINAS) {
                             displayValue = String(tally.ro);
                           }
-                          const inputReadOnly = !tableEditable || autoReadOnly;
+                          const inputReadOnly = !tableEditable || autoReadOnly || viewingOriginal;
                           const horasCargaNum =
                             cellKey === KEY_CARGA_HORARIA
                               ? cargaAutoPorMotorista
