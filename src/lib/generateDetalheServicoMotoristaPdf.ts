@@ -22,6 +22,7 @@ export interface DetalheServicoMotoristaPdfParams {
   monthYear: string;
   sheet: DetalheServicoSheetSnapshot;
   tableEditable: boolean;
+  showRoTokens?: boolean;
   prevMonthSheet: DetalheServicoSheetSnapshot | null;
   /** Colunas com fundo cinza manual (chaves `motorista`, `YYYY-MM-DD`, cargaHoraria, …) — alinhado a `detalhe-servico-sheet.tsx`. */
   columnGray: Record<string, boolean>;
@@ -89,6 +90,16 @@ function cellContainsWorkToken(raw: string): boolean {
     .map((t) => t.trim().toUpperCase())
     .filter(Boolean);
   return tokens.some((t) => t === "S" || t === "RO");
+}
+
+function stripRoTokens(raw: string): string {
+  const tokens = raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const withoutRo = tokens.filter((t) => t.toUpperCase() !== "RO");
+  return withoutRo.join(" ");
 }
 
 function listDiasSemMarcacaoSingleRow(
@@ -407,7 +418,16 @@ function drawRodapeAssinaturaPdf(
  * PDF com cabeçalho institucional e as duas tabelas (grelha do mês + dias não trabalhados).
  */
 export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoristaPdfParams): void {
-  const { monthYear, sheet, tableEditable, prevMonthSheet, columnGray, rodapeAssinatura, feriasForMonth } = params;
+  const {
+    monthYear,
+    sheet,
+    tableEditable,
+    showRoTokens = true,
+    prevMonthSheet,
+    columnGray,
+    rodapeAssinatura,
+    feriasForMonth,
+  } = params;
   const parsed = parseMonthYearValue(monthYear);
   if (!parsed) {
     downloadDetalheServicoMotoristaPdfHeadersOnly(monthYear);
@@ -442,7 +462,19 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       const motoristaVal = rowCells[KEY_MOTORISTA] ?? "";
       const cargaAutoPorMotorista = isMotoristaCargaHorariaAutomatica(motoristaVal);
       const motorFerias = (feriasForMonth ?? {})[normalizeMotoristaName(motoristaVal)];
-      const tally = tallyDayCellTokens(rowCells, motoristaVal, year, monthIndex, days, feriasForMonth ?? {});
+      const rowCellsForPdf = showRoTokens
+        ? rowCells
+        : Object.fromEntries(
+            Object.entries(rowCells).map(([k, v]) => [k, stripRoTokens(v ?? "")]),
+          );
+      const tallyForPdf = tallyDayCellTokens(
+        rowCellsForPdf,
+        motoristaVal,
+        year,
+        monthIndex,
+        days,
+        feriasForMonth ?? {},
+      );
       const cells: string[] = [motoristaVal.trim() || "—"];
       const rowIndex = body1.length;
       const lastCalendarDay = days[days.length - 1]?.day ?? 31;
@@ -450,7 +482,8 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
         const dk = dateKey(year, monthIndex, day);
         const isFerias = isDayInFeriasPeriods(year, monthIndex, day, motorFerias);
         if (!isFerias) {
-          cells.push((rowCells[dk] ?? "").trim() || "");
+          const rawCell = (rowCells[dk] ?? "").trim();
+          cells.push((showRoTokens ? rawCell : stripRoTokens(rawCell)).trim() || "");
           continue;
         }
         const hasPrev = day > 1 && isDayInFeriasPeriods(year, monthIndex, day - 1, motorFerias);
@@ -469,9 +502,9 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       if (tableEditable) {
         for (const { key: cellKey } of COLUNAS_EXTRAS_EDICAO) {
           let v = rowCells[cellKey] ?? "";
-          if (cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista) v = String(tally.horas);
-          else if (cellKey === KEY_NUM_SERVICOS) v = String(tally.s);
-          else if (cellKey === KEY_NUM_ROTINAS) v = String(tally.ro);
+          if (cellKey === KEY_CARGA_HORARIA && cargaAutoPorMotorista) v = String(tallyForPdf.horas);
+          else if (cellKey === KEY_NUM_SERVICOS) v = String(tallyForPdf.s);
+          else if (cellKey === KEY_NUM_ROTINAS) v = String(tallyForPdf.ro);
           else if (cellKey === KEY_CARGA_HORARIA && !cargaAutoPorMotorista) {
             const n = parseHorasCargaTexto(rowCells[KEY_CARGA_HORARIA] ?? "");
             v = n !== null ? String(n) : v;

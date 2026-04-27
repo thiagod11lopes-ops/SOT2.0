@@ -803,6 +803,7 @@ export function DetalheServicoSheet() {
       monthYear,
       sheet,
       tableEditable,
+      showRoTokens,
       prevMonthSheet,
       columnGray,
       feriasForMonth,
@@ -812,7 +813,7 @@ export function DetalheServicoSheet() {
         funcao: rodape.funcao,
       },
     });
-  }, [monthYear, sheet, tableEditable, prevMonthSheet, columnGray, feriasForMonth]);
+  }, [monthYear, sheet, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
 
   useEffect(() => {
     setUndoStack([]);
