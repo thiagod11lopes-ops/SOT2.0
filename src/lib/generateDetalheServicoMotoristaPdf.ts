@@ -1,6 +1,7 @@
 import autoTable from "jspdf-autotable";
 import type { Styles, Table } from "jspdf-autotable";
 import { jsPDF } from "jspdf";
+import type { DetalheServicoFeriasPeriodo } from "./detalheServicoBundle";
 
 type JsPDFWithLastTable = jsPDF & { lastAutoTable?: Table };
 
@@ -26,6 +27,8 @@ export interface DetalheServicoMotoristaPdfParams {
   columnGray: Record<string, boolean>;
   /** Linha de assinatura + Nome, Posto/Graduação e Função (centralizado no PDF). */
   rodapeAssinatura: DetalheServicoRodapeAssinatura;
+  /** Férias do mês atual por motorista (chave normalizada). */
+  feriasForMonth?: Record<string, DetalheServicoFeriasPeriodo[]>;
 }
 
 function parseMonthYearValue(value: string): { year: number; monthIndex: number } | null {
@@ -114,15 +117,55 @@ function isMotoristaFC(motorista: string): boolean {
   return /^FC(?:\b|[-\s])/.test(nome);
 }
 
+function normalizeMotoristaName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function parseIsoDateLocal(iso: string): Date | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function isDayInFeriasPeriods(
+  year: number,
+  monthIndex: number,
+  day: number,
+  periods: DetalheServicoFeriasPeriodo[] | undefined,
+): boolean {
+  if (!periods?.length) return false;
+  const t = new Date(year, monthIndex, day);
+  t.setHours(0, 0, 0, 0);
+  for (const p of periods) {
+    const a = parseIsoDateLocal(p.inicio);
+    const b = parseIsoDateLocal(p.fim);
+    if (!a || !b) continue;
+    a.setHours(0, 0, 0, 0);
+    b.setHours(0, 0, 0, 0);
+    if (a > b) continue;
+    if (t >= a && t <= b) return true;
+  }
+  return false;
+}
+
 function tallyDayCellTokens(
   rowCells: Record<string, string>,
+  motoristaDisplay: string,
   year: number,
   monthIndex: number,
   days: DayMeta[],
+  feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]>,
 ): { s: number; ro: number; horas: number } {
+  const feriasPeriods = feriasForMonth[normalizeMotoristaName(motoristaDisplay)];
   let s = 0;
   let ro = 0;
   for (const { day } of days) {
+    if (isDayInFeriasPeriods(year, monthIndex, day, feriasPeriods)) continue;
     const dk = dateKey(year, monthIndex, day);
     const raw = (rowCells[dk] ?? "").trim();
     if (!raw) continue;
@@ -363,7 +406,7 @@ function drawRodapeAssinaturaPdf(
  * PDF com cabeçalho institucional e as duas tabelas (grelha do mês + dias não trabalhados).
  */
 export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoristaPdfParams): void {
-  const { monthYear, sheet, tableEditable, prevMonthSheet, columnGray, rodapeAssinatura } = params;
+  const { monthYear, sheet, tableEditable, prevMonthSheet, columnGray, rodapeAssinatura, feriasForMonth } = params;
   const parsed = parseMonthYearValue(monthYear);
   if (!parsed) {
     downloadDetalheServicoMotoristaPdfHeadersOnly(monthYear);
@@ -387,6 +430,7 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
   }
 
   const body1: string[][] = [];
+  const feriasCellMap: Record<string, { isFerias: boolean; isMiddle: boolean; hasPrev: boolean; hasNext: boolean }> = {};
   if (sheet.rows.length === 0) {
     const emptyRow = Array(headRow.length).fill("—");
     emptyRow[0] = "Sem linhas";
@@ -396,11 +440,30 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       const rowCells = sheet.cells[rowId] ?? {};
       const motoristaVal = rowCells[KEY_MOTORISTA] ?? "";
       const rm1 = isMotoristaRM1(motoristaVal);
-      const tally = tallyDayCellTokens(rowCells, year, monthIndex, days);
+      const motorFerias = (feriasForMonth ?? {})[normalizeMotoristaName(motoristaVal)];
+      const tally = tallyDayCellTokens(rowCells, motoristaVal, year, monthIndex, days, feriasForMonth ?? {});
       const cells: string[] = [motoristaVal.trim() || "—"];
+      const rowIndex = body1.length;
+      const lastCalendarDay = days[days.length - 1]?.day ?? 31;
       for (const { day } of days) {
         const dk = dateKey(year, monthIndex, day);
-        cells.push((rowCells[dk] ?? "").trim() || "");
+        const isFerias = isDayInFeriasPeriods(year, monthIndex, day, motorFerias);
+        if (!isFerias) {
+          cells.push((rowCells[dk] ?? "").trim() || "");
+          continue;
+        }
+        const hasPrev = day > 1 && isDayInFeriasPeriods(year, monthIndex, day - 1, motorFerias);
+        const hasNext =
+          day < lastCalendarDay && isDayInFeriasPeriods(year, monthIndex, day + 1, motorFerias);
+        let start = day;
+        let end = day;
+        while (start > 1 && isDayInFeriasPeriods(year, monthIndex, start - 1, motorFerias)) start -= 1;
+        while (end < lastCalendarDay && isDayInFeriasPeriods(year, monthIndex, end + 1, motorFerias)) end += 1;
+        const middle = Math.floor((start + end) / 2);
+        const isMiddle = day === middle;
+        const colIndex = day;
+        feriasCellMap[`${rowIndex}:${colIndex}`] = { isFerias, isMiddle, hasPrev, hasNext };
+        cells.push(isMiddle ? "FÉRIAS" : "");
       }
       if (tableEditable) {
         for (const { key: cellKey } of COLUNAS_EXTRAS_EDICAO) {
@@ -579,6 +642,19 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
           data.cell.styles.halign = "left";
           data.cell.styles.fillColor = cg[KEY_MOTORISTA] ? BG_NEUTRAL_200 : BG_WHITE;
         } else if (colIdx <= days.length) {
+          const f = feriasCellMap[`${data.row.index}:${colIdx}`];
+          if (f?.isFerias) {
+            data.cell.styles.halign = "center";
+            data.cell.styles.fillColor = BG_NEUTRAL_200;
+            data.cell.styles.fontStyle = f.isMiddle ? "bold" : "normal";
+            data.cell.styles.lineWidth = {
+              top: PDF_TABELA_LINE_WIDTH_MM,
+              bottom: PDF_TABELA_LINE_WIDTH_MM,
+              left: f.hasPrev ? 0 : PDF_TABELA_LINE_WIDTH_MM,
+              right: f.hasNext ? 0 : PDF_TABELA_LINE_WIDTH_MM,
+            };
+            return;
+          }
           data.cell.styles.halign = "center";
           const dm = days[colIdx - 1]!;
           const dk = dateKey(year, monthIndex, dm.day);

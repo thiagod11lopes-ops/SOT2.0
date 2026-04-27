@@ -772,10 +772,12 @@ export function DetalheServicoSheet() {
       if (b.sheets[next]) return b;
       const prevKey = getPreviousMonthKey(next);
       const nextSheet = buildNewMonthSheetFromPrevious(b.sheets[prevKey]);
+      const prevRodape = b.rodapes[prevKey] ?? emptyRodapeAssinatura();
       return {
         ...b,
         version: 1,
         sheets: { ...b.sheets, [next]: nextSheet },
+        rodapes: { ...b.rodapes, [next]: prevRodape },
       };
     });
     setMonthYear(next);
@@ -790,13 +792,14 @@ export function DetalheServicoSheet() {
       tableEditable,
       prevMonthSheet,
       columnGray,
+      feriasForMonth,
       rodapeAssinatura: {
         nome: rodape.nome,
         postoGraduacao: rodape.postoGraduacao,
         funcao: rodape.funcao,
       },
     });
-  }, [monthYear, sheet, tableEditable, prevMonthSheet, columnGray]);
+  }, [monthYear, sheet, tableEditable, prevMonthSheet, columnGray, feriasForMonth]);
 
   useEffect(() => {
     setUndoStack([]);
