@@ -76,6 +76,7 @@ const KEY_MOTORISTA = "motorista";
 const KEY_CARGA_HORARIA = "cargaHoraria";
 const KEY_NUM_SERVICOS = "numServicos";
 const KEY_NUM_ROTINAS = "numRotinas";
+const CROSSED_TOKEN_PREFIX = "__X__";
 
 const COLUNAS_EXTRAS_EDICAO = [
   { key: KEY_CARGA_HORARIA, titulo: "Carga Horária" },
@@ -90,6 +91,16 @@ function cellContainsWorkToken(raw: string): boolean {
     .map((t) => t.trim().toUpperCase())
     .filter(Boolean);
   return tokens.some((t) => t === "S" || t === "RO");
+}
+
+function stripCrossedPrefixForDisplay(raw: string): string {
+  return raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean)
+    .map((t) => (t.startsWith(CROSSED_TOKEN_PREFIX) ? t.slice(CROSSED_TOKEN_PREFIX.length) : t))
+    .join(" ");
 }
 
 function stripRoTokens(raw: string): string {
@@ -482,7 +493,7 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
         const dk = dateKey(year, monthIndex, day);
         const isFerias = isDayInFeriasPeriods(year, monthIndex, day, motorFerias);
         if (!isFerias) {
-          const rawCell = (rowCells[dk] ?? "").trim();
+          const rawCell = stripCrossedPrefixForDisplay(rowCells[dk] ?? "");
           cells.push((showRoTokens ? rawCell : stripRoTokens(rawCell)).trim() || "");
           continue;
         }

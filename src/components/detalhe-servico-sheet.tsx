@@ -46,6 +46,38 @@ function letraDiaSemana(date: Date): string {
   return first.toLocaleUpperCase("pt-PT");
 }
 
+const CROSSED_TOKEN_PREFIX = "__X__";
+type DayCellToken = { token: string; crossed: boolean };
+
+function parseDayCellTokens(raw: string): DayCellToken[] {
+  return raw
+    .trim()
+    .split(/[\s,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => {
+      const up = t.toUpperCase();
+      if (up.startsWith(CROSSED_TOKEN_PREFIX)) {
+        return { token: up.slice(CROSSED_TOKEN_PREFIX.length), crossed: true };
+      }
+      return { token: up, crossed: false };
+    });
+}
+
+function stripCrossedPrefixToken(raw: string): string {
+  return parseDayCellTokens(raw)
+    .map((t) => t.token)
+    .join(" ");
+}
+
+function toggleCrossedSingleServicoToken(raw: string): string | null {
+  const tokens = parseDayCellTokens(raw);
+  if (tokens.length !== 1) return null;
+  const only = tokens[0]!;
+  if (only.token !== "S" && only.token !== "RO") return null;
+  return only.crossed ? only.token : `${CROSSED_TOKEN_PREFIX}${only.token}`;
+}
+
 function buildMonthDays(year: number, monthIndex: number): DayMeta[] {
   const last = new Date(year, monthIndex + 1, 0).getDate();
   const out: DayMeta[] = [];
@@ -96,33 +128,20 @@ function formatMonthYearTitlePt(monthKey: string): string {
 
 /** True se a célula tiver «S» ou «RO» (mesma regra da grelha principal). */
 function cellContainsWorkToken(raw: string): boolean {
-  const tokens = raw
-    .trim()
-    .split(/[\s,;]+/)
-    .map((t) => t.trim().toUpperCase())
-    .filter(Boolean);
-  return tokens.some((t) => t === "S" || t === "RO");
+  return parseDayCellTokens(raw).some((t) => !t.crossed && (t.token === "S" || t.token === "RO"));
 }
 
 /** True se a célula tiver token «S». */
 function cellContainsServicoToken(raw: string): boolean {
-  const tokens = raw
-    .trim()
-    .split(/[\s,;]+/)
-    .map((t) => t.trim().toUpperCase())
-    .filter(Boolean);
-  return tokens.includes("S");
+  return parseDayCellTokens(raw).some((t) => !t.crossed && t.token === "S");
 }
 
 /** Remove tokens «RO» de um valor de célula, preservando os demais. */
 function stripRoTokens(raw: string): string {
-  const tokens = raw
-    .trim()
-    .split(/[\s,;]+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-  const withoutRo = tokens.filter((t) => t.toUpperCase() !== "RO");
-  return withoutRo.join(" ");
+  return parseDayCellTokens(raw)
+    .filter((t) => t.token !== "RO")
+    .map((t) => t.token)
+    .join(" ");
 }
 
 function normalizeLoadedSheet(loaded: DetalheServicoSheetSnapshot | null): DetalheServicoSheetSnapshot {
@@ -225,10 +244,7 @@ function tallyDayCellTokens(
     const dk = dateKey(year, monthIndex, day);
     const raw = (rowCells[dk] ?? "").trim();
     if (!raw) continue;
-    const tokens = raw
-      .split(/[\s,;]+/)
-      .map((t) => t.trim().toUpperCase())
-      .filter(Boolean);
+    const tokens = parseDayCellTokens(raw).filter((t) => !t.crossed).map((t) => t.token);
     for (const t of tokens) {
       if (t === "RO") ro += 1;
       else if (t === "S") s += 1;
@@ -996,6 +1012,17 @@ export function DetalheServicoSheet() {
     setUndoStack((u) => [...u, before]);
   }, []);
 
+  const onDayCellDoubleClickToggleCrossed = useCallback(
+    (rowId: string, key: string) => {
+      if (!tableEditableRef.current) return;
+      const current = sheetRef.current.cells[rowId]?.[key] ?? "";
+      const toggled = toggleCrossedSingleServicoToken(current);
+      if (toggled === null) return;
+      setCellValue(rowId, key, toggled);
+    },
+    [setCellValue],
+  );
+
   const handleDayCellChange = useCallback(
     (rowId: string, key: string, day: number, value: string) => {
       const motoristaFerias = (sheetRef.current.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
@@ -1653,7 +1680,7 @@ export function DetalheServicoSheet() {
                         return (
                           <td
                             key={dk}
-                            className={`min-w-[2rem] max-w-[4.5rem] border px-[0.25em] py-[0.15em] text-center align-middle ${
+                            className={`relative min-w-[2rem] max-w-[4.5rem] border px-[0.25em] py-[0.15em] text-center align-middle ${
                               isFeriasDay
                                 ? `${feriasBg} border-[hsl(var(--border))] ${feriasPrev ? "border-l-0" : ""} ${feriasNext ? "border-r-0" : ""}`
                                 : tableEditable && hasIntervaloViolation
@@ -1698,15 +1725,35 @@ export function DetalheServicoSheet() {
                                 data-det-sheet-col={colIndex}
                                 value={
                                   showRoTokens
-                                    ? (cells[rowId]?.[dk] ?? "")
-                                    : stripRoTokens(cells[rowId]?.[dk] ?? "")
+                                    ? stripCrossedPrefixToken(cells[rowId]?.[dk] ?? "")
+                                    : stripRoTokens(stripCrossedPrefixToken(cells[rowId]?.[dk] ?? ""))
                                 }
                                 onChange={(e) => handleDayCellChange(rowId, dk, day, e.target.value)}
+                                onDoubleClick={() => onDayCellDoubleClickToggleCrossed(rowId, dk)}
                                 onFocus={onCellFocus}
-                                onBlur={(e) => onCellBlur(rowId, dk, e.target.value)}
+                                onBlur={(e) => {
+                                  const currentRaw = sheetRef.current.cells[rowId]?.[dk] ?? "";
+                                  const hasCrossed = parseDayCellTokens(currentRaw).some((t) => t.crossed);
+                                  onCellBlur(rowId, dk, hasCrossed ? currentRaw : e.target.value);
+                                }}
                                 onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, colIndex)}
                               />
                             )}
+                            {(() => {
+                              const parsed = parseDayCellTokens(cells[rowId]?.[dk] ?? "");
+                              const crossedSingle = parsed.length === 1 && parsed[0]?.crossed;
+                              if (!crossedSingle) return null;
+                              const crossedToken = parsed[0]!.token;
+                              if (!showRoTokens && crossedToken === "RO") return null;
+                              return (
+                                <span
+                                  className="pointer-events-none absolute inset-0 flex items-center justify-center text-[15px] font-bold leading-none text-red-600"
+                                  aria-hidden
+                                >
+                                  X
+                                </span>
+                              );
+                            })()}
                           </td>
                         );
                       })}
