@@ -23,8 +23,15 @@ import {
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
+import { ensureFirebaseAuth } from "../lib/firebase/auth";
+import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import { loadDetalheServicoBundleFromIdb, type DetalheServicoBundle } from "../lib/detalheServicoBundle";
+import {
+  loadDetalheServicoBundleFromIdb,
+  normalizeDetalheServicoBundle,
+  type DetalheServicoBundle,
+} from "../lib/detalheServicoBundle";
 import { parseHhMm } from "../lib/timeInput";
 import { fraseProximaTrocaOleo, rotuloViaturaPlaca } from "../lib/homeTickerStrings";
 import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
@@ -147,6 +154,12 @@ function shouldBlinkProximaSaidaRow(r: DepartureRecord, agora: Date): boolean {
   return minutosRestantes >= 0 && minutosRestantes <= 10;
 }
 
+/** Evita apagar o bundle local quando o primeiro snapshot do Firestore ainda vem vazio. */
+function detalheSheetsVazios(b: DetalheServicoBundle | null): boolean {
+  if (!b) return true;
+  return Object.keys(b.sheets).length === 0;
+}
+
 /** Data de hoje para exibição (pt-BR), primeira letra maiúscula. */
 function formatDataHojeLongaPtBr() {
   const s = new Date().toLocaleDateString("pt-BR", {
@@ -201,6 +214,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
@@ -227,6 +243,17 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   }, []);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void loadDetalheServicoBundleFromIdb().then((bundle) => {
       if (cancelled) return;
@@ -236,6 +263,48 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseOnlyOnlineActive()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.detalheServico,
+            (payload) => {
+              if (cancelled) return;
+              setDetalheServicoBundle((prev) => {
+                const next = normalizeDetalheServicoBundle(payload);
+                if (detalheSheetsVazios(next) && prev && !detalheSheetsVazios(prev)) {
+                  return prev;
+                }
+                return next;
+              });
+            },
+            (err) => console.error("[SOT] Firestore detalhe serviço (principal):", err),
+            { ignoreCachedSnapshotWhenOnline: true },
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (detalhe serviço principal):", e);
+          if (cancelled) return;
+          void loadDetalheServicoBundleFromIdb().then((b) => {
+            if (!cancelled) setDetalheServicoBundle(b);
+          });
+        }
+      })();
+    } else {
+      void loadDetalheServicoBundleFromIdb().then((b) => {
+        if (!cancelled) setDetalheServicoBundle(b);
+      });
+    }
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOnline]);
 
   /** Oficina, Inoperante e Destacada no RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
   void rdvOficinaTick;
@@ -317,7 +386,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       (a, b) => a.localeCompare(b, "pt-BR"),
     );
     return { servico, rotina };
-  }, [detalheServicoBundle]);
+  }, [detalheServicoBundle, relogio]);
 
   const hasMotoristasServicoOuRotina =
     motoristasServicoRotinaHoje.servico.length > 0 || motoristasServicoRotinaHoje.rotina.length > 0;
