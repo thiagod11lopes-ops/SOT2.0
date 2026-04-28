@@ -65,9 +65,23 @@ function canonicalizeMotoristaName(value: string): string {
   const t = value.trim();
   if (!t) return t;
   // Ajuste de nomenclatura preservando equivalência textual (mesmo nome ignorando caixa).
+  const up = t.toUpperCase();
   if (t.toUpperCase() === "MN PRADO") return "MN Prado";
-  if (t.toUpperCase() === "SG THIAGO") return "SG Thiago Lopes";
-  if (t.toUpperCase() === "SG GERSON") return "SG Gerson Rocha";
+  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
+  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
+    return "2°SG Thiago Lopes";
+  }
+  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
+    return "2°SG Gerson Rocha";
+  }
+  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
+  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
+  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
+  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
+  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
+  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
+    return "2°SG RM1 Daniel Gomes";
+  }
   return t;
 }
 

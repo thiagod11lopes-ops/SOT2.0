@@ -255,8 +255,30 @@ export function normalizeDriverKey(name: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalized === "sg thiago") return "sg thiago lopes";
-  if (normalized === "sg gerson") return "sg gerson rocha";
+  const aliases: Record<string, string> = {
+    "sg godinho": "1°sg godinho",
+    "1°sg godinho": "1°sg godinho",
+    "sg thiago": "2°sg thiago lopes",
+    "sg thiago lopes": "2°sg thiago lopes",
+    "2°sg thiago lopes": "2°sg thiago lopes",
+    "sg gerson": "2°sg gerson rocha",
+    "sg gerson rocha": "2°sg gerson rocha",
+    "2°sg gerson rocha": "2°sg gerson rocha",
+    "sg silva martins": "3°sg silva martins",
+    "3°sg silva martins": "3°sg silva martins",
+    "sg pacheco": "3°sg pacheco",
+    "3°sg pacheco": "3°sg pacheco",
+    "sg catroli": "3°sg catroli",
+    "3°sg catroli": "3°sg catroli",
+    "sg fernando": "3°sg fernando",
+    "3°sg fernando": "3°sg fernando",
+    "sg rm1 cordeiro": "2°sg rm1 cordeiro",
+    "2°sg rm1 cordeiro": "2°sg rm1 cordeiro",
+    "sg rm1 daniel gomes": "2°sg rm1 daniel gomes",
+    "2°sg rm1 daniel gomes": "2°sg rm1 daniel gomes",
+  };
+  const aliased = aliases[normalized];
+  if (aliased) return aliased;
   return normalized;
 }
 
