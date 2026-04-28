@@ -245,7 +245,7 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const MARGIN = 10;
 
 /** Distância da borda superior da folha A4 à linha de base da primeira linha do título (mm). */
-const PDF_TITULO_DIST_TOPO_MM = 7;
+const PDF_TITULO_DIST_TOPO_MM = 12;
 /** Espaçamento entre linhas consecutivas do título institucional (mm). */
 const PDF_TITULO_ENTRE_LINHAS_MM = 5.5;
 /** Espaço entre a última linha do título e o topo da primeira tabela (mm). */
