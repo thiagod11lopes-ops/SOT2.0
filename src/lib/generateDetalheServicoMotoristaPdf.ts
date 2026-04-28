@@ -35,6 +35,7 @@ export interface DetalheServicoMotoristaPdfParams {
 export type DetalheServicoPortraitPdfRow = {
   day: number;
   dateKey: string;
+  weekdayLetter: string;
   motorista1: string;
   motorista2: string;
   retem: string;
@@ -836,9 +837,10 @@ export function downloadDetalheServicoMotoristaPortraitPdf(args: {
   }
   y += PDF_TITULO_PARA_TABELA_MM;
 
-  const head = [["DATA", "MOTORISTA 1", "MOTORISTA 2", "RETÉM"]];
+  const head = [["DATA", "", "MOTORISTA 1", "MOTORISTA 2", "RETÉM"]];
   const body = args.rows.map((r) => [
     String(r.day),
+    r.weekdayLetter,
     r.motorista1.toUpperCase(),
     r.motorista2.toUpperCase(),
     r.retem.toUpperCase(),

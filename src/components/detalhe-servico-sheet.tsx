@@ -48,6 +48,17 @@ function letraDiaSemana(date: Date): string {
   return first.toLocaleUpperCase("pt-PT");
 }
 
+function letraDiaSemanaRetrato(date: Date): string {
+  const d = date.getDay();
+  if (d === 0) return "D";
+  if (d === 1) return "S";
+  if (d === 2) return "T";
+  if (d === 3) return "Q";
+  if (d === 4) return "Q";
+  if (d === 5) return "S";
+  return "S";
+}
+
 const CROSSED_TOKEN_PREFIX = "__X__";
 type DayCellToken = { token: string; crossed: boolean };
 
@@ -1030,6 +1041,7 @@ export function DetalheServicoSheet() {
         rows: portraitRows.map((r) => ({
           day: r.day,
           dateKey: r.dateKey,
+          weekdayLetter: letraDiaSemanaRetrato(new Date(year, monthIndex, r.day)),
           motorista1: r.motorista1,
           motorista2: r.motorista2,
           retem: r.retem,
@@ -1892,6 +1904,9 @@ export function DetalheServicoSheet() {
                     <th className="min-w-[4.5rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
                       Data
                     </th>
+                    <th className="min-w-[3rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      &nbsp;
+                    </th>
                     <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
                       Motorista 1
                     </th>
@@ -1910,6 +1925,8 @@ export function DetalheServicoSheet() {
                       row.retem,
                     );
                     const dateLabel = String(row.day);
+                    const dateObj = new Date(year, monthIndex, row.day);
+                    const weekdayLabel = letraDiaSemanaRetrato(dateObj);
                     const rowGray = Boolean(columnGray[row.dateKey]) || weekendDateKeys.has(row.dateKey);
                     return (
                       <tr key={row.dateKey}>
@@ -1919,6 +1936,13 @@ export function DetalheServicoSheet() {
                           }`}
                         >
                           {dateLabel}
+                        </td>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center font-semibold uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
+                          {weekdayLabel}
                         </td>
                         <td
                           className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
