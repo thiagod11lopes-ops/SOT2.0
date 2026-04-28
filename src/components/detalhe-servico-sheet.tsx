@@ -19,6 +19,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   downloadDetalheServicoMotoristaPdf,
+  downloadDetalheServicoMotoristaPortraitPdf,
   type DetalheServicoRodapeAssinatura,
   type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
@@ -646,6 +647,14 @@ export function DetalheServicoSheet() {
       }),
     [bundle.portraitByMonth, monthYear, sheetLive, days, year, monthIndex],
   );
+  const weekendDateKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const { day, isWeekend } of days) {
+      if (!isWeekend) continue;
+      set.add(dateKey(year, monthIndex, day));
+    }
+    return set;
+  }, [days, year, monthIndex]);
 
   const prevMonthKey = useMemo(() => getPreviousMonthKey(monthYear), [monthYear]);
   const prevMonthKeyRef = useRef(prevMonthKey);
@@ -903,6 +912,25 @@ export function DetalheServicoSheet() {
 
   const handleGerarPdfDetalheServico = useCallback(() => {
     const rodape = rodapeAssinaturaRef.current;
+    if (portraitMode) {
+      downloadDetalheServicoMotoristaPortraitPdf({
+        monthYear,
+        rows: portraitRows.map((r) => ({
+          day: r.day,
+          dateKey: r.dateKey,
+          motorista1: r.motorista1,
+          motorista2: r.motorista2,
+          retem: r.retem,
+        })),
+        columnGray,
+        rodapeAssinatura: {
+          nome: rodape.nome,
+          postoGraduacao: rodape.postoGraduacao,
+          funcao: rodape.funcao,
+        },
+      });
+      return;
+    }
     downloadDetalheServicoMotoristaPdf({
       monthYear,
       sheet: sheetLive,
@@ -917,7 +945,17 @@ export function DetalheServicoSheet() {
         funcao: rodape.funcao,
       },
     });
-  }, [monthYear, sheetLive, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
+  }, [
+    monthYear,
+    sheetLive,
+    tableEditable,
+    showRoTokens,
+    prevMonthSheet,
+    columnGray,
+    feriasForMonth,
+    portraitMode,
+    portraitRows,
+  ]);
 
   useEffect(() => {
     setUndoStack([]);
@@ -1752,12 +1790,21 @@ export function DetalheServicoSheet() {
                       row.retem,
                     );
                     const dateLabel = String(row.day);
+                    const rowGray = Boolean(columnGray[row.dateKey]) || weekendDateKeys.has(row.dateKey);
                     return (
                       <tr key={row.dateKey}>
-                        <td className="border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.08)] px-[0.45em] py-[0.25em] text-center tabular-nums font-semibold uppercase">
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.45em] py-[0.25em] text-center tabular-nums font-semibold uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-[hsl(var(--muted)/0.08)]"
+                          }`}
+                        >
                           {dateLabel}
                         </td>
-                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
                           <input
                             type="text"
                             readOnly={!tableEditable}
@@ -1771,7 +1818,11 @@ export function DetalheServicoSheet() {
                             onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
                           />
                         </td>
-                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
                           <input
                             type="text"
                             readOnly={!tableEditable}
@@ -1785,7 +1836,11 @@ export function DetalheServicoSheet() {
                             onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 1)}
                           />
                         </td>
-                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
                           {tableEditable ? (
                             <select
                               className={`${inputClass} max-w-full cursor-pointer text-center uppercase`}

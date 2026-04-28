@@ -32,6 +32,14 @@ export interface DetalheServicoMotoristaPdfParams {
   feriasForMonth?: Record<string, DetalheServicoFeriasPeriodo[]>;
 }
 
+export type DetalheServicoPortraitPdfRow = {
+  day: number;
+  dateKey: string;
+  motorista1: string;
+  motorista2: string;
+  retem: string;
+};
+
 function parseMonthYearValue(value: string): { year: number; monthIndex: number } | null {
   const parts = value.split("-");
   if (parts.length < 2) return null;
@@ -782,6 +790,95 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
   drawRodapeAssinaturaPdf(doc, pageW, finalY2, rodapeAssinatura);
 
   const slug = monthYear.replace(/[^\d-]/g, "") || "mes";
+  doc.save(`detalhe-servico-motorista-${slug}.pdf`);
+}
+
+export function downloadDetalheServicoMotoristaPortraitPdf(args: {
+  monthYear: string;
+  rows: DetalheServicoPortraitPdfRow[];
+  columnGray: Record<string, boolean>;
+  rodapeAssinatura: DetalheServicoRodapeAssinatura;
+}): void {
+  const parsed = parseMonthYearValue(args.monthYear);
+  if (!parsed) {
+    downloadDetalheServicoMotoristaPdfHeadersOnly(args.monthYear);
+    return;
+  }
+  const { year, monthIndex } = parsed;
+  const days = buildMonthDays(year, monthIndex);
+  const weekendDateKeys = new Set(
+    days.filter((d) => d.isWeekend).map((d) => dateKey(year, monthIndex, d.day)),
+  );
+
+  const doc = new jsPDF({
+    unit: "mm",
+    format: "a4",
+    orientation: "portrait",
+  }) as JsPDFWithAutoTable;
+  const pageW = doc.internal.pageSize.getWidth();
+  const centerX = pageW / 2;
+  let y = PDF_TITULO_DIST_TOPO_MM;
+
+  const lines = [
+    "MARINHA DO BRASIL",
+    "HOSPITAL NAVAL MARCÍLIO DIAS",
+    "DETALHE DE SERVIÇO DE MOTORISTA",
+    formatDetalheServicoPdfMonthYear(args.monthYear),
+  ];
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i]!, centerX, y, { align: "center" });
+    if (i < lines.length - 1) y += PDF_TITULO_ENTRE_LINHAS_MM;
+  }
+  y += PDF_TITULO_PARA_TABELA_MM;
+
+  const head = [["DATA", "MOTORISTA 1", "MOTORISTA 2", "RETÉM"]];
+  const body = args.rows.map((r) => [
+    String(r.day),
+    r.motorista1.toUpperCase(),
+    r.motorista2.toUpperCase(),
+    r.retem.toUpperCase(),
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head,
+    body,
+    margin: { left: MARGIN, right: MARGIN },
+    tableLineWidth: PDF_TABELA_LINE_WIDTH_MM,
+    tableLineColor: PDF_TABELA_LINE_COLOR,
+    styles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontSize: PDF_TABELA_FONT_PT,
+      cellPadding: PDF_TABELA_CELL_PADDING_MM,
+      halign: "center",
+      valign: "middle",
+      fillColor: BG_WHITE,
+    },
+    headStyles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontStyle: "bold",
+      fontSize: PDF_TABELA_FONT_PT,
+      cellPadding: PDF_TABELA_CELL_PADDING_MM,
+      halign: "center",
+      valign: "middle",
+      fillColor: BG_WHITE,
+    },
+    theme: "grid",
+    didParseCell: (data) => {
+      if (data.section !== "body") return;
+      const row = args.rows[data.row.index];
+      if (!row) return;
+      const rowGray = Boolean(args.columnGray[row.dateKey]) || weekendDateKeys.has(row.dateKey);
+      if (rowGray) data.cell.styles.fillColor = BG_NEUTRAL_200;
+    },
+  });
+
+  const finalY = doc.lastAutoTable?.finalY ?? y + 40;
+  drawRodapeAssinaturaPdf(doc, pageW, finalY, args.rodapeAssinatura);
+  const slug = args.monthYear.replace(/[^\d-]/g, "") || "mes";
   doc.save(`detalhe-servico-motorista-${slug}.pdf`);
 }
 
