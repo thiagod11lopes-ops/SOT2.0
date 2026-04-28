@@ -913,7 +913,6 @@ export function downloadDetalheServicoMotoristaPortraitPdf(args: {
   const tableFont = Math.max(6, Math.round(PDF_TABELA_FONT_PT * squeeze * 2) / 2);
   const tablePad = Math.max(0.5, Math.min(PDF_TABELA_CELL_PADDING_MM, PDF_TABELA_CELL_PADDING_MM * squeeze));
   const sectionFont = Math.max(6, Math.round(8 * squeeze * 2) / 2);
-  const sectionLine = Math.max(2.6, 3.4 * squeeze);
 
   autoTable(doc, {
     startY: y,
@@ -955,15 +954,35 @@ export function downloadDetalheServicoMotoristaPortraitPdf(args: {
     cursorY += Math.max(0.8, 1.8 * squeeze);
     doc.setFont("helvetica", "bold");
     doc.text("Observações", MARGIN, cursorY);
-    cursorY += sectionLine;
-    doc.setFont("helvetica", "normal");
-    for (const obs of observacoes) {
-      const wrapped = doc.splitTextToSize(`- ${obs}`, pageW - MARGIN * 2);
-      for (const w of wrapped) {
-        doc.text(w, MARGIN, cursorY);
-        cursorY += sectionLine;
-      }
-    }
+    cursorY += Math.max(1.4, 2.4 * squeeze);
+    autoTable(doc, {
+      startY: cursorY,
+      body: observacoes.map((obs) => [obs]),
+      showHead: false,
+      margin: { left: MARGIN, right: MARGIN },
+      tableLineWidth: PDF_TABELA_LINE_WIDTH_MM,
+      tableLineColor: PDF_TABELA_LINE_COLOR,
+      styles: {
+        ...PDF_TABELA_BASE_STYLES,
+        fontSize: tableFont,
+        cellPadding: tablePad,
+        valign: "middle",
+        fillColor: BG_WHITE,
+      },
+      alternateRowStyles: {
+        ...PDF_TABELA_BASE_STYLES,
+        fontSize: tableFont,
+        cellPadding: tablePad,
+        fillColor: [252, 252, 252],
+      },
+      theme: "grid",
+      tableWidth: "auto",
+      didParseCell: (data) => {
+        aplicarFonteUniformePdfTabela("body", data.cell.styles, tableFont, tablePad);
+        data.cell.styles.halign = "left";
+      },
+    });
+    cursorY = (doc.lastAutoTable?.finalY ?? cursorY + 18) + Math.max(1, 1.8 * squeeze);
   }
 
   cursorY += Math.max(0.8, 1.8 * squeeze);
