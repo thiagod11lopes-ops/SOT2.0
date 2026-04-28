@@ -66,6 +66,8 @@ function canonicalizeMotoristaName(value: string): string {
   if (!t) return t;
   // Ajuste de nomenclatura preservando equivalência textual (mesmo nome ignorando caixa).
   if (t.toUpperCase() === "MN PRADO") return "MN Prado";
+  if (t.toUpperCase() === "SG THIAGO") return "SG Thiago Lopes";
+  if (t.toUpperCase() === "SG GERSON") return "SG Gerson Rocha";
   return t;
 }
 

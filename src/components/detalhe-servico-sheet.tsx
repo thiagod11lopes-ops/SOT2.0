@@ -11,6 +11,7 @@ import {
   emptyDetalheServicoBundle,
   type DetalheServicoBundle,
   type DetalheServicoFeriasPeriodo,
+  type DetalheServicoPortraitRow,
 } from "../lib/detalheServicoBundle";
 import { DetalheServicoFeriasModal, type FeriasDraftByMotorKey } from "./detalhe-servico-ferias-modal";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
@@ -242,6 +243,40 @@ function buildMotoristaSelectOptions(catalog: string[], current: string): string
     list.unshift(m);
   }
   return list;
+}
+
+function derivePortraitRowsFromSheet(args: {
+  monthRows: Record<string, DetalheServicoPortraitRow> | undefined;
+  sheet: DetalheServicoSheetSnapshot;
+  days: DayMeta[];
+  year: number;
+  monthIndex: number;
+}): Array<{ day: number; dateKey: string; motorista1: string; motorista2: string; retem: string }> {
+  const { monthRows, sheet, days, year, monthIndex } = args;
+  return days.map(({ day }) => {
+    const dk = dateKey(year, monthIndex, day);
+    const persisted = monthRows?.[dk];
+    const seen = new Set<string>();
+    const fromServico: string[] = [];
+    for (const rowId of sheet.rows) {
+      const motorista = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      if (!motorista) continue;
+      const raw = sheet.cells[rowId]?.[dk] ?? "";
+      if (!cellContainsServicoToken(raw)) continue;
+      const nk = normalizeMotoristaName(motorista);
+      if (seen.has(nk)) continue;
+      seen.add(nk);
+      fromServico.push(motorista);
+      if (fromServico.length >= 2) break;
+    }
+    return {
+      day,
+      dateKey: dk,
+      motorista1: persisted?.motorista1 ?? fromServico[0] ?? "",
+      motorista2: persisted?.motorista2 ?? fromServico[1] ?? "",
+      retem: persisted?.retem ?? "",
+    };
+  });
 }
 
 /** Conta tokens «S» e «RO» nas células dos dias (mês atual); horas = 24×S + 8×RO. Ignora dias em férias. */
@@ -483,6 +518,10 @@ function mergeRemoteBundlePreservingLocalMonths(
     rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
     columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
     feriasByMonth: { ...localBundle.feriasByMonth, ...remoteBundle.feriasByMonth },
+    portraitByMonth: {
+      ...(localBundle.portraitByMonth ?? {}),
+      ...(remoteBundle.portraitByMonth ?? {}),
+    },
     originalSheetBeforeFirstXByMonth: {
       ...(localBundle.originalSheetBeforeFirstXByMonth ?? {}),
       ...(remoteBundle.originalSheetBeforeFirstXByMonth ?? {}),
@@ -535,6 +574,7 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [showRoTokens, setShowRoTokens] = useState(true);
+  const [portraitMode, setPortraitMode] = useState(false);
   /** `true` = grelha atual (alterações, X vermelho, etc.). `false` = snapshot antes do primeiro X no mês (se existir). */
   const [mostrarAlteracoesAposX, setMostrarAlteracoesAposX] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
@@ -595,6 +635,17 @@ export function DetalheServicoSheet() {
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
+  const portraitRows = useMemo(
+    () =>
+      derivePortraitRowsFromSheet({
+        monthRows: bundle.portraitByMonth?.[monthYear],
+        sheet: sheetLive,
+        days,
+        year,
+        monthIndex,
+      }),
+    [bundle.portraitByMonth, monthYear, sheetLive, days, year, monthIndex],
+  );
 
   const prevMonthKey = useMemo(() => getPreviousMonthKey(monthYear), [monthYear]);
   const prevMonthKeyRef = useRef(prevMonthKey);
@@ -1044,6 +1095,35 @@ export function DetalheServicoSheet() {
     }));
   }, []);
 
+  const setPortraitCellValue = useCallback(
+    (
+      isoDate: string,
+      field: keyof DetalheServicoPortraitRow,
+      value: string,
+    ) => {
+      setBundle((b) => {
+        const mk = monthYearRef.current;
+        const monthRows = b.portraitByMonth?.[mk] ?? {};
+        const row = monthRows[isoDate] ?? { motorista1: "", motorista2: "", retem: "" };
+        return {
+          ...b,
+          version: 1,
+          portraitByMonth: {
+            ...(b.portraitByMonth ?? {}),
+            [mk]: {
+              ...monthRows,
+              [isoDate]: {
+                ...row,
+                [field]: value,
+              },
+            },
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const onCellFocus = useCallback(() => {
     cellEditBeforeRef.current = cloneSheet(sheetRef.current);
   }, []);
@@ -1185,7 +1265,7 @@ export function DetalheServicoSheet() {
       if (e.currentTarget instanceof HTMLSelectElement) {
         if (e.key === "ArrowUp" || e.key === "ArrowDown") return;
       }
-      const maxCol = tableEditableRef.current ? days.length + 3 : days.length;
+      const maxCol = portraitMode ? 2 : tableEditableRef.current ? days.length + 3 : days.length;
       const maxRow = sheetRef.current.rows.length - 1;
       let nextR = rowIndex;
       let nextC = colIndex;
@@ -1215,7 +1295,7 @@ export function DetalheServicoSheet() {
       }
       focusSheetCell(nextR, nextC);
     },
-    [days.length, focusSheetCell],
+    [days.length, focusSheetCell, portraitMode],
   );
 
   useEffect(() => {
@@ -1499,6 +1579,31 @@ export function DetalheServicoSheet() {
               }`}
             />
           </button>
+          <span
+            className="text-xs text-[hsl(var(--muted-foreground))]"
+            id="detalhe-servico-portrait-toggle-label"
+          >
+            Detalhe Modo Paisagem/Retrato
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={portraitMode}
+            aria-labelledby="detalhe-servico-portrait-toggle-label"
+            title={portraitMode ? "Mostrar em modo paisagem" : "Mostrar em modo retrato"}
+            className={`relative inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 ${
+              portraitMode
+                ? "border-emerald-600/45 bg-emerald-500/20"
+                : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+            }`}
+            onClick={() => setPortraitMode((v) => !v)}
+          >
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                portraitMode ? "translate-x-[1.125rem]" : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-3">
           <Button
@@ -1622,6 +1727,93 @@ export function DetalheServicoSheet() {
             </div>
           </div>
           <div ref={tableInputsRootRef} className="w-full min-w-0 overflow-x-auto">
+            {portraitMode ? (
+              <table className="w-full min-w-[34rem] border-collapse text-center text-[11px] leading-tight sm:text-xs">
+                <thead>
+                  <tr>
+                    <th className="min-w-[4.5rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Data
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Motorista 1
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Motorista 2
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Retém
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {portraitRows.map((row, rowIndex) => {
+                    const retemOpts = buildMotoristaSelectOptions(
+                      motoristasCatalogEGrilha,
+                      row.retem,
+                    );
+                    const dateLabel = String(row.day);
+                    return (
+                      <tr key={row.dateKey}>
+                        <td className="border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.08)] px-[0.45em] py-[0.25em] text-center tabular-nums font-semibold uppercase">
+                          {dateLabel}
+                        </td>
+                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                          <input
+                            type="text"
+                            readOnly={!tableEditable}
+                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""} text-center uppercase`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={0}
+                            value={row.motorista1}
+                            onChange={(e) =>
+                              setPortraitCellValue(row.dateKey, "motorista1", e.target.value)
+                            }
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
+                          />
+                        </td>
+                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                          <input
+                            type="text"
+                            readOnly={!tableEditable}
+                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""} text-center uppercase`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={1}
+                            value={row.motorista2}
+                            onChange={(e) =>
+                              setPortraitCellValue(row.dateKey, "motorista2", e.target.value)
+                            }
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 1)}
+                          />
+                        </td>
+                        <td className="border border-[hsl(var(--border))] bg-white px-[0.35em] py-[0.2em] text-center uppercase">
+                          {tableEditable ? (
+                            <select
+                              className={`${inputClass} max-w-full cursor-pointer text-center uppercase`}
+                              data-det-sheet-row={rowIndex}
+                              data-det-sheet-col={2}
+                              value={row.retem}
+                              onChange={(e) =>
+                                setPortraitCellValue(row.dateKey, "retem", e.target.value)
+                              }
+                              onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 2)}
+                            >
+                              <option value="">—</option>
+                              {retemOpts.map((m) => (
+                                <option key={m} value={m}>
+                                  {m.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input readOnly className={`${inputClass} ${inputLockedClass} uppercase`} value={row.retem} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
             <table className="w-full min-w-0 border-collapse text-left text-[11px] leading-tight sm:text-xs">
               <thead>
                 <tr>
@@ -1973,6 +2165,7 @@ export function DetalheServicoSheet() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </div>

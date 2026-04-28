@@ -248,13 +248,16 @@ export function formatIsoDatePtBr(iso: string): string {
  * Hífen vira espaço (ex.: «FC-HÉLIO» e «FC HÉLIO» produzem a mesma chave «fc helio»).
  */
 export function normalizeDriverKey(name: string): string {
-  return name
+  const normalized = name
     .trim()
     .replace(/-/g, " ")
     .replace(/\s+/g, " ")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+  if (normalized === "sg thiago") return "sg thiago lopes";
+  if (normalized === "sg gerson") return "sg gerson rocha";
+  return normalized;
 }
 
 /** Tokeniza chave já normalizada; reforça hífen como separador se ainda existir. */

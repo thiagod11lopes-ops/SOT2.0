@@ -1,3 +1,5 @@
+import { normalizeDriverKey } from "./vistoriaInspectionShared";
+
 export type MobileMotoristaCredential = {
   motorista: string;
   senha: string;
@@ -8,7 +10,7 @@ const STORAGE_KEY = "sot_mobile_motorista_credentials_v1";
 const ACTIVE_MOTORISTA_KEY = "sot_mobile_logged_motorista_v1";
 
 function normalizeNameKey(value: string): string {
-  return value.trim().toLowerCase();
+  return normalizeDriverKey(value);
 }
 
 export function loadMobileMotoristaCredentials(): MobileMotoristaCredential[] {
