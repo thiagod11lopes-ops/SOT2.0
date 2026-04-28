@@ -703,6 +703,8 @@ export function DetalheServicoSheet() {
   viewingOriginalRef.current = viewingOriginal;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
+  const cloudWriteInFlightRef = useRef(false);
+  const pendingCloudBundleRef = useRef<DetalheServicoBundle | null>(null);
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
@@ -818,14 +820,25 @@ export function DetalheServicoSheet() {
   const pushBundleToCloud = useCallback(
     async (nextBundle: DetalheServicoBundle) => {
       if (!useCloud || !hydratedRef.current || !idbReady) return;
-      setCloudSyncStatus("syncing");
+      pendingCloudBundleRef.current = nextBundle;
+      if (cloudWriteInFlightRef.current) return;
+      cloudWriteInFlightRef.current = true;
       try {
-        await setSotStateDoc(SOT_STATE_DOC.detalheServico, nextBundle);
-        setCloudSyncStatus("synced");
-        setCloudSyncAt(new Date());
-      } catch (e) {
-        setCloudSyncStatus("error");
-        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+        while (pendingCloudBundleRef.current) {
+          const toSend = pendingCloudBundleRef.current;
+          pendingCloudBundleRef.current = null;
+          setCloudSyncStatus("syncing");
+          try {
+            await setSotStateDoc(SOT_STATE_DOC.detalheServico, toSend);
+            setCloudSyncStatus("synced");
+            setCloudSyncAt(new Date());
+          } catch (e) {
+            setCloudSyncStatus("error");
+            console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+          }
+        }
+      } finally {
+        cloudWriteInFlightRef.current = false;
       }
     },
     [useCloud, idbReady],
