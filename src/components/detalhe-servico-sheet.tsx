@@ -340,6 +340,76 @@ function normalizeMotoristaName(value: string): string {
     .toLowerCase();
 }
 
+function canonicalizeMotoristaPostoName(value: string): string {
+  const t = value.trim();
+  if (!t) return t;
+  const up = t.toUpperCase();
+  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
+  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
+    return "2°SG Thiago Lopes";
+  }
+  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
+    return "2°SG Gerson Rocha";
+  }
+  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
+  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
+  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
+  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
+  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
+  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
+    return "2°SG RM1 Daniel Gomes";
+  }
+  return t;
+}
+
+function migrateBundleMotoristaNames(bundle: DetalheServicoBundle): DetalheServicoBundle {
+  let changed = false;
+  const nextSheets: DetalheServicoBundle["sheets"] = {};
+  for (const [month, sheet] of Object.entries(bundle.sheets)) {
+    const nextCells: Record<string, Record<string, string>> = {};
+    for (const rowId of sheet.rows) {
+      const row = { ...(sheet.cells[rowId] ?? {}) };
+      if (typeof row[KEY_MOTORISTA] === "string") {
+        const canonical = canonicalizeMotoristaPostoName(row[KEY_MOTORISTA] ?? "");
+        if (canonical !== row[KEY_MOTORISTA]) {
+          row[KEY_MOTORISTA] = canonical;
+          changed = true;
+        }
+      }
+      nextCells[rowId] = row;
+    }
+    nextSheets[month] = { rows: [...sheet.rows], cells: nextCells };
+  }
+
+  const portraitByMonth = bundle.portraitByMonth ?? {};
+  const nextPortraitByMonth: NonNullable<DetalheServicoBundle["portraitByMonth"]> = {};
+  for (const [month, monthRows] of Object.entries(portraitByMonth)) {
+    const nextMonthRows: Record<string, DetalheServicoPortraitRow> = {};
+    for (const [isoDate, row] of Object.entries(monthRows)) {
+      const motorista1 = canonicalizeMotoristaPostoName(row.motorista1 ?? "");
+      const motorista2 = canonicalizeMotoristaPostoName(row.motorista2 ?? "");
+      const retem = canonicalizeMotoristaPostoName(row.retem ?? "");
+      if (
+        motorista1 !== (row.motorista1 ?? "") ||
+        motorista2 !== (row.motorista2 ?? "") ||
+        retem !== (row.retem ?? "")
+      ) {
+        changed = true;
+      }
+      nextMonthRows[isoDate] = { motorista1, motorista2, retem };
+    }
+    nextPortraitByMonth[month] = nextMonthRows;
+  }
+
+  if (!changed) return bundle;
+  return {
+    ...bundle,
+    version: 1,
+    sheets: nextSheets,
+    portraitByMonth: nextPortraitByMonth,
+  };
+}
+
 function parseIsoDateLocal(iso: string): Date | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
@@ -672,7 +742,7 @@ export function DetalheServicoSheet() {
     let cancelled = false;
     void loadDetalheServicoBundleFromIdb().then((b) => {
       if (cancelled) return;
-      setBundle(b);
+      setBundle(migrateBundleMotoristaNames(b));
       setIdbReady(true);
       hydratedRef.current = true;
     });
@@ -712,7 +782,9 @@ export function DetalheServicoSheet() {
               if (tableEditableRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizeDetalheServicoBundle(payload);
-              const merged = mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next);
+              const merged = migrateBundleMotoristaNames(
+                mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next),
+              );
               setBundle(merged);
               setCloudSyncStatus("synced");
               setCloudSyncAt(new Date());
@@ -1124,11 +1196,13 @@ export function DetalheServicoSheet() {
   }, [clearCellEditSnapshot]);
 
   const setCellValue = useCallback((rowId: string, key: string, value: string) => {
+    const normalizedValue =
+      key === KEY_MOTORISTA ? canonicalizeMotoristaPostoName(value) : value;
     setSheet((prev) => ({
       ...prev,
       cells: {
         ...prev.cells,
-        [rowId]: { ...(prev.cells[rowId] ?? {}), [key]: value },
+        [rowId]: { ...(prev.cells[rowId] ?? {}), [key]: normalizedValue },
       },
     }));
   }, []);
@@ -1139,6 +1213,7 @@ export function DetalheServicoSheet() {
       field: keyof DetalheServicoPortraitRow,
       value: string,
     ) => {
+      const normalizedValue = canonicalizeMotoristaPostoName(value);
       setBundle((b) => {
         const mk = monthYearRef.current;
         const monthRows = b.portraitByMonth?.[mk] ?? {};
@@ -1152,7 +1227,7 @@ export function DetalheServicoSheet() {
               ...monthRows,
               [isoDate]: {
                 ...row,
-                [field]: value,
+                [field]: normalizedValue,
               },
             },
           },
