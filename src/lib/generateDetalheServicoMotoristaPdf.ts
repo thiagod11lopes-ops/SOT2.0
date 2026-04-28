@@ -952,37 +952,16 @@ export function downloadDetalheServicoMotoristaPortraitPdf(args: {
 
   if (observacoes.length > 0) {
     cursorY += Math.max(0.8, 1.8 * squeeze);
-    doc.setFont("helvetica", "bold");
-    doc.text("Observações", MARGIN, cursorY);
-    cursorY += Math.max(1.4, 2.4 * squeeze);
-    autoTable(doc, {
-      startY: cursorY,
-      body: observacoes.map((obs) => [obs]),
-      showHead: false,
-      margin: { left: MARGIN, right: MARGIN },
-      tableLineWidth: PDF_TABELA_LINE_WIDTH_MM,
-      tableLineColor: PDF_TABELA_LINE_COLOR,
-      styles: {
-        ...PDF_TABELA_BASE_STYLES,
-        fontSize: tableFont,
-        cellPadding: tablePad,
-        valign: "middle",
-        fillColor: BG_WHITE,
-      },
-      alternateRowStyles: {
-        ...PDF_TABELA_BASE_STYLES,
-        fontSize: tableFont,
-        cellPadding: tablePad,
-        fillColor: [252, 252, 252],
-      },
-      theme: "grid",
-      tableWidth: "auto",
-      didParseCell: (data) => {
-        aplicarFonteUniformePdfTabela("body", data.cell.styles, tableFont, tablePad);
-        data.cell.styles.halign = "left";
-      },
-    });
-    cursorY = (doc.lastAutoTable?.finalY ?? cursorY + 18) + Math.max(1, 1.8 * squeeze);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(tableFont);
+    for (const obs of observacoes) {
+      const wrapped = doc.splitTextToSize(obs, pageW - MARGIN * 2);
+      for (const line of wrapped) {
+        doc.text(line, MARGIN, cursorY);
+        cursorY += Math.max(2.8, 3.6 * squeeze);
+      }
+    }
+    cursorY += Math.max(1, 1.8 * squeeze);
   }
 
   cursorY += Math.max(0.8, 1.8 * squeeze);
