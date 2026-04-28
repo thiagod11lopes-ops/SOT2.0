@@ -402,8 +402,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const showFainasGerais = fainasLinhas.length > 0;
   const hasAlgumCardOperacionalSemAlarme =
     hasViaturasOficinaRdvContent || showTrocasOleoHome || showPendenciaLimpeza || showFainasGerais;
-  const showRegiaoCardsInferiores =
-    hasMotoristasServicoOuRotina || (!alarmeBloqueiaSecoesOperacionais && hasAlgumCardOperacionalSemAlarme);
+  const showLinhaCardsOperacionais =
+    !alarmeBloqueiaSecoesOperacionais && hasAlgumCardOperacionalSemAlarme;
+  const showLinhaCardMotoristasServicoRotina = hasMotoristasServicoOuRotina;
+  const showRegiaoCardsInferiores = showLinhaCardMotoristasServicoRotina || showLinhaCardsOperacionais;
 
   return (
     <div className="space-y-6">
@@ -640,6 +642,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         ) : null}
 
         {showRegiaoCardsInferiores ? (
+        <div className="w-full min-w-0 space-y-4">
+          {showLinhaCardsOperacionais ? (
         <div className="grid w-full min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(17.5rem,1fr))]">
             {hasViaturasOficinaRdvContent && !alarmeBloqueiaSecoesOperacionais ? (
             <Card className={departuresTableShadowClass}>
@@ -825,34 +829,39 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 </CardContent>
               </Card>
               ) : null}
+        </div>
+          ) : null}
 
-              {hasMotoristasServicoOuRotina ? (
-                <Card className={departuresTableShadowClass}>
-                  <CardContent className="flex items-start justify-between gap-3">
-                    <div className="home-dashboard-fluid-card min-w-0 flex-1 space-y-3">
-                      <div>
-                        <p className={homeFluidCardTitleClass}>Motoristas de Serviço</p>
-                        <p className={cn("mt-1 leading-snug", homeBodyEmphasisClass)}>
-                          {motoristasServicoRotinaHoje.servico.length > 0
-                            ? motoristasServicoRotinaHoje.servico.join(", ")
-                            : "Nenhum motorista marcado hoje."}
-                        </p>
-                      </div>
-                      <div className="border-t border-[hsl(var(--border))] pt-3">
-                        <p className={homeFluidCardTitleClass}>Motoristas de Rotina</p>
-                        <p className={cn("mt-1 leading-snug", homeBodyEmphasisClass)}>
-                          {motoristasServicoRotinaHoje.rotina.length > 0
-                            ? motoristasServicoRotinaHoje.rotina.join(", ")
-                            : "Nenhum motorista marcado hoje."}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3" aria-hidden>
-                      <Users className="h-5 w-5 text-slate-600" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : null}
+          {showLinhaCardMotoristasServicoRotina ? (
+            <Card className={cn("w-full", departuresTableShadowClass)}>
+              <CardContent className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
+                <div className="home-dashboard-fluid-card min-w-0 flex-1 overflow-x-auto">
+                  <p className="whitespace-nowrap [font-size:inherit]">
+                    <span className={homeFluidCardTitleClass}>Motoristas de Serviço</span>
+                    <span className={homeBodyEmphasisClass}>: </span>
+                    <span className={homeBodyEmphasisClass}>
+                      {motoristasServicoRotinaHoje.servico.length > 0
+                        ? motoristasServicoRotinaHoje.servico.join(", ")
+                        : "Nenhum motorista marcado hoje."}
+                    </span>
+                    <span className={cn(homeFluidCardTitleClass, "mx-2 sm:mx-3")} aria-hidden>
+                      |
+                    </span>
+                    <span className={homeFluidCardTitleClass}>Motoristas de Rotina</span>
+                    <span className={homeBodyEmphasisClass}>: </span>
+                    <span className={homeBodyEmphasisClass}>
+                      {motoristasServicoRotinaHoje.rotina.length > 0
+                        ? motoristasServicoRotinaHoje.rotina.join(", ")
+                        : "Nenhum motorista marcado hoje."}
+                    </span>
+                  </p>
+                </div>
+                <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3" aria-hidden>
+                  <Users className="h-5 w-5 text-slate-600" />
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
         ) : null}
       </section>
