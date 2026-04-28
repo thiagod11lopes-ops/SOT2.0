@@ -72,6 +72,74 @@ export function getVistoriaCalendarDayTintForIso(
   return "orange";
 }
 
+/** Motorista (escala S) com placa(s) ainda em vermelho nesse `iso` — detalhe por viatura. */
+export type PendenciaVistoriaEscalaSItem = {
+  motorista: string;
+  /** Placas sem vistoria registada nesse dia (vermelho no modal «Motoristas com S…»). */
+  viaturasNaoVistoriadas: string[];
+};
+
+/**
+ * Pendentes com lista de viaturas por motorista; mesmo critério do modal «Motoristas com S…».
+ */
+export function listPendenciasVistoriaEscalaSComPlacas(
+  iso: string,
+  bundle: DetalheServicoBundle | null,
+  viaturasPorMotorista: ReadonlyMap<string, string[]>,
+  inspections: readonly VistoriaInspection[],
+): PendenciaVistoriaEscalaSItem[] {
+  if (!bundle) return [];
+  const marcados = listMotoristasComServicoOuRotinaNoDia(bundle, iso);
+  const motoristasComSMap = new Map<string, string>();
+  for (const row of marcados) {
+    if (!row.servico) continue;
+    const name = row.motorista.trim();
+    if (!name) continue;
+    const nk = normalizeDriverKey(name);
+    if (!nk) continue;
+    if (!motoristasComSMap.has(nk)) motoristasComSMap.set(nk, name);
+  }
+  const relevant = [...motoristasComSMap.values()].filter(
+    (name) => resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista).length > 0,
+  );
+  const pendentes: PendenciaVistoriaEscalaSItem[] = [];
+  for (const name of relevant) {
+    const vtrs = resolveViaturasParaMotoristaEscala(name, viaturasPorMotorista);
+    const nao: string[] = [];
+    for (const v of vtrs) {
+      const ok = inspections.some(
+        (i) => i.inspectionDate === iso && i.viatura.trim() === v.trim(),
+      );
+      if (!ok) nao.push(v.trim());
+    }
+    if (nao.length > 0) {
+      pendentes.push({
+        motorista: name,
+        viaturasNaoVistoriadas: [...new Set(nao.filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      });
+    }
+  }
+  return pendentes.sort((a, b) => a.motorista.localeCompare(b.motorista, "pt-BR"));
+}
+
+/**
+ * Só nomes — atalho para cálculos que não precisam de placas.
+ * @see listPendenciasVistoriaEscalaSComPlacas
+ */
+export function listMotoristasComPendenciaVistoriaEscalaS(
+  iso: string,
+  bundle: DetalheServicoBundle | null,
+  viaturasPorMotorista: ReadonlyMap<string, string[]>,
+  inspections: readonly VistoriaInspection[],
+): string[] {
+  return listPendenciasVistoriaEscalaSComPlacas(
+    iso,
+    bundle,
+    viaturasPorMotorista,
+    inspections,
+  ).map((p) => p.motorista);
+}
+
 /**
  * Vistorias de um único dia que contam para o calendário (escala «S» + viatura sob responsabilidade).
  */

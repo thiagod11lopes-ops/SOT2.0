@@ -1,7 +1,6 @@
 import { Bell } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAlarmDismiss } from "../context/alarm-dismiss-context";
-import type { AlarmeDiarioItem } from "../context/avisos-context";
+import { useAvisos, type AlarmeDiarioItem } from "../context/avisos-context";
 import { localDateKey } from "../lib/dailyAlarmDismiss";
 import { parseHhMm } from "../lib/timeInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
@@ -10,10 +9,11 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 
 /**
  * Card na página inicial: só deve ser montado a partir do horário configurado (o dashboard filtra);
- * depois de disparar, pisca em laranja até marcar o checkbox para cancelar só neste dia (estado em AlarmDismiss).
+ * depois de disparar, pisca em laranja até o utilizador desativar — o alarme fica inativo (como em Avisos) até
+ * voltar a ativar nessa aba.
  */
 export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
-  const { dismissAlarmForToday } = useAlarmDismiss();
+  const { updateAlarmeDiario } = useAvisos();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -33,9 +33,9 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
 
   const shouldBlink = alarmJaDisparouHoje;
 
-  const handleCancelarParaHoje = useCallback(() => {
-    dismissAlarmForToday(alarm.id);
-  }, [alarm.id, dismissAlarmForToday]);
+  const handleDesativar = useCallback(() => {
+    updateAlarmeDiario(alarm.id, { ativo: false, pausaAteDia: null });
+  }, [alarm.id, updateAlarmeDiario]);
 
   if (!alarm.ativo || !alarm.nome.trim() || !alarmParsed) return null;
   if (!alarmJaDisparouHoje) return null;
@@ -72,11 +72,11 @@ export function DailyAlarmCard({ alarm }: { alarm: AlarmeDiarioItem }) {
             className="h-4 w-4 rounded border-[hsl(var(--border))] accent-[hsl(var(--primary))]"
             checked={false}
             onChange={(e) => {
-              if (e.target.checked) handleCancelarParaHoje();
+              if (e.target.checked) handleDesativar();
             }}
           />
           <span>
-            Cancelar alarme para hoje (continua ativo em Avisos; amanhã volta a aparecer se estiver ligado lá)
+            Desativar o alarme (fica inativo em Avisos; só volta a alertar se voltar a ativar nessa aba)
           </span>
         </label>
       </CardContent>

@@ -9,7 +9,6 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useAlarmDismiss } from "../context/alarm-dismiss-context";
 import { useAvisos } from "../context/avisos-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -25,6 +24,12 @@ import {
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import {
+  buildViaturasPorMotoristaMap,
+  listPendenciasVistoriaEscalaSComPlacas,
+} from "../lib/vistoriaCalendarTint";
+import { readVistoriaAssignments, readVistoriaInspections } from "../lib/vistoriaInspectionShared";
+import { ensureVistoriaCloudStateSyncStarted } from "../lib/vistoriaCloudState";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import {
@@ -49,6 +54,7 @@ import {
 import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
+import { VistoriaNotificacaoAlarmCard } from "./vistoria-notificacao-alarm-card";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -194,8 +200,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     [departures],
   );
   const { placas: placasPendenciaLimpeza, isPendente, setPendente } = useLimpezaPendente();
-  const { fainasLinhas, alarmesDiarios } = useAvisos();
-  const { isDismissedTodayForAlarm } = useAlarmDismiss();
+  const { fainasLinhas, alarmesDiarios, notificacaoVistoriaAtivo, notificacaoVistoriaHora } = useAvisos();
   const placasCatalogo = useMemo(
     () => viaturasCatalogoUnicas(items.viaturasAdministrativas, items.ambulancias),
     [items.viaturasAdministrativas, items.ambulancias],
@@ -220,6 +225,17 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
+  const [vistoriaEscalaDataTick, setVistoriaEscalaDataTick] = useState(0);
+
+  useEffect(() => {
+    const b = () => setVistoriaEscalaDataTick((t) => t + 1);
+    window.addEventListener("sot-vistoria-inspections-changed", b);
+    window.addEventListener("sot-vistoria-cloud-changed", b);
+    return () => {
+      window.removeEventListener("sot-vistoria-inspections-changed", b);
+      window.removeEventListener("sot-vistoria-cloud-changed", b);
+    };
+  }, []);
 
   function openFleetManutencoes() {
     requestFleetManutencoesTab();
@@ -329,10 +345,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
   const agoraDashboard = useMemo(() => new Date(), [relogio]);
 
-  /**
-   * Só mostra alarmes ativos na home a partir do horário configurado (não antes).
-   * Se o utilizador cancelou o alarme na própria home hoje, não volta a aparecer até amanhã.
-   */
+  /** Só mostra alarmes com «Ativo» em Avisos, a partir do horário (não antes), depois de disparar. */
   const alarmesNaHome = useMemo(
     () =>
       alarmesDiarios.filter(
@@ -340,11 +353,36 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           a.ativo &&
           a.nome.trim().length > 0 &&
           parseHhMm(a.hora) !== null &&
-          alarmeJaDisparouNesteDia(agoraDashboard, a.hora) &&
-          !isDismissedTodayForAlarm(a.id),
+          alarmeJaDisparouNesteDia(agoraDashboard, a.hora),
       ),
-    [alarmesDiarios, agoraDashboard, isDismissedTodayForAlarm],
+    [alarmesDiarios, agoraDashboard],
   );
+
+  const pendenciasVistoriaEscalaSNotif = useMemo(() => {
+    ensureVistoriaCloudStateSyncStarted();
+    const isoHoje = isoDateFromDate(new Date());
+    const asg = readVistoriaAssignments();
+    const ins = readVistoriaInspections();
+    return listPendenciasVistoriaEscalaSComPlacas(
+      isoHoje,
+      detalheServicoBundle,
+      buildViaturasPorMotoristaMap(asg),
+      ins,
+    );
+  }, [detalheServicoBundle, relogio, vistoriaEscalaDataTick]);
+
+  const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
+    if (!notificacaoVistoriaAtivo) return false;
+    if (parseHhMm(notificacaoVistoriaHora) === null) return false;
+    if (!alarmeJaDisparouNesteDia(agoraDashboard, notificacaoVistoriaHora)) return false;
+    return pendenciasVistoriaEscalaSNotif.length > 0;
+  }, [
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    agoraDashboard,
+    pendenciasVistoriaEscalaSNotif,
+  ]);
+
   /** Enquanto um alarme estiver «ativo» na home (após a hora, antes de desativar), esconde oficina/óleo/limpeza/fainas. */
   const alarmeBloqueiaSecoesOperacionais = alarmesNaHome.length > 0;
 
@@ -413,6 +451,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         {alarmesNaHome.map((a) => (
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
+
+        {vistoriaNotificacaoVisivelNaHome ? (
+          <VistoriaNotificacaoAlarmCard pendencias={pendenciasVistoriaEscalaSNotif} />
+        ) : null}
 
         {showSaidasAdministrativasHoje ? (
           <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>

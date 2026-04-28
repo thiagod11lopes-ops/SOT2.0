@@ -24,7 +24,7 @@ import {
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { AvisoGeralItem } from "../types/aviso-geral";
-import { localDateKey } from "../lib/dailyAlarmDismiss";
+import { localDateKey, VISTORIA_NOTIFICACAO_ALARM_ID } from "../lib/dailyAlarmDismiss";
 import { parseHhMm } from "../lib/timeInput";
 import { useSyncPreference } from "./sync-preference-context";
 
@@ -83,6 +83,10 @@ export type AvisosPersistedState = {
   avisosGeraisDraftEdicao: AvisoGeralDraftEdicao | null;
   alarmDiarioDraftNovo: { nome: string; hora: string };
   alarmDiarioDraftEdicao: AlarmDiarioDraftEdicao | null;
+  /** Aviso na página principal: após a hora, se houver placas pendentes (escala S). */
+  notificacaoVistoriaAtivo: boolean;
+  notificacaoVistoriaHora: string;
+  notificacaoVistoriaUpdatedAt: number;
 };
 
 const defaultState: AvisosPersistedState = {
@@ -98,6 +102,9 @@ const defaultState: AvisosPersistedState = {
   avisosGeraisDraftEdicao: null,
   alarmDiarioDraftNovo: { nome: "", hora: "" },
   alarmDiarioDraftEdicao: null,
+  notificacaoVistoriaAtivo: false,
+  notificacaoVistoriaHora: "",
+  notificacaoVistoriaUpdatedAt: 0,
 };
 
 type AvisosPersistedDoc = AvisosPersistedState & {
@@ -141,6 +148,7 @@ type AvisosContextValue = AvisosPersistedState & {
   setAlarmDiarioDraftEdicao: (
     v: AlarmDiarioDraftEdicao | null | ((prev: AlarmDiarioDraftEdicao | null) => AlarmDiarioDraftEdicao | null),
   ) => void;
+  setNotificacaoVistoria: (patch: { ativo?: boolean; hora?: string }) => void;
   addAlarmeDiario: (nome: string, hora: string) => void;
   updateAlarmeDiario: (
     id: string,
@@ -281,6 +289,8 @@ function isAvisosDocEffectivelyEmpty(d: AvisosPersistedDoc): boolean {
   if (d.avisosGeraisDraftEdicao !== null) return false;
   if (d.alarmDiarioDraftNovo.nome.trim() || d.alarmDiarioDraftNovo.hora.trim()) return false;
   if (d.alarmDiarioDraftEdicao !== null) return false;
+  if (d.notificacaoVistoriaAtivo) return false;
+  if (d.notificacaoVistoriaHora.trim()) return false;
   return true;
 }
 
@@ -341,6 +351,12 @@ function normalizeStored(raw: unknown): AvisosPersistedDoc {
   const alarmesDiariosUpdatedAt =
     typeof alTsRaw === "number" && Number.isFinite(alTsRaw) && alTsRaw >= 0 ? alTsRaw : 0;
 
+  const nvTsRaw = o.notificacaoVistoriaUpdatedAt;
+  const notificacaoVistoriaUpdatedAt =
+    typeof nvTsRaw === "number" && Number.isFinite(nvTsRaw) && nvTsRaw >= 0 ? nvTsRaw : 0;
+  const notificacaoVistoriaAtivo = o.notificacaoVistoriaAtivo === true;
+  const notificacaoVistoriaHora = typeof o.notificacaoVistoriaHora === "string" ? o.notificacaoVistoriaHora : "";
+
   return {
     avisoPrincipal: typeof o.avisoPrincipal === "string" ? o.avisoPrincipal : "",
     avisoPrincipalUpdatedAt,
@@ -355,6 +371,9 @@ function normalizeStored(raw: unknown): AvisosPersistedDoc {
     avisosGeraisDraftEdicao: normalizeAvisoGeralDraftEdicao(o.avisosGeraisDraftEdicao),
     alarmDiarioDraftNovo: normalizeAlarmDiarioDraftNovo(o.alarmDiarioDraftNovo),
     alarmDiarioDraftEdicao: normalizeAlarmDiarioDraftEdicao(o.alarmDiarioDraftEdicao),
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    notificacaoVistoriaUpdatedAt,
   };
 }
 
@@ -489,6 +508,31 @@ function mergeAvisosDocPreferLocalText(local: AvisosPersistedDoc, remote: Avisos
     alarmesDiariosUpdatedAt = ltAl;
   }
 
+  const ltNv = local.notificacaoVistoriaUpdatedAt ?? 0;
+  const rtNv = remote.notificacaoVistoriaUpdatedAt ?? 0;
+  let notificacaoVistoriaAtivo: boolean;
+  let notificacaoVistoriaHora: string;
+  let notificacaoVistoriaUpdatedAt: number;
+  if (rtNv > ltNv) {
+    notificacaoVistoriaAtivo = remote.notificacaoVistoriaAtivo;
+    notificacaoVistoriaHora = remote.notificacaoVistoriaHora;
+    notificacaoVistoriaUpdatedAt = rtNv;
+  } else if (ltNv > rtNv) {
+    notificacaoVistoriaAtivo = local.notificacaoVistoriaAtivo;
+    notificacaoVistoriaHora = local.notificacaoVistoriaHora;
+    notificacaoVistoriaUpdatedAt = ltNv;
+  } else {
+    if (!local.notificacaoVistoriaHora.trim() && remote.notificacaoVistoriaHora.trim()) {
+      notificacaoVistoriaAtivo = remote.notificacaoVistoriaAtivo;
+      notificacaoVistoriaHora = remote.notificacaoVistoriaHora;
+      notificacaoVistoriaUpdatedAt = rtNv;
+    } else {
+      notificacaoVistoriaAtivo = local.notificacaoVistoriaAtivo;
+      notificacaoVistoriaHora = local.notificacaoVistoriaHora;
+      notificacaoVistoriaUpdatedAt = ltNv;
+    }
+  }
+
   return {
     ...remote,
     avisoPrincipal,
@@ -504,6 +548,9 @@ function mergeAvisosDocPreferLocalText(local: AvisosPersistedDoc, remote: Avisos
     alarmDiarioDraftNovo,
     alarmDiarioDraftEdicao,
     alarmesDiariosUpdatedAt,
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    notificacaoVistoriaUpdatedAt,
   };
 }
 
@@ -527,6 +574,15 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const [avisosGeraisDraftEdicao, setAvisosGeraisDraftEdicaoState] = useState<AvisoGeralDraftEdicao | null>(null);
   const [alarmDiarioDraftNovo, setAlarmDiarioDraftNovoState] = useState(defaultState.alarmDiarioDraftNovo);
   const [alarmDiarioDraftEdicao, setAlarmDiarioDraftEdicaoState] = useState<AlarmDiarioDraftEdicao | null>(null);
+  const [notificacaoVistoriaAtivo, setNotificacaoVistoriaAtivoState] = useState(
+    defaultState.notificacaoVistoriaAtivo,
+  );
+  const [notificacaoVistoriaHora, setNotificacaoVistoriaHoraState] = useState(
+    defaultState.notificacaoVistoriaHora,
+  );
+  const [notificacaoVistoriaUpdatedAt, setNotificacaoVistoriaUpdatedAtState] = useState(
+    defaultState.notificacaoVistoriaUpdatedAt,
+  );
   const [persistReady, setPersistReady] = useState(false);
   const applyingRemoteRef = useRef(false);
   const stateRef = useRef<AvisosPersistedDoc>(defaultDoc);
@@ -577,6 +633,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     avisosGeraisDraftEdicao,
     alarmDiarioDraftNovo,
     alarmDiarioDraftEdicao,
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    notificacaoVistoriaUpdatedAt,
   };
 
   useEffect(() => {
@@ -626,6 +685,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         setAvisosGeraisDraftEdicaoState(n.avisosGeraisDraftEdicao);
         setAlarmDiarioDraftNovoState(n.alarmDiarioDraftNovo);
         setAlarmDiarioDraftEdicaoState(n.alarmDiarioDraftEdicao);
+        setNotificacaoVistoriaAtivoState(n.notificacaoVistoriaAtivo);
+        setNotificacaoVistoriaHoraState(n.notificacaoVistoriaHora);
+        setNotificacaoVistoriaUpdatedAtState(n.notificacaoVistoriaUpdatedAt);
       })
       .finally(() => setPersistReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só a decisão do primeiro render (persistAvisosToIdb) importa
@@ -662,6 +724,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisDraftEdicao,
       alarmDiarioDraftNovo,
       alarmDiarioDraftEdicao,
+      notificacaoVistoriaAtivo,
+      notificacaoVistoriaHora,
+      notificacaoVistoriaUpdatedAt,
     };
     void idbSetJson(AVISOS_STORAGE_KEY, payload, { maxAttempts: 6 });
   }, [
@@ -679,6 +744,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     avisosGeraisDraftEdicao,
     alarmDiarioDraftNovo,
     alarmDiarioDraftEdicao,
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    notificacaoVistoriaUpdatedAt,
   ]);
 
   useEffect(() => {
@@ -739,6 +807,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
               setAvisosGeraisDraftEdicaoState(mergedIncoming.avisosGeraisDraftEdicao);
               setAlarmDiarioDraftNovoState(mergedIncoming.alarmDiarioDraftNovo);
               setAlarmDiarioDraftEdicaoState(mergedIncoming.alarmDiarioDraftEdicao);
+              setNotificacaoVistoriaAtivoState(mergedIncoming.notificacaoVistoriaAtivo);
+              setNotificacaoVistoriaHoraState(mergedIncoming.notificacaoVistoriaHora);
+              setNotificacaoVistoriaUpdatedAtState(mergedIncoming.notificacaoVistoriaUpdatedAt);
               if (persistAvisosToIdb) {
                 void idbSetJson(AVISOS_STORAGE_KEY, merged, { maxAttempts: 6 });
               }
@@ -778,6 +849,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisDraftEdicao,
       alarmDiarioDraftNovo,
       alarmDiarioDraftEdicao,
+      notificacaoVistoriaAtivo,
+      notificacaoVistoriaHora,
+      notificacaoVistoriaUpdatedAt,
     };
     const t = window.setTimeout(() => {
       void setSotStateDocWithRetry(SOT_STATE_DOC.avisos, payload).catch((e) => {
@@ -802,6 +876,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     avisosGeraisDraftEdicao,
     alarmDiarioDraftNovo,
     alarmDiarioDraftEdicao,
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    notificacaoVistoriaUpdatedAt,
   ]);
 
   /** Remove avisos com data final já ultrapassada (inclui após meia-noite). */
@@ -925,6 +1002,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const updateAlarmeDiario = useCallback(
     (id: string, patch: Partial<Pick<AlarmeDiarioItem, "nome" | "hora" | "ativo" | "pausaAteDia">>) => {
       if (patch.hora !== undefined && parseHhMm(patch.hora) === null) return;
+      if (patch.ativo === false) clearDismissForAlarm(id);
       setAlarmesDiariosUpdatedAtState(Date.now());
       setAlarmesDiariosState((prev) => {
         const next = prev.map((a) => {
@@ -946,7 +1024,19 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [],
+    [clearDismissForAlarm],
+  );
+
+  const setNotificacaoVistoria = useCallback(
+    (patch: { ativo?: boolean; hora?: string }) => {
+      setNotificacaoVistoriaUpdatedAtState(Date.now());
+      if (patch.ativo !== undefined) {
+        setNotificacaoVistoriaAtivoState(patch.ativo);
+        if (!patch.ativo) clearDismissForAlarm(VISTORIA_NOTIFICACAO_ALARM_ID);
+      }
+      if (patch.hora !== undefined) setNotificacaoVistoriaHoraState(patch.hora);
+    },
+    [clearDismissForAlarm],
   );
 
   const removeAlarmeDiario = useCallback(
@@ -1014,6 +1104,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisDraftEdicao,
       alarmDiarioDraftNovo,
       alarmDiarioDraftEdicao,
+      notificacaoVistoriaAtivo,
+      notificacaoVistoriaHora,
       setAvisoPrincipal,
       setFainasTexto,
       setAvisosGeraisItens,
@@ -1021,6 +1113,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       setAvisosGeraisDraftEdicao,
       setAlarmDiarioDraftNovo,
       setAlarmDiarioDraftEdicao,
+      setNotificacaoVistoria,
       addAlarmeDiario,
       updateAlarmeDiario,
       removeAlarmeDiario,
@@ -1040,6 +1133,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       avisosGeraisDraftEdicao,
       alarmDiarioDraftNovo,
       alarmDiarioDraftEdicao,
+      notificacaoVistoriaAtivo,
+      notificacaoVistoriaHora,
       setAvisoPrincipal,
       setFainasTexto,
       setAvisosGeraisItens,
@@ -1047,6 +1142,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       setAvisosGeraisDraftEdicao,
       setAlarmDiarioDraftNovo,
       setAlarmDiarioDraftEdicao,
+      setNotificacaoVistoria,
       addAlarmeDiario,
       updateAlarmeDiario,
       removeAlarmeDiario,

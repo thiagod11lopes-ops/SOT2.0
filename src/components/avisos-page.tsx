@@ -9,6 +9,7 @@ import type { AvisoGeralItem } from "../types/aviso-geral";
 import { normalize24hTime, parseHhMm } from "../lib/timeInput";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
+import { Switch } from "./ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 function sortAlarmesPorHora(rows: AlarmeDiarioItem[]): AlarmeDiarioItem[] {
@@ -81,6 +82,9 @@ export function AvisosPage() {
     alarmDiarioDraftEdicao,
     setAlarmDiarioDraftNovo,
     setAlarmDiarioDraftEdicao,
+    notificacaoVistoriaAtivo,
+    notificacaoVistoriaHora,
+    setNotificacaoVistoria,
   } = useAvisos();
 
   const [open, setOpen] = useState({
@@ -88,6 +92,7 @@ export function AvisosPage() {
     fainas: false,
     alarmeDiario: false,
     avisosGerais: false,
+    notificacaoVistoria: false,
   });
 
   const toggle = useCallback((key: keyof typeof open) => {
@@ -454,8 +459,8 @@ export function AvisosPage() {
       >
         <p className="mb-4 text-sm font-normal text-[hsl(var(--muted-foreground))]">
           Monte <strong>novos</strong> alarmes aqui. Ao clicar em <strong>Ativar</strong>, o alarme passa para a
-          planilha abaixo e aparece na página inicial.           Desativar o alarme na página inicial desliga o <strong>Ativo</strong> aqui; no dia seguinte o alarme volta a
-          ficar ativo sozinho. Editar nome ou hora aqui não altera esse comportamento.
+          planilha abaixo e aparece na página inicial. Desativar o alarme na página inicial desliga o{" "}
+          <strong>Ativo</strong> aqui; só voltará a alertar se voltar a ativar o alarme nesta aba.
         </p>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -614,6 +619,51 @@ export function AvisosPage() {
             </div>
           )}
         </div>
+      </AvisosCollapsibleCard>
+
+      <AvisosCollapsibleCard
+        title="Notificações de vistoria"
+        open={open.notificacaoVistoria}
+        onToggle={() => toggle("notificacaoVistoria")}
+      >
+        <div className="grid max-w-md gap-4 sm:grid-cols-[1fr_minmax(0,8rem)] sm:items-end">
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Ativar lembrete na página principal</span>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3.5 py-2.5 shadow-sm sm:max-w-sm">
+              <span
+                className="text-sm font-medium text-[hsl(var(--foreground))]"
+                id="notif-vistoria-ativo-label"
+              >
+                Ativo
+              </span>
+              <Switch
+                checked={notificacaoVistoriaAtivo}
+                onCheckedChange={(v) => setNotificacaoVistoria({ ativo: v })}
+                aria-labelledby="notif-vistoria-ativo-label"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="notif-vistoria-hora">
+              Hora (24h)
+            </label>
+            <input
+              id="notif-vistoria-hora"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="HH:MM"
+              value={notificacaoVistoriaHora}
+              onChange={(e) => setNotificacaoVistoria({ hora: normalize24hTime(e.target.value) })}
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            />
+          </div>
+        </div>
+        {notificacaoVistoriaAtivo && notificacaoVistoriaHora.trim() && parseHhMm(notificacaoVistoriaHora) === null ? (
+          <p className="mt-2 text-sm text-amber-800 dark:text-amber-200/90" role="status">
+            Ajuste a hora para o formato 24h (00:00 a 23:59) para o lembrete funcionar.
+          </p>
+        ) : null}
       </AvisosCollapsibleCard>
 
       <div ref={fainasGeraisSectionRef} id="avisos-fainas-gerais" className="scroll-mt-4">
