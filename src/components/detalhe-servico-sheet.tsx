@@ -1035,6 +1035,8 @@ export function DetalheServicoSheet() {
           retem: r.retem,
         })),
         columnGray,
+        prevMonthSheet,
+        portraitObservacoes: feriasObservacoesRetrato,
         rodapeAssinatura: {
           nome: rodape.nome,
           postoGraduacao: rodape.postoGraduacao,
@@ -1067,6 +1069,8 @@ export function DetalheServicoSheet() {
     feriasForMonth,
     portraitMode,
     portraitRows,
+    prevMonthSheet,
+    feriasObservacoesRetrato,
   ]);
 
   useEffect(() => {
