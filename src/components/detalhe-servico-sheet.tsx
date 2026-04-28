@@ -273,8 +273,9 @@ function derivePortraitRowsFromSheet(args: {
     return {
       day,
       dateKey: dk,
-      motorista1: persisted?.motorista1 ?? fromServico[0] ?? "",
-      motorista2: persisted?.motorista2 ?? fromServico[1] ?? "",
+      // Motorista 1/2 no retrato espelham sempre a escala do modo paisagem.
+      motorista1: fromServico[0] ?? "",
+      motorista2: fromServico[1] ?? "",
       retem: persisted?.retem ?? "",
     };
   });
@@ -414,6 +415,12 @@ function parseIsoDateLocal(iso: string): Date | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatIsoDatePtBr(iso: string): string {
+  const d = parseIsoDateLocal(iso);
+  if (!d) return iso;
+  return d.toLocaleDateString("pt-BR");
 }
 
 /** Recorta um período às datas do mês `monthYear` (`YYYY-MM`); devolve `null` se não houver interseção. */
@@ -719,6 +726,26 @@ export function DetalheServicoSheet() {
       }),
     [bundle.portraitByMonth, monthYear, sheetLive, days, year, monthIndex],
   );
+  const feriasObservacoesRetrato = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const rowId of sheetLive.rows) {
+      const motoristaRaw = sheetLive.cells[rowId]?.[KEY_MOTORISTA] ?? "";
+      const motorista = canonicalizeMotoristaPostoName(motoristaRaw);
+      if (!motorista) continue;
+      const motoristaKey = normalizeMotoristaName(motorista);
+      if (!motoristaKey) continue;
+      if (seen.has(motoristaKey)) continue;
+      const periods = feriasForMonth[motoristaKey];
+      if (!periods?.length) continue;
+      const formattedPeriods = periods
+        .map((p) => `${formatIsoDatePtBr(p.inicio)} até ${formatIsoDatePtBr(p.fim)}`)
+        .join(" | ");
+      out.push(`Obs: ${motorista} - Férias no período de ${formattedPeriods}.`);
+      seen.add(motoristaKey);
+    }
+    return out;
+  }, [sheetLive.rows, sheetLive.cells, feriasForMonth]);
   const weekendDateKeys = useMemo(() => {
     const set = new Set<string>();
     for (const { day, isWeekend } of days) {
@@ -1854,6 +1881,7 @@ export function DetalheServicoSheet() {
           </div>
           <div ref={tableInputsRootRef} className="w-full min-w-0 overflow-x-auto">
             {portraitMode ? (
+              <>
               <table className="w-full min-w-[34rem] border-collapse text-center text-[11px] leading-tight sm:text-xs">
                 <thead>
                   <tr>
@@ -1895,14 +1923,12 @@ export function DetalheServicoSheet() {
                         >
                           <input
                             type="text"
-                            readOnly={!tableEditable}
-                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""} text-center uppercase`}
+                            readOnly
+                            className={`${inputClass} ${inputLockedClass} text-center uppercase`}
                             data-det-sheet-row={rowIndex}
                             data-det-sheet-col={0}
                             value={row.motorista1}
-                            onChange={(e) =>
-                              setPortraitCellValue(row.dateKey, "motorista1", e.target.value)
-                            }
+                            onChange={() => {}}
                             onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
                           />
                         </td>
@@ -1913,14 +1939,12 @@ export function DetalheServicoSheet() {
                         >
                           <input
                             type="text"
-                            readOnly={!tableEditable}
-                            className={`${inputClass} ${!tableEditable ? inputLockedClass : ""} text-center uppercase`}
+                            readOnly
+                            className={`${inputClass} ${inputLockedClass} text-center uppercase`}
                             data-det-sheet-row={rowIndex}
                             data-det-sheet-col={1}
                             value={row.motorista2}
-                            onChange={(e) =>
-                              setPortraitCellValue(row.dateKey, "motorista2", e.target.value)
-                            }
+                            onChange={() => {}}
                             onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 1)}
                           />
                         </td>
@@ -1956,6 +1980,16 @@ export function DetalheServicoSheet() {
                   })}
                 </tbody>
               </table>
+              {feriasObservacoesRetrato.length > 0 ? (
+                <div className="mt-2 space-y-1 text-left text-xs text-[hsl(var(--foreground))]">
+                  {feriasObservacoesRetrato.map((obs) => (
+                    <p key={obs} className="leading-tight">
+                      {obs}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              </>
             ) : (
             <table className="w-full min-w-0 border-collapse text-left text-[11px] leading-tight sm:text-xs">
               <thead>
