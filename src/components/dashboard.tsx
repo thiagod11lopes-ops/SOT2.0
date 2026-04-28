@@ -834,9 +834,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
           {showLinhaCardMotoristasServicoRotina ? (
             <Card className={cn("w-full", departuresTableShadowClass)}>
-              <CardContent className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
-                <div className="home-dashboard-fluid-card min-w-0 flex-1 overflow-x-auto">
-                  <p className="whitespace-nowrap [font-size:inherit]">
+              <CardContent className="home-dashboard-fluid-card relative px-4 py-3.5 pr-14 sm:px-5 sm:py-4 sm:pr-16">
+                <div className="w-full min-w-0 overflow-x-auto text-center">
+                  <p className="inline-block whitespace-nowrap [font-size:inherit]">
                     <span className={homeFluidCardTitleClass}>Motoristas de Serviço</span>
                     <span className={homeBodyEmphasisClass}>: </span>
                     <span className={homeBodyEmphasisClass}>
@@ -856,8 +856,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                     </span>
                   </p>
                 </div>
-                <div className="shrink-0 rounded-lg bg-[hsl(var(--muted))] p-3" aria-hidden>
-                  <Users className="h-5 w-5 text-slate-600" />
+                <div
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 sm:right-4"
+                  aria-hidden
+                >
+                  <div className="rounded-lg bg-[hsl(var(--muted))] p-3">
+                    <Users className="h-5 w-5 text-slate-600" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
