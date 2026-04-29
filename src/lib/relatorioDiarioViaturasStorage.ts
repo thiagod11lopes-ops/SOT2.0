@@ -47,6 +47,8 @@ export const RDV_STORAGE_EVENT = "sot-rdv-storage";
 
 let rdvFirebaseSyncActive = false;
 let rdvFirebaseMap: Record<string, RdvDayPersisted> = {};
+let rdvFirebaseBootstrapReady = false;
+let rdvFirebasePendingWrite: Record<string, RdvDayPersisted> | null = null;
 let suppressRemoteUntilMs = 0;
 const SUPPRESS_REMOTE_MS = 5000;
 
@@ -58,6 +60,14 @@ function isValidRdvDayPersisted(v: unknown): v is RdvDayPersisted {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   return o.v === 1 && Array.isArray(o.rowsAmb) && Array.isArray(o.rowsAdm);
+}
+
+function writeLocalMirror(map: Record<string, RdvDayPersisted>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
 }
 
 function normalizeRdvFirestorePayload(raw: unknown): Record<string, RdvDayPersisted> {
@@ -74,8 +84,10 @@ function normalizeRdvFirestorePayload(raw: unknown): Record<string, RdvDayPersis
 /** Ativado pelo `RdvFirebaseSyncProvider` quando o modo só-Firebase está ligado. */
 export function setRdvFirebaseSyncActive(active: boolean): void {
   rdvFirebaseSyncActive = active;
+  rdvFirebaseBootstrapReady = false;
+  rdvFirebasePendingWrite = null;
   if (active) {
-    rdvFirebaseMap = {};
+    rdvFirebaseMap = readAllLocal();
   } else {
     rdvFirebaseMap = {};
   }
@@ -85,7 +97,21 @@ export function setRdvFirebaseSyncActive(active: boolean): void {
 export function applyRdvFirebaseRemotePayload(payload: unknown | null): void {
   if (!rdvFirebaseSyncActive) return;
   if (Date.now() < suppressRemoteUntilMs) return;
-  rdvFirebaseMap = normalizeRdvFirestorePayload(payload);
+  const remoteMap = normalizeRdvFirestorePayload(payload);
+  rdvFirebaseBootstrapReady = true;
+  if (rdvFirebasePendingWrite) {
+    const merged = { ...remoteMap, ...rdvFirebasePendingWrite };
+    rdvFirebaseMap = merged;
+    rdvFirebasePendingWrite = null;
+    bumpRdvSuppressRemote();
+    writeLocalMirror(merged);
+    void setSotStateDocWithRetry(SOT_STATE_DOC.rdvByDate, merged).catch((e) => {
+      console.error("[SOT] Gravar RDV na nuvem:", e);
+    });
+  } else {
+    rdvFirebaseMap = remoteMap;
+    writeLocalMirror(remoteMap);
+  }
   window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
 }
 
@@ -111,6 +137,13 @@ function readAll(): Record<string, RdvDayPersisted> {
 function writeAll(map: Record<string, RdvDayPersisted>): void {
   if (rdvFirebaseSyncActive) {
     rdvFirebaseMap = { ...map };
+    writeLocalMirror(rdvFirebaseMap);
+    if (!rdvFirebaseBootstrapReady) {
+      rdvFirebasePendingWrite = { ...rdvFirebaseMap };
+      window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
+      return;
+    }
+    rdvFirebasePendingWrite = null;
     bumpRdvSuppressRemote();
     window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
     void setSotStateDocWithRetry(SOT_STATE_DOC.rdvByDate, rdvFirebaseMap).catch((e) => {
@@ -118,11 +151,7 @@ function writeAll(map: Record<string, RdvDayPersisted>): void {
     });
     return;
   }
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* ignore */
-  }
+  writeLocalMirror(map);
   window.dispatchEvent(new Event(RDV_STORAGE_EVENT));
 }
 
