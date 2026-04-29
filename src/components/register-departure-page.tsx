@@ -289,25 +289,128 @@ export function RegisterDeparturePage() {
   const [saidaFiltroViatura, setSaidaFiltroViatura] = useState("");
   const [saidaFiltroMotorista, setSaidaFiltroMotorista] = useState("");
   const [saidaFiltroTipo, setSaidaFiltroTipo] = useState<"Todos" | DepartureType>("Todos");
+  const [saidaFiltroSetor, setSaidaFiltroSetor] = useState("");
+  const [saidaFiltroResponsavel, setSaidaFiltroResponsavel] = useState("");
+  const [saidaFiltroOm, setSaidaFiltroOm] = useState("");
+  const [saidaFiltroHospital, setSaidaFiltroHospital] = useState("");
+  const [saidaFiltroCidade, setSaidaFiltroCidade] = useState("");
+  const [saidaFiltroBairro, setSaidaFiltroBairro] = useState("");
+  const [saidaFiltroObjetivo, setSaidaFiltroObjetivo] = useState("");
+  const [saidaFiltroDataSaida, setSaidaFiltroDataSaida] = useState("");
+  const [saidaFiltroDataPedido, setSaidaFiltroDataPedido] = useState("");
+  const [saidaFiltroCancelada, setSaidaFiltroCancelada] = useState<"Todas" | "Ativas" | "Canceladas">("Todas");
+  const [saidaFiltroOcorrencias, setSaidaFiltroOcorrencias] = useState<
+    "Todas" | "Com ocorrência" | "Sem ocorrência"
+  >("Todas");
   const [saidaLupaBusca, setSaidaLupaBusca] = useState("");
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
+
+  const saidaFiltroViaturaOptions = useMemo(() => {
+    const fromRows = departures.map((d) => d.viaturas.trim()).filter(Boolean);
+    const merged = mergeUniqueSorted(mergeViaturasCatalog(catalogItems), fromRows);
+    return merged;
+  }, [departures, catalogItems]);
+
+  const saidaFiltroMotoristaOptions = useMemo(() => {
+    const fromRows = departures.map((d) => d.motoristas.trim()).filter(Boolean);
+    return mergeUniqueSorted(catalogItems.motoristas, fromRows);
+  }, [departures, catalogItems.motoristas]);
+
+  const saidaFiltroSetorOptions = useMemo(
+    () => mergeUniqueSorted(catalogItems.setores, departures.map((d) => d.setor.trim()).filter(Boolean)),
+    [departures, catalogItems.setores],
+  );
+  const saidaFiltroResponsavelOptions = useMemo(
+    () =>
+      mergeUniqueSorted(
+        catalogItems.responsaveis,
+        departures.map((d) => d.responsavelPedido.trim()).filter(Boolean),
+      ),
+    [departures, catalogItems.responsaveis],
+  );
+  const saidaFiltroOmOptions = useMemo(
+    () => mergeUniqueSorted(catalogItems.oms, departures.map((d) => d.om.trim()).filter(Boolean)),
+    [departures, catalogItems.oms],
+  );
+  const saidaFiltroHospitalOptions = useMemo(
+    () =>
+      mergeUniqueSorted(
+        catalogItems.hospitais,
+        departures.map((d) => d.hospitalDestino.trim()).filter(Boolean),
+      ),
+    [departures, catalogItems.hospitais],
+  );
+  const saidaFiltroCidadeOptions = useMemo(
+    () => mergeUniqueSorted([], departures.map((d) => d.cidade.trim()).filter(Boolean)),
+    [departures],
+  );
+  const saidaFiltroBairroOptions = useMemo(
+    () => mergeUniqueSorted([], departures.map((d) => d.bairro.trim()).filter(Boolean)),
+    [departures],
+  );
+  const saidaFiltroObjetivoOptions = useMemo(
+    () => mergeUniqueSorted([], departures.map((d) => d.objetivoSaida.trim()).filter(Boolean)),
+    [departures],
+  );
 
   const saidasCadastradasFiltradas = useMemo(() => {
     const v = saidaFiltroViatura.trim().toLowerCase();
     const m = saidaFiltroMotorista.trim().toLowerCase();
+    const setor = saidaFiltroSetor.trim().toLowerCase();
+    const resp = saidaFiltroResponsavel.trim().toLowerCase();
+    const om = saidaFiltroOm.trim().toLowerCase();
+    const hosp = saidaFiltroHospital.trim().toLowerCase();
+    const cid = saidaFiltroCidade.trim().toLowerCase();
+    const bairro = saidaFiltroBairro.trim().toLowerCase();
+    const obj = saidaFiltroObjetivo.trim().toLowerCase();
+    const dataSaida = normalizeDatePtBr(saidaFiltroDataSaida).trim();
+    const dataPedido = normalizeDatePtBr(saidaFiltroDataPedido).trim();
     let list = departures;
 
     if (saidaFiltroTipo !== "Todos") {
       list = list.filter((d) => d.tipo === saidaFiltroTipo);
     }
     if (v) {
-      list = list.filter((d) => d.viaturas.trim().toLowerCase().includes(v));
+      list = list.filter((d) => d.viaturas.trim().toLowerCase() === v);
     }
     if (m) {
-      list = list.filter((d) => d.motoristas.trim().toLowerCase().includes(m));
+      list = list.filter((d) => d.motoristas.trim().toLowerCase() === m);
+    }
+    if (setor) list = list.filter((d) => d.setor.trim().toLowerCase() === setor);
+    if (resp) list = list.filter((d) => d.responsavelPedido.trim().toLowerCase() === resp);
+    if (om) list = list.filter((d) => d.om.trim().toLowerCase() === om);
+    if (hosp) list = list.filter((d) => d.hospitalDestino.trim().toLowerCase() === hosp);
+    if (cid) list = list.filter((d) => d.cidade.trim().toLowerCase() === cid);
+    if (bairro) list = list.filter((d) => d.bairro.trim().toLowerCase() === bairro);
+    if (obj) list = list.filter((d) => d.objetivoSaida.trim().toLowerCase() === obj);
+    if (dataSaida) list = list.filter((d) => normalizeDatePtBr(d.dataSaida) === dataSaida);
+    if (dataPedido) list = list.filter((d) => normalizeDatePtBr(d.dataPedido) === dataPedido);
+    if (saidaFiltroCancelada === "Ativas") list = list.filter((d) => d.cancelada !== true);
+    if (saidaFiltroCancelada === "Canceladas") list = list.filter((d) => d.cancelada === true);
+    if (saidaFiltroOcorrencias === "Com ocorrência") {
+      list = list.filter((d) => String(d.ocorrencias ?? "").trim().length > 0);
+    }
+    if (saidaFiltroOcorrencias === "Sem ocorrência") {
+      list = list.filter((d) => String(d.ocorrencias ?? "").trim().length === 0);
     }
     return list;
-  }, [departures, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura]);
+  }, [
+    departures,
+    saidaFiltroMotorista,
+    saidaFiltroTipo,
+    saidaFiltroViatura,
+    saidaFiltroSetor,
+    saidaFiltroResponsavel,
+    saidaFiltroOm,
+    saidaFiltroHospital,
+    saidaFiltroCidade,
+    saidaFiltroBairro,
+    saidaFiltroObjetivo,
+    saidaFiltroDataSaida,
+    saidaFiltroDataPedido,
+    saidaFiltroCancelada,
+    saidaFiltroOcorrencias,
+  ]);
 
   const emptyLabelSaidasCadastradas = useMemo(() => {
     const base = "Nenhuma saída cadastrada ainda. Use Cadastrar Nova Saída para incluir.";
@@ -316,9 +419,37 @@ export function RegisterDeparturePage() {
       saidaFiltroViatura.trim().length > 0 ||
       saidaFiltroMotorista.trim().length > 0 ||
       saidaFiltroTipo !== "Todos" ||
+      saidaFiltroSetor.trim().length > 0 ||
+      saidaFiltroResponsavel.trim().length > 0 ||
+      saidaFiltroOm.trim().length > 0 ||
+      saidaFiltroHospital.trim().length > 0 ||
+      saidaFiltroCidade.trim().length > 0 ||
+      saidaFiltroBairro.trim().length > 0 ||
+      saidaFiltroObjetivo.trim().length > 0 ||
+      normalizeDatePtBr(saidaFiltroDataSaida).trim().length > 0 ||
+      normalizeDatePtBr(saidaFiltroDataPedido).trim().length > 0 ||
+      saidaFiltroCancelada !== "Todas" ||
+      saidaFiltroOcorrencias !== "Todas" ||
       saidaLupaBusca.trim().length > 0;
     return hasFilters ? "Nenhuma saída encontrada com os filtros atuais." : base;
-  }, [departures.length, saidaFiltroMotorista, saidaFiltroTipo, saidaFiltroViatura, saidaLupaBusca]);
+  }, [
+    departures.length,
+    saidaFiltroMotorista,
+    saidaFiltroTipo,
+    saidaFiltroViatura,
+    saidaFiltroSetor,
+    saidaFiltroResponsavel,
+    saidaFiltroOm,
+    saidaFiltroHospital,
+    saidaFiltroCidade,
+    saidaFiltroBairro,
+    saidaFiltroObjetivo,
+    saidaFiltroDataSaida,
+    saidaFiltroDataPedido,
+    saidaFiltroCancelada,
+    saidaFiltroOcorrencias,
+    saidaLupaBusca,
+  ]);
 
   /** Após clicar em Cadastrar Saída com itens fora do catálogo; exibe o + piscando. */
   const [catalogSubmitAttempted, setCatalogSubmitAttempted] = useState(false);
@@ -1181,35 +1312,43 @@ export function RegisterDeparturePage() {
         <CardContent>
           {activeSubTab === "Saídas Cadastradas" ? (
             <>
-              <div className="mb-4 grid gap-3 md:grid-cols-4">
+              <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="saida-filter-viatura">
                     Viatura
                   </label>
-                  <input
+                  <select
                     id="saida-filter-viatura"
-                    type="text"
-                    autoComplete="off"
                     value={saidaFiltroViatura}
                     onChange={(e) => setSaidaFiltroViatura(e.target.value)}
-                    placeholder="Filtrar por viatura…"
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                  />
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todas</option>
+                    {saidaFiltroViaturaOptions.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="saida-filter-motorista">
                     Motorista
                   </label>
-                  <input
+                  <select
                     id="saida-filter-motorista"
-                    type="text"
-                    autoComplete="off"
                     value={saidaFiltroMotorista}
                     onChange={(e) => setSaidaFiltroMotorista(e.target.value)}
-                    placeholder="Filtrar por motorista…"
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                  />
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroMotoristaOptions.map((mtr) => (
+                      <option key={mtr} value={mtr}>
+                        {mtr}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -1228,7 +1367,210 @@ export function RegisterDeparturePage() {
                   </select>
                 </div>
 
-                <div className="space-y-2 md:col-span-1 md:row-span-1">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-setor">
+                    Setor
+                  </label>
+                  <select
+                    id="saida-filter-setor"
+                    value={saidaFiltroSetor}
+                    onChange={(e) => setSaidaFiltroSetor(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroSetorOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-responsavel">
+                    Responsável
+                  </label>
+                  <select
+                    id="saida-filter-responsavel"
+                    value={saidaFiltroResponsavel}
+                    onChange={(e) => setSaidaFiltroResponsavel(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroResponsavelOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-om">
+                    OM
+                  </label>
+                  <select
+                    id="saida-filter-om"
+                    value={saidaFiltroOm}
+                    onChange={(e) => setSaidaFiltroOm(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todas</option>
+                    {saidaFiltroOmOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-hospital">
+                    Hospital
+                  </label>
+                  <select
+                    id="saida-filter-hospital"
+                    value={saidaFiltroHospital}
+                    onChange={(e) => setSaidaFiltroHospital(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroHospitalOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-cidade">
+                    Cidade
+                  </label>
+                  <select
+                    id="saida-filter-cidade"
+                    value={saidaFiltroCidade}
+                    onChange={(e) => setSaidaFiltroCidade(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todas</option>
+                    {saidaFiltroCidadeOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-bairro">
+                    Bairro
+                  </label>
+                  <select
+                    id="saida-filter-bairro"
+                    value={saidaFiltroBairro}
+                    onChange={(e) => setSaidaFiltroBairro(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroBairroOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-objetivo">
+                    Objetivo
+                  </label>
+                  <select
+                    id="saida-filter-objetivo"
+                    value={saidaFiltroObjetivo}
+                    onChange={(e) => setSaidaFiltroObjetivo(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Todos</option>
+                    {saidaFiltroObjetivoOptions.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-data-saida">
+                    Data da saída
+                  </label>
+                  <input
+                    id="saida-filter-data-saida"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={saidaFiltroDataSaida}
+                    onChange={(e) => setSaidaFiltroDataSaida(normalizeDatePtBr(e.target.value))}
+                    placeholder="dd/mm/aaaa"
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-data-pedido">
+                    Data do pedido
+                  </label>
+                  <input
+                    id="saida-filter-data-pedido"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={saidaFiltroDataPedido}
+                    onChange={(e) => setSaidaFiltroDataPedido(normalizeDatePtBr(e.target.value))}
+                    placeholder="dd/mm/aaaa"
+                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-cancelada">
+                    Situação
+                  </label>
+                  <select
+                    id="saida-filter-cancelada"
+                    value={saidaFiltroCancelada}
+                    onChange={(e) =>
+                      setSaidaFiltroCancelada(e.target.value as "Todas" | "Ativas" | "Canceladas")
+                    }
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="Todas">Todas</option>
+                    <option value="Ativas">Ativas</option>
+                    <option value="Canceladas">Canceladas</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="saida-filter-ocorrencias">
+                    Ocorrências
+                  </label>
+                  <select
+                    id="saida-filter-ocorrencias"
+                    value={saidaFiltroOcorrencias}
+                    onChange={(e) =>
+                      setSaidaFiltroOcorrencias(
+                        e.target.value as "Todas" | "Com ocorrência" | "Sem ocorrência",
+                      )
+                    }
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="Todas">Todas</option>
+                    <option value="Com ocorrência">Com ocorrência</option>
+                    <option value="Sem ocorrência">Sem ocorrência</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2 md:col-span-2 xl:col-span-2">
                   <label className="text-sm font-medium" htmlFor="saida-lupa-busca">
                     Lupa
                   </label>
@@ -1249,6 +1591,33 @@ export function RegisterDeparturePage() {
                     />
                   </div>
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">O texto é destacado em negrito.</p>
+                </div>
+
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="default"
+                    className="h-10 w-full"
+                    onClick={() => {
+                      setSaidaFiltroViatura("");
+                      setSaidaFiltroMotorista("");
+                      setSaidaFiltroTipo("Todos");
+                      setSaidaFiltroSetor("");
+                      setSaidaFiltroResponsavel("");
+                      setSaidaFiltroOm("");
+                      setSaidaFiltroHospital("");
+                      setSaidaFiltroCidade("");
+                      setSaidaFiltroBairro("");
+                      setSaidaFiltroObjetivo("");
+                      setSaidaFiltroDataSaida("");
+                      setSaidaFiltroDataPedido("");
+                      setSaidaFiltroCancelada("Todas");
+                      setSaidaFiltroOcorrencias("Todas");
+                      setSaidaLupaBusca("");
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
                 </div>
               </div>
 
