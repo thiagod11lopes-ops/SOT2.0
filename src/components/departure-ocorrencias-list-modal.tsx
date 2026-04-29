@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import autoTable from "jspdf-autotable";
+import { jsPDF } from "jspdf";
 import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 
@@ -6,13 +8,25 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rows: DepartureRecord[];
+  viaturasOptions: string[];
+  motoristasOptions: string[];
 };
 
 function hasOcorrencia(row: DepartureRecord): boolean {
   return String(row.ocorrencias ?? "").trim().length > 0;
 }
 
-export function DepartureOcorrenciasListModal({ open, onOpenChange, rows }: Props) {
+function safeFileSegment(value: string): string {
+  return value.replace(/[^\d\-a-zA-ZÀ-ÿ]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "todas";
+}
+
+export function DepartureOcorrenciasListModal({
+  open,
+  onOpenChange,
+  rows,
+  viaturasOptions,
+  motoristasOptions,
+}: Props) {
   const [filtroViatura, setFiltroViatura] = useState("");
   const [filtroMotorista, setFiltroMotorista] = useState("");
 
@@ -21,10 +35,61 @@ export function DepartureOcorrenciasListModal({ open, onOpenChange, rows }: Prop
     const m = filtroMotorista.trim().toLowerCase();
     return rows
       .filter(hasOcorrencia)
-      .filter((r) => (v ? r.viaturas.trim().toLowerCase().includes(v) : true))
-      .filter((r) => (m ? r.motoristas.trim().toLowerCase().includes(m) : true))
+      .filter((r) => (v ? r.viaturas.trim().toLowerCase() === v : true))
+      .filter((r) => (m ? r.motoristas.trim().toLowerCase() === m : true))
       .sort((a, b) => b.createdAt - a.createdAt);
   }, [rows, filtroViatura, filtroMotorista]);
+
+  function handleGerarPdf() {
+    if (ocorrencias.length === 0) {
+      window.alert("Não há ocorrências para gerar PDF com os filtros atuais.");
+      return;
+    }
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const margin = 12;
+    let y = margin;
+    const centerX = doc.internal.pageSize.getWidth() / 2;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Relatório de Ocorrências", centerX, y, { align: "center" });
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(
+      `Filtros - Viatura: ${filtroViatura || "Todas"} | Motorista: ${filtroMotorista || "Todos"}`,
+      centerX,
+      y,
+      { align: "center" },
+    );
+    y += 8;
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [["Tipo", "Data Saída", "Hora", "Viatura", "Motorista", "Ocorrência"]],
+      body: ocorrencias.map((r) => [
+        r.tipo || "—",
+        r.dataSaida || "—",
+        r.horaSaida || "—",
+        r.viaturas || "—",
+        r.motoristas || "—",
+        String(r.ocorrencias ?? "").trim() || "—",
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.8, overflow: "linebreak", valign: "top" },
+      headStyles: { fillColor: [230, 230, 235], textColor: [20, 20, 20], fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 16 },
+        3: { cellWidth: 38 },
+        4: { cellWidth: 46 },
+        5: { cellWidth: "auto" },
+      },
+    });
+    const slugV = safeFileSegment(filtroViatura || "todas_viaturas");
+    const slugM = safeFileSegment(filtroMotorista || "todos_motoristas");
+    doc.save(`ocorrencias_${slugV}_${slugM}.pdf`);
+  }
 
   if (!open) return null;
 
@@ -46,9 +111,14 @@ export function DepartureOcorrenciasListModal({ open, onOpenChange, rows }: Prop
           <h2 id="ocorrencias-list-title" className="text-lg font-semibold text-[hsl(var(--foreground))]">
             Ocorrências
           </h2>
-          <Button type="button" onClick={() => onOpenChange(false)}>
-            Fechar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="default" onClick={handleGerarPdf}>
+              Gerar PDF
+            </Button>
+            <Button type="button" onClick={() => onOpenChange(false)}>
+              Fechar
+            </Button>
+          </div>
         </div>
 
         <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
@@ -60,29 +130,37 @@ export function DepartureOcorrenciasListModal({ open, onOpenChange, rows }: Prop
             <label className="text-sm font-medium" htmlFor="ocorrencias-filter-viatura">
               Viatura
             </label>
-            <input
+            <select
               id="ocorrencias-filter-viatura"
-              type="text"
-              autoComplete="off"
               value={filtroViatura}
               onChange={(e) => setFiltroViatura(e.target.value)}
-              placeholder="Filtrar por viatura..."
-              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-            />
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            >
+              <option value="">Todas</option>
+              {viaturasOptions.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="ocorrencias-filter-motorista">
               Motorista
             </label>
-            <input
+            <select
               id="ocorrencias-filter-motorista"
-              type="text"
-              autoComplete="off"
               value={filtroMotorista}
               onChange={(e) => setFiltroMotorista(e.target.value)}
-              placeholder="Filtrar por motorista..."
-              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-            />
+              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            >
+              <option value="">Todos</option>
+              {motoristasOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

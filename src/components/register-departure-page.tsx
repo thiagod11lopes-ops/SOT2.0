@@ -1272,6 +1272,8 @@ export function RegisterDeparturePage() {
                 open={ocorrenciasModalOpen}
                 onOpenChange={setOcorrenciasModalOpen}
                 rows={departures}
+                viaturasOptions={mergedViaturasCatalog}
+                motoristasOptions={catalogItems.motoristas}
               />
             </>
           ) : activeSubTab === "Cadastrar Itens" ? (
