@@ -53,13 +53,32 @@ export function isCompleteDatePtBr(value: string) {
 }
 
 /**
+ * Normaliza datas legadas para `dd/mm/aaaa`.
+ * Aceita `dd/mm/aaaa`, `dd/mm/aa` e `yyyy-mm-dd`.
+ */
+export function normalizeLegacyDateToPtBr(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (isCompleteDatePtBr(t)) return t;
+  const shortPt = /^(\d{2})\/(\d{2})\/(\d{2})$/.exec(t);
+  if (shortPt) {
+    const yy = Number(shortPt[3]);
+    const fullYear = yy >= 70 ? 1900 + yy : 2000 + yy;
+    return `${shortPt[1]}/${shortPt[2]}/${String(fullYear)}`;
+  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return t;
+}
+
+/**
  * Converte o texto de "data da saída" do formulário para `dd/mm/aaaa` usado no filtro da lista.
  * Aceita valor já mascarado ou só com 8 dígitos.
  */
 export function dataSaidaToListFilterPtBr(raw: string): string | null {
-  const t = raw.trim();
+  const t = normalizeLegacyDateToPtBr(raw);
   if (isCompleteDatePtBr(t)) return t;
-  const digits = t.replace(/\D/g, "").slice(0, 8);
+  const digits = raw.trim().replace(/\D/g, "").slice(0, 8);
   if (digits.length === 8) {
     const n = normalizeDatePtBr(digits);
     if (isCompleteDatePtBr(n)) return n;
@@ -168,7 +187,7 @@ export function parseIsoDateToDate(value: string): Date | undefined {
 export function isDepartureDateSameLocalDay(dataSaida: string, hojePtBr: string): boolean {
   const hoje = parsePtBrToDate(hojePtBr.trim());
   if (!hoje) return false;
-  const raw = dataSaida?.trim() ?? "";
+  const raw = normalizeLegacyDateToPtBr(dataSaida ?? "");
   if (!raw) return false;
   const d = parsePtBrToDate(raw) ?? parseIsoDateToDate(raw);
   if (!d) return false;
@@ -184,7 +203,9 @@ export function isDepartureDateSameLocalDay(dataSaida: string, hojePtBr: string)
  * Aceita dd/mm/aaaa ou yyyy-mm-dd nos campos.
  */
 export function getDepartureReferenceDate(record: DepartureRecord): Date | undefined {
-  const raw = record.dataSaida?.trim() || record.dataPedido?.trim();
+  const raw =
+    normalizeLegacyDateToPtBr(record.dataSaida?.trim() || "") ||
+    normalizeLegacyDateToPtBr(record.dataPedido?.trim() || "");
   if (!raw) return undefined;
   return parsePtBrToDate(raw) ?? parseIsoDateToDate(raw);
 }
