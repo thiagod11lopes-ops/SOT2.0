@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { CalendarDays, CheckCircle2, Loader2, Search } from "lucide-react";
+import { CalendarDays, CheckCircle2, ClipboardList, Loader2, Search } from "lucide-react";
 import {
   isValueInCatalog,
   mergeViaturasCatalog,
@@ -45,6 +45,7 @@ import type { DepartureRecord, DepartureType } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
 import { CatalogComboField } from "./catalog-select";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
+import { DepartureOcorrenciasListModal } from "./departure-ocorrencias-list-modal";
 import { RegisteredFullDeparturesTable } from "./registered-full-departures-table";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -289,6 +290,7 @@ export function RegisterDeparturePage() {
   const [saidaFiltroMotorista, setSaidaFiltroMotorista] = useState("");
   const [saidaFiltroTipo, setSaidaFiltroTipo] = useState<"Todos" | DepartureType>("Todos");
   const [saidaLupaBusca, setSaidaLupaBusca] = useState("");
+  const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
 
   const saidasCadastradasFiltradas = useMemo(() => {
     const v = saidaFiltroViatura.trim().toLowerCase();
@@ -1162,6 +1164,19 @@ export function RegisterDeparturePage() {
               Preencher com exemplo
             </Button>
           ) : null}
+          {activeSubTab === "Saídas Cadastradas" ? (
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              aria-label="Abrir ocorrências"
+              title="Ocorrências"
+              onClick={() => setOcorrenciasModalOpen(true)}
+            >
+              <ClipboardList className="h-4 w-4" />
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           {activeSubTab === "Saídas Cadastradas" ? (
@@ -1252,6 +1267,11 @@ export function RegisterDeparturePage() {
                 highlightTerm={saidaLupaBusca}
                 onTrashClick={(id) => setDeleteModalId(id)}
                 onEdit={beginEditDeparture}
+              />
+              <DepartureOcorrenciasListModal
+                open={ocorrenciasModalOpen}
+                onOpenChange={setOcorrenciasModalOpen}
+                rows={departures}
               />
             </>
           ) : activeSubTab === "Cadastrar Itens" ? (
