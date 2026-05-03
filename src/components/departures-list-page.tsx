@@ -13,6 +13,7 @@ import {
   formatDateToPtBr,
   getCurrentDatePtBr,
   isCompleteDatePtBr,
+  normalizeLegacyDateToPtBr,
   normalizeDatePtBrWithCaret,
   parsePtBrToDate,
   sortDatasPtBr,
@@ -44,6 +45,22 @@ function sortKeyHoraSaida(horaSaida: string): number {
   const parsed = parseHhMm(horaSaida);
   if (!parsed) return Number.POSITIVE_INFINITY;
   return parsed.h * 60 + parsed.m;
+}
+
+function normalizeDepartureTipoForMatch(tipo: string): string {
+  return tipo
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function departureMatchesFilterTipo(recordTipo: string, filterTipo: DepartureType): boolean {
+  const normalizedRecord = normalizeDepartureTipoForMatch(recordTipo);
+  const normalizedFilter = normalizeDepartureTipoForMatch(filterTipo);
+  if (normalizedRecord === normalizedFilter) return true;
+  // Compatibilidade com registros legados/importados que trazem lixo no final.
+  return normalizedRecord.startsWith(normalizedFilter);
 }
 
 export function DeparturesListPage({
@@ -117,9 +134,9 @@ export function DeparturesListPage({
   );
 
   const rows = useMemo(() => {
-    let list = departures.filter((d) => d.tipo === filterTipo);
+    let list = departures.filter((d) => departureMatchesFilterTipo(d.tipo, filterTipo));
     if (isCompleteDatePtBr(filterDepartureDate)) {
-      list = list.filter((d) => d.dataSaida === filterDepartureDate);
+      list = list.filter((d) => normalizeLegacyDateToPtBr(d.dataSaida) === filterDepartureDate);
     }
     list = [...list].sort((a, b) => {
       const ka = sortKeyHoraSaida(a.horaSaida);
@@ -134,12 +151,14 @@ export function DeparturesListPage({
   const dayDepartureCount = useMemo(() => {
     if (!isCompleteDatePtBr(filterDepartureDate)) return null;
     return departures.filter(
-      (d) => d.tipo === filterTipo && d.dataSaida === filterDepartureDate,
+      (d) =>
+        departureMatchesFilterTipo(d.tipo, filterTipo) &&
+        normalizeLegacyDateToPtBr(d.dataSaida) === filterDepartureDate,
     ).length;
   }, [departures, filterTipo, filterDepartureDate]);
 
   const emptyMessage = useMemo(() => {
-    const ofTipo = departures.filter((d) => d.tipo === filterTipo);
+    const ofTipo = departures.filter((d) => departureMatchesFilterTipo(d.tipo, filterTipo));
     if (ofTipo.length === 0) return "Nenhuma saída cadastrada para este tipo.";
     if (isCompleteDatePtBr(filterDepartureDate) && rows.length === 0) {
       return "Nenhum registro encontrado para a data de saída selecionada.";
@@ -167,7 +186,11 @@ export function DeparturesListPage({
   }
 
   function departuresRowsForDate(datePtBr: string): DepartureRecord[] {
-    const list = departures.filter((d) => d.tipo === filterTipo && d.dataSaida === datePtBr);
+    const list = departures.filter(
+      (d) =>
+        departureMatchesFilterTipo(d.tipo, filterTipo) &&
+        normalizeLegacyDateToPtBr(d.dataSaida) === datePtBr,
+    );
     return [...list].sort((a, b) => {
       const ka = sortKeyHoraSaida(a.horaSaida);
       const kb = sortKeyHoraSaida(b.horaSaida);

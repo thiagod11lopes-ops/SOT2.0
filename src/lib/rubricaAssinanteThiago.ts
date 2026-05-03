@@ -1,5 +1,6 @@
 /** Nome no catálogo de motoristas que usa a rubrica PNG na área de assinatura (lista de saídas). */
-const ASSINANTE_RUBRICA_THIAGO = "SG Thiago";
+const ASSINANTE_RUBRICA_THIAGO = "2°SG Thiago Lopes";
+const ASSINANTE_RUBRICA_THIAGO_ALIASES = ["SG Thiago Lopes", "SG Thiago"];
 
 function normalizeAssinanteName(s: string): string {
   return s.trim().replace(/\s+/g, " ").toLowerCase();
@@ -7,7 +8,11 @@ function normalizeAssinanteName(s: string): string {
 
 export function isAssinanteRubricaThiago(name: string | null | undefined): boolean {
   if (name == null || !String(name).trim()) return false;
-  return normalizeAssinanteName(name) === normalizeAssinanteName(ASSINANTE_RUBRICA_THIAGO);
+  const normalized = normalizeAssinanteName(name);
+  if (normalized === normalizeAssinanteName(ASSINANTE_RUBRICA_THIAGO)) return true;
+  return ASSINANTE_RUBRICA_THIAGO_ALIASES.some(
+    (alias) => normalized === normalizeAssinanteName(alias),
+  );
 }
 
 /** URL servida pelo Vite (`public/Rubrica.png`); respeita `base` em produção. */

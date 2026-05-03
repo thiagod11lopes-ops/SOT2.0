@@ -32,6 +32,15 @@ export interface DetalheServicoMotoristaPdfParams {
   feriasForMonth?: Record<string, DetalheServicoFeriasPeriodo[]>;
 }
 
+export type DetalheServicoPortraitPdfRow = {
+  day: number;
+  dateKey: string;
+  weekdayLetter: string;
+  motorista1: string;
+  motorista2: string;
+  retem: string;
+};
+
 function parseMonthYearValue(value: string): { year: number; monthIndex: number } | null {
   const parts = value.split("-");
   if (parts.length < 2) return null;
@@ -237,7 +246,7 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const MARGIN = 10;
 
 /** Distância da borda superior da folha A4 à linha de base da primeira linha do título (mm). */
-const PDF_TITULO_DIST_TOPO_MM = 7;
+const PDF_TITULO_DIST_TOPO_MM = 12;
 /** Espaçamento entre linhas consecutivas do título institucional (mm). */
 const PDF_TITULO_ENTRE_LINHAS_MM = 5.5;
 /** Espaço entre a última linha do título e o topo da primeira tabela (mm). */
@@ -782,6 +791,219 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
   drawRodapeAssinaturaPdf(doc, pageW, finalY2, rodapeAssinatura);
 
   const slug = monthYear.replace(/[^\d-]/g, "") || "mes";
+  doc.save(`detalhe-servico-motorista-${slug}.pdf`);
+}
+
+export function downloadDetalheServicoMotoristaPortraitPdf(args: {
+  monthYear: string;
+  rows: DetalheServicoPortraitPdfRow[];
+  columnGray: Record<string, boolean>;
+  rodapeAssinatura: DetalheServicoRodapeAssinatura;
+  prevMonthSheet: DetalheServicoSheetSnapshot | null;
+  portraitObservacoes?: string[];
+}): void {
+  const parsed = parseMonthYearValue(args.monthYear);
+  if (!parsed) {
+    downloadDetalheServicoMotoristaPdfHeadersOnly(args.monthYear);
+    return;
+  }
+  const { year, monthIndex } = parsed;
+  const days = buildMonthDays(year, monthIndex);
+  const weekendDateKeys = new Set(
+    days.filter((d) => d.isWeekend).map((d) => dateKey(year, monthIndex, d.day)),
+  );
+
+  const doc = new jsPDF({
+    unit: "mm",
+    format: "a4",
+    orientation: "portrait",
+  }) as JsPDFWithAutoTable;
+  const pageW = doc.internal.pageSize.getWidth();
+  const centerX = pageW / 2;
+  let y = PDF_TITULO_DIST_TOPO_MM;
+
+  const lines = [
+    "MARINHA DO BRASIL",
+    "HOSPITAL NAVAL MARCÍLIO DIAS",
+    "DETALHE DE SERVIÇO DE MOTORISTA",
+    formatDetalheServicoPdfMonthYear(args.monthYear),
+  ];
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i]!, centerX, y, { align: "center" });
+    if (i < lines.length - 1) y += PDF_TITULO_ENTRE_LINHAS_MM;
+  }
+  y += PDF_TITULO_PARA_TABELA_MM;
+
+  const head = [["DATA", "", "MOTORISTA 1", "MOTORISTA 2", "RETÉM"]];
+  const body = args.rows.map((r) => [
+    String(r.day),
+    r.weekdayLetter,
+    r.motorista1.toUpperCase(),
+    r.motorista2.toUpperCase(),
+    r.retem.toUpperCase(),
+  ]);
+
+  const observacoes = (args.portraitObservacoes ?? []).map((x) => x.trim()).filter(Boolean);
+  const prevMonthKey = getPreviousMonthKey(args.monthYear);
+  const prevParsed = parseMonthYearValue(prevMonthKey);
+  const prevDays = prevParsed ? buildMonthDays(prevParsed.year, prevParsed.monthIndex) : [];
+  const diasNaoTableRows: string[][] = [];
+  if (!args.prevMonthSheet || args.prevMonthSheet.rows.length === 0) {
+    diasNaoTableRows.push(["—", "Sem dados guardados para o mês anterior."]);
+  } else if (!prevParsed) {
+    diasNaoTableRows.push(["—", "Mês anterior inválido para cálculo."]);
+  } else {
+    const prevMonthRowsFC = args.prevMonthSheet.rows.filter((rowId) =>
+      isMotoristaFC((args.prevMonthSheet?.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim()),
+    );
+    if (prevMonthRowsFC.length === 0) {
+      diasNaoTableRows.push(["—", "Sem motoristas com FC no mês anterior."]);
+    } else {
+      const rowNums: number[][] = [];
+      for (const rowId of prevMonthRowsFC) {
+        rowNums.push(
+          listDiasSemMarcacaoSingleRow(
+            args.prevMonthSheet,
+            rowId,
+            prevParsed.year,
+            prevParsed.monthIndex,
+            prevDays,
+          ),
+        );
+      }
+      let maxLen = 0;
+      for (const nums of rowNums) {
+        if (nums.length > maxLen) maxLen = nums.length;
+      }
+      if (maxLen === 0) maxLen = 1;
+
+      const tableBody: string[][] = [];
+      for (let i = 0; i < prevMonthRowsFC.length; i++) {
+        const rowId = prevMonthRowsFC[i]!;
+        const nome = (args.prevMonthSheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim() || "—";
+        const nums = rowNums[i]!;
+        const row: string[] = [nome];
+        if (nums.length === 0) {
+          row.push("—");
+          for (let p = 1; p < maxLen; p++) row.push("");
+        } else {
+          for (let j = 0; j < maxLen; j++) row.push(j < nums.length ? String(nums[j]) : "");
+        }
+        tableBody.push(row);
+      }
+      diasNaoTableRows.push(...tableBody);
+    }
+  }
+
+  // Ajuste para caber em uma única A4 (tabela + dias não trabalhados + observações + rodapé).
+  const pageH = doc.internal.pageSize.getHeight();
+  const room = pageH - y - PDF_RODAPE_FUNCAO_DIST_BORDA_INFERIOR_MM;
+  const rowsCount = Math.max(1, args.rows.length);
+  const diasCount = Math.max(1, diasNaoTableRows.length);
+  const obsCount = Math.max(0, observacoes.length);
+  const estimatedNeed =
+    12 +
+    rowsCount * 6.2 +
+    (obsCount > 0 ? 7 + obsCount * 4 : 0) +
+    7 +
+    diasCount * 4.8 +
+    estimateRodapeBlockMm(args.rodapeAssinatura);
+  const squeeze = estimatedNeed > room ? Math.max(0.56, room / estimatedNeed) : 1;
+  const tableFont = Math.max(6, Math.round(PDF_TABELA_FONT_PT * squeeze * 2) / 2);
+  const tablePad = Math.max(0.5, Math.min(PDF_TABELA_CELL_PADDING_MM, PDF_TABELA_CELL_PADDING_MM * squeeze));
+  const sectionFont = Math.max(6, Math.round(8 * squeeze * 2) / 2);
+
+  autoTable(doc, {
+    startY: y,
+    head,
+    body,
+    margin: { left: MARGIN, right: MARGIN },
+    tableLineWidth: PDF_TABELA_LINE_WIDTH_MM,
+    tableLineColor: PDF_TABELA_LINE_COLOR,
+    styles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontSize: tableFont,
+      cellPadding: tablePad,
+      halign: "center",
+      valign: "middle",
+      fillColor: BG_WHITE,
+    },
+    headStyles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontStyle: "bold",
+      fontSize: tableFont,
+      cellPadding: tablePad,
+      halign: "center",
+      valign: "middle",
+      fillColor: BG_WHITE,
+    },
+    theme: "grid",
+    didParseCell: (data) => {
+      if (data.section !== "body") return;
+      const row = args.rows[data.row.index];
+      if (!row) return;
+      const rowGray = Boolean(args.columnGray[row.dateKey]) || weekendDateKeys.has(row.dateKey);
+      if (rowGray) data.cell.styles.fillColor = BG_NEUTRAL_200;
+    },
+  });
+
+  let cursorY = (doc.lastAutoTable?.finalY ?? y + 40) + Math.max(2.5, 4 * squeeze);
+
+  if (observacoes.length > 0) {
+    cursorY += Math.max(0.8, 1.8 * squeeze);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(tableFont);
+    for (const obs of observacoes) {
+      const wrapped = doc.splitTextToSize(obs, pageW - MARGIN * 2);
+      for (const line of wrapped) {
+        doc.text(line, MARGIN, cursorY);
+        cursorY += Math.max(2.8, 3.6 * squeeze);
+      }
+    }
+    cursorY += Math.max(1, 1.8 * squeeze);
+  }
+
+  cursorY += Math.max(0.8, 1.8 * squeeze);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(sectionFont);
+  doc.text(`Dias não trabalhados do mês de ${formatMonthYearTitlePt(prevMonthKey)}`, MARGIN, cursorY);
+  cursorY += Math.max(1.4, 2.4 * squeeze);
+
+  autoTable(doc, {
+    startY: cursorY,
+    body: diasNaoTableRows,
+    showHead: false,
+    margin: { left: MARGIN, right: MARGIN },
+    tableLineWidth: PDF_TABELA_LINE_WIDTH_MM,
+    tableLineColor: PDF_TABELA_LINE_COLOR,
+    styles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontSize: tableFont,
+      cellPadding: tablePad,
+      valign: "middle",
+      fillColor: BG_WHITE,
+    },
+    alternateRowStyles: {
+      ...PDF_TABELA_BASE_STYLES,
+      fontSize: tableFont,
+      cellPadding: tablePad,
+      fillColor: [252, 252, 252],
+    },
+    theme: "grid",
+    tableWidth: "auto",
+    didParseCell: (data) => {
+      aplicarFonteUniformePdfTabela("body", data.cell.styles, tableFont, tablePad);
+      data.cell.styles.halign = data.column.index === 0 ? "left" : "center";
+    },
+  });
+
+  cursorY = (doc.lastAutoTable?.finalY ?? cursorY + 20) + Math.max(1.2, 2 * squeeze);
+
+  drawRodapeAssinaturaPdf(doc, pageW, cursorY, args.rodapeAssinatura);
+  const slug = args.monthYear.replace(/[^\d-]/g, "") || "mes";
   doc.save(`detalhe-servico-motorista-${slug}.pdf`);
 }
 

@@ -248,13 +248,38 @@ export function formatIsoDatePtBr(iso: string): string {
  * Hífen vira espaço (ex.: «FC-HÉLIO» e «FC HÉLIO» produzem a mesma chave «fc helio»).
  */
 export function normalizeDriverKey(name: string): string {
-  return name
+  const normalized = name
     .trim()
     .replace(/-/g, " ")
     .replace(/\s+/g, " ")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+  const aliases: Record<string, string> = {
+    "sg godinho": "1°sg godinho",
+    "1°sg godinho": "1°sg godinho",
+    "sg thiago": "2°sg thiago lopes",
+    "sg thiago lopes": "2°sg thiago lopes",
+    "2°sg thiago lopes": "2°sg thiago lopes",
+    "sg gerson": "2°sg gerson rocha",
+    "sg gerson rocha": "2°sg gerson rocha",
+    "2°sg gerson rocha": "2°sg gerson rocha",
+    "sg silva martins": "3°sg silva martins",
+    "3°sg silva martins": "3°sg silva martins",
+    "sg pacheco": "3°sg pacheco",
+    "3°sg pacheco": "3°sg pacheco",
+    "sg catroli": "3°sg catroli",
+    "3°sg catroli": "3°sg catroli",
+    "sg fernando": "3°sg fernando",
+    "3°sg fernando": "3°sg fernando",
+    "sg rm1 cordeiro": "2°sg rm1 cordeiro",
+    "2°sg rm1 cordeiro": "2°sg rm1 cordeiro",
+    "sg rm1 daniel gomes": "2°sg rm1 daniel gomes",
+    "2°sg rm1 daniel gomes": "2°sg rm1 daniel gomes",
+  };
+  const aliased = aliases[normalized];
+  if (aliased) return aliased;
+  return normalized;
 }
 
 /** Tokeniza chave já normalizada; reforça hífen como separador se ainda existir. */

@@ -11,6 +11,7 @@ import {
   emptyDetalheServicoBundle,
   type DetalheServicoBundle,
   type DetalheServicoFeriasPeriodo,
+  type DetalheServicoPortraitRow,
 } from "../lib/detalheServicoBundle";
 import { DetalheServicoFeriasModal, type FeriasDraftByMotorKey } from "./detalhe-servico-ferias-modal";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
@@ -18,6 +19,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   downloadDetalheServicoMotoristaPdf,
+  downloadDetalheServicoMotoristaPortraitPdf,
   type DetalheServicoRodapeAssinatura,
   type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
@@ -44,6 +46,17 @@ function letraDiaSemana(date: Date): string {
   const nome = date.toLocaleDateString("pt-PT", { weekday: "long" });
   const first = nome.charAt(0);
   return first.toLocaleUpperCase("pt-PT");
+}
+
+function letraDiaSemanaRetrato(date: Date): string {
+  const d = date.getDay();
+  if (d === 0) return "D";
+  if (d === 1) return "S";
+  if (d === 2) return "T";
+  if (d === 3) return "Q";
+  if (d === 4) return "Q";
+  if (d === 5) return "S";
+  return "S";
 }
 
 const CROSSED_TOKEN_PREFIX = "__X__";
@@ -244,6 +257,41 @@ function buildMotoristaSelectOptions(catalog: string[], current: string): string
   return list;
 }
 
+function derivePortraitRowsFromSheet(args: {
+  monthRows: Record<string, DetalheServicoPortraitRow> | undefined;
+  sheet: DetalheServicoSheetSnapshot;
+  days: DayMeta[];
+  year: number;
+  monthIndex: number;
+}): Array<{ day: number; dateKey: string; motorista1: string; motorista2: string; retem: string }> {
+  const { monthRows, sheet, days, year, monthIndex } = args;
+  return days.map(({ day }) => {
+    const dk = dateKey(year, monthIndex, day);
+    const persisted = monthRows?.[dk];
+    const seen = new Set<string>();
+    const fromServico: string[] = [];
+    for (const rowId of sheet.rows) {
+      const motorista = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+      if (!motorista) continue;
+      const raw = sheet.cells[rowId]?.[dk] ?? "";
+      if (!cellContainsServicoToken(raw)) continue;
+      const nk = normalizeMotoristaName(motorista);
+      if (seen.has(nk)) continue;
+      seen.add(nk);
+      fromServico.push(motorista);
+      if (fromServico.length >= 2) break;
+    }
+    return {
+      day,
+      dateKey: dk,
+      // Motorista 1/2 no retrato espelham sempre a escala do modo paisagem.
+      motorista1: fromServico[0] ?? "",
+      motorista2: fromServico[1] ?? "",
+      retem: persisted?.retem ?? "",
+    };
+  });
+}
+
 /** Conta tokens «S» e «RO» nas células dos dias (mês atual); horas = 24×S + 8×RO. Ignora dias em férias. */
 function tallyDayCellTokens(
   rowCells: Record<string, string>,
@@ -304,10 +352,86 @@ function normalizeMotoristaName(value: string): string {
     .toLowerCase();
 }
 
+function canonicalizeMotoristaPostoName(value: string): string {
+  const t = value.trim();
+  if (!t) return t;
+  const up = t.toUpperCase();
+  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
+  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
+    return "2°SG Thiago Lopes";
+  }
+  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
+    return "2°SG Gerson Rocha";
+  }
+  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
+  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
+  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
+  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
+  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
+  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
+    return "2°SG RM1 Daniel Gomes";
+  }
+  return t;
+}
+
+function migrateBundleMotoristaNames(bundle: DetalheServicoBundle): DetalheServicoBundle {
+  let changed = false;
+  const nextSheets: DetalheServicoBundle["sheets"] = {};
+  for (const [month, sheet] of Object.entries(bundle.sheets)) {
+    const nextCells: Record<string, Record<string, string>> = {};
+    for (const rowId of sheet.rows) {
+      const row = { ...(sheet.cells[rowId] ?? {}) };
+      if (typeof row[KEY_MOTORISTA] === "string") {
+        const canonical = canonicalizeMotoristaPostoName(row[KEY_MOTORISTA] ?? "");
+        if (canonical !== row[KEY_MOTORISTA]) {
+          row[KEY_MOTORISTA] = canonical;
+          changed = true;
+        }
+      }
+      nextCells[rowId] = row;
+    }
+    nextSheets[month] = { rows: [...sheet.rows], cells: nextCells };
+  }
+
+  const portraitByMonth = bundle.portraitByMonth ?? {};
+  const nextPortraitByMonth: NonNullable<DetalheServicoBundle["portraitByMonth"]> = {};
+  for (const [month, monthRows] of Object.entries(portraitByMonth)) {
+    const nextMonthRows: Record<string, DetalheServicoPortraitRow> = {};
+    for (const [isoDate, row] of Object.entries(monthRows)) {
+      const motorista1 = canonicalizeMotoristaPostoName(row.motorista1 ?? "");
+      const motorista2 = canonicalizeMotoristaPostoName(row.motorista2 ?? "");
+      const retem = canonicalizeMotoristaPostoName(row.retem ?? "");
+      if (
+        motorista1 !== (row.motorista1 ?? "") ||
+        motorista2 !== (row.motorista2 ?? "") ||
+        retem !== (row.retem ?? "")
+      ) {
+        changed = true;
+      }
+      nextMonthRows[isoDate] = { motorista1, motorista2, retem };
+    }
+    nextPortraitByMonth[month] = nextMonthRows;
+  }
+
+  if (!changed) return bundle;
+  return {
+    ...bundle,
+    version: 1,
+    sheets: nextSheets,
+    portraitByMonth: nextPortraitByMonth,
+  };
+}
+
 function parseIsoDateLocal(iso: string): Date | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatIsoDatePtBr(iso: string): string {
+  const d = parseIsoDateLocal(iso);
+  if (!d) return iso;
+  return d.toLocaleDateString("pt-BR");
 }
 
 /** Recorta um período às datas do mês `monthYear` (`YYYY-MM`); devolve `null` se não houver interseção. */
@@ -483,6 +607,10 @@ function mergeRemoteBundlePreservingLocalMonths(
     rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
     columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
     feriasByMonth: { ...localBundle.feriasByMonth, ...remoteBundle.feriasByMonth },
+    portraitByMonth: {
+      ...(localBundle.portraitByMonth ?? {}),
+      ...(remoteBundle.portraitByMonth ?? {}),
+    },
     originalSheetBeforeFirstXByMonth: {
       ...(localBundle.originalSheetBeforeFirstXByMonth ?? {}),
       ...(remoteBundle.originalSheetBeforeFirstXByMonth ?? {}),
@@ -535,6 +663,7 @@ export function DetalheServicoSheet() {
   const [columnMenu, setColumnMenu] = useState<ColumnContextMenu | null>(null);
   const [tableEditable, setTableEditable] = useState(false);
   const [showRoTokens, setShowRoTokens] = useState(true);
+  const [portraitMode, setPortraitMode] = useState(false);
   /** `true` = grelha atual (alterações, X vermelho, etc.). `false` = snapshot antes do primeiro X no mês (se existir). */
   const [mostrarAlteracoesAposX, setMostrarAlteracoesAposX] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
@@ -592,9 +721,50 @@ export function DetalheServicoSheet() {
   viewingOriginalRef.current = viewingOriginal;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
+  const cloudWriteInFlightRef = useRef(false);
+  const pendingCloudBundleRef = useRef<DetalheServicoBundle | null>(null);
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
+  const portraitRows = useMemo(
+    () =>
+      derivePortraitRowsFromSheet({
+        monthRows: bundle.portraitByMonth?.[monthYear],
+        sheet: sheetLive,
+        days,
+        year,
+        monthIndex,
+      }),
+    [bundle.portraitByMonth, monthYear, sheetLive, days, year, monthIndex],
+  );
+  const feriasObservacoesRetrato = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const rowId of sheetLive.rows) {
+      const motoristaRaw = sheetLive.cells[rowId]?.[KEY_MOTORISTA] ?? "";
+      const motorista = canonicalizeMotoristaPostoName(motoristaRaw);
+      if (!motorista) continue;
+      const motoristaKey = normalizeMotoristaName(motorista);
+      if (!motoristaKey) continue;
+      if (seen.has(motoristaKey)) continue;
+      const periods = feriasForMonth[motoristaKey];
+      if (!periods?.length) continue;
+      const formattedPeriods = periods
+        .map((p) => `${formatIsoDatePtBr(p.inicio)} até ${formatIsoDatePtBr(p.fim)}`)
+        .join(" | ");
+      out.push(`Obs: ${motorista} - Férias no período de ${formattedPeriods}.`);
+      seen.add(motoristaKey);
+    }
+    return out;
+  }, [sheetLive.rows, sheetLive.cells, feriasForMonth]);
+  const weekendDateKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const { day, isWeekend } of days) {
+      if (!isWeekend) continue;
+      set.add(dateKey(year, monthIndex, day));
+    }
+    return set;
+  }, [days, year, monthIndex]);
 
   const prevMonthKey = useMemo(() => getPreviousMonthKey(monthYear), [monthYear]);
   const prevMonthKeyRef = useRef(prevMonthKey);
@@ -612,7 +782,7 @@ export function DetalheServicoSheet() {
     let cancelled = false;
     void loadDetalheServicoBundleFromIdb().then((b) => {
       if (cancelled) return;
-      setBundle(b);
+      setBundle(migrateBundleMotoristaNames(b));
       setIdbReady(true);
       hydratedRef.current = true;
     });
@@ -652,7 +822,9 @@ export function DetalheServicoSheet() {
               if (tableEditableRef.current) return;
               applyingRemoteRef.current = true;
               const next = normalizeDetalheServicoBundle(payload);
-              const merged = mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next);
+              const merged = migrateBundleMotoristaNames(
+                mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next),
+              );
               setBundle(merged);
               setCloudSyncStatus("synced");
               setCloudSyncAt(new Date());
@@ -686,14 +858,25 @@ export function DetalheServicoSheet() {
   const pushBundleToCloud = useCallback(
     async (nextBundle: DetalheServicoBundle) => {
       if (!useCloud || !hydratedRef.current || !idbReady) return;
-      setCloudSyncStatus("syncing");
+      pendingCloudBundleRef.current = nextBundle;
+      if (cloudWriteInFlightRef.current) return;
+      cloudWriteInFlightRef.current = true;
       try {
-        await setSotStateDoc(SOT_STATE_DOC.detalheServico, nextBundle);
-        setCloudSyncStatus("synced");
-        setCloudSyncAt(new Date());
-      } catch (e) {
-        setCloudSyncStatus("error");
-        console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+        while (pendingCloudBundleRef.current) {
+          const toSend = pendingCloudBundleRef.current;
+          pendingCloudBundleRef.current = null;
+          setCloudSyncStatus("syncing");
+          try {
+            await setSotStateDoc(SOT_STATE_DOC.detalheServico, toSend);
+            setCloudSyncStatus("synced");
+            setCloudSyncAt(new Date());
+          } catch (e) {
+            setCloudSyncStatus("error");
+            console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
+          }
+        }
+      } finally {
+        cloudWriteInFlightRef.current = false;
       }
     },
     [useCloud, idbReady],
@@ -852,6 +1035,28 @@ export function DetalheServicoSheet() {
 
   const handleGerarPdfDetalheServico = useCallback(() => {
     const rodape = rodapeAssinaturaRef.current;
+    if (portraitMode) {
+      downloadDetalheServicoMotoristaPortraitPdf({
+        monthYear,
+        rows: portraitRows.map((r) => ({
+          day: r.day,
+          dateKey: r.dateKey,
+          weekdayLetter: letraDiaSemanaRetrato(new Date(year, monthIndex, r.day)),
+          motorista1: r.motorista1,
+          motorista2: r.motorista2,
+          retem: r.retem,
+        })),
+        columnGray,
+        prevMonthSheet,
+        portraitObservacoes: feriasObservacoesRetrato,
+        rodapeAssinatura: {
+          nome: rodape.nome,
+          postoGraduacao: rodape.postoGraduacao,
+          funcao: rodape.funcao,
+        },
+      });
+      return;
+    }
     downloadDetalheServicoMotoristaPdf({
       monthYear,
       sheet: sheetLive,
@@ -866,7 +1071,19 @@ export function DetalheServicoSheet() {
         funcao: rodape.funcao,
       },
     });
-  }, [monthYear, sheetLive, tableEditable, showRoTokens, prevMonthSheet, columnGray, feriasForMonth]);
+  }, [
+    monthYear,
+    sheetLive,
+    tableEditable,
+    showRoTokens,
+    prevMonthSheet,
+    columnGray,
+    feriasForMonth,
+    portraitMode,
+    portraitRows,
+    prevMonthSheet,
+    feriasObservacoesRetrato,
+  ]);
 
   useEffect(() => {
     setUndoStack([]);
@@ -1035,14 +1252,46 @@ export function DetalheServicoSheet() {
   }, [clearCellEditSnapshot]);
 
   const setCellValue = useCallback((rowId: string, key: string, value: string) => {
+    const normalizedValue =
+      key === KEY_MOTORISTA ? canonicalizeMotoristaPostoName(value) : value;
     setSheet((prev) => ({
       ...prev,
       cells: {
         ...prev.cells,
-        [rowId]: { ...(prev.cells[rowId] ?? {}), [key]: value },
+        [rowId]: { ...(prev.cells[rowId] ?? {}), [key]: normalizedValue },
       },
     }));
   }, []);
+
+  const setPortraitCellValue = useCallback(
+    (
+      isoDate: string,
+      field: keyof DetalheServicoPortraitRow,
+      value: string,
+    ) => {
+      const normalizedValue = canonicalizeMotoristaPostoName(value);
+      setBundle((b) => {
+        const mk = monthYearRef.current;
+        const monthRows = b.portraitByMonth?.[mk] ?? {};
+        const row = monthRows[isoDate] ?? { motorista1: "", motorista2: "", retem: "" };
+        return {
+          ...b,
+          version: 1,
+          portraitByMonth: {
+            ...(b.portraitByMonth ?? {}),
+            [mk]: {
+              ...monthRows,
+              [isoDate]: {
+                ...row,
+                [field]: normalizedValue,
+              },
+            },
+          },
+        };
+      });
+    },
+    [],
+  );
 
   const onCellFocus = useCallback(() => {
     cellEditBeforeRef.current = cloneSheet(sheetRef.current);
@@ -1185,7 +1434,7 @@ export function DetalheServicoSheet() {
       if (e.currentTarget instanceof HTMLSelectElement) {
         if (e.key === "ArrowUp" || e.key === "ArrowDown") return;
       }
-      const maxCol = tableEditableRef.current ? days.length + 3 : days.length;
+      const maxCol = portraitMode ? 2 : tableEditableRef.current ? days.length + 3 : days.length;
       const maxRow = sheetRef.current.rows.length - 1;
       let nextR = rowIndex;
       let nextC = colIndex;
@@ -1215,7 +1464,7 @@ export function DetalheServicoSheet() {
       }
       focusSheetCell(nextR, nextC);
     },
-    [days.length, focusSheetCell],
+    [days.length, focusSheetCell, portraitMode],
   );
 
   useEffect(() => {
@@ -1499,6 +1748,31 @@ export function DetalheServicoSheet() {
               }`}
             />
           </button>
+          <span
+            className="text-xs text-[hsl(var(--muted-foreground))]"
+            id="detalhe-servico-portrait-toggle-label"
+          >
+            Detalhe Modo Paisagem/Retrato
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={portraitMode}
+            aria-labelledby="detalhe-servico-portrait-toggle-label"
+            title={portraitMode ? "Mostrar em modo paisagem" : "Mostrar em modo retrato"}
+            className={`relative inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 ${
+              portraitMode
+                ? "border-emerald-600/45 bg-emerald-500/20"
+                : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]"
+            }`}
+            onClick={() => setPortraitMode((v) => !v)}
+          >
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                portraitMode ? "translate-x-[1.125rem]" : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-3">
           <Button
@@ -1622,6 +1896,129 @@ export function DetalheServicoSheet() {
             </div>
           </div>
           <div ref={tableInputsRootRef} className="w-full min-w-0 overflow-x-auto">
+            {portraitMode ? (
+              <>
+              <table className="w-full min-w-[34rem] border-collapse text-center text-[11px] leading-tight sm:text-xs">
+                <thead>
+                  <tr>
+                    <th className="min-w-[4.5rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Data
+                    </th>
+                    <th className="min-w-[3rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      &nbsp;
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Motorista 1
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Motorista 2
+                    </th>
+                    <th className="min-w-[10rem] border border-[hsl(var(--border))] bg-white px-[0.45em] py-[0.25em] text-center font-semibold uppercase">
+                      Retém
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {portraitRows.map((row, rowIndex) => {
+                    const retemOpts = buildMotoristaSelectOptions(
+                      motoristasCatalogEGrilha,
+                      row.retem,
+                    );
+                    const dateLabel = String(row.day);
+                    const dateObj = new Date(year, monthIndex, row.day);
+                    const weekdayLabel = letraDiaSemanaRetrato(dateObj);
+                    const rowGray = Boolean(columnGray[row.dateKey]) || weekendDateKeys.has(row.dateKey);
+                    return (
+                      <tr key={row.dateKey}>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.45em] py-[0.25em] text-center tabular-nums font-semibold uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-[hsl(var(--muted)/0.08)]"
+                          }`}
+                        >
+                          {dateLabel}
+                        </td>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center font-semibold uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
+                          {weekdayLabel}
+                        </td>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
+                          <input
+                            type="text"
+                            readOnly
+                            className={`${inputClass} ${inputLockedClass} text-center uppercase`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={0}
+                            value={row.motorista1}
+                            onChange={() => {}}
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 0)}
+                          />
+                        </td>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
+                          <input
+                            type="text"
+                            readOnly
+                            className={`${inputClass} ${inputLockedClass} text-center uppercase`}
+                            data-det-sheet-row={rowIndex}
+                            data-det-sheet-col={1}
+                            value={row.motorista2}
+                            onChange={() => {}}
+                            onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 1)}
+                          />
+                        </td>
+                        <td
+                          className={`border border-[hsl(var(--border))] px-[0.35em] py-[0.2em] text-center uppercase ${
+                            rowGray ? "bg-neutral-200" : "bg-white"
+                          }`}
+                        >
+                          {tableEditable ? (
+                            <select
+                              className={`${inputClass} max-w-full cursor-pointer text-center uppercase`}
+                              data-det-sheet-row={rowIndex}
+                              data-det-sheet-col={2}
+                              value={row.retem}
+                              onChange={(e) =>
+                                setPortraitCellValue(row.dateKey, "retem", e.target.value)
+                              }
+                              onKeyDown={(e) => onSheetCellKeyDown(e, rowIndex, 2)}
+                            >
+                              <option value="">—</option>
+                              {retemOpts.map((m) => (
+                                <option key={m} value={m}>
+                                  {m.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input readOnly className={`${inputClass} ${inputLockedClass} uppercase`} value={row.retem} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {feriasObservacoesRetrato.length > 0 ? (
+                <div className="mt-2 space-y-1 text-left text-xs text-[hsl(var(--foreground))]">
+                  {feriasObservacoesRetrato.map((obs) => (
+                    <p key={obs} className="leading-tight">
+                      {obs}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              </>
+            ) : (
             <table className="w-full min-w-0 border-collapse text-left text-[11px] leading-tight sm:text-xs">
               <thead>
                 <tr>
@@ -1973,6 +2370,7 @@ export function DetalheServicoSheet() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </div>

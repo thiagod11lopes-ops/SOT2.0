@@ -11,6 +11,12 @@ export type DetalheServicoFeriasPeriodo = { inicio: string; fim: string };
 /** Por mês (`YYYY-MM`), mapa motorista (chave normalizada) → até 3 períodos. */
 export type DetalheServicoFeriasPorMes = Record<string, Record<string, DetalheServicoFeriasPeriodo[]>>;
 
+export type DetalheServicoPortraitRow = {
+  motorista1: string;
+  motorista2: string;
+  retem: string;
+};
+
 export type DetalheServicoBundle = {
   version: 1;
   sheets: Record<string, DetalheServicoSheetSnapshot>;
@@ -23,6 +29,8 @@ export type DetalheServicoBundle = {
    * Usado para alternar entre o detalhe original e as alterações posteriores.
    */
   originalSheetBeforeFirstXByMonth?: Record<string, DetalheServicoSheetSnapshot>;
+  /** Modo retrato por mês: chave da data (`YYYY-MM-DD`) -> Motorista 1, Motorista 2 e Retém. */
+  portraitByMonth?: Record<string, Record<string, DetalheServicoPortraitRow>>;
 };
 
 const IDB_KEY = "sot-detalhe-servico-bundle-v2";
@@ -36,7 +44,14 @@ export function emptyRodapeAssinatura(): DetalheServicoRodapeAssinatura {
 }
 
 export function emptyDetalheServicoBundle(): DetalheServicoBundle {
-  return { version: 1, sheets: {}, rodapes: {}, columnGrayByMonth: {}, feriasByMonth: {} };
+  return {
+    version: 1,
+    sheets: {},
+    rodapes: {},
+    columnGrayByMonth: {},
+    feriasByMonth: {},
+    portraitByMonth: {},
+  };
 }
 
 function normalizeSheet(raw: unknown): DetalheServicoSheetSnapshot | null {
@@ -104,6 +119,29 @@ function normalizeColumnGrayMap(raw: unknown): Record<string, Record<string, boo
   return out;
 }
 
+function normalizePortraitByMonth(
+  raw: unknown,
+): Record<string, Record<string, DetalheServicoPortraitRow>> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, Record<string, DetalheServicoPortraitRow>> = {};
+  for (const [monthKey, monthVal] of Object.entries(raw as Record<string, unknown>)) {
+    if (!monthVal || typeof monthVal !== "object") continue;
+    const monthRows: Record<string, DetalheServicoPortraitRow> = {};
+    for (const [isoDate, rowVal] of Object.entries(monthVal as Record<string, unknown>)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) continue;
+      if (!rowVal || typeof rowVal !== "object") continue;
+      const rowObj = rowVal as Record<string, unknown>;
+      monthRows[isoDate] = {
+        motorista1: typeof rowObj.motorista1 === "string" ? rowObj.motorista1 : "",
+        motorista2: typeof rowObj.motorista2 === "string" ? rowObj.motorista2 : "",
+        retem: typeof rowObj.retem === "string" ? rowObj.retem : "",
+      };
+    }
+    if (Object.keys(monthRows).length > 0) out[monthKey] = monthRows;
+  }
+  return out;
+}
+
 /** Normaliza payload vindo do Firestore ou de JSON local. */
 export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundle {
   if (!raw || typeof raw !== "object") return emptyDetalheServicoBundle();
@@ -123,6 +161,7 @@ export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundl
   }
   const columnGrayByMonth = normalizeColumnGrayMap(o.columnGrayByMonth);
   const feriasByMonth = normalizeFeriasByMonth(o.feriasByMonth);
+  const portraitByMonth = normalizePortraitByMonth(o.portraitByMonth);
   const originalSheetBeforeFirstXByMonth: Record<string, DetalheServicoSheetSnapshot> = {};
   if (o.originalSheetBeforeFirstXByMonth && typeof o.originalSheetBeforeFirstXByMonth === "object") {
     for (const [k, v] of Object.entries(o.originalSheetBeforeFirstXByMonth as Record<string, unknown>)) {
@@ -136,6 +175,7 @@ export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundl
     rodapes,
     columnGrayByMonth,
     feriasByMonth,
+    portraitByMonth,
     ...(Object.keys(originalSheetBeforeFirstXByMonth).length > 0
       ? { originalSheetBeforeFirstXByMonth }
       : {}),
@@ -157,6 +197,9 @@ export function isDetalheServicoBundleEmpty(b: DetalheServicoBundle): boolean {
     return false;
   }
   if (Object.keys(b.feriasByMonth ?? {}).some((k) => Object.keys(b.feriasByMonth[k] ?? {}).length > 0)) {
+    return false;
+  }
+  if (Object.keys(b.portraitByMonth ?? {}).some((k) => Object.keys(b.portraitByMonth?.[k] ?? {}).length > 0)) {
     return false;
   }
   return true;
@@ -198,7 +241,7 @@ function migrateLegacyLocalStorageToBundle(): DetalheServicoBundle | null {
     }
   }
   if (!found) return null;
-  return { version: 1, sheets, rodapes, columnGrayByMonth: {}, feriasByMonth: {} };
+  return { version: 1, sheets, rodapes, columnGrayByMonth: {}, feriasByMonth: {}, portraitByMonth: {} };
 }
 
 function clearLegacyLocalStorageKeys(bundleKey: string): void {

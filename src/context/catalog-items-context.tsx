@@ -61,11 +61,34 @@ const emptyState: CatalogItemsState = {
 
 type StoredCatalog = Partial<CatalogItemsState> & { viaturas?: string[] };
 
+function canonicalizeVehiclePlate(value: string): string {
+  const t = value.trim();
+  if (!t) return t;
+  if (t.toUpperCase() === "LSB-8253") return "LSB-8C53";
+  return t;
+}
+
 function canonicalizeMotoristaName(value: string): string {
   const t = value.trim();
   if (!t) return t;
   // Ajuste de nomenclatura preservando equivalência textual (mesmo nome ignorando caixa).
+  const up = t.toUpperCase();
   if (t.toUpperCase() === "MN PRADO") return "MN Prado";
+  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
+  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
+    return "2°SG Thiago Lopes";
+  }
+  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
+    return "2°SG Gerson Rocha";
+  }
+  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
+  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
+  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
+  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
+  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
+  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
+    return "2°SG RM1 Daniel Gomes";
+  }
   return t;
 }
 
@@ -73,10 +96,13 @@ function normalizeCatalogState(parsed: StoredCatalog | null | undefined): Catalo
   let administrativas = Array.isArray(parsed?.viaturasAdministrativas)
     ? parsed.viaturasAdministrativas
     : [];
-  const ambulancias = Array.isArray(parsed?.ambulancias) ? parsed.ambulancias : [];
+  const ambulancias = Array.isArray(parsed?.ambulancias)
+    ? parsed.ambulancias.map(canonicalizeVehiclePlate)
+    : [];
   const legacyViaturas = Array.isArray(parsed?.viaturas) ? parsed.viaturas : [];
+  administrativas = administrativas.map(canonicalizeVehiclePlate);
   for (const row of legacyViaturas) {
-    administrativas = dedupeAdd(administrativas, row);
+    administrativas = dedupeAdd(administrativas, canonicalizeVehiclePlate(row));
   }
   return {
     setores: Array.isArray(parsed?.setores) ? parsed.setores : [],
@@ -306,7 +332,11 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (category: CatalogCategory, value: string): boolean => {
       const normalizedValue =
-        category === "motoristas" ? canonicalizeMotoristaName(value) : value;
+        category === "motoristas"
+          ? canonicalizeMotoristaName(value)
+          : category === "viaturasAdministrativas" || category === "ambulancias"
+            ? canonicalizeVehiclePlate(value)
+            : value;
       const t = normalizedValue.trim();
       if (!t) return false;
       let added = false;
