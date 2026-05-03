@@ -83,7 +83,7 @@ export function VehicleMaintenancePanel() {
                 statusLabel = st.porKm && st.porPrazo ? "Atrasado (km e prazo)" : st.porKm ? "Atrasado (km)" : "Atrasado (prazo)";
                 // Atraso por prazo (6 meses): laranja; só por km: vermelho.
                 statusClass = st.porPrazo
-                  ? "font-medium text-orange-600 dark:text-orange-400"
+                  ? "font-semibold text-orange-700 dark:text-orange-500"
                   : "font-medium text-red-600";
               } else {
                 statusLabel = "Em dia";
