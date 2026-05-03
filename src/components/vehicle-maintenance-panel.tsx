@@ -81,7 +81,10 @@ export function VehicleMaintenancePanel() {
                 statusLabel = "Sem registro de troca";
               } else if (st.atrasado) {
                 statusLabel = st.porKm && st.porPrazo ? "Atrasado (km e prazo)" : st.porKm ? "Atrasado (km)" : "Atrasado (prazo)";
-                statusClass = "font-medium text-red-600";
+                // Atraso por prazo (6 meses): laranja; só por km: vermelho.
+                statusClass = st.porPrazo
+                  ? "font-medium text-orange-600 dark:text-orange-400"
+                  : "font-medium text-red-600";
               } else {
                 statusLabel = "Em dia";
                 statusClass = "text-emerald-700";
