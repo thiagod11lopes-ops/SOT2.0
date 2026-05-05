@@ -38,12 +38,18 @@ import {
   type DetalheServicoBundle,
 } from "../lib/detalheServicoBundle";
 import { parseHhMm } from "../lib/timeInput";
-import { fraseProximaTrocaOleo, rotuloViaturaPlaca } from "../lib/homeTickerStrings";
+import {
+  fraseProximaTrocaOleoPorIntervaloTempo,
+  fraseProximaTrocaOleoPorKmRodados,
+  rotuloViaturaPlaca,
+} from "../lib/homeTickerStrings";
 import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import {
   alertaProximaTrocaOleo,
   maiorKmChegadaPorViatura,
+  OLEO_ALERTA_DIAS_PRAZO,
+  OLEO_ALERTA_KM_RESTANTES,
   statusTrocaOleo,
   viaturasCatalogoUnicas,
 } from "../lib/oilMaintenance";
@@ -215,6 +221,20 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       .filter(({ st }) => alertaProximaTrocaOleo(st))
       .sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
   }, [placasCatalogo, departuresAtivas, mapaOleo]);
+  const linhasOleoCardPorTempo = useMemo(
+    () =>
+      linhasProximasTrocasOleo.filter(
+        ({ st }) => st.diasAtePrazo !== null && st.diasAtePrazo <= OLEO_ALERTA_DIAS_PRAZO,
+      ),
+    [linhasProximasTrocasOleo],
+  );
+  const linhasOleoCardPorKm = useMemo(
+    () =>
+      linhasProximasTrocasOleo.filter(
+        ({ st }) => st.kmRestantes !== null && st.kmRestantes < OLEO_ALERTA_KM_RESTANTES,
+      ),
+    [linhasProximasTrocasOleo],
+  );
   /** Atualiza saídas administrativas, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
   const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
@@ -779,21 +799,62 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Próximas Trocas de Óleo</p>
-                      <ul className="mt-2 space-y-2">
-                        {linhasProximasTrocasOleo.map(({ placa, st }) => (
-                          <li
-                            key={placa}
-                            className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
+                    <div className="mt-2 space-y-4">
+                      {linhasOleoCardPorTempo.length > 0 ? (
+                        <div>
+                          <p
+                            className={cn(
+                              "text-sm font-bold uppercase tracking-wide text-[hsl(var(--primary))]",
+                              "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
+                            )}
                           >
-                            <span className={cn("shrink-0 font-mono", homeBodyEmphasisClass)}>
-                              {rotuloViaturaPlaca(placa)}
-                            </span>
-                            <span className={cn("min-w-0", homeBodyEmphasisClass)}>
-                              {fraseProximaTrocaOleo(st)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                            Troca por tempo (6 meses)
+                          </p>
+                          <ul className="mt-2 space-y-2">
+                            {linhasOleoCardPorTempo.map(({ placa, st }) => (
+                              <li
+                                key={`tempo-${placa}`}
+                                className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
+                              >
+                                <span className={cn("shrink-0 font-mono", homeBodyEmphasisClass)}>
+                                  {rotuloViaturaPlaca(placa)}
+                                </span>
+                                <span className={cn("min-w-0", homeBodyEmphasisClass)}>
+                                  {fraseProximaTrocaOleoPorIntervaloTempo(st)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {linhasOleoCardPorKm.length > 0 ? (
+                        <div>
+                          <p
+                            className={cn(
+                              "text-sm font-bold uppercase tracking-wide text-[hsl(var(--primary))]",
+                              "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
+                            )}
+                          >
+                            Troca por quilometragem (km rodados)
+                          </p>
+                          <ul className="mt-2 space-y-2">
+                            {linhasOleoCardPorKm.map(({ placa, st }) => (
+                              <li
+                                key={`km-${placa}`}
+                                className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-3 py-2"
+                              >
+                                <span className={cn("shrink-0 font-mono", homeBodyEmphasisClass)}>
+                                  {rotuloViaturaPlaca(placa)}
+                                </span>
+                                <span className={cn("min-w-0", homeBodyEmphasisClass)}>
+                                  {fraseProximaTrocaOleoPorKmRodados(st)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                   <Button
                     type="button"

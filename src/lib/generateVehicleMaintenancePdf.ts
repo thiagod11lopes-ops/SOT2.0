@@ -1,7 +1,12 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import { isoDateToPtBr } from "./dateFormat";
-import { maiorKmChegadaPorViatura, statusTrocaOleo, type TrocaOleoRegistro } from "./oilMaintenance";
+import {
+  maiorKmChegadaPorViatura,
+  rotuloStatusAtrasoTrocaOleo,
+  statusTrocaOleo,
+  type TrocaOleoRegistro,
+} from "./oilMaintenance";
 import type { DepartureRecord } from "../types/departure";
 
 function safeFileSegment(value: string): string {
@@ -36,12 +41,7 @@ export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfPara
     if (!st.temRegistro) {
       statusLabel = "Sem registro de troca";
     } else if (st.atrasado) {
-      statusLabel =
-        st.porKm && st.porPrazo
-          ? "Atrasado (km e prazo)"
-          : st.porKm
-            ? "Atrasado (km)"
-            : "Atrasado (prazo)";
+      statusLabel = rotuloStatusAtrasoTrocaOleo(st.porKm, st.porPrazo);
     } else {
       statusLabel = "Em dia";
     }

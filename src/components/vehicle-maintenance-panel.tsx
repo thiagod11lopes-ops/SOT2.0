@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useVehicleMaintenance } from "../context/vehicle-maintenance-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { downloadVehicleMaintenancePdf } from "../lib/generateVehicleMaintenancePdf";
-import { maiorKmChegadaPorViatura, statusTrocaOleo } from "../lib/oilMaintenance";
+import { maiorKmChegadaPorViatura, rotuloStatusAtrasoTrocaOleo, statusTrocaOleo } from "../lib/oilMaintenance";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -80,8 +80,11 @@ export function VehicleMaintenancePanel() {
               if (!st.temRegistro) {
                 statusLabel = "Sem registro de troca";
               } else if (st.atrasado) {
-                statusLabel = st.porKm && st.porPrazo ? "Atrasado (km e prazo)" : st.porKm ? "Atrasado (km)" : "Atrasado (prazo)";
-                statusClass = "font-medium text-red-600";
+                statusLabel = rotuloStatusAtrasoTrocaOleo(st.porKm, st.porPrazo);
+                // Atraso por prazo (6 meses): laranja; só por km: vermelho.
+                statusClass = st.porPrazo
+                  ? "font-semibold text-orange-700 dark:text-orange-500"
+                  : "font-medium text-red-600";
               } else {
                 statusLabel = "Em dia";
                 statusClass = "text-emerald-700";

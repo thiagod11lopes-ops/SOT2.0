@@ -120,6 +120,13 @@ export type StatusTrocaOleo = {
   diasAtePrazo: number | null;
 };
 
+/** Coluna Status (Manutenções) e PDF quando a troca está atrasada. */
+export function rotuloStatusAtrasoTrocaOleo(porKm: boolean, porPrazo: boolean): string {
+  if (porKm && porPrazo) return "Quilometragem e tempo de uso do óleo excedidos";
+  if (porKm) return "Quilometragem do óleo excedida";
+  return "Tempo de uso do óleo excedido";
+}
+
 export function statusTrocaOleo(
   kmAtual: number | null,
   registro: TrocaOleoRegistro | undefined,
