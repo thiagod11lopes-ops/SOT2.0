@@ -99,6 +99,30 @@ export function aplicarDiaEspecialComDeslocamento(
   return next;
 }
 
+/**
+ * Remove o integrante escalado no `dateKey` (férias) e puxa os dias úteis
+ * seguintes uma casa para trás até ao fim do horizonte de distribuição.
+ */
+export function aplicarFeriasComRetrocesso(escala: EscalaPaoStored, dateKey: string): EscalaPaoStored {
+  const start = parseDateKeyLocal(dateKey);
+  if (!start || isWeekend(start)) return escala;
+
+  const monthStart = startOfMonth(start);
+  const endHorizon = endOfMonth(addMonths(monthStart, MESES_DISTRIBUICAO_INTEGRANTES - 1));
+  const keys = weekdayKeysFromInclusive(start, endHorizon);
+  const idx0 = keys.indexOf(dateKey);
+  if (idx0 < 0) return escala;
+
+  const next = { ...escala };
+  const olds = keys.map((k) => next[k] ?? "");
+
+  for (let i = idx0; i < keys.length - 1; i++) {
+    next[keys[i]] = olds[i + 1];
+  }
+  next[keys[keys.length - 1]] = "";
+  return next;
+}
+
 /** Índice 0 = segunda … 6 = domingo (semana começa na segunda). */
 export function indiceDiaSemanaSegundaPrimeiro(date: Date): number {
   const dow = date.getDay();

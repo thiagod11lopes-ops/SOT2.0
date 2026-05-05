@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import { useEscalaPao } from "../context/escala-pao-context";
 import {
   aplicarDiaEspecialComDeslocamento,
+  aplicarFeriasComRetrocesso,
   distribuirMotoristasNoMes,
   formatDateKeyLocal,
   indiceDiaSemanaSegundaPrimeiro,
@@ -31,6 +32,7 @@ import { Button } from "./ui/button";
 const WEEK_HEADERS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"] as const;
 
 const MIME_ESC_PA_DIA = "application/x-sot-escala-pao-dia";
+const OPCAO_FERIAS = "__FERIAS__";
 
 interface EscalaPaoModalProps {
   open: boolean;
@@ -157,6 +159,11 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
     (dateKey: string, value: string) => {
       if (value === "") {
         setMotoristaNaData(dateKey, "");
+        setDiaEditando(null);
+        return;
+      }
+      if (value === OPCAO_FERIAS) {
+        setEscalaCompleta(aplicarFeriasComRetrocesso(escala, dateKey));
         setDiaEditando(null);
         return;
       }
@@ -600,7 +607,7 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
                                   : "border-[hsl(var(--border))] bg-white text-[hsl(var(--foreground))]",
                               )}
                               title={valorDia || undefined}
-                              aria-label="Integrante ou tipo de dia (Feriado, RD, Lic Pag, Recesso)"
+                              aria-label="Integrante, ação de férias, ou tipo de dia (Feriado, RD, Lic Pag, Recesso)"
                             >
                               <option value="">—</option>
                               {integrantes.map((m) => (
@@ -608,6 +615,7 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
                                   {m}
                                 </option>
                               ))}
+                              <option value={OPCAO_FERIAS}>Férias</option>
                               {valorDia &&
                               !isDiaEspecialValor(valorDia) &&
                               !integrantes.some((m) => m.trim().toLowerCase() === valorDia.toLowerCase()) ? (
@@ -627,7 +635,7 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
                                 "line-clamp-3 min-h-[2.25rem] w-full rounded-md px-0.5 py-1 text-center text-[10px] font-medium leading-tight transition-colors hover:bg-[hsl(var(--muted))]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:text-[11px]",
                                 isEspecial ? "text-orange-950 dark:text-orange-50" : "text-[hsl(var(--foreground))]",
                               )}
-                              title="Clique para editar integrante ou dia especial (Feriado, RD, Lic Pag, Recesso)"
+                              title="Clique para editar integrante, aplicar férias, ou dia especial (Feriado, RD, Lic Pag, Recesso)"
                             >
                               {valorDia || "—"}
                             </button>
