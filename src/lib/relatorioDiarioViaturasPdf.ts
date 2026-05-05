@@ -15,6 +15,10 @@ import {
 export type { RelatorioDiarioViaturasPdfLayoutOptions } from "./relatorioDiarioViaturasPdfLayout";
 export { DEFAULT_RDV_PDF_LAYOUT, clampRdvPdfLayout } from "./relatorioDiarioViaturasPdfLayout";
 
+const RDV_PDF_IMAGE_FORMAT = "JPEG";
+const RDV_PDF_IMAGE_MIME = "image/jpeg";
+const RDV_PDF_IMAGE_QUALITY = 0.72;
+
 function pdfContentWidthMm(marginMm: number): number {
   return 210 - marginMm * 2;
 }
@@ -304,9 +308,9 @@ function addCanvasToPdfA4(pdf: jsPDF, canvas: HTMLCanvasElement, layout: Relator
       pdf.addPage();
     }
 
-    const sliceData = part.slice.toDataURL("image/png");
+    const sliceData = part.slice.toDataURL(RDV_PDF_IMAGE_MIME, RDV_PDF_IMAGE_QUALITY);
     const { imgXMm, imgYMm, imageWMm } = pdfPageImagePlacementMm(layout, part.sliceHeightMm);
-    pdf.addImage(sliceData, "PNG", imgXMm, imgYMm, imageWMm, part.sliceHeightMm);
+    pdf.addImage(sliceData, RDV_PDF_IMAGE_FORMAT, imgXMm, imgYMm, imageWMm, part.sliceHeightMm, undefined, "FAST");
 
     offsetMm = part.nextOffsetMm;
     pageIndex += 1;
@@ -464,7 +468,7 @@ export async function buildRelatorioDiarioViaturasPdfPage1Preview(
   const sliceHeightMm = first ? first.sliceHeightMm : contentH;
 
   const { imgXMm, imgYMm, imageWMm } = pdfPageImagePlacementMm(clamped, sliceHeightMm);
-  const dataUrl = slice.toDataURL("image/png");
+  const dataUrl = slice.toDataURL(RDV_PDF_IMAGE_MIME, RDV_PDF_IMAGE_QUALITY);
 
   return { dataUrl, imgXMm, imgYMm, imageWMm, sliceHeightMm };
 }
@@ -492,7 +496,7 @@ export async function downloadRelatorioDiarioViaturasPdf(
     headerDateIso: options?.headerDateIso,
   });
 
-  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
   addCanvasToPdfA4(pdf, canvas, layout);
   saveRdvPdf(pdf, filenameDate);
 }
@@ -511,7 +515,7 @@ export async function downloadRelatorioDiarioViaturasPdfMerged(
     throw new Error("Nenhuma data informada para gerar o PDF.");
   }
 
-  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
 
   for (let i = 0; i < list.length; i++) {
     const iso = list[i];

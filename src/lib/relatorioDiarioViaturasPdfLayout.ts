@@ -38,7 +38,7 @@ export interface RelatorioDiarioViaturasPdfLayoutOptions {
 export const DEFAULT_RDV_PDF_LAYOUT: RelatorioDiarioViaturasPdfLayoutOptions = {
   marginMm: 10,
   imageWidthPercent: 95,
-  html2canvasScale: 6,
+  html2canvasScale: 2,
   tableContentScale: 1,
   signatureFontPt: 8,
   signatureMarginScale: 1.3,
