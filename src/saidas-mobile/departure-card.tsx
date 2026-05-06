@@ -4,8 +4,10 @@ import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-m
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
+import { useDepartures } from "../context/departures-context";
 import type { DepartureKmFieldsPatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
+import { parseKmCampo } from "../lib/oilMaintenance";
 import { normalize24hTime } from "../lib/timeInput";
 import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
@@ -50,6 +52,7 @@ export function DepartureCard({
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
   const row = listRowFromRecord(record);
+  const { departures } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   useEffect(() => {
@@ -141,6 +144,39 @@ export function DepartureCard({
 
   function handleIniciarSaida() {
     setOpen(false);
+  }
+
+  function getKmSaidaPrefillOnClickFromLastNormal(): string | null {
+    const placaKey = record.viaturas.trim().toLowerCase();
+    if (!placaKey) return null;
+    let latest: DepartureRecord | null = null;
+    for (const d of departures) {
+      if (d.id === record.id) continue;
+      if (d.viaturas.trim().toLowerCase() !== placaKey) continue;
+      if (!latest) {
+        latest = d;
+        continue;
+      }
+      const da = d.updatedAt ?? d.createdAt ?? 0;
+      const la = latest.updatedAt ?? latest.createdAt ?? 0;
+      if (da >= la) latest = d;
+    }
+    if (!latest) return null;
+    const latestOficinaRubricada =
+      latest.ficouNaOficina === true && latest.rubrica.trim().length > 0 && latest.kmSaida.trim().length > 0;
+    if (latestOficinaRubricada) return null;
+    const km = parseKmCampo(latest.kmChegada) ?? parseKmCampo(latest.kmSaida);
+    if (km === null) return null;
+    return formatKmThousandsPtBr(String(km));
+  }
+
+  function handleKmSaidaFieldTapPrefill(onApply: (km: string) => void): boolean {
+    if (!editavel) return false;
+    if (record.kmSaida.trim().length > 0) return false;
+    const km = getKmSaidaPrefillOnClickFromLastNormal();
+    if (!km) return false;
+    onApply(km);
+    return true;
   }
 
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
@@ -382,6 +418,7 @@ export function DepartureCard({
                   label="KM saída"
                   value={formatKmThousandsPtBr(record.kmSaida)}
                   onCommit={(v) => applyAmbPatch({ kmSaida: v })}
+                  onBeforeOpen={() => handleKmSaidaFieldTapPrefill((km) => applyAmbPatch({ kmSaida: km }))}
                   transform={formatKmThousandsPtBr}
                   inputMode="numeric"
                   mono
@@ -532,6 +569,7 @@ export function DepartureCard({
                   label="KM saída"
                   value={formatKmThousandsPtBr(record.kmSaida)}
                   onCommit={(v) => onPatchKm({ kmSaida: v })}
+                  onBeforeOpen={() => handleKmSaidaFieldTapPrefill((km) => onPatchKm({ kmSaida: km }))}
                   transform={formatKmThousandsPtBr}
                   inputMode="numeric"
                   mono

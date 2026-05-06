@@ -549,6 +549,15 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                         const lr = listRowFromRecord(r);
                         const destino = group.destinoDisplay;
                         const alertaProxima = shouldBlinkProximaSaidaRow(r, agoraDashboard);
+                        const finalizadaNormal =
+                          r.kmSaida.trim().length > 0 &&
+                          r.kmChegada.trim().length > 0 &&
+                          r.chegada.trim().length > 0;
+                        const finalizadaOficinaRubricada =
+                          r.kmSaida.trim().length > 0 &&
+                          r.ficouNaOficina === true &&
+                          r.rubrica.trim().length > 0;
+                        const saidaFinalizada = finalizadaNormal || finalizadaOficinaRubricada;
                         const viaturaKey = normalizeViaturaKey(lr.viatura);
                         const viaturaComProblemaMarcado =
                           lr.viatura.trim().length > 0 &&
@@ -557,7 +566,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                         return (
                           <TableRow
                             key={group.records.map((x) => x.id).join("|")}
-                            className={cn(alertaProxima && "home-proxima-saida-blink")}
+                            className={cn(
+                              alertaProxima && "home-proxima-saida-blink",
+                              saidaFinalizada && "opacity-[0.55] transition-opacity hover:opacity-[0.88]",
+                            )}
                             aria-label={
                               alertaProxima ? "Saída em menos de 10 minutos — registre o KM saída" : undefined
                             }

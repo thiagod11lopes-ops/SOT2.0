@@ -239,6 +239,7 @@ export function MobileEditableTextField({
   label,
   value,
   onCommit,
+  onBeforeOpen,
   disabled,
   inputMode,
   mono,
@@ -248,6 +249,8 @@ export function MobileEditableTextField({
   label: string;
   value: string;
   onCommit: (v: string) => void;
+  /** Retorne true para bloquear a abertura do modal (ex.: preencheu automático no toque). */
+  onBeforeOpen?: () => boolean;
   disabled?: boolean;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   mono?: boolean;
@@ -281,6 +284,7 @@ export function MobileEditableTextField({
           <button
             type="button"
             onClick={() => {
+              if (onBeforeOpen?.()) return;
               flushSync(() => setOpen(true));
             }}
             className={cn(

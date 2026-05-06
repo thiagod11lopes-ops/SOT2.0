@@ -754,25 +754,54 @@ export function RegisterDeparturePage() {
       : mergedViaturasCatalog.length > 0;
 
   const ultimoKmSaidaPorViaturaLower = useMemo(() => {
-    const map = new Map<string, { km: number; stamp: number; priority: number }>();
+    const ultimasSaidasPorViatura = new Map<string, { kmSaidaRaw: string; stamp: number; oficinaRubricada: boolean }>();
     for (const d of departures) {
       const placaKey = d.viaturas.trim().toLowerCase();
       if (!placaKey) continue;
       const finalizadaOficinaRubricada =
         d.ficouNaOficina === true && d.rubrica.trim().length > 0 && d.kmSaida.trim().length > 0;
-      const kmRef = finalizadaOficinaRubricada
-        ? parseKmCampo(d.kmSaida)
-        : parseKmCampo(d.kmChegada) ?? parseKmCampo(d.kmSaida);
-      if (kmRef === null) continue;
       const stamp = d.updatedAt ?? d.createdAt ?? 0;
-      const priority = finalizadaOficinaRubricada ? 2 : 1;
-      const prev = map.get(placaKey);
-      if (!prev || stamp > prev.stamp || (stamp === prev.stamp && priority > prev.priority)) {
-        map.set(placaKey, { km: kmRef, stamp, priority });
+      const prev = ultimasSaidasPorViatura.get(placaKey);
+      if (!prev || stamp >= prev.stamp) {
+        ultimasSaidasPorViatura.set(placaKey, {
+          kmSaidaRaw: d.kmSaida,
+          stamp,
+          oficinaRubricada: finalizadaOficinaRubricada,
+        });
       }
     }
     const normalized = new Map<string, number>();
-    for (const [k, v] of map.entries()) normalized.set(k, v.km);
+    for (const [placaKey, ultima] of ultimasSaidasPorViatura.entries()) {
+      if (!ultima.oficinaRubricada) continue;
+      const km = parseKmCampo(ultima.kmSaidaRaw);
+      if (km === null) continue;
+      normalized.set(placaKey, km);
+    }
+    return normalized;
+  }, [departures]);
+
+  const ultimoKmSaidaNormalPorViaturaLower = useMemo(() => {
+    const ultimasSaidasNormais = new Map<string, { kmRaw: string; stamp: number }>();
+    for (const d of departures) {
+      const placaKey = d.viaturas.trim().toLowerCase();
+      if (!placaKey) continue;
+      const finalizadaOficinaRubricada =
+        d.ficouNaOficina === true && d.rubrica.trim().length > 0 && d.kmSaida.trim().length > 0;
+      if (finalizadaOficinaRubricada) continue;
+      const kmRaw = d.kmChegada.trim().length > 0 ? d.kmChegada : d.kmSaida;
+      if (parseKmCampo(kmRaw) === null) continue;
+      const stamp = d.updatedAt ?? d.createdAt ?? 0;
+      const prev = ultimasSaidasNormais.get(placaKey);
+      if (!prev || stamp >= prev.stamp) {
+        ultimasSaidasNormais.set(placaKey, { kmRaw, stamp });
+      }
+    }
+    const normalized = new Map<string, number>();
+    for (const [placaKey, item] of ultimasSaidasNormais.entries()) {
+      const km = parseKmCampo(item.kmRaw);
+      if (km === null) continue;
+      normalized.set(placaKey, km);
+    }
     return normalized;
   }, [departures]);
 
@@ -797,6 +826,17 @@ export function RegisterDeparturePage() {
     if (km === undefined) return;
     setKmDeparture(formatKmThousandsPtBr(String(km)));
   }, [vehicles, kmDeparture, ultimoKmSaidaPorViaturaLower]);
+
+  const handleKmDepartureFieldFocus = useCallback(() => {
+    if (kmDeparture.trim().length > 0) return;
+    const viaturaKey = vehicles.trim().toLowerCase();
+    if (!viaturaKey) return;
+    // Viatura com última saída "Oficina" continua no auto-preenchimento imediato (já tratado no effect).
+    if (ultimoKmSaidaPorViaturaLower.has(viaturaKey)) return;
+    const kmNormal = ultimoKmSaidaNormalPorViaturaLower.get(viaturaKey);
+    if (kmNormal === undefined) return;
+    setKmDeparture(formatKmThousandsPtBr(String(kmNormal)));
+  }, [kmDeparture, vehicles, ultimoKmSaidaPorViaturaLower, ultimoKmSaidaNormalPorViaturaLower]);
 
   /** Ao mudar para Ambulância com catálogo de ambulâncias, remove viatura que não seja ambulância. */
   useEffect(() => {
@@ -2016,6 +2056,7 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={kmDeparture}
+                      onFocus={handleKmDepartureFieldFocus}
                       onChange={(event) => setKmDeparture(formatKmThousandsPtBr(event.target.value))}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     />
