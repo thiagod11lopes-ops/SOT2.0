@@ -26,7 +26,7 @@ export function Layout({
   children,
 }: LayoutProps) {
   const autoHideHeaderOnHome = activeTab === "Principal";
-  const [headerVisible, setHeaderVisible] = useState(!autoHideHeaderOnHome);
+  const [headerVisible, setHeaderVisible] = useState(() => !autoHideHeaderOnHome);
   const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function Layout({
       hideTimerRef.current = window.setTimeout(() => {
         setHeaderVisible(false);
         hideTimerRef.current = null;
-      }, 1800);
+      }, 20_000);
     };
 
     const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "touchstart", "wheel"];
