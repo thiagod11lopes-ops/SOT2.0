@@ -739,7 +739,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           {showLinhaCardsOperacionais ? (
         <div className="grid w-full min-w-0 gap-4 grid-cols-1 md:grid-cols-3">
             {hasCardsOperacionaisColapsaveis ? (
-              <Card className={cn("col-span-full", departuresTableShadowClass)}>
+              <Card className={cn("home-dashboard-operational-toggle col-span-full", departuresTableShadowClass)}>
                 <CardContent className="flex items-center justify-between gap-3 py-3">
                   <p className={cn("text-sm", homeBodyEmphasisClass)}>
                     Cards operacionais ocultos.

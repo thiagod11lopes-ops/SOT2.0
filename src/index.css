@@ -227,6 +227,10 @@ body {
   display: none;
 }
 
+[data-ui-chrome-visible="false"] .home-dashboard-operational-toggle {
+  display: none;
+}
+
 /*
  * Cards Saídas com Atraso / Saídas em Andamento:
  * alinham tamanho de conteúdo com os cards "Viaturas na Oficina".
