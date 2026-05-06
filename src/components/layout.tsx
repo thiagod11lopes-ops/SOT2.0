@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
+import { Button } from "./ui/button";
 
 interface LayoutProps {
   tabs: string[];
@@ -39,20 +40,7 @@ export function Layout({
       return;
     }
     setHeaderVisible(false);
-
-    const showAndScheduleHide = () => {
-      setHeaderVisible(true);
-      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = window.setTimeout(() => {
-        setHeaderVisible(false);
-        hideTimerRef.current = null;
-      }, 20_000);
-    };
-
-    const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "touchstart", "wheel"];
-    for (const ev of events) window.addEventListener(ev, showAndScheduleHide, { passive: true });
     return () => {
-      for (const ev of events) window.removeEventListener(ev, showAndScheduleHide);
       if (hideTimerRef.current !== null) {
         window.clearTimeout(hideTimerRef.current);
         hideTimerRef.current = null;
@@ -60,13 +48,36 @@ export function Layout({
     };
   }, [autoHideHeader]);
 
+  function toggleHeaderVisibility() {
+    setHeaderVisible((prev) => {
+      const next = !prev;
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      if (next) {
+        hideTimerRef.current = window.setTimeout(() => {
+          setHeaderVisible(false);
+          hideTimerRef.current = null;
+        }, 20_000);
+      }
+      return next;
+    });
+  }
+
   return (
     <div
+      data-ui-chrome-visible={headerVisible ? "true" : "false"}
       className={cn(
         "bg-[hsl(var(--background))]",
         fitHomeViewport ? "flex h-[100dvh] min-h-0 flex-col overflow-hidden" : "min-h-screen",
       )}
     >
+      <div className="fixed right-3 top-3 z-[80]">
+        <Button type="button" variant="outline" size="sm" onClick={toggleHeaderVisibility}>
+          {headerVisible ? "Ocultar" : "Expandir"}
+        </Button>
+      </div>
       <Header
         tabs={tabs}
         activeTab={activeTab}

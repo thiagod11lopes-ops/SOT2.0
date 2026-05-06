@@ -486,7 +486,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       style={{ "--home-card-font-scale": String(dashboardFontScale) } as CSSProperties}
     >
       <section className="space-y-4">
-        <Card className={cn("w-full", departuresTableShadowClass)}>
+        <Card className={cn("home-dashboard-font-control w-full", departuresTableShadowClass)}>
           <CardContent className="flex items-center gap-3 py-3">
             <label className={cn("shrink-0 text-xs font-bold text-[hsl(var(--primary))]")} htmlFor="home-font-scale">
               Fonte dos cards
