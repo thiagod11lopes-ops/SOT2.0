@@ -241,6 +241,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
+  const [operationalCardsExpanded, setOperationalCardsExpanded] = useState(false);
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -464,6 +465,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     hasViaturasOficinaRdvContent || showTrocasOleoHome || showPendenciaLimpeza || showFainasGerais;
   const showLinhaCardsOperacionais =
     !alarmeBloqueiaSecoesOperacionais && hasAlgumCardOperacionalSemAlarme;
+  const hasCardsOperacionaisColapsaveis =
+    !alarmeBloqueiaSecoesOperacionais &&
+    (hasViaturasOficinaRdvContent || showTrocasOleoHome || showPendenciaLimpeza);
   const showLinhaCardMotoristasServicoRotina = hasMotoristasServicoOuRotina;
   const showRegiaoCardsInferiores = showLinhaCardMotoristasServicoRotina || showLinhaCardsOperacionais;
 
@@ -709,7 +713,24 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         <div className="w-full min-w-0 space-y-4">
           {showLinhaCardsOperacionais ? (
         <div className="grid w-full min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(17.5rem,1fr))]">
-            {hasViaturasOficinaRdvContent && !alarmeBloqueiaSecoesOperacionais ? (
+            {hasCardsOperacionaisColapsaveis ? (
+              <Card className={cn("col-span-full", departuresTableShadowClass)}>
+                <CardContent className="flex items-center justify-between gap-3 py-3">
+                  <p className={cn("text-sm", homeBodyEmphasisClass)}>
+                    Cards operacionais ocultos.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setOperationalCardsExpanded((prev) => !prev)}
+                  >
+                    {operationalCardsExpanded ? "Ocultar cards operacionais" : "Expandir cards operacionais"}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {operationalCardsExpanded && hasViaturasOficinaRdvContent && !alarmeBloqueiaSecoesOperacionais ? (
             <Card className={departuresTableShadowClass}>
               <CardContent className="flex items-start justify-between gap-3">
                 <div className="home-dashboard-fluid-card min-w-0 flex-1 space-y-4">
@@ -796,7 +817,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             </Card>
             ) : null}
 
-              {showTrocasOleoHome && !alarmeBloqueiaSecoesOperacionais ? (
+              {operationalCardsExpanded && showTrocasOleoHome && !alarmeBloqueiaSecoesOperacionais ? (
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
@@ -871,7 +892,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </Card>
               ) : null}
 
-              {showPendenciaLimpeza && !alarmeBloqueiaSecoesOperacionais ? (
+              {operationalCardsExpanded && showPendenciaLimpeza && !alarmeBloqueiaSecoesOperacionais ? (
               <Card className={departuresTableShadowClass}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
