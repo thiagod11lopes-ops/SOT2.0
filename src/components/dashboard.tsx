@@ -138,7 +138,6 @@ const homeTableCellClass =
   "font-bold text-[hsl(var(--primary))] text-[clamp(0.4125rem,0.24rem+0.75cqi,0.6375rem)] leading-[1.32]";
 const homeAtrasoAndamentoCompactHeaderClass = "pb-1";
 const homeAtrasoAndamentoCompactContentClass = "pt-0 pb-1";
-const homeAtrasoAndamentoCompactDateClass = "text-[10px] leading-tight";
 const homeAtrasoAndamentoCompactIconWrapClass = "rounded-md bg-[hsl(var(--muted))] p-1.5";
 const homeAtrasoAndamentoCompactIconClass = "h-4 w-4 text-slate-600";
 
@@ -178,17 +177,6 @@ function shouldBlinkProximaSaidaRow(r: DepartureRecord, agora: Date): boolean {
 function detalheSheetsVazios(b: DetalheServicoBundle | null): boolean {
   if (!b) return true;
   return Object.keys(b.sheets).length === 0;
-}
-
-/** Data de hoje para exibição (pt-BR), primeira letra maiúscula. */
-function formatDataHojeLongaPtBr() {
-  const s = new Date().toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 function formatIsoDatePtBrShort(iso: string): string {
