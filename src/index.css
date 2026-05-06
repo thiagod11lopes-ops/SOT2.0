@@ -219,6 +219,15 @@ body {
 }
 
 /*
+ * Cards Saídas com Atraso / Saídas em Andamento:
+ * alinham tamanho de conteúdo com os cards "Viaturas na Oficina".
+ */
+.home-dashboard-atraso-andamento-panel :is(th, td) {
+  font-size: clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem);
+  line-height: 1.32;
+}
+
+/*
  * Página principal — cards de oficina, óleo, limpeza, fainas:
  * texto escala com a largura do cartão (container query).
  */

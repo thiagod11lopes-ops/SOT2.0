@@ -594,7 +594,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-                <div className="home-dashboard-departures-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -654,7 +654,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-                <div className="home-dashboard-departures-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
+                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-x-auto rounded-md border border-[hsl(var(--border))]">
                   <Table>
                     <TableHeader>
                       <TableRow>
