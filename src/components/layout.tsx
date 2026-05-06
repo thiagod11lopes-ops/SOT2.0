@@ -3,6 +3,7 @@ import { cn } from "../lib/utils";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
 import { Button } from "./ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface LayoutProps {
   tabs: string[];
@@ -74,8 +75,15 @@ export function Layout({
       )}
     >
       <div className="fixed right-3 top-3 z-[80]">
-        <Button type="button" variant="outline" size="sm" onClick={toggleHeaderVisibility}>
-          {headerVisible ? "Ocultar" : "Expandir"}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={toggleHeaderVisibility}
+          aria-label={headerVisible ? "Ocultar cabeçalho" : "Expandir cabeçalho"}
+          title={headerVisible ? "Ocultar" : "Expandir"}
+        >
+          {headerVisible ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
       </div>
       <Header
