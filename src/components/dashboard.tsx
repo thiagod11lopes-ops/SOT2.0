@@ -241,7 +241,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     const raw = window.localStorage.getItem(HOME_DASHBOARD_FONT_SCALE_STORAGE_KEY);
     const parsed = Number(raw);
     if (!Number.isFinite(parsed)) return 1;
-    return Math.min(1.4, Math.max(0.7, parsed));
+    return Math.min(2, Math.max(0.7, parsed));
   });
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -492,7 +492,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               id="home-font-scale"
               type="range"
               min={70}
-              max={140}
+              max={200}
               step={5}
               value={Math.round(dashboardFontScale * 100)}
               onChange={(e) => {

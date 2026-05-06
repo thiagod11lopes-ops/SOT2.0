@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
+import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
@@ -44,6 +44,7 @@ export function DepartureCard({
 }) {
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
+  const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
   const rubricaPadRef = useRef<RubricaSignaturePadHandle>(null);
   const rubricaTitleId = useId();
@@ -86,12 +87,9 @@ export function DepartureCard({
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
   const chegadaPreenchido = record.chegada.trim().length > 0;
-  const saidaFinalizada = kmSaidaPreenchido && kmChegadaPreenchido && chegadaPreenchido;
-
-  function commitChegada(raw: string) {
-    if (!editavel) return;
-    onPatchKm({ chegada: normalize24hTime(raw) });
-  }
+  const ficouNaOficina = record.ficouNaOficina === true;
+  const saidaFinalizada =
+    kmSaidaPreenchido && ((kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina);
 
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
     if (!editavel || !updateDeparture) return;
@@ -127,9 +125,21 @@ export function DepartureCard({
     });
   }
 
+  function marcarViaturaNaOficina() {
+    if (!editavel || !updateDeparture) return;
+    updateDeparture(record.id, {
+      ...record,
+      kmChegada: "",
+      chegada: "",
+      ficouNaOficina: true,
+    });
+    setOficinaConfirmModalOpen(false);
+    setRubricaModalOpen(true);
+  }
+
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
   const mostrarRubricar =
-    chegadaPreenchido && Boolean(updateDeparture) && !cancelada;
+    (chegadaPreenchido || ficouNaOficina) && Boolean(updateDeparture) && !cancelada;
 
   return (
     <article
@@ -357,20 +367,42 @@ export function DepartureCard({
             <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onCommit={(v) => applyAmbPatch({ kmChegada: v })}
+              onCommit={(v) =>
+                applyAmbPatch({ kmChegada: v, ficouNaOficina: v.trim().length > 0 ? false : record.ficouNaOficina })
+              }
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <MobileEditableTextField
-              label="Hora da chegada"
-              value={record.chegada}
-              onCommit={(v) => applyAmbPatch({ chegada: v })}
-              transform={normalize24hTime}
-              time24h
-              disabled={!editavel}
-            />
+            <div className="col-span-1 flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <MobileEditableTextField
+                  label="Hora da chegada"
+                  value={record.chegada}
+                  onCommit={(v) =>
+                    applyAmbPatch({
+                      chegada: v,
+                      ficouNaOficina: normalize24hTime(v).trim().length > 0 ? false : record.ficouNaOficina,
+                    })
+                  }
+                  transform={normalize24hTime}
+                  time24h
+                  disabled={!editavel}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!editavel}
+                className="mb-[2px] h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-amber-500/10 p-0 text-amber-700 hover:bg-amber-500/20 disabled:opacity-40 dark:text-amber-400"
+                title="Viatura ficou na oficina (carro quebrado)"
+                aria-label="Marcar viatura como ficou na oficina"
+                onClick={() => setOficinaConfirmModalOpen(true)}
+              >
+                <CarFront className="h-5 w-5" />
+              </Button>
+            </div>
             {updateDeparture ? (
               <div className="col-span-1 sm:col-span-2 flex flex-col gap-2 pt-0.5">
                 <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -469,19 +501,44 @@ export function DepartureCard({
             <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onCommit={(v) => onPatchKm({ kmChegada: v })}
+              onCommit={(v) =>
+                applyAdminCadastroPatch({
+                  kmChegada: formatKmThousandsPtBr(v),
+                  ficouNaOficina: formatKmThousandsPtBr(v).trim().length > 0 ? false : record.ficouNaOficina,
+                })
+              }
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
               disabled={!editavel}
             />
-            <MobileEditableTextField
-              label="Hora da chegada"
-              value={record.chegada}
-              onCommit={(v) => commitChegada(v)}
-              time24h
-              disabled={!editavel}
-            />
+            <div className="col-span-1 flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <MobileEditableTextField
+                  label="Hora da chegada"
+                  value={record.chegada}
+                  onCommit={(v) =>
+                    applyAdminCadastroPatch({
+                      chegada: normalize24hTime(v),
+                      ficouNaOficina: normalize24hTime(v).trim().length > 0 ? false : record.ficouNaOficina,
+                    })
+                  }
+                  time24h
+                  disabled={!editavel}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!editavel}
+                className="mb-[2px] h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-amber-500/10 p-0 text-amber-700 hover:bg-amber-500/20 disabled:opacity-40 dark:text-amber-400"
+                title="Viatura ficou na oficina (carro quebrado)"
+                aria-label="Marcar viatura como ficou na oficina"
+                onClick={() => setOficinaConfirmModalOpen(true)}
+              >
+                <CarFront className="h-5 w-5" />
+              </Button>
+            </div>
             {updateDeparture ? (
               <div className="col-span-1 sm:col-span-3 flex flex-col gap-2 pt-0.5">
                 <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -584,6 +641,44 @@ export function DepartureCard({
               </Button>
               <Button type="button" className="min-h-11 rounded-xl font-semibold text-black" onClick={commitRubrica}>
                 OK
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {oficinaConfirmModalOpen ? (
+        <div
+          className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[520]")}
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOficinaConfirmModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Viatura ficou na oficina?</h3>
+            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+              Ao confirmar, a saída será finalizada sem KM chegada e sem Hora da chegada. Em seguida, faça a rubrica
+              para concluir.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                className="min-h-10 rounded-xl font-medium text-black"
+                onClick={() => setOficinaConfirmModalOpen(false)}
+              >
+                Não
+              </Button>
+              <Button
+                type="button"
+                className="min-h-10 rounded-xl font-semibold text-black"
+                onClick={marcarViaturaNaOficina}
+              >
+                Sim
               </Button>
             </div>
           </div>

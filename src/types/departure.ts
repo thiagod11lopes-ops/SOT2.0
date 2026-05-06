@@ -34,6 +34,8 @@ export interface DepartureRecord {
   kmChegada: string;
   /** Hora de chegada (ambulância) — campo CHEGADA do formulário */
   chegada: string;
+  /** Marca quando a viatura ficou na oficina (finaliza sem KM/Hora de chegada). */
+  ficouNaOficina?: boolean;
   cidade: string;
   bairro: string;
   /** Texto manual (ex.: rubrica) — preenchido no mobile; incluído no PDF das saídas. */

@@ -35,6 +35,7 @@ import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
+import { parseKmCampo } from "../lib/oilMaintenance";
 import {
   getLatestPersistedRdvIsoDate,
   getRdvPlacasInoperantesFromLatestPersistedRdv,
@@ -752,12 +753,45 @@ export function RegisterDeparturePage() {
       ? viaturasAmbDisponiveis.length > 0
       : mergedViaturasCatalog.length > 0;
 
+  const ultimoKmSaidaPorViaturaLower = useMemo(() => {
+    const map = new Map<string, { km: number; stamp: number }>();
+    for (const d of departures) {
+      const placaKey = d.viaturas.trim().toLowerCase();
+      if (!placaKey) continue;
+      const kmRef = parseKmCampo(d.kmChegada) ?? parseKmCampo(d.kmSaida);
+      if (kmRef === null) continue;
+      const stamp = d.updatedAt ?? d.createdAt ?? 0;
+      const prev = map.get(placaKey);
+      if (!prev || stamp >= prev.stamp) {
+        map.set(placaKey, { km: kmRef, stamp });
+      }
+    }
+    const normalized = new Map<string, number>();
+    for (const [k, v] of map.entries()) normalized.set(k, v.km);
+    return normalized;
+  }, [departures]);
+
   /** Valor da saída ainda não cadastrado na lista aplicável ao tipo (ex.: edição antiga). */
   const orphanViatura = useMemo(() => {
     const v = vehicles.trim();
     if (!v) return false;
     return !isValueInCatalog(v, viaturasCatalogForCurrentTipo);
   }, [vehicles, viaturasCatalogForCurrentTipo]);
+
+  const lastKmAutofillViaturaLowerRef = useRef<string>("");
+  useEffect(() => {
+    const viaturaKey = vehicles.trim().toLowerCase();
+    if (!viaturaKey) {
+      lastKmAutofillViaturaLowerRef.current = "";
+      return;
+    }
+    if (lastKmAutofillViaturaLowerRef.current === viaturaKey) return;
+    lastKmAutofillViaturaLowerRef.current = viaturaKey;
+    if (kmDeparture.trim().length > 0) return;
+    const km = ultimoKmSaidaPorViaturaLower.get(viaturaKey);
+    if (km === undefined) return;
+    setKmDeparture(formatKmThousandsPtBr(String(km)));
+  }, [vehicles, kmDeparture, ultimoKmSaidaPorViaturaLower]);
 
   /** Ao mudar para Ambulância com catálogo de ambulâncias, remove viatura que não seja ambulância. */
   useEffect(() => {
