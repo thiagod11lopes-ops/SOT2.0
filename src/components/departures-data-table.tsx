@@ -36,12 +36,15 @@ const inputClass =
 const inputClassBold =
   "h-8 w-full min-w-[3.5rem] max-w-[6.5rem] rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-1.5 font-mono text-xs tabular-nums text-[hsl(var(--primary))] font-bold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]";
 
-/** KM saída, KM chegada e chegada preenchidos — linha tratada como finalizada (visual). */
+/** Finaliza com KM+chegada ou com fluxo de oficina rubricado. */
 function saidaFinalizadaKmEChegada(r: DepartureRecord): boolean {
+  const finalizadaPorOficinaRubricada =
+    r.kmSaida.trim().length > 0 && r.ficouNaOficina === true && r.rubrica.trim().length > 0;
   return (
-    r.kmSaida.trim().length > 0 &&
-    r.kmChegada.trim().length > 0 &&
-    r.chegada.trim().length > 0
+    finalizadaPorOficinaRubricada ||
+    (r.kmSaida.trim().length > 0 &&
+      r.kmChegada.trim().length > 0 &&
+      r.chegada.trim().length > 0)
   );
 }
 
@@ -289,7 +292,7 @@ export function DeparturesDataTable({
             const lr = listRowFromRecord(row);
             const finalizada = saidaFinalizadaKmEChegada(row);
             const cancelada = row.cancelada === true;
-            const ficouNaOficina = row.ficouNaOficina === true;
+            const ficouNaOficina = row.ficouNaOficina === true && row.rubrica.trim().length > 0;
             const kmEditavel = Boolean(onUpdateKmFields) && !cancelada;
             const destinoCell = group.destinoDisplay;
             const setorCell = group.setorDisplay;

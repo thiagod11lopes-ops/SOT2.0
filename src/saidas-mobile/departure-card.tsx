@@ -87,7 +87,7 @@ export function DepartureCard({
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
   const chegadaPreenchido = record.chegada.trim().length > 0;
-  const ficouNaOficina = record.ficouNaOficina === true;
+  const ficouNaOficina = record.ficouNaOficina === true && record.rubrica.trim().length > 0;
   const saidaFinalizada =
     kmSaidaPreenchido && ((kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina);
 
