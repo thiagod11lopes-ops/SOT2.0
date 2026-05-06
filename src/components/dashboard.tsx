@@ -136,6 +136,11 @@ const homeTableHeadClass =
 /** Mesmo conteúdo de célula (corpo da tabela). */
 const homeTableCellClass =
   "font-bold text-[hsl(var(--primary))] text-[clamp(0.4125rem,0.24rem+0.75cqi,0.6375rem)] leading-[1.32]";
+const homeAtrasoAndamentoCompactHeaderClass = "pb-1";
+const homeAtrasoAndamentoCompactContentClass = "pt-0 pb-1";
+const homeAtrasoAndamentoCompactDateClass = "text-[10px] leading-tight";
+const homeAtrasoAndamentoCompactIconWrapClass = "rounded-md bg-[hsl(var(--muted))] p-1.5";
+const homeAtrasoAndamentoCompactIconClass = "h-4 w-4 text-slate-600";
 
 /** Tabela compacta no card Saídas administrativas (home). Tamanho do texto: `.home-dashboard-departures-panel` em index.css. */
 const homeCompactHeadClass =
@@ -582,23 +587,24 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           >
             {showAtraso ? (
           <Card className={cn("min-w-0 h-full", departuresTableShadowClass, showAtraso && !showAndamento && "w-full")}>
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <CardHeader className={cn("flex flex-row items-start justify-between space-y-0", homeAtrasoAndamentoCompactHeaderClass)}>
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas com Atraso</CardTitle>
                 <p
                   className={cn(
-                    "text-xs font-bold text-[hsl(var(--primary))]",
+                    "font-bold text-[hsl(var(--primary))]",
+                    homeAtrasoAndamentoCompactDateClass,
                     "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
                   )}
                 >
                   {formatDataHojeLongaPtBr()}
                 </p>
               </div>
-              <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
-                <ClockAlert className="h-5 w-5 text-slate-600" />
+              <div className={homeAtrasoAndamentoCompactIconWrapClass}>
+                <ClockAlert className={homeAtrasoAndamentoCompactIconClass} />
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className={homeAtrasoAndamentoCompactContentClass}>
                 <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-visible rounded-md border border-[hsl(var(--border))]">
                   <Table wrapperClassName="overflow-visible">
                     <TableHeader>
@@ -642,23 +648,24 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
             {showAndamento ? (
           <Card className={cn("min-w-0 h-full", departuresTableShadowClass, !showAtraso && showAndamento && "w-full")}>
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <CardHeader className={cn("flex flex-row items-start justify-between space-y-0", homeAtrasoAndamentoCompactHeaderClass)}>
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas em Andamento</CardTitle>
                 <p
                   className={cn(
-                    "text-xs font-bold text-[hsl(var(--primary))]",
+                    "font-bold text-[hsl(var(--primary))]",
+                    homeAtrasoAndamentoCompactDateClass,
                     "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
                   )}
                 >
                   {formatDataHojeLongaPtBr()}
                 </p>
               </div>
-              <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
-                <Route className="h-5 w-5 text-slate-600" />
+              <div className={homeAtrasoAndamentoCompactIconWrapClass}>
+                <Route className={homeAtrasoAndamentoCompactIconClass} />
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className={homeAtrasoAndamentoCompactContentClass}>
                 <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-visible rounded-md border border-[hsl(var(--border))]">
                   <Table wrapperClassName="overflow-visible">
                     <TableHeader>
