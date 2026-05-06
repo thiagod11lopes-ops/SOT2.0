@@ -42,6 +42,7 @@ export function DepartureCard({
   /** Idem: setores combinados (vista administrativa). */
   mergedSetorDisplay?: string;
 }) {
+  const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
@@ -145,6 +146,18 @@ export function DepartureCard({
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
   const mostrarRubricar =
     (chegadaPreenchido || ficouNaOficina) && Boolean(updateDeparture) && !cancelada;
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.requestAnimationFrame(() => {
+      expandContentRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open]);
 
   return (
     <article
@@ -257,7 +270,10 @@ export function DepartureCard({
       </button>
 
       {open && isAmbulancia && (updateDeparture || !allowMobileEdit) ? (
-        <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+        <div
+          ref={expandContentRef}
+          className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4"
+        >
           {cancelada ? (
             <p className="text-sm font-medium text-red-700 dark:text-red-400">Esta saída foi cancelada.</p>
           ) : null}
@@ -471,7 +487,10 @@ export function DepartureCard({
       ) : null}
 
       {open && !isAmbulancia ? (
-        <div className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4">
+        <div
+          ref={expandContentRef}
+          className="space-y-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/35 px-4 py-4"
+        >
           {cancelada ? (
             <p className="text-sm font-medium text-red-700 dark:text-red-400">Esta saída foi cancelada.</p>
           ) : null}
