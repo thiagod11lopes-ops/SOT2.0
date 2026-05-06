@@ -79,6 +79,9 @@ function alarmeJaDisparouNesteDia(agora: Date, horaAlarme: string): boolean {
 
 /** KM saída preenchido, KM chegada e chegada vazios → mesmo critério do card Saídas em Andamento. */
 function saidaEmAndamento(r: DepartureRecord): boolean {
+  const finalizadaPorOficinaRubricada =
+    r.kmSaida.trim().length > 0 && r.ficouNaOficina === true && r.rubrica.trim().length > 0;
+  if (finalizadaPorOficinaRubricada) return false;
   return (
     r.kmSaida.trim().length > 0 &&
     r.kmChegada.trim().length === 0 &&
