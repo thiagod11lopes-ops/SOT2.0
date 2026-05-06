@@ -985,7 +985,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
           {showLinhaCardMotoristasServicoRotina ? (
             <Card className={cn("w-full", departuresTableShadowClass)}>
-              <CardContent className="home-dashboard-fluid-card relative px-4 py-3.5 pr-14 sm:px-5 sm:py-4 sm:pr-16">
+              <CardContent className="home-dashboard-fluid-card home-dashboard-motoristas-card relative px-4 py-3.5 pr-14 sm:px-5 sm:py-4 sm:pr-16">
                 <div className="w-full min-w-0 overflow-visible text-center">
                   <p className="w-full break-words text-center leading-snug [font-size:inherit]">
                     <span className={homeFluidCardTitleClass}>Motoristas de Serviço</span>

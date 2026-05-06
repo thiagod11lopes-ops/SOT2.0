@@ -255,6 +255,15 @@ body {
   line-height: 1.32;
 }
 
+/* Card "Motoristas de Serviço e Rotina": 20% menor que os demais cards fluidos. */
+.home-dashboard-motoristas-card .home-dashboard-fluid-card-title {
+  font-size: calc(clamp(0.975rem, 0.576rem + 1.44cqi, 1.35rem) * var(--home-card-font-scale, 1) * 0.8);
+}
+
+.home-dashboard-motoristas-card :is(p:not(.home-dashboard-fluid-card-title), li, span) {
+  font-size: calc(clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem) * var(--home-card-font-scale, 1) * 0.8);
+}
+
 /* Telão inferior: uma linha entra pela direita (100cqw), atravessa a faixa e sai por completo à esquerda
    (−100% = largura do trilho). Ao repetir, volta a iniciar à direita. Requer .home-marquee-viewport (cqw). */
 @keyframes home-marquee-scroll {
