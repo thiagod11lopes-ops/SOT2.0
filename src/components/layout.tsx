@@ -25,8 +25,8 @@ export function Layout({
   fitHomeViewport,
   children,
 }: LayoutProps) {
-  const autoHideHeaderOnHome = activeTab === "Principal";
-  const [headerVisible, setHeaderVisible] = useState(() => !autoHideHeaderOnHome);
+  const autoHideHeader = true;
+  const [headerVisible, setHeaderVisible] = useState(() => !autoHideHeader);
   const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function Layout({
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-    if (!autoHideHeaderOnHome) {
+    if (!autoHideHeader) {
       setHeaderVisible(true);
       return;
     }
@@ -58,7 +58,7 @@ export function Layout({
         hideTimerRef.current = null;
       }
     };
-  }, [autoHideHeaderOnHome]);
+  }, [autoHideHeader]);
 
   return (
     <div
