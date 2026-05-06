@@ -754,16 +754,21 @@ export function RegisterDeparturePage() {
       : mergedViaturasCatalog.length > 0;
 
   const ultimoKmSaidaPorViaturaLower = useMemo(() => {
-    const map = new Map<string, { km: number; stamp: number }>();
+    const map = new Map<string, { km: number; stamp: number; priority: number }>();
     for (const d of departures) {
       const placaKey = d.viaturas.trim().toLowerCase();
       if (!placaKey) continue;
-      const kmRef = parseKmCampo(d.kmChegada) ?? parseKmCampo(d.kmSaida);
+      const finalizadaOficinaRubricada =
+        d.ficouNaOficina === true && d.rubrica.trim().length > 0 && d.kmSaida.trim().length > 0;
+      const kmRef = finalizadaOficinaRubricada
+        ? parseKmCampo(d.kmSaida)
+        : parseKmCampo(d.kmChegada) ?? parseKmCampo(d.kmSaida);
       if (kmRef === null) continue;
       const stamp = d.updatedAt ?? d.createdAt ?? 0;
+      const priority = finalizadaOficinaRubricada ? 2 : 1;
       const prev = map.get(placaKey);
-      if (!prev || stamp >= prev.stamp) {
-        map.set(placaKey, { km: kmRef, stamp });
+      if (!prev || stamp > prev.stamp || (stamp === prev.stamp && priority > prev.priority)) {
+        map.set(placaKey, { km: kmRef, stamp, priority });
       }
     }
     const normalized = new Map<string, number>();

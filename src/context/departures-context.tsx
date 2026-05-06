@@ -61,6 +61,7 @@ type DeparturesContextValue = {
 
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
 const DEPARTURES_STORAGE_KEY = "sot-departures-v1";
+const DEPARTURES_CROSS_TAB_EVENT_KEY = "sot-departures-cross-tab-event-v1";
 const SUPPRESS_REMOTE_MS = 5000;
 const LOCAL_MUTATION_GUARD_MS = 60_000;
 const WRITE_RETRY_MAX = 6;
@@ -419,6 +420,30 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     if (!hydratedRef.current) return;
     void idbSetJson(DEPARTURES_STORAGE_KEY, departures);
   }, [departures]);
+
+  /** Notifica outras abas (mesmo navegador) para atualizar a lista em tempo real no modo local. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new Event("sot-departures-updated"));
+    try {
+      window.localStorage.setItem(DEPARTURES_CROSS_TAB_EVENT_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+  }, [departures]);
+
+  /** Ao receber ping de outra aba, recarrega saídas do IndexedDB (somente modo local). */
+  useEffect(() => {
+    if (useCloud) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DEPARTURES_CROSS_TAB_EVENT_KEY) return;
+      void idbGetJson<unknown>(DEPARTURES_STORAGE_KEY).then((stored) => {
+        setDepartures(normalizeDepartureRows(stored));
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [useCloud]);
 
   const addDeparture = useCallback((data: Omit<DepartureRecord, "id" | "createdAt">) => {
     const now = Date.now();
