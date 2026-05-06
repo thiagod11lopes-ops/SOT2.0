@@ -138,6 +138,10 @@ export function DepartureCard({
     setRubricaModalOpen(true);
   }
 
+  function handleIniciarSaida() {
+    setOpen(false);
+  }
+
   /** Rubrica não depende de `editavel`: em dias só leitura ainda se pode rubricar se já houver chegada registada. */
   const mostrarRubricar =
     (chegadaPreenchido || ficouNaOficina) && Boolean(updateDeparture) && !cancelada;
@@ -356,15 +360,28 @@ export function DepartureCard({
               onCommit={(v) => applyAmbPatch({ bairro: v })}
               disabled={!editavel}
             />
-            <MobileEditableTextField
-              label="KM saída"
-              value={formatKmThousandsPtBr(record.kmSaida)}
-              onCommit={(v) => applyAmbPatch({ kmSaida: v })}
-              transform={formatKmThousandsPtBr}
-              inputMode="numeric"
-              mono
-              disabled={!editavel}
-            />
+            <div className="col-span-1 flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <MobileEditableTextField
+                  label="KM saída"
+                  value={formatKmThousandsPtBr(record.kmSaida)}
+                  onCommit={(v) => applyAmbPatch({ kmSaida: v })}
+                  transform={formatKmThousandsPtBr}
+                  inputMode="numeric"
+                  mono
+                  disabled={!editavel}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!editavel}
+                className="mb-[2px] h-11 min-h-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-xs font-semibold text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55 disabled:opacity-40"
+                onClick={handleIniciarSaida}
+              >
+                Iniciar Saída
+              </Button>
+            </div>
             <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
@@ -490,15 +507,28 @@ export function DepartureCard({
                 disabled={!editavel || !updateDeparture}
               />
             </div>
-            <MobileEditableTextField
-              label="KM saída"
-              value={formatKmThousandsPtBr(record.kmSaida)}
-              onCommit={(v) => onPatchKm({ kmSaida: v })}
-              transform={formatKmThousandsPtBr}
-              inputMode="numeric"
-              mono
-              disabled={!editavel}
-            />
+            <div className="col-span-1 flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <MobileEditableTextField
+                  label="KM saída"
+                  value={formatKmThousandsPtBr(record.kmSaida)}
+                  onCommit={(v) => onPatchKm({ kmSaida: v })}
+                  transform={formatKmThousandsPtBr}
+                  inputMode="numeric"
+                  mono
+                  disabled={!editavel}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!editavel}
+                className="mb-[2px] h-11 min-h-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-xs font-semibold text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55 disabled:opacity-40"
+                onClick={handleIniciarSaida}
+              >
+                Iniciar Saída
+              </Button>
+            </div>
             <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
