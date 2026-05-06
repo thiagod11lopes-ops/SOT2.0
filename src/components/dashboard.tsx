@@ -131,10 +131,11 @@ const homeCardTitleClass =
 
 /** Mesmos cabeçalhos de tabela das páginas de saídas. */
 const homeTableHeadClass =
-  "font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
+  "font-bold text-[hsl(var(--primary))] text-[clamp(0.825rem,0.48rem+1.5cqi,1.275rem)] leading-[1.32] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
 
 /** Mesmo conteúdo de célula (corpo da tabela). */
-const homeTableCellClass = "font-bold text-[hsl(var(--primary))]";
+const homeTableCellClass =
+  "font-bold text-[hsl(var(--primary))] text-[clamp(0.825rem,0.48rem+1.5cqi,1.275rem)] leading-[1.32]";
 
 /** Tabela compacta no card Saídas administrativas (home). Tamanho do texto: `.home-dashboard-departures-panel` em index.css. */
 const homeCompactHeadClass =
