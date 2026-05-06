@@ -36,8 +36,10 @@ import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
 import {
+  getLatestPersistedRdvIsoDate,
   getRdvPlacasInoperantesFromLatestPersistedRdv,
   getRdvPlacasNaOficinaFromLatestPersistedRdv,
+  getRdvPlacasPorSituacaoComObservacaoForDate,
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import { cn } from "../lib/utils";
@@ -149,7 +151,7 @@ function getMissingExternoBatchWeekdayDates(records: DepartureRecord[]): Date[] 
 function viaturaRdvOption(v: string, keyPrefix: string, rdvInoperantes: Set<string>) {
   const blocked = rdvInoperantes.has(v.trim().toLowerCase());
   return (
-    <option key={`${keyPrefix}-${v}`} value={v} disabled={blocked} style={blocked ? { color: "#dc2626" } : undefined}>
+    <option key={`${keyPrefix}-${v}`} value={v} style={blocked ? { color: "#dc2626" } : undefined}>
       {blocked ? `${v} — Inoperante (RDV)` : v}
     </option>
   );
@@ -482,6 +484,8 @@ export function RegisterDeparturePage() {
   const [requestResponsible, setRequestResponsible] = useState<string>("");
   const [om, setOm] = useState<string>("");
   const [vehicles, setVehicles] = useState<string>("");
+  const [pendingInoperanteVehicle, setPendingInoperanteVehicle] = useState<string | null>(null);
+  const [inoperanteVehicleModalOpen, setInoperanteVehicleModalOpen] = useState(false);
   const [rdvInopTick, setRdvInopTick] = useState(0);
   const [drivers, setDrivers] = useState<string>("");
   const [destinationHospital, setDestinationHospital] = useState<string>("");
@@ -786,12 +790,39 @@ export function RegisterDeparturePage() {
     return getRdvPlacasInoperantesFromLatestPersistedRdv();
   }, [rdvInopTick]);
 
-  /** Placa «Inoperante» nesse RDV (última data) não pode ser escolhida. */
-  useEffect(() => {
-    const v = vehicles.trim();
-    if (!v) return;
-    if (rdvPlacasInoperantes.has(v.toLowerCase())) setVehicles("");
-  }, [vehicles, rdvPlacasInoperantes]);
+  const rdvInoperanteReasonByPlacaLower = useMemo(() => {
+    void rdvInopTick;
+    const iso = getLatestPersistedRdvIsoDate();
+    if (!iso) return new Map<string, string>();
+    const entries = getRdvPlacasPorSituacaoComObservacaoForDate(iso, "Inoperante");
+    const byPlaca = new Map<string, string>();
+    for (const item of entries) {
+      byPlaca.set(item.placa.trim().toLowerCase(), item.observacao.trim());
+    }
+    return byPlaca;
+  }, [rdvInopTick]);
+
+  const pendingInoperanteVehicleReason = useMemo(() => {
+    if (!pendingInoperanteVehicle) return "";
+    return rdvInoperanteReasonByPlacaLower.get(pendingInoperanteVehicle.trim().toLowerCase()) ?? "";
+  }, [pendingInoperanteVehicle, rdvInoperanteReasonByPlacaLower]);
+
+  const handleVehicleChange = useCallback(
+    (nextVehicle: string) => {
+      if (!nextVehicle) {
+        setVehicles("");
+        return;
+      }
+      const isInoperante = rdvPlacasInoperantes.has(nextVehicle.trim().toLowerCase());
+      if (isInoperante) {
+        setPendingInoperanteVehicle(nextVehicle);
+        setInoperanteVehicleModalOpen(true);
+        return;
+      }
+      setVehicles(nextVehicle);
+    },
+    [rdvPlacasInoperantes],
+  );
 
   const motoristaSelectOptions = useMemo(() => {
     const list = [...catalogItems.motoristas];
@@ -820,7 +851,6 @@ export function RegisterDeparturePage() {
     {
       const v = vehicles.trim();
       if (v && rdvPlacasNaOficinaLower.has(v.toLowerCase())) f.push("Viaturas");
-      else if (v && rdvPlacasInoperantes.has(v.toLowerCase())) f.push("Viaturas");
       else if (viaturasCatalogForCurrentTipo.length > 0) {
         if (!v || !isValueInCatalog(v, viaturasCatalogForCurrentTipo)) f.push("Viaturas");
       }
@@ -1823,7 +1853,7 @@ export function RegisterDeparturePage() {
                     <select
                       id="field-viaturas"
                       value={vehicles}
-                      onChange={(event) => setVehicles(event.target.value)}
+                      onChange={(event) => handleVehicleChange(event.target.value)}
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
                     >
                       <option value="">—</option>
@@ -2438,6 +2468,54 @@ export function RegisterDeparturePage() {
           <div className="flex flex-col items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-8 py-6 shadow-lg">
             <Loader2 className="h-10 w-10 animate-spin text-[hsl(var(--primary))]" aria-hidden />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">Carregando dados da saída…</p>
+          </div>
+        </div>
+      ) : null}
+
+      {inoperanteVehicleModalOpen && pendingInoperanteVehicle ? (
+        <div
+          className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setInoperanteVehicleModalOpen(false);
+              setPendingInoperanteVehicle(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-lg">
+            <h3 className="text-base font-semibold text-zinc-900">Viatura inoperante</h3>
+            <p className="mt-2 text-sm text-zinc-700">
+              A viatura <strong>{pendingInoperanteVehicle}</strong> consta como inoperante no RDV.
+            </p>
+            <p className="mt-2 text-sm text-zinc-700">
+              Problema:{" "}
+              <strong>{pendingInoperanteVehicleReason || "Sem observação registrada no RDV mais recente."}</strong>
+            </p>
+            <p className="mt-2 text-sm text-zinc-700">Deseja selecionar essa viatura mesmo assim?</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setInoperanteVehicleModalOpen(false);
+                  setPendingInoperanteVehicle(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (pendingInoperanteVehicle) setVehicles(pendingInoperanteVehicle);
+                  setInoperanteVehicleModalOpen(false);
+                  setPendingInoperanteVehicle(null);
+                }}
+              >
+                Ok
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
