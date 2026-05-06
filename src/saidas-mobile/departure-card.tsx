@@ -107,6 +107,7 @@ export function DepartureCard({
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
     updateDeparture(record.id, { ...rest, rubrica: drawn });
     setRubricaModalOpen(false);
+    setOpen(false);
   }
 
   function handleSalvarOcorrencias(departureId: string, texto: string) {
