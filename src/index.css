@@ -218,6 +218,10 @@ body {
   line-height: 1.22;
 }
 
+.home-dashboard-admin-panel :is(th, td) {
+  font-size: calc(clamp(0.625rem, 0.38rem + 1.45cqi, 1.0625rem) * var(--home-admin-font-scale, 1));
+}
+
 /*
  * Cards Saídas com Atraso / Saídas em Andamento:
  * alinham tamanho de conteúdo com os cards "Viaturas na Oficina".

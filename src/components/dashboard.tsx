@@ -8,7 +8,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useAvisos } from "../context/avisos-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -247,6 +247,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const [operationalCardsExpanded, setOperationalCardsExpanded] = useState(false);
+  const [adminCardFontScale, setAdminCardFontScale] = useState(1);
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -508,7 +509,35 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="flex flex-col pt-0">
-              <div className="home-dashboard-departures-panel w-full overflow-visible rounded-md border border-[hsl(var(--border))]">
+              <div className="mb-2 flex items-center gap-2">
+                <label
+                  htmlFor="admin-card-font-scale"
+                  className={cn("shrink-0 text-xs font-bold text-[hsl(var(--primary))]")}
+                >
+                  Fonte
+                </label>
+                <input
+                  id="admin-card-font-scale"
+                  type="range"
+                  min={70}
+                  max={140}
+                  step={5}
+                  value={Math.round(adminCardFontScale * 100)}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isFinite(next)) setAdminCardFontScale(next / 100);
+                  }}
+                  className="h-2 w-full cursor-pointer accent-[hsl(var(--primary))]"
+                  aria-label="Controlar tamanho da fonte do card Saídas administrativas"
+                />
+                <span className={cn("w-10 text-right text-xs font-bold text-[hsl(var(--primary))]")}>
+                  {Math.round(adminCardFontScale * 100)}%
+                </span>
+              </div>
+              <div
+                className="home-dashboard-departures-panel home-dashboard-admin-panel w-full overflow-visible rounded-md border border-[hsl(var(--border))]"
+                style={{ "--home-admin-font-scale": String(adminCardFontScale) } as CSSProperties}
+              >
                     <Table className="table-fixed" wrapperClassName="overflow-visible">
                     <TableHeader>
                       <TableRow>
