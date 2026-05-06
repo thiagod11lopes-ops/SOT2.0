@@ -145,6 +145,7 @@ const homeCompactCellClass =
 /** Títulos nos cards com `.home-dashboard-fluid-card` — tamanho fluido em `index.css`. */
 const homeFluidCardTitleClass =
   "home-dashboard-fluid-card-title font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
+const homeCompactCardTitleClass = "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]";
 
 /** Textos de corpo / listas / vazios: mesma cor e peso das células. */
 const homeBodyEmphasisClass = "font-bold text-[hsl(var(--primary))]";
@@ -480,7 +481,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <Card className={cn("flex w-full min-w-0 flex-col", departuresTableShadowClass)}>
             <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
-                <CardTitle className={cn(homeCardTitleClass, "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]")}>
+                <CardTitle className={homeCardTitleClass}>
                   Saídas administrativas
                 </CardTitle>
                 <p
@@ -578,7 +579,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <Card className={cn("min-w-0 h-full", departuresTableShadowClass, showAtraso && !showAndamento && "w-full")}>
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
-                <CardTitle className={homeCardTitleClass}>Saídas com Atraso</CardTitle>
+                <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas com Atraso</CardTitle>
                 <p
                   className={cn(
                     "text-xs font-bold text-[hsl(var(--primary))]",
@@ -638,7 +639,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
           <Card className={cn("min-w-0 h-full", departuresTableShadowClass, !showAtraso && showAndamento && "w-full")}>
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="min-w-0 space-y-1 pr-2">
-                <CardTitle className={homeCardTitleClass}>Saídas em Andamento</CardTitle>
+                <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas em Andamento</CardTitle>
                 <p
                   className={cn(
                     "text-xs font-bold text-[hsl(var(--primary))]",
