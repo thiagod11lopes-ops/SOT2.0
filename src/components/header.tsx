@@ -13,9 +13,11 @@ interface HeaderProps {
   onTabChange: (tab: string) => void;
   /** RDV visível (rota `#/carro-quebrado`). */
   rdvRouteActive?: boolean;
+  /** Oculta visualmente o cabeçalho (auto-hide na página Principal). */
+  hidden?: boolean;
 }
 
-export function Header({ tabs, activeTab, onTabChange, rdvRouteActive }: HeaderProps) {
+export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }: HeaderProps) {
   const { setActiveTab } = useAppTab();
 
   function openRdvInApp() {
@@ -23,7 +25,14 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive }: HeaderP
     window.location.hash = "#/carro-quebrado";
   }
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur">
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur transition-all duration-300",
+        hidden
+          ? "pointer-events-none -translate-y-[115%] opacity-0"
+          : "pointer-events-auto translate-y-0 opacity-100",
+      )}
+    >
       <div className="relative mx-auto flex min-h-[5rem] max-w-[1600px] items-center justify-between gap-3 px-6 py-3 sm:min-h-[5.25rem] sm:gap-4">
         <div className="relative z-10 shrink-0">
           <HeaderDateTime />
