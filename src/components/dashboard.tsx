@@ -152,6 +152,7 @@ const homeCompactCellClass =
 const homeFluidCardTitleClass =
   "home-dashboard-fluid-card-title font-bold text-[hsl(var(--primary))] [text-shadow:0_1px_2px_rgba(0,0,0,0.42),0_2px_8px_rgba(0,0,0,0.32)]";
 const homeCompactCardTitleClass = "text-[1.35rem] sm:text-[1.65rem] md:text-[1.85rem]";
+const HOME_DASHBOARD_FONT_SCALE_STORAGE_KEY = "sot-home-dashboard-font-scale-v1";
 
 /** Textos de corpo / listas / vazios: mesma cor e peso das células. */
 const homeBodyEmphasisClass = "font-bold text-[hsl(var(--primary))]";
@@ -247,7 +248,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const [operationalCardsExpanded, setOperationalCardsExpanded] = useState(false);
-  const [adminCardFontScale, setAdminCardFontScale] = useState(1);
+  const [dashboardFontScale, setDashboardFontScale] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    const raw = window.localStorage.getItem(HOME_DASHBOARD_FONT_SCALE_STORAGE_KEY);
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.min(1.4, Math.max(0.7, parsed));
+  });
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -280,6 +287,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(HOME_DASHBOARD_FONT_SCALE_STORAGE_KEY, String(dashboardFontScale));
+  }, [dashboardFontScale]);
 
   useEffect(() => {
     const on = () => setRdvOficinaTick((t) => t + 1);
@@ -478,8 +490,36 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const showRegiaoCardsInferiores = showLinhaCardMotoristasServicoRotina || showLinhaCardsOperacionais;
 
   return (
-    <div className="space-y-6">
+    <div
+      className="home-dashboard-font-controlled space-y-6"
+      style={{ "--home-card-font-scale": String(dashboardFontScale) } as CSSProperties}
+    >
       <section className="space-y-4">
+        <Card className={cn("w-full", departuresTableShadowClass)}>
+          <CardContent className="flex items-center gap-3 py-3">
+            <label className={cn("shrink-0 text-xs font-bold text-[hsl(var(--primary))]")} htmlFor="home-font-scale">
+              Fonte dos cards
+            </label>
+            <input
+              id="home-font-scale"
+              type="range"
+              min={70}
+              max={140}
+              step={5}
+              value={Math.round(dashboardFontScale * 100)}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (Number.isFinite(next)) setDashboardFontScale(next / 100);
+              }}
+              className="h-2 w-full cursor-pointer accent-[hsl(var(--primary))]"
+              aria-label="Controlar tamanho da fonte de todos os cards da página principal"
+            />
+            <span className={cn("w-10 text-right text-xs font-bold text-[hsl(var(--primary))]")}>
+              {Math.round(dashboardFontScale * 100)}%
+            </span>
+          </CardContent>
+        </Card>
+
         {alarmesNaHome.map((a) => (
           <DailyAlarmCard key={a.id} alarm={a} />
         ))}
@@ -495,49 +535,13 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
                 <CardTitle className={homeCardTitleClass}>
                   Saídas administrativas
                 </CardTitle>
-                <p
-                  className={cn(
-                    "text-xs font-bold text-[hsl(var(--primary))]",
-                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
-                  )}
-                >
-                  {formatDataHojeLongaPtBr()}
-                </p>
               </div>
               <div className="rounded-lg bg-[hsl(var(--muted))] p-2.5">
                 <Building2 className="h-5 w-5 text-slate-600" />
               </div>
             </CardHeader>
             <CardContent className="flex flex-col pt-0">
-              <div className="mb-2 flex items-center gap-2">
-                <label
-                  htmlFor="admin-card-font-scale"
-                  className={cn("shrink-0 text-xs font-bold text-[hsl(var(--primary))]")}
-                >
-                  Fonte
-                </label>
-                <input
-                  id="admin-card-font-scale"
-                  type="range"
-                  min={70}
-                  max={140}
-                  step={5}
-                  value={Math.round(adminCardFontScale * 100)}
-                  onChange={(e) => {
-                    const next = Number(e.target.value);
-                    if (Number.isFinite(next)) setAdminCardFontScale(next / 100);
-                  }}
-                  className="h-2 w-full cursor-pointer accent-[hsl(var(--primary))]"
-                  aria-label="Controlar tamanho da fonte do card Saídas administrativas"
-                />
-                <span className={cn("w-10 text-right text-xs font-bold text-[hsl(var(--primary))]")}>
-                  {Math.round(adminCardFontScale * 100)}%
-                </span>
-              </div>
-              <div
-                className="home-dashboard-departures-panel home-dashboard-admin-panel w-full overflow-visible rounded-md border border-[hsl(var(--border))]"
-                style={{ "--home-admin-font-scale": String(adminCardFontScale) } as CSSProperties}
-              >
+              <div className="home-dashboard-departures-panel w-full overflow-visible rounded-md border border-[hsl(var(--border))]">
                     <Table className="table-fixed" wrapperClassName="overflow-visible">
                     <TableHeader>
                       <TableRow>
@@ -619,15 +623,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             <CardHeader className={cn("flex flex-row items-start justify-between space-y-0", homeAtrasoAndamentoCompactHeaderClass)}>
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas com Atraso</CardTitle>
-                <p
-                  className={cn(
-                    "font-bold text-[hsl(var(--primary))]",
-                    homeAtrasoAndamentoCompactDateClass,
-                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
-                  )}
-                >
-                  {formatDataHojeLongaPtBr()}
-                </p>
               </div>
               <div className={homeAtrasoAndamentoCompactIconWrapClass}>
                 <ClockAlert className={homeAtrasoAndamentoCompactIconClass} />
@@ -680,15 +675,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
             <CardHeader className={cn("flex flex-row items-start justify-between space-y-0", homeAtrasoAndamentoCompactHeaderClass)}>
               <div className="min-w-0 space-y-1 pr-2">
                 <CardTitle className={cn(homeCardTitleClass, homeCompactCardTitleClass)}>Saídas em Andamento</CardTitle>
-                <p
-                  className={cn(
-                    "font-bold text-[hsl(var(--primary))]",
-                    homeAtrasoAndamentoCompactDateClass,
-                    "[text-shadow:0_1px_2px_rgba(0,0,0,0.35)]",
-                  )}
-                >
-                  {formatDataHojeLongaPtBr()}
-                </p>
               </div>
               <div className={homeAtrasoAndamentoCompactIconWrapClass}>
                 <Route className={homeAtrasoAndamentoCompactIconClass} />
@@ -748,7 +734,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
         {showRegiaoCardsInferiores ? (
         <div className="w-full min-w-0 space-y-4">
           {showLinhaCardsOperacionais ? (
-        <div className="grid w-full min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(17.5rem,1fr))]">
+        <div className="grid w-full min-w-0 gap-4 grid-cols-1 md:grid-cols-3">
             {hasCardsOperacionaisColapsaveis ? (
               <Card className={cn("col-span-full", departuresTableShadowClass)}>
                 <CardContent className="flex items-center justify-between gap-3 py-3">
@@ -961,7 +947,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               ) : null}
 
               {showFainasGerais && !alarmeBloqueiaSecoesOperacionais ? (
-              <Card className={departuresTableShadowClass}>
+              <Card className={cn("md:col-span-3", departuresTableShadowClass)}>
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="home-dashboard-fluid-card min-w-0 flex-1">
                     <p className={homeFluidCardTitleClass}>Fainas Gerais</p>

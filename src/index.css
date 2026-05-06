@@ -218,8 +218,9 @@ body {
   line-height: 1.22;
 }
 
-.home-dashboard-admin-panel :is(th, td) {
-  font-size: calc(clamp(0.625rem, 0.38rem + 1.45cqi, 1.0625rem) * var(--home-admin-font-scale, 1));
+.home-dashboard-font-controlled .home-dashboard-departures-panel :is(th, td) {
+  font-size: calc(clamp(0.625rem, 0.38rem + 1.45cqi, 1.0625rem) * var(--home-card-font-scale, 1));
+  line-height: 1.22;
 }
 
 /*
@@ -227,7 +228,7 @@ body {
  * alinham tamanho de conteúdo com os cards "Viaturas na Oficina".
  */
 .home-dashboard-atraso-andamento-panel :is(th, td) {
-  font-size: clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem);
+  font-size: calc(clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem) * var(--home-card-font-scale, 1));
   line-height: 1.32;
 }
 
@@ -241,12 +242,12 @@ body {
 
 /* +20% face aos valores base (oficina, óleo, limpeza, fainas). */
 .home-dashboard-fluid-card .home-dashboard-fluid-card-title {
-  font-size: clamp(0.975rem, 0.576rem + 1.44cqi, 1.35rem);
+  font-size: calc(clamp(0.975rem, 0.576rem + 1.44cqi, 1.35rem) * var(--home-card-font-scale, 1));
   line-height: 1.25;
 }
 
 .home-dashboard-fluid-card :is(p:not(.home-dashboard-fluid-card-title), li, span) {
-  font-size: clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem);
+  font-size: calc(clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem) * var(--home-card-font-scale, 1));
   line-height: 1.32;
 }
 
