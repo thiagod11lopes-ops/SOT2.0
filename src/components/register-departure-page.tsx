@@ -790,8 +790,8 @@ export function RegisterDeparturePage() {
     return getRdvPlacasInoperantesFromLatestPersistedRdv();
   }, [rdvInopTick]);
 
-  const rdvInoperanteReasonByPlacaLower = useMemo(() => {
-    void rdvInopTick;
+  void rdvInopTick;
+  const rdvInoperanteReasonByPlacaLower = (() => {
     const iso = getLatestPersistedRdvIsoDate();
     if (!iso) return new Map<string, string>();
     const entries = getRdvPlacasPorSituacaoComObservacaoForDate(iso, "Inoperante");
@@ -800,7 +800,7 @@ export function RegisterDeparturePage() {
       byPlaca.set(item.placa.trim().toLowerCase(), item.observacao.trim());
     }
     return byPlaca;
-  }, [rdvInopTick]);
+  })();
 
   const pendingInoperanteVehicleReason = useMemo(() => {
     if (!pendingInoperanteVehicle) return "";
