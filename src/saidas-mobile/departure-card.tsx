@@ -649,7 +649,7 @@ export function DepartureCard({
 
       {oficinaConfirmModalOpen ? (
         <div
-          className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[520]")}
+          className={cn(MOBILE_MODAL_OVERLAY_CLASS, "z-[520] items-center pt-12")}
           role="dialog"
           aria-modal="true"
           onMouseDown={(e) => {
@@ -657,7 +657,7 @@ export function DepartureCard({
           }}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
+            className="mt-10 w-full max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">Viatura ficou na oficina?</h3>
