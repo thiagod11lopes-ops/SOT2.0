@@ -503,8 +503,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="flex flex-col pt-0">
-              <div className="home-dashboard-departures-panel max-h-[min(90vh,52rem)] w-full overflow-auto rounded-md border border-[hsl(var(--border))]">
-                    <Table className="table-fixed">
+              <div className="home-dashboard-departures-panel w-full overflow-visible rounded-md border border-[hsl(var(--border))]">
+                    <Table className="table-fixed" wrapperClassName="overflow-visible">
                     <TableHeader>
                       <TableRow>
                         <TableHead className={cn("w-[22%]", homeCompactHeadClass)}>Viatura</TableHead>
@@ -599,8 +599,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 max-h-[min(18vh,10.5rem)] w-full flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
-                  <Table>
+                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-visible rounded-md border border-[hsl(var(--border))]">
+                  <Table wrapperClassName="overflow-visible">
                     <TableHeader>
                       <TableRow>
                         <TableHead className={cn("min-w-[7rem]", homeTableHeadClass)}>Viatura</TableHead>
@@ -659,8 +659,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 max-h-[min(18vh,10.5rem)] w-full flex-1 overflow-auto rounded-md border border-[hsl(var(--border))]">
-                  <Table>
+                <div className="home-dashboard-departures-panel home-dashboard-atraso-andamento-panel min-h-0 w-full flex-1 overflow-visible rounded-md border border-[hsl(var(--border))]">
+                  <Table wrapperClassName="overflow-visible">
                     <TableHeader>
                       <TableRow>
                         <TableHead className={cn("min-w-[7rem]", homeTableHeadClass)}>Viatura</TableHead>
