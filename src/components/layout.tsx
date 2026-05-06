@@ -74,14 +74,14 @@ export function Layout({
         fitHomeViewport ? "flex h-[100dvh] min-h-0 flex-col overflow-hidden" : "min-h-screen",
       )}
     >
-      <div className="fixed right-3 top-3 z-[80]">
+      <div className="fixed right-0 top-0 z-[80]">
         <Button
           type="button"
-          variant="outline"
-          size="icon"
+          variant="ghost"
           onClick={toggleHeaderVisibility}
           aria-label={headerVisible ? "Ocultar cabeçalho" : "Expandir cabeçalho"}
           title={headerVisible ? "Ocultar" : "Expandir"}
+          className="h-6 min-w-[5.6rem] rounded-none rounded-bl-xl border border-r-0 border-t-0 border-[hsl(var(--border))] bg-[hsl(var(--background))/0.78] px-3 text-[hsl(var(--foreground))] opacity-85 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md transition-all duration-300 hover:min-w-[6rem] hover:bg-[hsl(var(--background))/0.9] hover:opacity-100"
         >
           {headerVisible ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
@@ -96,7 +96,7 @@ export function Layout({
       <main
         className={cn(
           "mx-auto max-w-[1600px] px-6 pb-8",
-          headerVisible ? "pt-64 xl:pt-44" : "pt-3",
+          headerVisible ? "pt-64 xl:pt-44" : "pt-20 xl:pt-20",
           homeTickerActive && "pb-32 sm:pb-36",
           fitHomeViewport && "flex min-h-0 w-full flex-1 flex-col overflow-hidden",
         )}

@@ -26,15 +26,15 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }:
   }
   return (
     <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur transition-all duration-300",
-        hidden
-          ? "pointer-events-none -translate-y-[115%] opacity-0"
-          : "pointer-events-auto translate-y-0 opacity-100",
-      )}
+      className="fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur"
     >
       <div className="relative mx-auto flex min-h-[5rem] max-w-[1600px] items-center justify-between gap-3 px-6 py-3 sm:min-h-[5.25rem] sm:gap-4">
-        <div className="relative z-10 shrink-0">
+        <div
+          className={cn(
+            "relative z-10 shrink-0 transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            hidden ? "pointer-events-none -translate-y-4 scale-[0.985] opacity-0 blur-[2px]" : "opacity-100",
+          )}
+        >
           <HeaderDateTime />
         </div>
 
@@ -42,12 +42,22 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }:
           <h1 className="pointer-events-none text-[1.05rem] font-bold leading-tight text-[hsl(var(--primary))] sm:text-[1.35rem] md:text-[1.55rem] [text-shadow:0_2px_4px_rgba(0,0,0,0.4),0_4px_16px_rgba(0,0,0,0.28)]">
             SISTEMA DE ORGANIZAÇÃO DE TRANSPORTE
           </h1>
-          <div className="pointer-events-auto">
+          <div
+            className={cn(
+              "pointer-events-auto transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              hidden ? "pointer-events-none -translate-y-3 opacity-0 blur-[2px]" : "opacity-100",
+            )}
+          >
             <CloudSyncIndicator compact />
           </div>
         </div>
 
-        <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <div
+          className={cn(
+            "relative z-10 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            hidden ? "pointer-events-none -translate-y-4 scale-[0.985] opacity-0 blur-[2px]" : "opacity-100",
+          )}
+        >
           <HeaderPaoMotorista />
           <Button
             type="button"
@@ -63,7 +73,14 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }:
         </div>
       </div>
 
-      <div className="border-t px-4 py-3">
+      <div
+        className={cn(
+          "border-t px-4 py-3 transform-gpu transition-[max-height,opacity,filter,transform,padding] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden",
+          hidden
+            ? "pointer-events-none max-h-0 -translate-y-3 px-4 py-0 opacity-0 blur-[2px]"
+            : "max-h-24 translate-y-0 opacity-100",
+        )}
+      >
         <TabsList variant="main" items={tabs} active={activeTab} onChange={onTabChange} />
       </div>
     </header>
