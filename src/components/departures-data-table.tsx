@@ -1,5 +1,5 @@
 import { ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDepartures, type DepartureKmFieldsPatch } from "../context/departures-context";
 import {
   isKmEditSessionUnlocked,
@@ -296,34 +296,24 @@ export function DeparturesDataTable({
             const rowKey = group.records.map((r) => r.id).join("|");
             const anyOcorrencias = group.records.some((r) => (r.ocorrencias ?? "").trim().length > 0);
             return (
-              <Fragment key={rowKey}>
-                {ficouNaOficina ? (
-                  <TableRow className="border-b-0">
-                    <TableCell
-                      colSpan={colSpan}
-                      className="py-1.5 text-center text-[0.66rem] font-black uppercase tracking-[0.22em] text-orange-900 bg-orange-400/90"
-                    >
-                      Oficina
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-                <TableRow
-                  className={cn(
-                    cancelada && "bg-red-950/[0.08] opacity-50",
-                    !cancelada &&
-                      (finalizada || ficouNaOficina) &&
-                      "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
-                  )}
-                  title={
-                    cancelada
-                      ? "Saída cancelada"
-                      : ficouNaOficina
-                        ? "Saída finalizada — viatura na oficina"
-                        : finalizada
-                          ? "Saída finalizada — ainda editável"
-                          : undefined
-                  }
-                >
+              <TableRow
+                key={rowKey}
+                className={cn(
+                  cancelada && "bg-red-950/[0.08] opacity-50",
+                  !cancelada &&
+                    (finalizada || ficouNaOficina) &&
+                    "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
+                )}
+                title={
+                  cancelada
+                    ? "Saída cancelada"
+                    : ficouNaOficina
+                      ? "Saída finalizada — viatura na oficina"
+                      : finalizada
+                        ? "Saída finalizada — ainda editável"
+                        : undefined
+                }
+              >
                 {showTipoColumn ? (
                   <TableCell className={cell("whitespace-nowrap text-sm")}>{lr.tipo}</TableCell>
                 ) : null}
@@ -386,7 +376,14 @@ export function DeparturesDataTable({
                   )}
                 </TableCell>
                 <TableCell className={cell("max-w-[min(240px,36vw)] break-words")} title={setorCell}>
-                  {setorCell}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{setorCell}</span>
+                    {ficouNaOficina ? (
+                      <span className="rounded bg-orange-400 px-2 py-0.5 text-[0.62rem] font-black uppercase tracking-[0.16em] text-orange-950">
+                        Oficina
+                      </span>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell
                   className={cell("max-w-[140px] text-xs")}
@@ -469,8 +466,7 @@ export function DeparturesDataTable({
                     </Button>
                   </div>
                 </TableCell>
-                </TableRow>
-              </Fragment>
+              </TableRow>
             );
           })
         )}

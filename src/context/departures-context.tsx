@@ -91,6 +91,7 @@ function departureRowsEqual(a: DepartureRecord, b: DepartureRecord): boolean {
     a.kmSaida === b.kmSaida &&
     a.kmChegada === b.kmChegada &&
     a.chegada === b.chegada &&
+    (a.ficouNaOficina === true) === (b.ficouNaOficina === true) &&
     a.cidade === b.cidade &&
     a.bairro === b.bairro &&
     a.rubrica === b.rubrica &&
