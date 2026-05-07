@@ -39,7 +39,7 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }:
         </div>
 
         <div className="absolute left-1/2 top-1/2 z-0 flex w-[min(92vw,48rem)] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 px-2 text-center sm:w-[min(90vw,52rem)]">
-          <h1 className="pointer-events-none text-[1.05rem] font-bold leading-tight text-[hsl(var(--primary))] sm:text-[1.35rem] md:text-[1.55rem] [text-shadow:0_2px_4px_rgba(0,0,0,0.4),0_4px_16px_rgba(0,0,0,0.28)]">
+          <h1 className="pointer-events-none text-[1.26rem] font-bold leading-tight text-[hsl(var(--primary))] sm:text-[1.62rem] md:text-[1.86rem] [text-shadow:0_2px_4px_rgba(0,0,0,0.4),0_4px_16px_rgba(0,0,0,0.28)]">
             SISTEMA DE ORGANIZAÇÃO DE TRANSPORTE
           </h1>
           <div
