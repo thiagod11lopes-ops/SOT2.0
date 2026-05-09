@@ -6,17 +6,13 @@ import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import webpush from "web-push";
+import {
+  DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+  parseDriverLocationPayload,
+  upsertDriverActiveLocation,
+} from "./driverActiveLocationIngest.js";
 
 initializeApp();
-
-function normalizePlacaKeyDriverLocation(placa: string): string {
-  const t = String(placa || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return t.length > 0 ? t : "UNKNOWN";
-}
 
 type AlarmesConfig = {
   beforeDepartureEnabled?: boolean;
@@ -270,10 +266,7 @@ export const processMobileAlarmPush = onSchedule(
   },
 );
 
-/**
- * Recebe POST JSON { placa, latitude, longitude, departureId?, capturedAt? } com Bearer ID token (Firebase Auth).
- * Persiste em `driver_active_locations/{placa}` (um marcador por viatura).
- */
+/** Passo 3: API HTTP — atualizaFirestore `driver_active_locations` (uma posição viva por placa). */
 export const postDriverLocation = onRequest(
   {
     region: "southamerica-east1",
@@ -300,33 +293,18 @@ export const postDriverLocation = onRequest(
 
       const body =
         typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
-      const placa = String(body.placa ?? "").trim();
-      const lat = Number(body.latitude);
-      const lng = Number(body.longitude);
-      if (!placa || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-        res.status(400).json({ error: "invalid_payload" });
-        return;
-      }
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        res.status(400).json({ error: "coordinates_out_of_range" });
+      const parsed = parseDriverLocationPayload(body);
+      if (!parsed.ok) {
+        res.status(parsed.status).json({ error: parsed.error });
         return;
       }
 
-      const key = normalizePlacaKeyDriverLocation(placa);
       const db = getFirestore();
-      await db.collection("driver_active_locations").doc(key).set(
-        {
-          placa,
-          latitude: lat,
-          longitude: lng,
-          departureId: typeof body.departureId === "string" ? body.departureId.trim() : "",
-          capturedAt: typeof body.capturedAt === "string" ? body.capturedAt : new Date().toISOString(),
-          updatedAt: Timestamp.now(),
-          updatedByUid: decoded.uid,
-        },
-        { merge: true },
-      );
-
+      await upsertDriverActiveLocation(db, decoded.uid, parsed.data);
+      logger.info("postDriverLocation ok", {
+        collection: DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+        placaKeySlice: parsed.data.placa.slice(0, 12),
+      });
       res.status(200).json({ ok: true });
     } catch (e) {
       logger.error("postDriverLocation", e);

@@ -49,8 +49,9 @@ firebase deploy --only functions
   - avalia alarme de saída e vistoria pendente
   - envia push por motorista
 
-- `postDriverLocation` (HTTP POST, região `southamerica-east1`, `cors: true`, invoker público validando JWT)
-  - corpo JSON: `placa`, `latitude`, `longitude`, opcionais `departureId`, `capturedAt`
+- `postDriverLocation` (**Passo 3** — ingestão persistida na coleção **`driver_active_locations`**, HTTP POST, região `southamerica-east1`, `cors: true`, invoker público + validação JWT)
+  - corpo JSON: `placa` (obrigatório, até 32 caracteres), `latitude`, `longitude`, opcionais `departureId` (truncate 512), `capturedAt` (ISO válido ou servidor substitui)
   - cabeçalho `Authorization: Bearer <Firebase ID token>` (Auth anónima ou conta)
-  - grava/atualiza `driver_active_locations/{placaNormalizada}` via Admin SDK  
-  URL usada pelo mobile: `https://southamerica-east1-<PROJECT_ID>.cloudfunctions.net/postDriverLocation` (ou override com `VITE_DRIVER_LOCATION_POST_URL` no frontend).
+  - **Um documento por viatura**: ID Firestore = placa normalizada (A–Z/0–9/`_`) — sempre `set` com `merge`; cada POST substitui a posição anterior da mesma placa (`updatedAt`).
+  - Código modular: `functions/src/driverActiveLocationIngest.ts` (`parseDriverLocationPayload`, `upsertDriverActiveLocation`).
+  - URL típica: `https://southamerica-east1-<PROJECT_ID>.cloudfunctions.net/postDriverLocation` (ou `VITE_DRIVER_LOCATION_POST_URL` no frontend).
