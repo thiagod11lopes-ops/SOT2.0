@@ -116,16 +116,6 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
 
   await ensureGeolocationPermission();
 
-  const watchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    },
-    (err) => {
-      console.warn("[SOT mobile] watchPosition:", err.code, err.message);
-    },
-    { enableHighAccuracy: true, maximumAge: 25_000, timeout: 30_000 },
-  );
-
   const intervalMs = intervaloRastreamentoMilliseconds(getCachedRastreamentoMotoristasPayload());
 
   const tick = () => {
@@ -139,6 +129,23 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
       console.warn("[SOT mobile] postDriverLocation:", e);
     });
   };
+
+  /** O primeiro `tick()` síncrono corria com `lastPos` ainda null (GPS só chega no callback). Enviamos na primeira posição real. */
+  let sentOnceFromWatch = false;
+
+  const watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (!sentOnceFromWatch) {
+        sentOnceFromWatch = true;
+        tick();
+      }
+    },
+    (err) => {
+      console.warn("[SOT mobile] watchPosition:", err.code, err.message);
+    },
+    { enableHighAccuracy: true, maximumAge: 25_000, timeout: 30_000 },
+  );
 
   const intervalId = window.setInterval(tick, intervalMs);
   tick();
