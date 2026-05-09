@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { HeaderDateTime } from "./header-datetime";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
 import { CloudSyncIndicator } from "./cloud-sync-indicator";
@@ -13,11 +14,20 @@ interface HeaderProps {
   onTabChange: (tab: string) => void;
   /** RDV visível (rota `#/carro-quebrado`). */
   rdvRouteActive?: boolean;
+  /** Botão de mapa de localização das viaturas (Firebase), ao lado do RDV. */
+  driverLocationsMapButton?: ReactNode;
   /** Oculta visualmente o cabeçalho (auto-hide na página Principal). */
   hidden?: boolean;
 }
 
-export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }: HeaderProps) {
+export function Header({
+  tabs,
+  activeTab,
+  onTabChange,
+  rdvRouteActive,
+  driverLocationsMapButton,
+  hidden,
+}: HeaderProps) {
   const { setActiveTab } = useAppTab();
 
   function openRdvInApp() {
@@ -59,6 +69,7 @@ export function Header({ tabs, activeTab, onTabChange, rdvRouteActive, hidden }:
           )}
         >
           <HeaderPaoMotorista />
+          {driverLocationsMapButton}
           <Button
             type="button"
             variant={rdvRouteActive ? "default" : "outline"}

@@ -23,7 +23,10 @@ import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
 import { ensureVistoriaCloudStateSyncStarted } from "./lib/vistoriaCloudState";
 import { useIdleResetToHome } from "./lib/useIdleResetToHome";
 import { isSettingsTab } from "./lib/tabMatch";
-import { DesktopDriverLocationsMap } from "./components/desktop-driver-locations-map";
+import {
+  DesktopDriverLocationsMapHeaderButton,
+  DesktopDriverLocationsMapProvider,
+} from "./components/desktop-driver-locations-map";
 import { Button } from "./components/ui/button";
 
 function useLocationHash() {
@@ -290,6 +293,7 @@ function App() {
         activeTab={activeTab ?? ""}
         onTabChange={handleTabChange}
         rdvRouteActive={isCarroQuebradoRoute}
+        driverLocationsMapButton={<DesktopDriverLocationsMapHeaderButton />}
         homeTickerActive={showHomeAvisosTicker}
         fitHomeViewport={isHome}
       >
@@ -301,8 +305,7 @@ function App() {
 
   return (
     <>
-      {appContent}
-      <DesktopDriverLocationsMap enabled={!isMobileRoute} />
+      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute}>{appContent}</DesktopDriverLocationsMapProvider>
       {shouldRequireDailyBackup ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
