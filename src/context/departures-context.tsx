@@ -21,7 +21,10 @@ import {
 } from "../lib/firebase/departuresFirestore";
 import { getSyncClientId } from "../lib/firebase/clientIdentity";
 import { isFirebaseConfigured } from "../lib/firebase/config";
+import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { stopMobileDriverTrackingSessionIfMatches } from "../lib/mobileDriverTracking";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
+import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import type { DepartureRecord } from "../types/departure";
 import { mergeGroupKey } from "../types/departure";
 import { useSyncPreference } from "./sync-preference-context";
@@ -602,6 +605,16 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
 
   const removeDeparture = useCallback(
     (id: string) => {
+      const removed = departures.find((d) => d.id === id);
+      if (removed) {
+        stopMobileDriverTrackingSessionIfMatches(id);
+        const placa = primaryPlacaFromViaturasField(removed.viaturas);
+        if (placa && resolveDriverLocationPostUrl()) {
+          void clearDriverActiveLocation(placa).catch((e) =>
+            console.warn("[SOT] clearDriverActiveLocation on removeDeparture:", e),
+          );
+        }
+      }
       if (useCloud) {
         bumpLocalMutation();
         setDepartures((prev) => prev.filter((d) => d.id !== id));
@@ -614,7 +627,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       }
       setDepartures((prev) => prev.filter((d) => d.id !== id));
     },
-    [useCloud, bumpLocalMutation, markDeleted, enqueueWrite],
+    [departures, useCloud, bumpLocalMutation, markDeleted, enqueueWrite],
   );
 
   const updateDepartureKmFields = useCallback(

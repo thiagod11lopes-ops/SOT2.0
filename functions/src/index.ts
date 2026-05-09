@@ -8,6 +8,8 @@ import { logger } from "firebase-functions";
 import { onRequest } from "firebase-functions/v2/https";
 import {
   DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+  PLACA_MAX_LENGTH,
+  deleteDriverActiveLocation,
   parseDriverLocationPayload,
   upsertDriverActiveLocation,
 } from "./driverActiveLocationIngest.js";
@@ -41,6 +43,24 @@ export const postDriverLocation = onRequest(
 
       const body =
         typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+
+      /** Mesmo URL que o POST de posição — remove `driver_active_locations` ao finalizar saída (rubrica). */
+      if (body.clear === true) {
+        const placa = String(body.placa ?? "").trim();
+        if (!placa || placa.length > PLACA_MAX_LENGTH) {
+          res.status(400).json({ error: "invalid_placa" });
+          return;
+        }
+        const db = getFirestore();
+        await deleteDriverActiveLocation(db, placa);
+        logger.info("postDriverLocation clear ok", {
+          collection: DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+          placaKeySlice: placa.slice(0, 12),
+        });
+        res.status(200).json({ ok: true });
+        return;
+      }
+
       const parsed = parseDriverLocationPayload(body);
       if (!parsed.ok) {
         res.status(parsed.status).json({ error: parsed.error });

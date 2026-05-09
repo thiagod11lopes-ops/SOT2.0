@@ -21,7 +21,8 @@ import {
   startMobileDriverTrackingSession,
   stopMobileDriverTrackingSessionIfMatches,
 } from "../lib/mobileDriverTracking";
-import { resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -106,14 +107,6 @@ export function DepartureCard({
     if (saidaFinalizada) stopMobileDriverTrackingSessionIfMatches(record.id);
   }, [saidaFinalizada, record.id]);
 
-  function primaryPlacaViatura(field: string): string {
-    const part = field
-      .split(/[;,/|]+/)
-      .map((x) => x.trim())
-      .find(Boolean);
-    return part ?? "";
-  }
-
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
     if (!editavel || !updateDeparture) return;
     updateDeparture(record.id, {
@@ -129,6 +122,12 @@ export function DepartureCard({
     void createdAt;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
     updateDeparture(record.id, { ...rest, rubrica: drawn });
+    const placa = primaryPlacaFromViaturasField(record.viaturas);
+    if (placa && resolveDriverLocationPostUrl()) {
+      void clearDriverActiveLocation(placa).catch((e) =>
+        console.warn("[SOT mobile] clearDriverActiveLocation:", e),
+      );
+    }
     setRubricaModalOpen(false);
     setOpen(false);
   }
@@ -167,7 +166,7 @@ export function DepartureCard({
       window.alert("Preencha o KM saída antes de iniciar o rastreamento da viagem.");
       return;
     }
-    const placa = primaryPlacaViatura(record.viaturas);
+    const placa = primaryPlacaFromViaturasField(record.viaturas);
     if (!placa) {
       window.alert("Informe a viatura antes de iniciar.");
       return;

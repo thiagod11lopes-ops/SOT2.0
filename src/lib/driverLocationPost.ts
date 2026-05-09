@@ -55,3 +55,35 @@ export async function postDriverLocation(args: {
     throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
   }
 }
+
+/**
+ * Remove a posição ativa no servidor (Firestore via Cloud Function), p.ex. após rubrica ao finalizar a saída.
+ * Mesmo endpoint HTTP que `postDriverLocation`, corpo `{ clear: true, placa }`.
+ */
+export async function clearDriverActiveLocation(placa: string): Promise<void> {
+  const url = resolveDriverLocationPostUrl();
+  if (!url) {
+    throw new Error(
+      "URL de envio de localização indisponível: defina VITE_FIREBASE_PROJECT_ID ou VITE_DRIVER_LOCATION_POST_URL.",
+    );
+  }
+  if (!isFirebaseConfigured()) throw new Error("Firebase não configurado neste ambiente.");
+
+  await ensureFirebaseAuth();
+  const user = getAuth(getFirebaseApp()).currentUser;
+  const token = user ? await user.getIdToken() : null;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ placa: placa.trim(), clear: true }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
+  }
+}

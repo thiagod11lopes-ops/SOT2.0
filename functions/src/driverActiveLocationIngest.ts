@@ -7,7 +7,7 @@ import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export const DRIVER_ACTIVE_LOCATIONS_COLLECTION = "driver_active_locations";
 
-const PLACA_MAX_LENGTH = 32;
+export const PLACA_MAX_LENGTH = 32;
 
 /** Chave estável para ID do documento (maiúsculas, apenas A–Z / 0–9 / underscore). */
 export function normalizeDriverActiveLocationPlacaKey(placa: string): string {
@@ -77,4 +77,10 @@ export async function upsertDriverActiveLocation(
     },
     { merge: true },
   );
+}
+
+/** Remove a posição ativa desta viatura (ex.: saída finalizada após rubrica). */
+export async function deleteDriverActiveLocation(db: Firestore, placa: string): Promise<void> {
+  const key = normalizeDriverActiveLocationPlacaKey(placa);
+  await db.collection(DRIVER_ACTIVE_LOCATIONS_COLLECTION).doc(key).delete();
 }
