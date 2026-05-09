@@ -100,7 +100,7 @@ export function DesktopDriverLocationsMapProvider({
                   </h2>
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
                     {lastUpdateAtMs
-                      ? `Última atualização Firebase: ${formatHmSs(lastUpdateAtMs)} · toque no marcador para ver a placa`
+                      ? `Última atualização Firebase: ${formatHmSs(lastUpdateAtMs)} · placa sempre visível junto ao marcador`
                       : subscribed
                         ? "OpenStreetMap · a aguardar posições…"
                         : "OpenStreetMap · a ligar ao Firebase…"}
@@ -265,7 +265,12 @@ function MapLeafletHost({
       const m = L.circleMarker([p.lat, p.lng], markerOpts);
       const label = escapePopupHtml(p.placa);
       m.bindPopup(`<strong>${label}</strong>`, { className: "sot-driver-map-popup" });
-      m.bindTooltip(p.placa, { sticky: true, direction: "top", className: "sot-driver-map-placa-tooltip" });
+      m.bindTooltip(p.placa, {
+        permanent: true,
+        direction: "top",
+        offset: [0, -8],
+        className: "sot-driver-map-placa-tooltip",
+      });
       m.addTo(group);
     }
 
