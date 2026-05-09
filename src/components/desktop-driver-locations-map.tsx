@@ -22,18 +22,49 @@ type Props = {
   enabled: boolean;
 };
 
+function formatHmSs(ms: number): string {
+  return new Date(ms).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 /**
- * Passo 4 — botão de mapa fixo (canto inferior esquerdo) e modal fullscreen com Leaflet + OSM.
+ * Passo 4/5 — FAB + modal Leaflet/OSM · actualização **contínua** via Firestore `onSnapshot` (sem polling).
  */
 export function DesktopDriverLocationsMap({ enabled }: Props) {
   const [open, setOpen] = useState(false);
+  const [snapshotRetryNonce, setSnapshotRetryNonce] = useState(0);
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const canSync = Boolean(enabled && isFirebaseConfigured());
-  const { pins, error, loading } = useDriverActiveLocations(open && canSync);
+  const { pins, error, loading, lastUpdateAtMs, subscribed } = useDriverActiveLocations(canSync, snapshotRetryNonce);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
 
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+
   if (!canSync) return null;
+
+  const countLabel =
+    pins.length === 0
+      ? "nenhuma viatura com posição"
+      : pins.length === 1
+        ? "1 viatura em tempo real"
+        : `${pins.length} viaturas em tempo real`;
 
   return (
     <>
@@ -43,10 +74,15 @@ export function DesktopDriverLocationsMap({ enabled }: Props) {
         className={cn(
           "fixed bottom-4 left-4 z-[88] flex h-12 w-12 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--primary))] shadow-lg transition hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         )}
-        aria-label="Abrir mapa de localização das viaturas"
-        title="Mapa — localização das viaturas"
+        aria-label={`Abrir mapa de localização — ${countLabel}`}
+        title={`Mapa — ${countLabel}`}
       >
         <MapIcon className="h-6 w-6" aria-hidden />
+        {pins.length > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[0.65rem] font-bold leading-none text-white shadow-sm">
+            {pins.length > 99 ? "99+" : pins.length}
+          </span>
+        ) : null}
       </button>
 
       {open ? (
@@ -62,7 +98,11 @@ export function DesktopDriverLocationsMap({ enabled }: Props) {
                 Localização das viaturas
               </h2>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                OpenStreetMap · toque no marcador para ver a placa
+                {lastUpdateAtMs
+                  ? `Última atualização Firebase: ${formatHmSs(lastUpdateAtMs)} · toque no marcador para ver a placa`
+                  : subscribed
+                    ? "OpenStreetMap · a aguardar posições…"
+                    : "OpenStreetMap · a ligar ao Firebase…"}
               </p>
             </div>
             <Button
@@ -79,14 +119,30 @@ export function DesktopDriverLocationsMap({ enabled }: Props) {
 
           <div className="relative min-h-0 flex-1">
             <div ref={containerRef} className="driver-locations-map-leaflet absolute inset-0 z-0" />
+            {!online ? (
+              <div className="pointer-events-none absolute inset-x-0 top-4 z-[500] mx-auto flex w-[min(92%,28rem)] justify-center px-2">
+                <div className="rounded-md border border-amber-500/70 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 shadow dark:bg-amber-950/85 dark:text-amber-100">
+                  Sem ligação à Internet — atualizações do mapa retomam ao voltar a estar online.
+                </div>
+              </div>
+            ) : null}
             {loading ? (
               <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))]/95 px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] shadow">
                 A sincronizar localizações…
               </div>
             ) : null}
             {error ? (
-              <div className="pointer-events-none absolute left-4 top-14 z-[500] max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-800 dark:bg-red-950/90 dark:text-red-100">
-                {error}
+              <div className="absolute left-4 top-14 z-[500] flex max-w-md flex-col gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-800 dark:bg-red-950/90 dark:text-red-100">
+                <span>{error}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 self-start border-red-400/80 bg-white text-red-900 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-50 dark:hover:bg-red-900/60"
+                  onClick={() => setSnapshotRetryNonce((n) => n + 1)}
+                >
+                  Tentar novamente
+                </Button>
               </div>
             ) : null}
             {!loading && !error && pins.length === 0 ? (
@@ -122,6 +178,12 @@ function MapLeafletHost({
   layerRef: React.RefObject<L.LayerGroup | null>;
   pins: { placa: string; lat: number; lng: number }[];
 }) {
+  const prevPinCountRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!visible) prevPinCountRef.current = null;
+  }, [visible]);
+
   useEffect(() => {
     if (!visible || !containerRef.current) return;
 
@@ -179,17 +241,25 @@ function MapLeafletHost({
       m.addTo(group);
     }
 
-    if (pins.length >= 2) {
-      try {
-        const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
-        map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
-      } catch {
+    const n = pins.length;
+    const prev = prevPinCountRef.current;
+    prevPinCountRef.current = n;
+    /** Só reposiciona zoom/canvas quando mudou o número de viaturas (evita saltos a cada actualização GPS). */
+    const shouldResetView = prev === null || prev !== n;
+
+    if (shouldResetView) {
+      if (n >= 2) {
+        try {
+          const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
+          map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
+        } catch {
+          map.setView(BR_VIEW, BR_ZOOM_EMPTY);
+        }
+      } else if (n === 1) {
+        map.setView([pins[0].lat, pins[0].lng], 14);
+      } else {
         map.setView(BR_VIEW, BR_ZOOM_EMPTY);
       }
-    } else if (pins.length === 1) {
-      map.setView([pins[0].lat, pins[0].lng], 14);
-    } else {
-      map.setView(BR_VIEW, BR_ZOOM_EMPTY);
     }
 
     requestAnimationFrame(() => map.invalidateSize());
