@@ -87,3 +87,38 @@ export async function clearDriverActiveLocation(placa: string): Promise<void> {
     throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
   }
 }
+
+/**
+ * Remove todas as posições ativas no servidor (mapa vazio até novo envio por viatura).
+ * Mesmo endpoint, corpo `{ clearAll: true }`.
+ */
+export async function clearAllDriverActiveLocationsOnServer(): Promise<number> {
+  const url = resolveDriverLocationPostUrl();
+  if (!url) {
+    throw new Error(
+      "URL de envio de localização indisponível: defina VITE_FIREBASE_PROJECT_ID ou VITE_DRIVER_LOCATION_POST_URL.",
+    );
+  }
+  if (!isFirebaseConfigured()) throw new Error("Firebase não configurado neste ambiente.");
+
+  await ensureFirebaseAuth();
+  const user = getAuth(getFirebaseApp()).currentUser;
+  const token = user ? await user.getIdToken() : null;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ clearAll: true }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
+  }
+
+  const json = (await res.json().catch(() => ({}))) as { deleted?: number };
+  return typeof json.deleted === "number" ? json.deleted : 0;
+}

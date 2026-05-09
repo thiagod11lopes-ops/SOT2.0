@@ -84,3 +84,22 @@ export async function deleteDriverActiveLocation(db: Firestore, placa: string): 
   const key = normalizeDriverActiveLocationPlacaKey(placa);
   await db.collection(DRIVER_ACTIVE_LOCATIONS_COLLECTION).doc(key).delete();
 }
+
+const CLEAR_ALL_BATCH_SIZE = 400;
+
+/** Apaga todos os documentos da coleção (mapa sem pins até novo envio GPS). */
+export async function deleteAllDriverActiveLocations(db: Firestore): Promise<number> {
+  const col = db.collection(DRIVER_ACTIVE_LOCATIONS_COLLECTION);
+  let total = 0;
+  for (;;) {
+    const snap = await col.limit(CLEAR_ALL_BATCH_SIZE).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+    total += snap.size;
+  }
+  return total;
+}

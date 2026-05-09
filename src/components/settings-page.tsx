@@ -57,6 +57,7 @@ import {
   persistRastreamentoMotoristasToLocalStorage,
   type RastreamentoMotoristasPayload,
 } from "../lib/driverTrackingConfig";
+import { clearAllDriverActiveLocationsOnServer, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
@@ -206,6 +207,7 @@ export function SettingsPage() {
   const [rastreamentoMotoristas, setRastreamentoMotoristas] = useState<RastreamentoMotoristasPayload>(() =>
     loadRastreamentoMotoristasFromLocalStorage(),
   );
+  const [clearDriverMapBusy, setClearDriverMapBusy] = useState(false);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -609,6 +611,35 @@ export function SettingsPage() {
   function handleRemoveMobileMotoristaCred(motorista: string) {
     const next = removeMobileMotoristaCredential(motorista);
     setMobileMotoristaCreds(next);
+  }
+
+  async function handleLimparTodasLocalizacoesMapa() {
+    if (!isFirebaseConfigured() || !resolveDriverLocationPostUrl()) {
+      window.alert(
+        "Firebase ou URL da função de localização não estão disponíveis. Defina o projeto (VITE_FIREBASE_*) e, em produção, VITE_DRIVER_LOCATION_POST_URL se usar Cloud Run.",
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        "Remover todas as posições do mapa em tempo real (todas as viaturas)? Quem tiver «Iniciar saída» e GPS activo voltará a aparecer no próximo envio de coordenadas.",
+      )
+    ) {
+      return;
+    }
+    setClearDriverMapBusy(true);
+    try {
+      const n = await clearAllDriverActiveLocationsOnServer();
+      window.alert(
+        n === 0
+          ? "Nenhuma posição estava registada no mapa."
+          : `Foram removidas ${n} posição(ões). O mapa actualiza em tempo real para todos os browsers ligados ao Firebase.`,
+      );
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClearDriverMapBusy(false);
+    }
   }
 
   async function handleFirebaseOnlyToggle(next: boolean) {
@@ -1291,6 +1322,32 @@ export function SettingsPage() {
                     {!isFirebaseConfigured() ? (
                       <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
                         Firebase não está configurado: o valor fica apenas neste navegador até configurar sincronização.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="mt-6 max-w-lg border-t border-[hsl(var(--border))] pt-4">
+                    <p className="text-sm font-medium text-[hsl(var(--foreground))]">Mapa de viaturas (tempo real)</p>
+                    <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                      Apaga no Firestore todas as entradas da coleção usada pelo mapa. Útil para limpar posições antigas ou
+                      órfãs. Viaturas com rastreamento activo voltam a surgir no envio seguinte.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3 border-red-400/80 text-red-800 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40"
+                      disabled={
+                        !isFirebaseConfigured() ||
+                        resolveDriverLocationPostUrl() === null ||
+                        clearDriverMapBusy
+                      }
+                      onClick={() => void handleLimparTodasLocalizacoesMapa()}
+                    >
+                      {clearDriverMapBusy ? "A remover…" : "Excluir todas as localizações do mapa"}
+                    </Button>
+                    {!isFirebaseConfigured() || resolveDriverLocationPostUrl() === null ? (
+                      <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                        Disponível quando o Firebase e o endpoint da Cloud Function de localização estiverem configurados
+                        (como no envio GPS no mobile).
                       </p>
                     ) : null}
                   </div>

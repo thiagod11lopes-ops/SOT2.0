@@ -9,6 +9,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import {
   DRIVER_ACTIVE_LOCATIONS_COLLECTION,
   PLACA_MAX_LENGTH,
+  deleteAllDriverActiveLocations,
   deleteDriverActiveLocation,
   parseDriverLocationPayload,
   upsertDriverActiveLocation,
@@ -58,6 +59,18 @@ export const postDriverLocation = onRequest(
           placaKeySlice: placa.slice(0, 12),
         });
         res.status(200).json({ ok: true });
+        return;
+      }
+
+      if (body.clearAll === true) {
+        const db = getFirestore();
+        const deleted = await deleteAllDriverActiveLocations(db);
+        logger.info("postDriverLocation clearAll ok", {
+          collection: DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+          deleted,
+          uid: decoded.uid,
+        });
+        res.status(200).json({ ok: true, deleted });
         return;
       }
 
