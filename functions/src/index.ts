@@ -1,11 +1,22 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
+import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import webpush from "web-push";
 
 initializeApp();
+
+function normalizePlacaKeyDriverLocation(placa: string): string {
+  const t = String(placa || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return t.length > 0 ? t : "UNKNOWN";
+}
 
 type AlarmesConfig = {
   beforeDepartureEnabled?: boolean;
@@ -256,5 +267,75 @@ export const processMobileAlarmPush = onSchedule(
       vistoriaPendenteEnabled: config.vistoriaPendenteEnabled,
       vistoriaPendenteTime: config.vistoriaPendenteTime,
     });
+  },
+);
+
+/**
+ * Recebe POST JSON { placa, latitude, longitude, departureId?, capturedAt? } com Bearer ID token (Firebase Auth).
+ * Persiste em `driver_active_locations/{placa}` (um marcador por viatura).
+ */
+export const postDriverLocation = onRequest(
+  {
+    region: "southamerica-east1",
+    cors: true,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "method_not_allowed" });
+      return;
+    }
+    try {
+      const authHeader = String(req.headers.authorization ?? "");
+      const m = /^Bearer\s+(\S+)/i.exec(authHeader);
+      if (!m?.[1]) {
+        res.status(401).json({ error: "missing_token" });
+        return;
+      }
+      const decoded = await getAuth().verifyIdToken(m[1]);
+
+      const body =
+        typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const placa = String(body.placa ?? "").trim();
+      const lat = Number(body.latitude);
+      const lng = Number(body.longitude);
+      if (!placa || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        res.status(400).json({ error: "invalid_payload" });
+        return;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        res.status(400).json({ error: "coordinates_out_of_range" });
+        return;
+      }
+
+      const key = normalizePlacaKeyDriverLocation(placa);
+      const db = getFirestore();
+      await db.collection("driver_active_locations").doc(key).set(
+        {
+          placa,
+          latitude: lat,
+          longitude: lng,
+          departureId: typeof body.departureId === "string" ? body.departureId.trim() : "",
+          capturedAt: typeof body.capturedAt === "string" ? body.capturedAt : new Date().toISOString(),
+          updatedAt: Timestamp.now(),
+          updatedByUid: decoded.uid,
+        },
+        { merge: true },
+      );
+
+      res.status(200).json({ ok: true });
+    } catch (e) {
+      logger.error("postDriverLocation", e);
+      const code = e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
+      if (typeof code === "string" && code.startsWith("auth/")) {
+        res.status(401).json({ error: "unauthorized_or_invalid" });
+        return;
+      }
+      res.status(500).json({ error: "internal" });
+    }
   },
 );

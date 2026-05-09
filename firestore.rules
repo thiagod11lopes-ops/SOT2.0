@@ -45,5 +45,11 @@ service cloud.firestore {
     match /sot_state/{docId} {
       allow read, write: if isSignedIn();
     }
+
+    /** Localização ativa por viatura (escrita só via Cloud Function Admin). */
+    match /driver_active_locations/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
   }
 }

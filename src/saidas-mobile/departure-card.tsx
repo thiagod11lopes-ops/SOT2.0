@@ -15,6 +15,13 @@ import {
   getRdvPlacasNaOficinaFromLatestPersistedRdv,
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
+import {
+  formatGeolocationBlockMessage,
+  geolocationUnavailableMessage,
+  startMobileDriverTrackingSession,
+  stopMobileDriverTrackingSessionIfMatches,
+} from "../lib/mobileDriverTracking";
+import { resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -95,6 +102,18 @@ export function DepartureCard({
   const saidaFinalizada =
     kmSaidaPreenchido && ((kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina);
 
+  useEffect(() => {
+    if (saidaFinalizada) stopMobileDriverTrackingSessionIfMatches(record.id);
+  }, [saidaFinalizada, record.id]);
+
+  function primaryPlacaViatura(field: string): string {
+    const part = field
+      .split(/[;,/|]+/)
+      .map((x) => x.trim())
+      .find(Boolean);
+    return part ?? "";
+  }
+
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
     if (!editavel || !updateDeparture) return;
     updateDeparture(record.id, {
@@ -142,8 +161,33 @@ export function DepartureCard({
     setRubricaModalOpen(true);
   }
 
-  function handleIniciarSaida() {
-    setOpen(false);
+  async function handleIniciarSaida() {
+    if (!editavel) return;
+    if (!record.kmSaida.trim()) {
+      window.alert("Preencha o KM saída antes de iniciar o rastreamento da viagem.");
+      return;
+    }
+    const placa = primaryPlacaViatura(record.viaturas);
+    if (!placa) {
+      window.alert("Informe a viatura antes de iniciar.");
+      return;
+    }
+    if (!resolveDriverLocationPostUrl()) {
+      window.alert(
+        "Esta cópia do SOT não tem URL de envio de localização: defina o projeto Firebase (VITE_FIREBASE_PROJECT_ID) ou VITE_DRIVER_LOCATION_POST_URL.",
+      );
+      return;
+    }
+    try {
+      await startMobileDriverTrackingSession({ recordId: record.id, placa });
+      setOpen(false);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
+        window.alert(e.message);
+        return;
+      }
+      window.alert(formatGeolocationBlockMessage(e));
+    }
   }
 
   function getKmSaidaPrefillOnClickFromLastNormal(): string | null {

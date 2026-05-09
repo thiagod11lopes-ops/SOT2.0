@@ -9,6 +9,11 @@ import { CUSTOM_LOCATIONS_STORAGE_KEY } from "../customLocationsStorage";
 import { loadDetalheServicoBundleFromIdb, normalizeDetalheServicoBundle } from "../detalheServicoBundle";
 import { normalizeVistoriaCloudPayloadForFirestore } from "../vistoriaCloudState";
 import type { DepartureRecord } from "../../types/departure";
+import {
+  normalizeRastreamentoMotoristasPayload,
+  persistRastreamentoMotoristasToLocalStorage,
+  loadRastreamentoMotoristasFromLocalStorage,
+} from "../driverTrackingConfig";
 import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
 
 const DEPARTURES_IDB_KEY = "sot-departures-v1";
@@ -160,6 +165,12 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
       /* ignore */
     }
   }
+
+  if (Object.prototype.hasOwnProperty.call(sot, SOT_STATE_DOC.rastreamentoMotoristas)) {
+    persistRastreamentoMotoristasToLocalStorage(
+      normalizeRastreamentoMotoristasPayload(sot.rastreamentoMotoristas),
+    );
+  }
 }
 
 /**
@@ -267,6 +278,11 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
     } catch {
       /* ignore */
     }
+
+    await setSotStateDocWithRetry(
+      SOT_STATE_DOC.rastreamentoMotoristas,
+      normalizeRastreamentoMotoristasPayload(loadRastreamentoMotoristasFromLocalStorage()),
+    );
   }
 }
 

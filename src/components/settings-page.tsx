@@ -47,6 +47,16 @@ import {
   requestNotificationPermissionIfNeeded,
   showLocalAlarmNotification,
 } from "../lib/mobilePushNotifications";
+import {
+  clampIntervaloRastreamentoMinutos,
+  DEFAULT_INTERVALO_RASTREAMENTO_MINUTOS,
+  INTERVALO_RASTREAMENTO_MAX_MINUTOS,
+  INTERVALO_RASTREAMENTO_MIN_MINUTOS,
+  loadRastreamentoMotoristasFromLocalStorage,
+  normalizeRastreamentoMotoristasPayload,
+  persistRastreamentoMotoristasToLocalStorage,
+  type RastreamentoMotoristasPayload,
+} from "../lib/driverTrackingConfig";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { Button } from "./ui/button";
@@ -70,6 +80,10 @@ const SETTINGS_SECTIONS = [
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
   { id: "settings-alarmes", label: "Alarmes" },
   { id: "settings-mobile-motoristas", label: "Mobile — motoristas" },
+  {
+    id: "settings-rastreamento-gps",
+    label: "Mobile — rastreamento (GPS)",
+  },
   { id: "settings-vistoria-cal", label: "Vistoria — calendário" },
   { id: "settings-zona-risco", label: "Zona de risco" },
 ] as const;
@@ -189,6 +203,9 @@ export function SettingsPage() {
   );
   const [mobileCredMotorista, setMobileCredMotorista] = useState("");
   const [mobileCredSenha, setMobileCredSenha] = useState("");
+  const [rastreamentoMotoristas, setRastreamentoMotoristas] = useState<RastreamentoMotoristasPayload>(() =>
+    loadRastreamentoMotoristasFromLocalStorage(),
+  );
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -267,6 +284,48 @@ export function SettingsPage() {
       console.error("[SOT] salvar alarmesConfig no Firebase:", err);
     });
   }, [alarmesConfig, isOnline]);
+
+  useEffect(() => {
+    persistRastreamentoMotoristasToLocalStorage(rastreamentoMotoristas);
+  }, [rastreamentoMotoristas]);
+
+  useEffect(() => {
+    if (!isOnline || !isFirebaseConfigured()) return;
+    const payload = normalizeRastreamentoMotoristasPayload(rastreamentoMotoristas);
+    void setSotStateDocWithRetry(SOT_STATE_DOC.rastreamentoMotoristas, payload).catch((err) => {
+      console.error("[SOT] salvar rastreamentoMotoristas no Firebase:", err);
+    });
+  }, [rastreamentoMotoristas, isOnline]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseConfigured()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.rastreamentoMotoristas,
+            (payload) => {
+              if (cancelled) return;
+              if (payload == null) return;
+              const next = normalizeRastreamentoMotoristasPayload(payload);
+              setRastreamentoMotoristas(next);
+              persistRastreamentoMotoristasToLocalStorage(next);
+            },
+            (err) => console.error("[SOT] Firestore rastreamentoMotoristas (settings):", err),
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (rastreamentoMotoristas):", e);
+        }
+      })();
+    }
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOnline]);
 
   function playAlarmBeepSample(sound: AlarmesConfig["beforeDepartureSound"]) {
     try {
@@ -1185,6 +1244,57 @@ export function SettingsPage() {
                   )}
                 </div>
               </section>
+              ) : null}
+
+              {activeSectionId === "settings-rastreamento-gps" ? (
+                <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-rastreamento">
+                  <h3
+                    id="settings-heading-rastreamento"
+                    className="text-base font-semibold text-[hsl(var(--foreground))]"
+                  >
+                    Rastreamento em tempo real (motoristas)
+                  </h3>
+                  <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    Define <strong>somente em minutos</strong> com que periodicidade os motoristas devem enviar a
+                    posição ao iniciar uma viagem no mobile. O valor sincroniza no Firebase (<code>sot_state</code> /
+                    <code className="text-xs"> rastreamentoMotoristas </code>) para todos os browsers autenticados
+                    lerem o mesmo intervalo.
+                  </p>
+                  <div className="max-w-xs space-y-1">
+                    <label
+                      className="text-sm font-medium text-[hsl(var(--foreground))]"
+                      htmlFor="rastreamento-intervalo-min"
+                    >
+                      Intervalo entre envios de coordenadas (minutos)
+                    </label>
+                    <input
+                      id="rastreamento-intervalo-min"
+                      type="number"
+                      min={INTERVALO_RASTREAMENTO_MIN_MINUTOS}
+                      max={INTERVALO_RASTREAMENTO_MAX_MINUTOS}
+                      step={1}
+                      value={rastreamentoMotoristas.intervaloRastreamentoMinutos}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setRastreamentoMotoristas({
+                          intervaloRastreamentoMinutos: Number.isFinite(n)
+                            ? clampIntervaloRastreamentoMinutos(n)
+                            : DEFAULT_INTERVALO_RASTREAMENTO_MINUTOS,
+                        });
+                      }}
+                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))]"
+                    />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Permitido: {INTERVALO_RASTREAMENTO_MIN_MINUTOS} a {INTERVALO_RASTREAMENTO_MAX_MINUTOS} minutos (
+                      predefinição {DEFAULT_INTERVALO_RASTREAMENTO_MINUTOS} min).
+                    </p>
+                    {!isFirebaseConfigured() ? (
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                        Firebase não está configurado: o valor fica apenas neste navegador até configurar sincronização.
+                      </p>
+                    ) : null}
+                  </div>
+                </section>
               ) : null}
 
               {activeSectionId === "settings-vistoria-cal" ? (

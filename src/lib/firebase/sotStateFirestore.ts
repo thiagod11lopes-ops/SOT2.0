@@ -27,6 +27,8 @@ export const SOT_STATE_DOC = {
   alarmDismiss: "alarmDismiss",
   /** Configuração global dos alarmes mobile para envio push pelo backend. */
   alarmesConfig: "alarmesConfig",
+  /** Intervalo (minutos) entre envios de GPS pelos motoristas no mobile — leitura/escrita em Configurações. */
+  rastreamentoMotoristas: "rastreamentoMotoristas",
   /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
   detalheServico: "detalheServico",
   /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */

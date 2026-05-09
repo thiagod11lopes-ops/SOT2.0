@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  /** Opcional — URL HTTPS que recebe POST de localização (motorista). Por omissão: Cloud Function «postDriverLocation» na região southamerica-east1. */
+  readonly VITE_DRIVER_LOCATION_POST_URL?: string;
 }
 
 interface ImportMeta {

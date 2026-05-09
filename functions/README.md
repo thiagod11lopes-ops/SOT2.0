@@ -48,3 +48,9 @@ firebase deploy --only functions
   - lê configuração global em `sot_state/alarmesConfig`
   - avalia alarme de saída e vistoria pendente
   - envia push por motorista
+
+- `postDriverLocation` (HTTP POST, região `southamerica-east1`, `cors: true`, invoker público validando JWT)
+  - corpo JSON: `placa`, `latitude`, `longitude`, opcionais `departureId`, `capturedAt`
+  - cabeçalho `Authorization: Bearer <Firebase ID token>` (Auth anónima ou conta)
+  - grava/atualiza `driver_active_locations/{placaNormalizada}` via Admin SDK  
+  URL usada pelo mobile: `https://southamerica-east1-<PROJECT_ID>.cloudfunctions.net/postDriverLocation` (ou override com `VITE_DRIVER_LOCATION_POST_URL` no frontend).
