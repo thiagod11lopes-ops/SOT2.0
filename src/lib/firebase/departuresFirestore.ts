@@ -267,10 +267,61 @@ export async function batchUpsertDepartures(rows: DepartureRecord[]): Promise<vo
   if (rows.length === 0) return;
   await ensureFirebaseAuth();
   const db = getFirestore(getFirebaseApp());
-  for (let i = 0; i < rows.length; i += BATCH_MAX) {
+  const clientId = getSyncClientId();
+
+  let idx = 0;
+  while (idx < rows.length) {
     const batch = writeBatch(db);
-    for (const r of rows.slice(i, i + BATCH_MAX)) {
-      batch.set(doc(db, COLLECTION, r.id), departureToDoc(r));
+    let writesInBatch = 0;
+    while (writesInBatch < BATCH_MAX && idx < rows.length) {
+      const r = rows[idx];
+      idx += 1;
+      const ref = doc(db, COLLECTION, r.id);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        const v =
+          typeof r.version === "number" && Number.isFinite(r.version) && r.version >= 1
+            ? Math.trunc(r.version)
+            : 1;
+        const now = Date.now();
+        const merged: DepartureRecord = {
+          ...r,
+          version: v,
+          updatedAt:
+            typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) && r.updatedAt > 0 ? r.updatedAt : now,
+          updatedBy: typeof r.updatedBy === "string" && r.updatedBy.trim() ? r.updatedBy.trim() : clientId,
+        };
+        batch.set(ref, departureToDoc(merged));
+      } else {
+        const remote = docToDeparture(snap as QueryDocumentSnapshot<DocumentData>);
+        if (!remote) {
+          const now = Date.now();
+          const merged: DepartureRecord = {
+            ...r,
+            version: 1,
+            updatedAt: now,
+            updatedBy: clientId,
+          };
+          batch.set(ref, departureToDoc(merged));
+        } else {
+          const nextVersion = (remote.version ?? 0) + 1;
+          const nextUpdatedAt = Math.max(
+            remote.updatedAt ?? 0,
+            typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) ? r.updatedAt : 0,
+            Date.now(),
+          );
+          const merged: DepartureRecord = {
+            ...r,
+            createdAt: r.createdAt > 0 ? r.createdAt : remote.createdAt,
+            version: nextVersion,
+            updatedAt: nextUpdatedAt,
+            updatedBy: clientId,
+          };
+          batch.set(ref, departureToDoc(merged));
+        }
+      }
+      writesInBatch += 1;
     }
     await batch.commit();
   }
