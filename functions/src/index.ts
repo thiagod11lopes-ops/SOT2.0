@@ -68,9 +68,16 @@ export const postDriverLocation = onRequest(
       const decoded = await getAuth().verifyIdToken(m[1]);
 
       const body = readJsonBody(req);
+      const clearOne =
+        body.clear === true || body.clear === "true" || body.clear === 1 || body.clear === "1";
+      const clearAll =
+        body.clearAll === true ||
+        body.clearAll === "true" ||
+        body.clearAll === 1 ||
+        body.clearAll === "1";
 
       /** Mesmo URL que o POST de posição — remove `driver_active_locations` ao finalizar saída (rubrica). */
-      if (body.clear === true) {
+      if (clearOne) {
         const placa = String(body.placa ?? "").trim();
         if (!placa || placa.length > PLACA_MAX_LENGTH) {
           res.status(400).json({ error: "invalid_placa" });
@@ -86,7 +93,7 @@ export const postDriverLocation = onRequest(
         return;
       }
 
-      if (body.clearAll === true) {
+      if (clearAll) {
         const db = getFirestore();
         const deleted = await deleteAllDriverActiveLocations(db);
         logger.info("postDriverLocation clearAll ok", {

@@ -2,6 +2,54 @@ import { getAuth } from "firebase/auth";
 import { ensureFirebaseAuth } from "./firebase/auth";
 import { getFirebaseApp, isFirebaseConfigured } from "./firebase/config";
 
+/** Payload JWT (sem verificar assinatura) — só para comparar `aud` com o projeto configurado. */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = base64.length % 4;
+    if (pad) base64 += "=".repeat(4 - pad);
+    const json = atob(base64);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Evita enviar token de outro projeto (ex.: segredos GitHub Pages incorrectos). */
+function assertIdTokenMatchesFirebaseProject(token: string): void {
+  const expected = import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim();
+  if (!expected) return;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return;
+  const aud = payload.aud;
+  const audStr = typeof aud === "string" ? aud : Array.isArray(aud) ? aud[0] : undefined;
+  if (typeof audStr === "string" && audStr !== expected) {
+    throw new Error(
+      `Sessão Firebase do projeto «${audStr}», mas esta app espera «${expected}». Nos segredos do GitHub (build Pages), defina VITE_FIREBASE_PROJECT_ID igual ao projeto onde a função está deployada e faça novo deploy.`,
+    );
+  }
+}
+
+function formatFunctionsHttpError(status: number, bodyText: string): string {
+  if (status === 401) {
+    try {
+      const j = JSON.parse(bodyText) as { error?: string };
+      if (j.error === "unauthorized_or_invalid") {
+        return (
+          "O servidor recusou o token Firebase. Confirme: (1) secret GitHub VITE_FIREBASE_PROJECT_ID = sot2-8d799 (mesmo projeto da função); " +
+          "(2) domínio em Authentication → Authorized domains; (3) Anonymous activo; (4) Ctrl+F5 nesta página."
+        );
+      }
+      if (j.error === "missing_token") return "Pedido sem token Firebase. Recarregue a página.";
+    } catch {
+      /* usar texto cru */
+    }
+  }
+  return bodyText.trim() || `HTTP ${status}`;
+}
+
 /** Token fresco para a Cloud Function validar com Admin SDK (evita ID token expirado → 401). */
 async function getFirebaseIdTokenForFunctions(): Promise<string> {
   await ensureFirebaseAuth();
@@ -11,7 +59,9 @@ async function getFirebaseIdTokenForFunctions(): Promise<string> {
       "Sem sessão Firebase. Recarregue a página e confirme autenticação anónima e domínio autorizado.",
     );
   }
-  return user.getIdToken(true);
+  const token = await user.getIdToken(true);
+  assertIdTokenMatchesFirebaseProject(token);
+  return token;
 }
 
 /** URL explícita opcional (produção, emuladores ou proxy). Caso falte, monta pela região e ID do projeto. */
@@ -60,10 +110,8 @@ export async function postDriverLocation(args: {
     }),
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
-  }
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(formatFunctionsHttpError(res.status, txt));
 }
 
 /**
@@ -90,10 +138,8 @@ export async function clearDriverActiveLocation(placa: string): Promise<void> {
     body: JSON.stringify({ placa: placa.trim(), clear: true }),
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
-  }
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(formatFunctionsHttpError(res.status, txt));
 }
 
 /**
@@ -120,11 +166,13 @@ export async function clearAllDriverActiveLocationsOnServer(): Promise<number> {
     body: JSON.stringify({ clearAll: true }),
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
-  }
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(formatFunctionsHttpError(res.status, txt));
 
-  const json = (await res.json().catch(() => ({}))) as { deleted?: number };
-  return typeof json.deleted === "number" ? json.deleted : 0;
+  try {
+    const json = JSON.parse(txt) as { deleted?: number };
+    return typeof json.deleted === "number" ? json.deleted : 0;
+  } catch {
+    return 0;
+  }
 }
