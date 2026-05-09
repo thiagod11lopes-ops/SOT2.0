@@ -16,6 +16,31 @@ import {
 } from "./driverActiveLocationIngest.js";
 import { ensureAdminApp } from "./adminInit.js";
 
+function readJsonBody(req: { body?: unknown }): Record<string, unknown> {
+  const raw = req.body;
+  if (raw == null) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(raw)) {
+    try {
+      const parsed = JSON.parse(raw.toString("utf8")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return {};
+}
+
 /** Passo 3: API HTTP — atualiza Firestore `driver_active_locations` (uma posição viva por placa). */
 export const postDriverLocation = onRequest(
   {
@@ -42,8 +67,7 @@ export const postDriverLocation = onRequest(
       }
       const decoded = await getAuth().verifyIdToken(m[1]);
 
-      const body =
-        typeof req.body === "object" && req.body !== null ? (req.body as Record<string, unknown>) : {};
+      const body = readJsonBody(req);
 
       /** Mesmo URL que o POST de posição — remove `driver_active_locations` ao finalizar saída (rubrica). */
       if (body.clear === true) {
@@ -91,6 +115,10 @@ export const postDriverLocation = onRequest(
       logger.error("postDriverLocation", e);
       const code = e && typeof e === "object" && "code" in e ? String((e as { code?: string }).code) : "";
       if (typeof code === "string" && code.startsWith("auth/")) {
+        logger.warn("postDriverLocation verifyIdToken failed", {
+          code,
+          detail: e instanceof Error ? e.message : String(e),
+        });
         res.status(401).json({ error: "unauthorized_or_invalid" });
         return;
       }

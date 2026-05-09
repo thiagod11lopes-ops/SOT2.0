@@ -2,6 +2,18 @@ import { getAuth } from "firebase/auth";
 import { ensureFirebaseAuth } from "./firebase/auth";
 import { getFirebaseApp, isFirebaseConfigured } from "./firebase/config";
 
+/** Token fresco para a Cloud Function validar com Admin SDK (evita ID token expirado → 401). */
+async function getFirebaseIdTokenForFunctions(): Promise<string> {
+  await ensureFirebaseAuth();
+  const user = getAuth(getFirebaseApp()).currentUser;
+  if (!user) {
+    throw new Error(
+      "Sem sessão Firebase. Recarregue a página e confirme autenticação anónima e domínio autorizado.",
+    );
+  }
+  return user.getIdToken(true);
+}
+
 /** URL explícita opcional (produção, emuladores ou proxy). Caso falte, monta pela região e ID do projeto. */
 export function resolveDriverLocationPostUrl(): string | null {
   const explicit = import.meta.env.VITE_DRIVER_LOCATION_POST_URL?.trim();
@@ -31,15 +43,13 @@ export async function postDriverLocation(args: {
   }
   if (!isFirebaseConfigured()) throw new Error("Firebase não configurado neste ambiente.");
 
-  await ensureFirebaseAuth();
-  const user = getAuth(getFirebaseApp()).currentUser;
-  const token = user ? await user.getIdToken() : null;
+  const token = await getFirebaseIdTokenForFunctions();
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       placa: args.placa.trim(),
@@ -69,15 +79,13 @@ export async function clearDriverActiveLocation(placa: string): Promise<void> {
   }
   if (!isFirebaseConfigured()) throw new Error("Firebase não configurado neste ambiente.");
 
-  await ensureFirebaseAuth();
-  const user = getAuth(getFirebaseApp()).currentUser;
-  const token = user ? await user.getIdToken() : null;
+  const token = await getFirebaseIdTokenForFunctions();
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ placa: placa.trim(), clear: true }),
   });
@@ -101,15 +109,13 @@ export async function clearAllDriverActiveLocationsOnServer(): Promise<number> {
   }
   if (!isFirebaseConfigured()) throw new Error("Firebase não configurado neste ambiente.");
 
-  await ensureFirebaseAuth();
-  const user = getAuth(getFirebaseApp()).currentUser;
-  const token = user ? await user.getIdToken() : null;
+  const token = await getFirebaseIdTokenForFunctions();
 
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ clearAll: true }),
   });
