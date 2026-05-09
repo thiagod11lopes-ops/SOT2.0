@@ -41,6 +41,28 @@ function readJsonBody(req: { body?: unknown }): Record<string, unknown> {
   return {};
 }
 
+/** Só para diagnóstico em 401 — não substitui verifyIdToken. */
+function decodeJwtAudUnsafe(idToken: string): string | null {
+  try {
+    const parts = idToken.split(".");
+    if (parts.length < 2) return null;
+    const json = Buffer.from(parts[1], "base64url").toString("utf8");
+    const o = JSON.parse(json) as { aud?: unknown };
+    return typeof o.aud === "string" ? o.aud : null;
+  } catch {
+    return null;
+  }
+}
+
+function deployedFirebaseProjectId(): string | null {
+  return (
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    null
+  );
+}
+
 /** Passo 3: API HTTP — atualiza Firestore `driver_active_locations` (uma posição viva por placa). */
 export const postDriverLocation = onRequest(
   {
@@ -58,6 +80,7 @@ export const postDriverLocation = onRequest(
       return;
     }
     ensureAdminApp();
+    let bearerJwt: string | undefined;
     try {
       const authHeader = String(req.headers.authorization ?? "");
       const m = /^Bearer\s+(\S+)/i.exec(authHeader);
@@ -65,7 +88,8 @@ export const postDriverLocation = onRequest(
         res.status(401).json({ error: "missing_token" });
         return;
       }
-      const decoded = await getAuth().verifyIdToken(m[1]);
+      bearerJwt = m[1];
+      const decoded = await getAuth().verifyIdToken(bearerJwt);
 
       const body = readJsonBody(req);
       const clearOne =
@@ -126,7 +150,20 @@ export const postDriverLocation = onRequest(
           code,
           detail: e instanceof Error ? e.message : String(e),
         });
-        res.status(401).json({ error: "unauthorized_or_invalid" });
+        const fnProj = deployedFirebaseProjectId();
+        const tokenProj = bearerJwt ? decodeJwtAudUnsafe(bearerJwt) : null;
+        const mismatch =
+          Boolean(fnProj && tokenProj && tokenProj !== fnProj);
+        res.status(401).json({
+          error: "unauthorized_or_invalid",
+          ...(mismatch
+            ? {
+                reason: "firebase_project_mismatch",
+                token_project: tokenProj,
+                function_project: fnProj,
+              }
+            : {}),
+        });
         return;
       }
       res.status(500).json({ error: "internal" });

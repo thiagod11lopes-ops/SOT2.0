@@ -35,11 +35,29 @@ function assertIdTokenMatchesFirebaseProject(token: string): void {
 function formatFunctionsHttpError(status: number, bodyText: string): string {
   if (status === 401) {
     try {
-      const j = JSON.parse(bodyText) as { error?: string };
+      const j = JSON.parse(bodyText) as {
+        error?: string;
+        reason?: string;
+        token_project?: string;
+        function_project?: string;
+      };
+      if (
+        j.reason === "firebase_project_mismatch" &&
+        typeof j.token_project === "string" &&
+        typeof j.function_project === "string"
+      ) {
+        return (
+          `Conflito de projetos Firebase: o browser está autenticado no projeto «${j.token_project}» (Firestore usa esse projeto), ` +
+          `mas a função de localização está em «${j.function_project}». ` +
+          `Corrija os segredos do GitHub Actions para que todos os VITE_FIREBASE_* apontem para «${j.function_project}» ` +
+          `(igual ao .firebaserc / deploy da função), ou faça deploy de postDriverLocation no projeto «${j.token_project}». ` +
+          `Depois volte a publicar o site.`
+        );
+      }
       if (j.error === "unauthorized_or_invalid") {
         return (
-          "O servidor recusou o token Firebase. Confirme: (1) secret GitHub VITE_FIREBASE_PROJECT_ID = sot2-8d799 (mesmo projeto da função); " +
-          "(2) domínio em Authentication → Authorized domains; (3) Anonymous activo; (4) Ctrl+F5 nesta página."
+          "O servidor recusou o token Firebase. Confirme que os segredos VITE_FIREBASE_* no GitHub são do mesmo projeto " +
+          "onde deployou a função postDriverLocation; domínio em Authentication → Authorized domains; Anonymous activo; Ctrl+F5."
         );
       }
       if (j.error === "missing_token") return "Pedido sem token Firebase. Recarregue a página.";
