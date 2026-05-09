@@ -3,7 +3,7 @@
  * Uma posição atual por viatura: documento único Firestore keyed pela placa normalizada.
  */
 
-import { getFirestore, Timestamp, type Firestore } from "firebase-admin/firestore";
+import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 export const DRIVER_ACTIVE_LOCATIONS_COLLECTION = "driver_active_locations";
 
