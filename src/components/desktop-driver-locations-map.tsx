@@ -168,7 +168,7 @@ export function DesktopDriverLocationsMapProvider({
   );
 }
 
-/** Botão no cabeçalho (entre o pão e o RDV). Só renderiza dentro de `DesktopDriverLocationsMapProvider` com Firebase ativo. */
+/** Abre o mapa de localização em tempo real (contexto de `DesktopDriverLocationsMapProvider`). */
 export function DesktopDriverLocationsMapHeaderButton() {
   const ctx = useContext(DriverLocationsMapUiContext);
   if (!ctx) return null;

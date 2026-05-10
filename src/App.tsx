@@ -24,7 +24,6 @@ import { ensureVistoriaCloudStateSyncStarted } from "./lib/vistoriaCloudState";
 import { useIdleResetToHome } from "./lib/useIdleResetToHome";
 import { isSettingsTab } from "./lib/tabMatch";
 import {
-  DesktopDriverLocationsMapHeaderButton,
   DesktopDriverLocationsMapProvider,
 } from "./components/desktop-driver-locations-map";
 import { Button } from "./components/ui/button";
@@ -293,7 +292,6 @@ function App() {
         activeTab={activeTab ?? ""}
         onTabChange={handleTabChange}
         rdvRouteActive={isCarroQuebradoRoute}
-        driverLocationsMapButton={<DesktopDriverLocationsMapHeaderButton />}
         homeTickerActive={showHomeAvisosTicker}
         fitHomeViewport={isHome}
       >

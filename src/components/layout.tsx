@@ -11,8 +11,6 @@ interface LayoutProps {
   onTabChange: (tab: string) => void;
   /** Hash `#/carro-quebrado` ativo — destaca o botão RDV no cabeçalho. */
   rdvRouteActive?: boolean;
-  /** Slot no canto superior direito, entre o pão e o botão RDV (ex.: mapa de viaturas). */
-  driverLocationsMapButton?: ReactNode;
   /** Espaço extra em baixo para o telão fixo da página inicial. */
   homeTickerActive?: boolean;
   /** Página inicial: preenche a altura da janela e escala o conteúdo para evitar scroll da página. */
@@ -25,7 +23,6 @@ export function Layout({
   activeTab,
   onTabChange,
   rdvRouteActive,
-  driverLocationsMapButton,
   homeTickerActive,
   fitHomeViewport,
   children,
@@ -94,7 +91,6 @@ export function Layout({
         activeTab={activeTab}
         onTabChange={onTabChange}
         rdvRouteActive={rdvRouteActive}
-        driverLocationsMapButton={driverLocationsMapButton}
         hidden={!headerVisible}
       />
       <main

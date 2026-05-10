@@ -60,6 +60,7 @@ import {
 import { clearAllDriverActiveLocationsOnServer, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
+import { DesktopDriverLocationsMapHeaderButton } from "./desktop-driver-locations-map";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -1327,7 +1328,13 @@ export function SettingsPage() {
                   </div>
                   <div className="mt-6 max-w-lg border-t border-[hsl(var(--border))] pt-4">
                     <p className="text-sm font-medium text-[hsl(var(--foreground))]">Mapa de viaturas (tempo real)</p>
-                    <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <p className="min-w-0 flex-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        Abre o mapa com as posições enviadas pelos motoristas (placa junto a cada marcador).
+                      </p>
+                      <DesktopDriverLocationsMapHeaderButton />
+                    </div>
+                    <p className="mt-4 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
                       Apaga no Firestore todas as entradas da coleção usada pelo mapa. Útil para limpar posições antigas ou
                       órfãs. Viaturas com rastreamento activo voltam a surgir no envio seguinte.
                     </p>
