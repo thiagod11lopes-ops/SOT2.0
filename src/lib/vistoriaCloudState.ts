@@ -35,7 +35,8 @@ export type VistoriaCloudState = {
 };
 
 const EVENT_NAME = "sot-vistoria-cloud-changed";
-const LOCAL_SHADOW_KEY = "sot_vistoria_cloud_shadow_v1";
+/** Cópia local usada pelo sync e por `restoreFullBackupToLocal` / push para Firebase. */
+export const VISTORIA_LOCAL_SHADOW_STORAGE_KEY = "sot_vistoria_cloud_shadow_v1";
 
 const emptyState: VistoriaCloudState = {
   assignments: [],
@@ -60,7 +61,7 @@ function loadLocalShadowState(): VistoriaCloudState | null {
   if (shouldIgnoreLocalShadow()) return null;
   if (typeof localStorage === "undefined") return null;
   try {
-    const raw = localStorage.getItem(LOCAL_SHADOW_KEY);
+    const raw = localStorage.getItem(VISTORIA_LOCAL_SHADOW_STORAGE_KEY);
     if (!raw) return null;
     return normalizeCloudPayload(JSON.parse(raw) as unknown);
   } catch {
@@ -72,7 +73,7 @@ function saveLocalShadowState(state: VistoriaCloudState): void {
   if (shouldIgnoreLocalShadow()) return;
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(LOCAL_SHADOW_KEY, JSON.stringify(state));
+    localStorage.setItem(VISTORIA_LOCAL_SHADOW_STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* ignore */
   }
@@ -165,6 +166,57 @@ function normalizeCloudPayload(payload: unknown): VistoriaCloudState {
 /** Normaliza payload de vistoria (ex.: cópia local / backup) antes de gravar em `sot_state/vistoria`. */
 export function normalizeVistoriaCloudPayloadForFirestore(payload: unknown): VistoriaCloudState {
   return normalizeCloudPayload(payload);
+}
+
+/** Extrai o array bruto de `assignments` de um backup completo, doc `vistoria` ou JSON mínimo `{ assignments }`. */
+export function extractAssignmentsArrayFromUnknownBackupRoot(root: unknown): unknown[] {
+  if (!root || typeof root !== "object") return [];
+  const o = root as Record<string, unknown>;
+  if (Array.isArray(o.assignments)) return o.assignments;
+  const vistoriaDirect = o.vistoria;
+  if (vistoriaDirect && typeof vistoriaDirect === "object") {
+    const a = (vistoriaDirect as Record<string, unknown>).assignments;
+    if (Array.isArray(a)) return a;
+  }
+  const sot = o.sotState;
+  if (sot && typeof sot === "object") {
+    const vis = (sot as Record<string, unknown>).vistoria;
+    if (vis && typeof vis === "object") {
+      const a = (vis as Record<string, unknown>).assignments;
+      if (Array.isArray(a)) return a;
+    }
+  }
+  return [];
+}
+
+/** Valida e deduplica por placa (primeira ocorrência); gera `id`/`createdAt` quando faltam. */
+export function normalizeImportedVistoriaAssignments(rawList: unknown[]): VistoriaAssignment[] {
+  const seen = new Set<string>();
+  const out: VistoriaAssignment[] = [];
+  for (const row of rawList) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const motorista = typeof r.motorista === "string" ? r.motorista.trim() : "";
+    const viatura = typeof r.viatura === "string" ? r.viatura.trim() : "";
+    if (!motorista || !viatura) continue;
+    const key = viatura.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const id =
+      typeof r.id === "string" && r.id.trim().length > 0
+        ? r.id.trim()
+        : `import-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const createdAt =
+      typeof r.createdAt === "number" && Number.isFinite(r.createdAt) ? r.createdAt : Date.now();
+    out.push({ id, motorista, viatura, createdAt });
+  }
+  return out;
+}
+
+export function parseVistoriaAssignmentsFromBackupJsonText(jsonText: string): VistoriaAssignment[] {
+  const parsed: unknown = JSON.parse(jsonText);
+  const raw = extractAssignmentsArrayFromUnknownBackupRoot(parsed);
+  return normalizeImportedVistoriaAssignments(raw);
 }
 
 function dispatchChange() {

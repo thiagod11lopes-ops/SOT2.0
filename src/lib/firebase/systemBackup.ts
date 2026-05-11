@@ -2,12 +2,15 @@ import { collection, doc, getDoc, getDocs, getFirestore } from "firebase/firesto
 import { ensureFirebaseAuth } from "./auth";
 import { getFirebaseApp, isFirebaseConfigured } from "./config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, type SotStateDocId } from "./sotStateFirestore";
-import { batchUpsertDepartures } from "./departuresFirestore";
+import { batchUpsertDepartures, deleteAllDepartureDocuments } from "./departuresFirestore";
 import { normalizeDepartureRows } from "../normalizeDepartures";
 import { idbGetJson, idbSetJson } from "../indexedDb";
 import { CUSTOM_LOCATIONS_STORAGE_KEY } from "../customLocationsStorage";
 import { loadDetalheServicoBundleFromIdb, normalizeDetalheServicoBundle } from "../detalheServicoBundle";
-import { normalizeVistoriaCloudPayloadForFirestore } from "../vistoriaCloudState";
+import {
+  normalizeVistoriaCloudPayloadForFirestore,
+  VISTORIA_LOCAL_SHADOW_STORAGE_KEY,
+} from "../vistoriaCloudState";
 import type { DepartureRecord } from "../../types/departure";
 import {
   normalizeRastreamentoMotoristasPayload,
@@ -30,7 +33,6 @@ const REPORT_EMAIL_IDB_KEY = "sot_departures_report_email";
 const ALARM_DISMISS_IDB_KEY = "sot-alarm-dismiss-v2";
 const DETALHE_SERVICO_IDB_KEY = "sot-detalhe-servico-bundle-v2";
 const VIATURAS_INOPERANTES_IDB_KEY = "sot-viaturas-inoperantes-v1";
-const VISTORIA_LOCAL_SHADOW_KEY = "sot_vistoria_cloud_shadow_v1";
 
 const IDB_READ_ALLOW_FIREBASE_ONLY = { allowWhenFirebaseOnlyOnline: true as const };
 
@@ -157,6 +159,33 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
   await idbSetJson(ALARM_DISMISS_IDB_KEY, sot.alarmDismiss ?? {}, { maxAttempts: 6 });
   await idbSetJson(DETALHE_SERVICO_IDB_KEY, sot.detalheServico ?? {}, { maxAttempts: 6 });
 
+  const inopRaw = sot[SOT_STATE_DOC.viaturasInoperantes];
+  if (Array.isArray(inopRaw)) {
+    const inopList = inopRaw.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+    await idbSetJson(
+      VIATURAS_INOPERANTES_IDB_KEY,
+      [...inopList].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      { maxAttempts: 6 },
+    );
+  }
+
+  if (typeof localStorage !== "undefined") {
+    try {
+      if (Object.prototype.hasOwnProperty.call(sot, SOT_STATE_DOC.vistoria)) {
+        const vis = normalizeVistoriaCloudPayloadForFirestore(sot[SOT_STATE_DOC.vistoria]);
+        localStorage.setItem(
+          VISTORIA_LOCAL_SHADOW_STORAGE_KEY,
+          JSON.stringify({
+            ...vis,
+            updatedAt: Math.max(vis.updatedAt || 0, Date.now()),
+          }),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   const rdvByDate = sot.rdvByDate;
   if (rdvByDate && typeof rdvByDate === "object") {
     try {
@@ -258,7 +287,7 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
     }
 
     try {
-      const visRaw = localStorage.getItem(VISTORIA_LOCAL_SHADOW_KEY);
+      const visRaw = localStorage.getItem(VISTORIA_LOCAL_SHADOW_STORAGE_KEY);
       if (visRaw && visRaw.trim()) {
         const visParsed = JSON.parse(visRaw) as unknown;
         const vis = normalizeVistoriaCloudPayloadForFirestore(visParsed);
@@ -286,6 +315,41 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
   }
 }
 
+/**
+ * Substitui no Firebase as saídas e cada documento em `sot_state` presente no backup.
+ * Apaga primeiro todas as saídas remotas para espelhar o ficheiro (IDs que só existiam na nuvem são removidos).
+ */
+export async function importFullBackupToFirebase(backup: FirebaseFullBackup): Promise<void> {
+  if (!isFirebaseConfigured()) throw new Error("Firebase não está configurado neste build.");
+  await ensureFirebaseAuth();
+
+  await deleteAllDepartureDocuments();
+  const deps = normalizeDepartureRows(Array.isArray(backup.departures) ? backup.departures : []);
+  if (deps.length > 0) {
+    await batchUpsertDepartures(deps);
+  }
+
+  const sot = backup.sotState ?? {};
+  const docIds = Object.values(SOT_STATE_DOC) as SotStateDocId[];
+
+  for (const docId of docIds) {
+    if (!Object.prototype.hasOwnProperty.call(sot, docId)) continue;
+    const rawPayload = (sot as Record<string, unknown>)[docId];
+    let payload: unknown = rawPayload;
+
+    if (docId === SOT_STATE_DOC.vistoria) {
+      const vis = normalizeVistoriaCloudPayloadForFirestore(rawPayload);
+      payload = { ...vis, updatedAt: Math.max(vis.updatedAt || 0, Date.now()) };
+    } else if (docId === SOT_STATE_DOC.detalheServico) {
+      payload = normalizeDetalheServicoBundle(rawPayload);
+    } else if (docId === SOT_STATE_DOC.rastreamentoMotoristas) {
+      payload = normalizeRastreamentoMotoristasPayload(rawPayload);
+    }
+
+    await setSotStateDocWithRetry(docId, payload);
+  }
+}
+
 export function parseFullBackupJson(raw: unknown): FirebaseFullBackup {
   if (!raw || typeof raw !== "object") throw new Error("Arquivo inválido.");
   const o = raw as Record<string, unknown>;
@@ -305,6 +369,12 @@ export function buildBackupPreviewItems(backup: FirebaseFullBackup): BackupPrevi
   const escalaBundle = toRecordMap(sot.escalaPaoBundle);
   const detalheServico = toRecordMap(sot.detalheServico);
   const rdvByDate = toRecordMap(sot.rdvByDate);
+
+  const visRaw =
+    sot.vistoria && typeof sot.vistoria === "object" ? (sot.vistoria as Record<string, unknown>) : undefined;
+  const visInspections = Array.isArray(visRaw?.inspections) ? visRaw.inspections.length : 0;
+  const visAssignments = Array.isArray(visRaw?.assignments) ? visRaw.assignments.length : 0;
+  const visPriorities = Array.isArray(visRaw?.priorityOrderKeys) ? visRaw.priorityOrderKeys.length : 0;
 
   const catalogTotal = [
     "setores",
@@ -343,6 +413,9 @@ export function buildBackupPreviewItems(backup: FirebaseFullBackup): BackupPrevi
     { aba: "Configurações", descricao: "Aparência e e-mail do relatório", quantidade: Object.keys(toRecordMap(sot.appearance)).length + Object.keys(toRecordMap(sot.departuresReportEmail)).length },
     { aba: "Avisos", descricao: "Dismiss de alarmes", quantidade: Object.keys(toRecordMap(sot.alarmDismiss)).length },
     { aba: "Detalhe de Serviço", descricao: "Planilhas, rodapés e colunas cinza", quantidade: detalheTotal },
+    { aba: "Vistoria", descricao: "Inspeções (calendário e estado das viaturas)", quantidade: visInspections },
+    { aba: "Vistoria", descricao: "Responsabilidade (motorista ↔ viatura)", quantidade: visAssignments },
+    { aba: "Vistoria", descricao: "Prioridades (ordem)", quantidade: visPriorities },
     { aba: "Carro quebrado / RDV", descricao: "Relatórios diários por data", quantidade: rdvDiasTotal },
   ];
 }

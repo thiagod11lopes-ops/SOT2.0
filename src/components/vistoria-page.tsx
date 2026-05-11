@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
@@ -42,6 +42,7 @@ import {
   ensureVistoriaCloudStateSyncStarted,
   getVistoriaCloudState,
   isVistoriaCloudStateHydrated,
+  parseVistoriaAssignmentsFromBackupJsonText,
   subscribeVistoriaCloudStateChange,
   type IssueControl,
   type ResolvedIssue,
@@ -389,6 +390,7 @@ function buildVtrSituacaoPendenteRow(args: {
 
 export function VistoriaPage() {
   const { items } = useCatalogItems();
+  const assignmentsImportInputRef = useRef<HTMLInputElement>(null);
   const applyingCloudRef = useRef(false);
   const cloudReadyRef = useRef(false);
   const lastPriorityOrderSyncedRef = useRef("[]");
@@ -1273,6 +1275,35 @@ export function VistoriaPage() {
     }
   }
 
+  async function handleAssignmentsImportFileSelected(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const imported = parseVistoriaAssignmentsFromBackupJsonText(text);
+      if (imported.length === 0) {
+        window.alert(
+          "Nenhum vínculo válido encontrado no arquivo. Use um backup completo (.json) ou um objeto com a lista assignments (no topo ou em sotState.vistoria).",
+        );
+        return;
+      }
+      const currentN = assignments.length;
+      const ok = window.confirm(
+        `Substituir os ${currentN} vínculo(s) atuais por ${imported.length} vínculo(s) do arquivo?\n\nOs dados serão gravados no Firebase.`,
+      );
+      if (!ok) return;
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        assignments: imported,
+      }));
+    } catch (err) {
+      console.error("[SOT] Falha ao importar vínculos de vistoria:", err);
+      window.alert("Não foi possível ler o JSON. Verifique se o arquivo é válido.");
+    } finally {
+      if (assignmentsImportInputRef.current) assignmentsImportInputRef.current.value = "";
+    }
+  }
+
   function handleOpenInspection(motorista: string, viatura: string) {
     inspectionFormDirtyRef.current = false;
     const motoristaRef = motorista.trim();
@@ -1509,6 +1540,28 @@ export function VistoriaPage() {
                 <Button type="button" onClick={handleAddAssignment} disabled={!canAdd}>
                   Vincular
                 </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-[hsl(var(--border))] pt-3">
+                <input
+                  ref={assignmentsImportInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => void handleAssignmentsImportFileSelected(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => assignmentsImportInputRef.current?.click()}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar vínculos (JSON)
+                </Button>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Restaura motorista–viatura a partir do backup completo ou de um JSON só com assignments.
+                </p>
               </div>
 
               {items.motoristas.length === 0 ? (

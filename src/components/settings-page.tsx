@@ -31,6 +31,7 @@ import {
   buildBackupPreviewItems,
   exportFullBackupFromFirebase,
   type FirebaseFullBackup,
+  importFullBackupToFirebase,
   parseFullBackupJson,
   pushLocalOperationalStateToFirebase,
   restoreFullBackupToLocal,
@@ -175,10 +176,12 @@ export function SettingsPage() {
   }, [reportEmailStored]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fullBackupFileInputRef = useRef<HTMLInputElement>(null);
+  const firebaseImportBackupFileInputRef = useRef<HTMLInputElement>(null);
   const [savePeriodMode, setSavePeriodMode] = useState<SavePeriodMode>("full");
   const [saveMonthValue, setSaveMonthValue] = useState(currentMonthInputValue);
   const [saveYearValue, setSaveYearValue] = useState(() => String(new Date().getFullYear()));
   const [fullBackupBusy, setFullBackupBusy] = useState(false);
+  const [firebaseImportBackupBusy, setFirebaseImportBackupBusy] = useState(false);
   const [firebaseModeBusy, setFirebaseModeBusy] = useState(false);
   const [firebaseActivationStrategy, setFirebaseActivationStrategy] =
     useState<FirebaseActivationStrategy>("push-local-to-firebase");
@@ -693,13 +696,58 @@ export function SettingsPage() {
           const raw = JSON.parse(String(reader.result)) as unknown;
           const backup = parseFullBackupJson(raw);
           await restoreFullBackupToLocal(backup);
-          window.alert("Backup geral carregado na memória local. A página será recarregada.");
+          window.alert(
+            "Backup geral carregado na memória local (inclui Detalhe de Serviço e Vistoria). A página será recarregada.",
+          );
           window.location.reload();
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Falha ao carregar backup geral.";
           window.alert(msg);
         } finally {
           setFullBackupBusy(false);
+        }
+      })();
+    };
+    reader.readAsText(file);
+  }
+
+  function handleFirebaseImportBackupClick() {
+    if (!isFirebaseConfigured()) {
+      window.alert("Firebase não está configurado neste build.");
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      window.alert("É necessário estar online para importar para o Firebase.");
+      return;
+    }
+    const ok = window.confirm(
+      "ATENÇÃO: Esta operação remove todas as saídas na nuvem e substitui cada documento em sot_state (Detalhe de Serviço, Vistoria, catálogos, etc.) pelos dados do ficheiro JSON.\n\nTodos os utilizadores passam a ver estes dados. Continuar?",
+    );
+    if (!ok) return;
+    firebaseImportBackupFileInputRef.current?.click();
+  }
+
+  function handleFirebaseImportBackupFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      void (async () => {
+        try {
+          setFirebaseImportBackupBusy(true);
+          const raw = JSON.parse(String(reader.result)) as unknown;
+          const backup = parseFullBackupJson(raw);
+          await importFullBackupToFirebase(backup);
+          window.alert(
+            "Backup importado para o Firebase. A página será recarregada para atualizar calendário de vistoria e abas.",
+          );
+          window.location.reload();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Falha ao importar backup para o Firebase.";
+          window.alert(msg);
+        } finally {
+          setFirebaseImportBackupBusy(false);
         }
       })();
     };
@@ -802,7 +850,7 @@ export function SettingsPage() {
               type="button"
               variant="default"
               onClick={handleAbrirPreviewBackupGeral}
-              disabled={fullBackupBusy}
+              disabled={fullBackupBusy || firebaseImportBackupBusy}
             >
               {fullBackupBusy ? "Processando..." : "Backup geral do Firebase"}
             </Button>
@@ -810,9 +858,20 @@ export function SettingsPage() {
               type="button"
               variant="outline"
               onClick={handleCarregarBackupGeralClick}
-              disabled={firebaseOnlyEnabled || fullBackupBusy}
+              disabled={firebaseOnlyEnabled || fullBackupBusy || firebaseImportBackupBusy}
             >
               Carregar backup geral (local)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-red-600 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+              onClick={handleFirebaseImportBackupClick}
+              disabled={
+                !isFirebaseConfigured() || firebaseImportBackupBusy || fullBackupBusy || !isOnline
+              }
+            >
+              {firebaseImportBackupBusy ? "A importar..." : "Importar backup para o Firebase"}
             </Button>
             <input
               ref={fullBackupFileInputRef}
@@ -821,9 +880,20 @@ export function SettingsPage() {
               className="hidden"
               onChange={handleFullBackupFileChange}
             />
+            <input
+              ref={firebaseImportBackupFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleFirebaseImportBackupFileChange}
+            />
           </div>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  O carregamento do backup geral só é permitido em modo local para evitar conflito e sobrescrita na nuvem.
+                  O carregamento do backup geral só é permitido em modo local para evitar conflito com a nuvem. Depois,
+                  pode usar «Enviar estado local para o Firebase» para publicar. «Importar backup para o Firebase»
+                  envia o JSON diretamente à nuvem (apaga saídas remotas e substitui <code className="text-xs">sot_state</code>
+                  ), atualizando calendário de vistoria (verde/vermelho), Detalhe de Serviço, responsabilidades, estado e
+                  prioridades para todos os utilizadores.
                 </p>
               </section>
               ) : null}
