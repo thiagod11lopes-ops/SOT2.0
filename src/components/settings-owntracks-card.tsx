@@ -19,12 +19,30 @@ import { Button } from "./ui/button";
 const PANEL_CLASS =
   "rounded-lg border border-sky-200/70 bg-sky-50/70 p-4 dark:border-sky-900/40 dark:bg-sky-950/30";
 
-/** URL do endpoint OwnTracks na Cloud Function (derivado do de `postDriverLocation`). */
+/**
+ * URL do endpoint OwnTracks na Cloud Function.
+ *
+ * Preferimos construir a URL "legacy" do Cloud Functions (cloudfunctions.net) a partir do
+ * VITE_FIREBASE_PROJECT_ID — funciona para qualquer função no projecto, basta trocar o último
+ * segmento. As URLs v2/Cloud Run (`*.a.run.app`) têm um hash diferente por função, pelo que
+ * não dá para derivar `postOwntracksLocation` a partir de `postDriverLocation`.
+ */
 function resolveOwntracksEndpointUrl(): string | null {
+  const pid = import.meta.env.VITE_FIREBASE_PROJECT_ID?.trim();
+  if (pid) return `https://southamerica-east1-${pid}.cloudfunctions.net/postOwntracksLocation`;
+  // Fallback: derivar do legacy URL (path-based) caso VITE_FIREBASE_PROJECT_ID não esteja definido.
   const base = resolveDriverLocationPostUrl();
   if (!base) return null;
-  // Substituímos o último segmento `postDriverLocation` por `postOwntracksLocation`.
-  return base.replace(/\/postDriverLocation(?:[?#].*)?$/, "/postOwntracksLocation");
+  if (/\/postDriverLocation(?:[/?#]|$)/.test(base)) {
+    return base.replace(/\/postDriverLocation(?=[/?#]|$)/, "/postOwntracksLocation");
+  }
+  return null;
+}
+
+/** base64-url encode (sem `+`, `/`, `=`) — compatível com a maioria das implementações OwnTracks. */
+function toBase64Url(s: string): string {
+  const b64 = typeof btoa === "function" ? btoa(unescape(encodeURIComponent(s))) : "";
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
@@ -151,6 +169,43 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
       } catch (e) {
         console.error("QR generation failed", e);
         alert("Falhou a geração do QR code. Detalhes na consola.");
+      }
+    },
+    [endpointUrl, state.token, intervalSeconds],
+  );
+
+  /**
+   * Gera um link `owntracks:///config?inline=<base64>` que, quando tocado no iPhone (ex.: vindo
+   * por WhatsApp/Email/SMS), abre directamente o OwnTracks e importa toda a configuração de uma
+   * vez. É o método mais fiável em iOS (não depende de "Abrir com..." nem de scanner de QR).
+   */
+  const handleCopyOwntracksLink = useCallback(
+    async (binding: OwntracksBinding) => {
+      if (!endpointUrl) {
+        alert(
+          "URL da Cloud Function indisponível. Confirma que o Firebase está configurado e VITE_DRIVER_LOCATION_POST_URL (ou VITE_FIREBASE_PROJECT_ID) está definido nas variáveis de ambiente.",
+        );
+        return;
+      }
+      if (!state.token) {
+        alert("Gera primeiro o token partilhado.");
+        return;
+      }
+      const json = buildOwntracksConfigJson({
+        endpointUrl,
+        motorista: binding.motorista,
+        token: state.token,
+        intervalSeconds,
+      });
+      const payload = toBase64Url(JSON.stringify(json));
+      const link = `owntracks:///config?inline=${payload}`;
+      try {
+        await navigator.clipboard?.writeText(link);
+        alert(
+          `Link copiado para a área de transferência (${link.length} caracteres). Cola no WhatsApp/email do motorista. Ao tocar no link, o iPhone abre o OwnTracks e importa a config automaticamente.`,
+        );
+      } catch {
+        window.prompt("Copia este link e envia ao motorista:", link);
       }
     },
     [endpointUrl, state.token, intervalSeconds],
@@ -324,12 +379,22 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
                 </div>
                 <Button
                   type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => void handleCopyOwntracksLink(b)}
+                  disabled={!state.token || !endpointUrl}
+                  title="Copia um link owntracks:// que, ao ser tocado no iPhone do motorista, abre o OwnTracks e importa toda a configuração automaticamente."
+                >
+                  <Apple className="mr-1 h-3.5 w-3.5" /> Copiar link iPhone
+                </Button>
+                <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => void handleShowQr(b)}
                   disabled={!state.token || !endpointUrl}
                 >
-                  <QrCode className="mr-1 h-3.5 w-3.5" /> Gerar QR
+                  <QrCode className="mr-1 h-3.5 w-3.5" /> QR
                 </Button>
                 <Button
                   type="button"
@@ -337,7 +402,7 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
                   size="sm"
                   onClick={() => handleDownloadOtrc(b)}
                   disabled={!state.token || !endpointUrl}
-                  title="Descarrega o ficheiro .otrc para enviares ao motorista (iPhone abre directamente no OwnTracks)."
+                  title="Descarrega o ficheiro .otrc para enviares ao motorista."
                 >
                   <Download className="mr-1 h-3.5 w-3.5" /> .otrc
                 </Button>
@@ -383,15 +448,21 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
             Instala-se a app <strong>OwnTracks</strong> (gratuita, App Store).
           </li>
           <li>
-            <strong>Método recomendado (iPhone) — ficheiro .otrc:</strong> em cima, clica em{" "}
-            <em>.otrc</em>. Vai descarregar um ficheiro pequeno. Envia-o ao motorista por email ou
-            WhatsApp. No iPhone, ele abre o ficheiro → o iOS pergunta <em>"Abrir com OwnTracks?"</em>
-            → confirma → o app importa tudo automaticamente (incluindo passar para modo HTTP).
+            <strong>Método recomendado — link owntracks://</strong> em cima, clica em{" "}
+            <em>"Copiar link iPhone"</em>. O link fica na área de transferência. Cola no WhatsApp
+            ou email do motorista. No iPhone, o motorista <strong>toca no link</strong> → o iOS
+            abre o OwnTracks → confirma a importação → fica configurado em um toque. Tudo
+            (URL, modo HTTP, password) é importado automaticamente.
           </li>
           <li>
-            <strong>Método alternativo — QR code:</strong> o botão <em>"Gerar QR"</em> mostra um QR.
-            Só funciona se a versão do OwnTracks no iPhone tiver scanner integrado (muitas não têm).
-            Se o ficheiro .otrc estiver disponível, é mais fiável.
+            <strong>Método alternativo — ficheiro .otrc:</strong> clica em <em>.otrc</em> para
+            descarregar. Envia ao motorista por email. No iPhone, <strong>dentro do Mail</strong>,
+            tocar no anexo → o iOS pergunta <em>"Abrir com OwnTracks?"</em>. Atenção: se abrir num
+            browser/visualizador de texto vai mostrar só o JSON; nesse caso prefere o link.
+          </li>
+          <li>
+            <strong>Método de último recurso — QR code:</strong> o botão <em>"QR"</em> mostra um QR.
+            Só funciona se a versão do OwnTracks no iPhone tiver scanner integrado (a maioria não tem).
           </li>
           <li>
             Na 1.ª utilização o iOS pergunta sobre permissão de localização — escolher
