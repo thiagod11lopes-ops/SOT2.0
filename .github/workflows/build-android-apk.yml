@@ -74,13 +74,46 @@ jobs:
           set -eux
           node --version
           npx cap --version
+          echo "=== Configs Capacitor presentes ==="
+          ls -la capacitor.config.* 2>&1 || true
           echo "=== dist-capacitor (top-level) ==="
           ls -la dist-capacitor
           echo "=== dist-capacitor/index.html (primeiras linhas) ==="
           head -n 5 dist-capacitor/index.html || true
+          echo "=== Capacitor packages instalados ==="
+          npm ls @capacitor/core @capacitor/cli @capacitor/android @capacitor-community/background-geolocation || true
 
-      - name: Capacitor sync
-        run: npx cap sync android --verbose
+      # Captura o output independentemente de sucesso para podermos diagnosticar caso falhe.
+      # NOTA: `cap sync` não aceita `--verbose`. Para mais detalhe usa CAPACITOR_LOG_LEVEL=debug.
+      - name: Capacitor sync (com log capturado)
+        id: capsync
+        env:
+          CAPACITOR_LOG_LEVEL: debug
+        run: |
+          set -o pipefail
+          npx cap sync android 2>&1 | tee cap-sync.log
+        continue-on-error: true
+
+      - name: Mostrar cap-sync.log
+        if: always()
+        run: |
+          echo "=== cap-sync.log (últimas 200 linhas) ==="
+          tail -n 200 cap-sync.log || echo "Sem ficheiro cap-sync.log"
+
+      - name: Upload cap-sync.log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cap-sync-log
+          path: cap-sync.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Falhar se cap sync deu erro
+        if: steps.capsync.outcome != 'success'
+        run: |
+          echo "::error::cap sync android falhou — ver passo 'Mostrar cap-sync.log' acima ou descarregar o artefacto cap-sync-log."
+          exit 1
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew

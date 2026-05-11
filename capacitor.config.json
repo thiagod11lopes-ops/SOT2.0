@@ -1,0 +1,16 @@
+{
+  "appId": "br.com.sot.mobile",
+  "appName": "SOT Saídas",
+  "webDir": "dist-capacitor",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true,
+    "useLegacyBridge": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "BackgroundGeolocation": {}
+  }
+}
