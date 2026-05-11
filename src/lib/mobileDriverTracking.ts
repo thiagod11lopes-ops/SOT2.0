@@ -1,3 +1,9 @@
+import { Capacitor, registerPlugin } from "@capacitor/core";
+import type {
+  BackgroundGeolocationPlugin,
+  Location as CapLocation,
+  CallbackError as CapCallbackError,
+} from "@capacitor-community/background-geolocation";
 import {
   normalizeRastreamentoMotoristasPayload,
   intervaloRastreamentoMilliseconds,
@@ -7,6 +13,21 @@ import {
 import { postDriverLocation } from "./driverLocationPost";
 import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
+
+/**
+ * Plugin nativo Capacitor para localização em background (foreground service Android, modo
+ * `location` em background no iOS). Em web normal `Capacitor.isNativePlatform()` retorna
+ * `false` e o objecto fica unused — não há custo.
+ */
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>("BackgroundGeolocation");
+
+function runningInsideCapacitorNative(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
 
 let cachedRastreamento: RastreamentoMotoristasPayload = {
   intervaloRastreamentoMinutos: DEFAULT_INTERVALO_RASTREAMENTO_MINUTOS,
@@ -41,21 +62,121 @@ export function getCachedRastreamentoMotoristasPayload(): RastreamentoMotoristas
   return cachedRastreamento;
 }
 
+/** Sentinela de WakeLock; tipado de forma permissiva para tolerar diferenças entre browsers. */
+type WakeLockHandle = { release: () => Promise<void> } | null;
+
 type ActiveSession = {
   recordId: string;
-  watchId: number;
-  intervalId: ReturnType<typeof setInterval>;
+  placa: string;
+  /** `number` quando vem de `navigator.geolocation.watchPosition`. */
+  watchId: number | null;
+  /** `string` quando vem do plugin nativo Capacitor (`addWatcher`). */
+  nativeWatcherId: string | null;
+  worker: Worker | null;
+  workerObjectUrl: string | null;
+  fallbackIntervalId: ReturnType<typeof setInterval> | null;
+  intervalMs: number;
+  silentAudio: HTMLAudioElement | null;
+  wakeLock: WakeLockHandle;
+  visibilityHandler: (() => void) | null;
+  online: boolean;
 };
 
 let active: ActiveSession | null = null;
-let lastPos: { lat: number; lng: number } | null = null;
+let lastPos: { lat: number; lng: number; capturedAt: number } | null = null;
+
+const TRACKING_EVENT_NAME = "sot-mobile-tracking-changed";
+
+function notifyTrackingChanged(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(TRACKING_EVENT_NAME));
+  } catch {
+    /* ignore */
+  }
+}
+
+export type ActiveTrackingInfo = {
+  recordId: string;
+  placa: string;
+  startedAt: number;
+} | null;
+
+let activeInfo: ActiveTrackingInfo = null;
+
+export function getActiveTrackingInfo(): ActiveTrackingInfo {
+  return activeInfo;
+}
+
+export function subscribeActiveTrackingChange(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(TRACKING_EVENT_NAME, listener);
+  return () => window.removeEventListener(TRACKING_EVENT_NAME, listener);
+}
+
+function safeReleaseWakeLock(handle: WakeLockHandle): void {
+  if (!handle) return;
+  try {
+    void handle.release().catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
 
 function clearSessionLocks() {
-  if (active) {
-    navigator.geolocation.clearWatch(active.watchId);
-    window.clearInterval(active.intervalId);
-    active = null;
+  if (!active) return;
+  if (active.watchId !== null) {
+    try {
+      navigator.geolocation.clearWatch(active.watchId);
+    } catch {
+      /* ignore */
+    }
   }
+  if (active.nativeWatcherId !== null) {
+    const id = active.nativeWatcherId;
+    void BackgroundGeolocation.removeWatcher({ id }).catch((e) => {
+      console.warn("[SOT mobile] removeWatcher native:", e);
+    });
+  }
+  if (active.worker) {
+    try {
+      active.worker.postMessage({ type: "stop" });
+    } catch {
+      /* ignore */
+    }
+    try {
+      active.worker.terminate();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (active.workerObjectUrl) {
+    try {
+      URL.revokeObjectURL(active.workerObjectUrl);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (active.fallbackIntervalId !== null) {
+    clearInterval(active.fallbackIntervalId);
+  }
+  if (active.silentAudio) {
+    try {
+      active.silentAudio.pause();
+      active.silentAudio.src = "";
+      active.silentAudio.removeAttribute("src");
+      active.silentAudio.load();
+    } catch {
+      /* ignore */
+    }
+  }
+  safeReleaseWakeLock(active.wakeLock);
+  if (active.visibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", active.visibilityHandler);
+  }
+  active = null;
+  activeInfo = null;
+  notifyTrackingChanged();
 }
 
 /** Encerra só se esta saída for a que iniciou o rastreamento. */
@@ -107,48 +228,256 @@ export function formatGeolocationBlockMessage(err: unknown): string {
 }
 
 /**
- * Inicia `watchPosition` e envia coordenadas por POST no intervalo (minutos) da configuração.
- * Substitui qualquer sessão anterior.
+ * Tiny Worker que dispara `tick` no intervalo desejado. Workers tendem a ser muito menos
+ * estrangulados que `setInterval` da main thread quando o tab fica em segundo plano.
+ */
+const TRACKING_WORKER_SOURCE = `
+let intervalId = null;
+self.onmessage = (event) => {
+  const data = (event && event.data) || {};
+  if (data.type === "start" && typeof data.intervalMs === "number" && data.intervalMs > 0) {
+    if (intervalId !== null) { clearInterval(intervalId); }
+    intervalId = setInterval(function () { self.postMessage({ type: "tick" }); }, data.intervalMs);
+  } else if (data.type === "stop") {
+    if (intervalId !== null) { clearInterval(intervalId); }
+    intervalId = null;
+  }
+};
+`;
+
+function createTrackingWorker(): { worker: Worker; objectUrl: string } | null {
+  if (typeof Worker === "undefined") return null;
+  try {
+    const blob = new Blob([TRACKING_WORKER_SOURCE], { type: "application/javascript" });
+    const objectUrl = URL.createObjectURL(blob);
+    const worker = new Worker(objectUrl);
+    return { worker, objectUrl };
+  } catch (e) {
+    console.warn("[SOT mobile] Falha ao criar Worker de rastreamento:", e);
+    return null;
+  }
+}
+
+/**
+ * Áudio silencioso em loop: chrome/android e safari/ios tipicamente NÃO suspendem
+ * o tab enquanto há reprodução de mídia, mantendo timers e fetch a funcionar.
+ */
+function createSilentAudio(): HTMLAudioElement | null {
+  if (typeof Audio === "undefined") return null;
+  try {
+    const audio = new Audio(
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
+    );
+    audio.loop = true;
+    audio.volume = 0;
+    audio.muted = true;
+    void audio.play().catch((e) => {
+      console.warn("[SOT mobile] silent audio play:", e);
+    });
+    return audio;
+  } catch (e) {
+    console.warn("[SOT mobile] silent audio create:", e);
+    return null;
+  }
+}
+
+async function requestScreenWakeLock(): Promise<WakeLockHandle> {
+  const nav = navigator as Navigator & {
+    wakeLock?: { request: (type: "screen") => Promise<WakeLockHandle> };
+  };
+  if (!nav.wakeLock) return null;
+  try {
+    return await nav.wakeLock.request("screen");
+  } catch (e) {
+    console.warn("[SOT mobile] wakeLock.request:", e);
+    return null;
+  }
+}
+
+function readCurrentPositionOnce(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 25_000 },
+    );
+  });
+}
+
+/**
+ * Cada disparo:
+ *  - Em **Capacitor native** depende do watcher do plugin para manter `lastPos` actualizado
+ *    (foreground service Android, background mode iOS — funciona com ecrã bloqueado).
+ *  - Em **browser** tenta um fix novo via `getCurrentPosition`; se falhar usa o último.
+ */
+async function performTick(session: ActiveSession): Promise<void> {
+  if (active?.recordId !== session.recordId) return;
+  if (!runningInsideCapacitorNative()) {
+    try {
+      const pos = await readCurrentPositionOnce();
+      lastPos = { ...pos, capturedAt: Date.now() };
+    } catch (e) {
+      console.warn("[SOT mobile] getCurrentPosition tick falhou:", e);
+    }
+  }
+  if (active?.recordId !== session.recordId) return;
+  if (!lastPos) return;
+  try {
+    await postDriverLocation({
+      placa: session.placa,
+      latitude: lastPos.lat,
+      longitude: lastPos.lng,
+      departureId: session.recordId,
+    });
+  } catch (e) {
+    console.warn("[SOT mobile] postDriverLocation:", e);
+  }
+}
+
+/**
+ * Inicia `watchPosition` (para manter `lastPos` actualizado quando há sinal/movimento),
+ * monta Worker dedicado para disparar ticks a cada intervalo configurado e mantém o tab
+ * activo via WakeLock + áudio silencioso. Substitui qualquer sessão anterior.
  */
 export async function startMobileDriverTrackingSession(args: { recordId: string; placa: string }): Promise<void> {
   clearSessionLocks();
   lastPos = null;
 
-  await ensureGeolocationPermission();
-
   const intervalMs = intervaloRastreamentoMilliseconds(getCachedRastreamentoMotoristasPayload());
+  const insideNative = runningInsideCapacitorNative();
 
-  const tick = () => {
-    if (!lastPos) return;
-    void postDriverLocation({
-      placa: args.placa,
-      latitude: lastPos.lat,
-      longitude: lastPos.lng,
-      departureId: args.recordId,
-    }).catch((e) => {
-      console.warn("[SOT mobile] postDriverLocation:", e);
-    });
+  let watchId: number | null = null;
+  let nativeWatcherId: string | null = null;
+  let silentAudio: HTMLAudioElement | null = null;
+  let wakeLock: WakeLockHandle = null;
+
+  if (insideNative) {
+    /**
+     * Native: o plugin Capacitor pede permissões, abre foreground service (Android) ou
+     * activa background mode (iOS). A notificação fixa é obrigatória no Android para o
+     * service não ser morto pelo SO.
+     */
+    try {
+      nativeWatcherId = await BackgroundGeolocation.addWatcher(
+        {
+          backgroundTitle: "SOT — Rastreamento de viagem",
+          backgroundMessage: `Localização ativa para ${args.placa}. Não feche o app.`,
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 0,
+        },
+        (position: CapLocation | undefined, error: CapCallbackError | undefined) => {
+          if (error) {
+            console.warn("[SOT mobile] native addWatcher:", error.code, error.message);
+            return;
+          }
+          if (!position) return;
+          lastPos = {
+            lat: position.latitude,
+            lng: position.longitude,
+            capturedAt: typeof position.time === "number" ? position.time : Date.now(),
+          };
+        },
+      );
+    } catch (e) {
+      console.error("[SOT mobile] addWatcher native falhou:", e);
+      throw e;
+    }
+  } else {
+    await ensureGeolocationPermission();
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        lastPos = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          capturedAt: Date.now(),
+        };
+      },
+      (err) => {
+        console.warn("[SOT mobile] watchPosition:", err.code, err.message);
+      },
+      { enableHighAccuracy: true, maximumAge: 25_000, timeout: 30_000 },
+    );
+
+    silentAudio = createSilentAudio();
+    wakeLock = await requestScreenWakeLock();
+  }
+
+  const workerEntry = createTrackingWorker();
+
+  const session: ActiveSession = {
+    recordId: args.recordId,
+    placa: args.placa,
+    watchId,
+    nativeWatcherId,
+    worker: workerEntry?.worker ?? null,
+    workerObjectUrl: workerEntry?.objectUrl ?? null,
+    fallbackIntervalId: null,
+    intervalMs,
+    silentAudio,
+    wakeLock,
+    visibilityHandler: null,
+    online: typeof navigator === "undefined" ? true : navigator.onLine,
   };
+  active = session;
+  activeInfo = { recordId: session.recordId, placa: session.placa, startedAt: Date.now() };
+  notifyTrackingChanged();
 
-  /** O primeiro `tick()` síncrono corria com `lastPos` ainda null (GPS só chega no callback). Enviamos na primeira posição real. */
-  let sentOnceFromWatch = false;
+  void performTick(session);
 
-  const watchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      if (!sentOnceFromWatch) {
-        sentOnceFromWatch = true;
-        tick();
+  if (workerEntry) {
+    workerEntry.worker.onmessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string } | null;
+      if (data?.type !== "tick") return;
+      const current = active;
+      if (!current || current.recordId !== session.recordId) return;
+      void performTick(current);
+    };
+    workerEntry.worker.onerror = (e: ErrorEvent) => {
+      console.warn("[SOT mobile] tracking worker error:", e.message);
+    };
+    try {
+      workerEntry.worker.postMessage({ type: "start", intervalMs });
+    } catch (e) {
+      console.warn("[SOT mobile] worker postMessage start:", e);
+    }
+  } else {
+    session.fallbackIntervalId = window.setInterval(() => {
+      const current = active;
+      if (!current || current.recordId !== session.recordId) return;
+      void performTick(current);
+    }, intervalMs);
+  }
+
+  /**
+   * No browser, ao voltar a foreground, reactivamos wake lock + áudio silencioso (foram
+   * libertados pelo SO) e disparamos um tick imediato. No app Capacitor isto é irrelevante
+   * — o foreground service mantém tudo vivo.
+   */
+  if (!insideNative) {
+    const visibilityHandler = () => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState !== "visible") return;
+      const current = active;
+      if (!current || current.recordId !== session.recordId) return;
+      if (!current.wakeLock) {
+        void requestScreenWakeLock().then((wl) => {
+          if (active && active.recordId === session.recordId) {
+            active.wakeLock = wl;
+          } else {
+            safeReleaseWakeLock(wl);
+          }
+        });
       }
-    },
-    (err) => {
-      console.warn("[SOT mobile] watchPosition:", err.code, err.message);
-    },
-    { enableHighAccuracy: true, maximumAge: 25_000, timeout: 30_000 },
-  );
-
-  const intervalId = window.setInterval(tick, intervalMs);
-  tick();
-
-  active = { recordId: args.recordId, watchId, intervalId };
+      if (current.silentAudio && current.silentAudio.paused) {
+        void current.silentAudio.play().catch(() => {});
+      }
+      void performTick(current);
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", visibilityHandler);
+    }
+    session.visibilityHandler = visibilityHandler;
+  }
 }

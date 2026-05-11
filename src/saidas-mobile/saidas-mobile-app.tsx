@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { subscribeMobileDriverTrackingConfig } from "../lib/mobileDriverTracking";
+import { ensureMobilePushServiceWorkerRegistered } from "../lib/mobilePushNotifications";
 import { SaidasLayout } from "./saidas-layout";
 import { SaidasMobileFilterDateProvider } from "./saidas-mobile-filter-date-context";
 import { SaidasPage } from "./saidas-page";
@@ -9,6 +10,10 @@ import { MobileLoadingOverlayProvider } from "./mobile-loading-overlay";
 /** Vista mobile das saídas — mesmo IndexedDB que o resto do SOT (usa HashRouter: #/saidas/...). */
 export function SaidasMobileApp() {
   useEffect(() => subscribeMobileDriverTrackingConfig(), []);
+  useEffect(() => {
+    /** Garante que o SW (definido em public/sw-mobile-push.js) é registado mesmo sem push subscription, para que o navegador trate este shell como PWA instalável. */
+    void ensureMobilePushServiceWorkerRegistered();
+  }, []);
 
   return (
     <MobileLoadingOverlayProvider>

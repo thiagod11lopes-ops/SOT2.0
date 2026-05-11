@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Download as DownloadIcon } from "lucide-react";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
@@ -93,6 +94,18 @@ const SETTINGS_SECTIONS = [
 
 const SETTINGS_PANEL_CLASS =
   "space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm sm:p-5";
+
+/**
+ * URL público da release "android-latest" no GitHub onde o workflow
+ * `.github/workflows/build-android-apk.yml` publica o APK do app SOT Saídas.
+ *
+ * O ficheiro é servido directamente pelo GitHub; ao tocar no botão num telemóvel
+ * Android o browser descarrega o `.apk` e o gestor de transferências/o Chrome
+ * propõe imediatamente abrir o instalador do sistema.
+ */
+const SOT_MOBILE_APK_DOWNLOAD_URL =
+  "https://github.com/thiagod11lopes-ops/SOT2.0/releases/download/android-latest/sot-saidas-android.apk";
+const SOT_MOBILE_APK_FILENAME = "sot-saidas-android.apk";
 
 const ALARMES_CONFIG_KEY = "sot_alarmes_config_v1";
 const DEFAULT_ALARMES_CONFIG: AlarmesConfig = {
@@ -1362,6 +1375,47 @@ export function SettingsPage() {
                     <code className="text-xs"> rastreamentoMotoristas </code>) para todos os browsers autenticados
                     lerem o mesmo intervalo.
                   </p>
+
+                  <div className="mt-2 rounded-lg border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+                    <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                      App Android nativo — SOT Saídas
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-emerald-900/80 dark:text-emerald-200/80">
+                      Versão nativa para Android com rastreamento contínuo em background (continua a enviar a
+                      posição mesmo com o telemóvel bloqueado ou outras apps abertas). <strong>Toca no botão a partir do telemóvel
+                      do motorista</strong> — o Android descarrega o <code>.apk</code> e o sistema abre automaticamente a janela
+                      de instalação. Em alternativa, podes descarregar aqui no computador e enviar por WhatsApp como
+                      <em> Documento</em>.
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <a
+                        href={SOT_MOBILE_APK_DOWNLOAD_URL}
+                        download={SOT_MOBILE_APK_FILENAME}
+                        rel="noopener noreferrer"
+                        className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                      >
+                        <DownloadIcon className="h-4 w-4" aria-hidden="true" />
+                        Descarregar APK (Android)
+                      </a>
+                      <span className="text-xs text-emerald-900/70 dark:text-emerald-200/70">
+                        iOS não é suportado por enquanto.
+                      </span>
+                    </div>
+                    <details className="mt-3 text-xs text-emerald-900/80 dark:text-emerald-200/80">
+                      <summary className="cursor-pointer select-none font-medium">Como instalar (1.ª vez)</summary>
+                      <ol className="ml-4 mt-2 list-decimal space-y-1">
+                        <li>Toca no botão no telemóvel para descarregar o <code>{SOT_MOBILE_APK_FILENAME}</code>.</li>
+                        <li>Toca na notificação de transferência concluída ou abre o ficheiro na pasta de Downloads.</li>
+                        <li>O Android pode pedir para activar "Permitir desta fonte" — autoriza e volta atrás.</li>
+                        <li>Toca em <strong>Instalar</strong> e abre o app.</li>
+                        <li>
+                          Concede permissão de localização como <strong>"Permitir o tempo todo"</strong> e activa as notificações
+                          (a notificação fixa é o que mantém o rastreamento vivo em background).
+                        </li>
+                      </ol>
+                    </details>
+                  </div>
+
                   <div className="max-w-xs space-y-1">
                     <label
                       className="text-sm font-medium text-[hsl(var(--foreground))]"

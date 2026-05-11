@@ -35,6 +35,7 @@ import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
+import { ActiveTrackingBanner } from "./active-tracking-banner";
 
 type AlarmesConfig = {
   beforeDepartureEnabled: boolean;
@@ -450,6 +451,7 @@ export function SaidasLayout() {
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
       <MobileLoadingOverlayHost />
+      <ActiveTrackingBanner />
       {vistoriaAdminModalOpen ? (
         <div
           className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[520]`}
