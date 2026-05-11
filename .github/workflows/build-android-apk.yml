@@ -26,10 +26,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # @capacitor/cli 8.x exige Node >= 22 (engines.node). Sem isto, `cap sync` falha
+      # silenciosamente ao tentar carregar `capacitor.config.ts`.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       - name: Setup JDK 21
@@ -67,8 +69,18 @@ jobs:
           VITE_DRIVER_LOCATION_POST_URL: ${{ secrets.VITE_DRIVER_LOCATION_POST_URL }}
         run: npm run build:capacitor
 
+      - name: Diagnose build output
+        run: |
+          set -eux
+          node --version
+          npx cap --version
+          echo "=== dist-capacitor (top-level) ==="
+          ls -la dist-capacitor
+          echo "=== dist-capacitor/index.html (primeiras linhas) ==="
+          head -n 5 dist-capacitor/index.html || true
+
       - name: Capacitor sync
-        run: npx cap sync android
+        run: npx cap sync android --verbose
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
