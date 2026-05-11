@@ -32,6 +32,26 @@ function formatHmSs(ms: number): string {
   });
 }
 
+/** Devolve "11/05/2026 às 19:53" (com data + hora curtas), em pt-BR. */
+function formatDateTime(ms: number): string {
+  const d = new Date(ms);
+  const date = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${date} às ${time}`;
+}
+
+/** "agora", "há 3 min", "há 2 h", "há 1 dia" — útil para popup do mapa. */
+function formatRelative(ms: number, now: number = Date.now()): string {
+  const diffSec = Math.max(0, Math.floor((now - ms) / 1000));
+  if (diffSec < 60) return "agora mesmo";
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `há ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `há ${hr} h`;
+  const days = Math.floor(hr / 24);
+  return days === 1 ? "há 1 dia" : `há ${days} dias`;
+}
+
 /**
  * Envolve o layout desktop e expõe o botão do mapa no cabeçalho (ao lado do RDV).
  * Mantém um único listener Firestore + estado do modal.
@@ -204,7 +224,7 @@ function MapLeafletHost({
   containerRef: React.RefObject<HTMLDivElement | null>;
   mapRef: React.RefObject<L.Map | null>;
   layerRef: React.RefObject<L.LayerGroup | null>;
-  pins: { placa: string; lat: number; lng: number }[];
+  pins: { placa: string; lat: number; lng: number; lastUpdateAtMs: number | null }[];
 }) {
   const prevPinCountRef = useRef<number | null>(null);
 
@@ -264,7 +284,13 @@ function MapLeafletHost({
     for (const p of pins) {
       const m = L.circleMarker([p.lat, p.lng], markerOpts);
       const label = escapePopupHtml(p.placa);
-      m.bindPopup(`<strong>${label}</strong>`, { className: "sot-driver-map-popup" });
+      const popupHtml =
+        p.lastUpdateAtMs !== null
+          ? `<strong>${label}</strong><br /><span style="font-size:11px;color:#555">Última posição: ${escapePopupHtml(
+              formatDateTime(p.lastUpdateAtMs),
+            )} <span style="opacity:0.7">(${escapePopupHtml(formatRelative(p.lastUpdateAtMs))})</span></span>`
+          : `<strong>${label}</strong><br /><span style="font-size:11px;color:#888">Hora da última posição desconhecida.</span>`;
+      m.bindPopup(popupHtml, { className: "sot-driver-map-popup" });
       m.bindTooltip(p.placa, {
         permanent: true,
         direction: "top",

@@ -10,6 +10,8 @@ export type DriverActivePin = {
   placa: string;
   lat: number;
   lng: number;
+  /** Última actualização desta posição (Firestore `updatedAt` ou fallback `capturedAt`). `null` se desconhecido. */
+  lastUpdateAtMs: number | null;
 };
 
 function readDocumentTimeMs(data: DocumentData): number | null {
@@ -28,7 +30,7 @@ function parseDoc(docId: string, data: DocumentData): DriverActivePin | null {
   const lng = Number(data.longitude);
   const placa = String(data.placa ?? docId).trim();
   if (!placa || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { docId, placa, lat, lng };
+  return { docId, placa, lat, lng, lastUpdateAtMs: readDocumentTimeMs(data) };
 }
 
 export type DriverActiveLocationsState = {
