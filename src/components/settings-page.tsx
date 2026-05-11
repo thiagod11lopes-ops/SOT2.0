@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Download as DownloadIcon } from "lucide-react";
+import { SettingsOwntracksCard } from "./settings-owntracks-card";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
@@ -1415,6 +1416,8 @@ export function SettingsPage() {
                       </ol>
                     </details>
                   </div>
+
+                  <SettingsOwntracksCard intervaloMinutos={rastreamentoMotoristas.intervaloRastreamentoMinutos} />
 
                   <div className="max-w-xs space-y-1">
                     <label

@@ -13,6 +13,11 @@ import {
 import { postDriverLocation } from "./driverLocationPost";
 import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
+import { loadActiveMobileMotorista } from "./mobileMotoristaCredentials";
+import {
+  clearMotoristaActiveAssignment,
+  writeMotoristaActiveAssignment,
+} from "./motoristaActiveAssignment";
 
 /**
  * Plugin nativo Capacitor para localização em background (foreground service Android, modo
@@ -74,7 +79,8 @@ type ActiveSession = {
   nativeWatcherId: string | null;
   worker: Worker | null;
   workerObjectUrl: string | null;
-  fallbackIntervalId: ReturnType<typeof setInterval> | null;
+  /** No browser `window.setInterval` devolve um `number` (timer id). */
+  fallbackIntervalId: number | null;
   intervalMs: number;
   silentAudio: HTMLAudioElement | null;
   wakeLock: WakeLockHandle;
@@ -184,6 +190,10 @@ export function stopMobileDriverTrackingSessionIfMatches(recordId: string): void
   if (active?.recordId === recordId) {
     clearSessionLocks();
     lastPos = null;
+    // Encerra também a atribuição motorista→placa no Firestore: o OwnTracks no iPhone
+    // pode estar ainda em modo Move; a próxima leitura na Cloud Function vai ignorar.
+    const activeMotorista = loadActiveMobileMotorista();
+    if (activeMotorista) void clearMotoristaActiveAssignment(activeMotorista);
   }
 }
 
@@ -423,6 +433,20 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
   active = session;
   activeInfo = { recordId: session.recordId, placa: session.placa, startedAt: Date.now() };
   notifyTrackingChanged();
+
+  /**
+   * Atribuição activa motorista→placa no Firestore — usada pela Cloud Function `postOwntracksLocation`
+   * (iPhone via OwnTracks) para descobrir para que placa escrever quando o motorista envia.
+   * A operação é "best effort": se falhar, o rastreamento próprio do app continua a funcionar.
+   */
+  const activeMotorista = loadActiveMobileMotorista();
+  if (activeMotorista) {
+    void writeMotoristaActiveAssignment({
+      motorista: activeMotorista,
+      placa: session.placa,
+      departureId: session.recordId,
+    });
+  }
 
   void performTick(session);
 

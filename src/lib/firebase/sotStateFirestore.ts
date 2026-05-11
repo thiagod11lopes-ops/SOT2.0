@@ -35,6 +35,8 @@ export const SOT_STATE_DOC = {
   vistoria: "vistoria",
   /** Relatório Diário de Viaturas (carro-quebrado): mapa ISO data → relatório gravado. */
   rdvByDate: "rdvByDate",
+  /** Configuração OwnTracks (token partilhado + vínculos motorista→placa) — para iPhones. */
+  owntracks: "owntracks",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

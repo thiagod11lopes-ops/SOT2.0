@@ -14,7 +14,7 @@ export function useIdleResetToHome(enabled: boolean, onIdle: () => void) {
   useEffect(() => {
     if (!enabled) return;
 
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: number;
 
     const schedule = () => {
       clearTimeout(timeoutId);

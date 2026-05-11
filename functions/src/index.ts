@@ -3,7 +3,7 @@
  * Para publicar também alarmes push: ver `alarmPush.ts` e o comentário no final deste ficheiro.
  */
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { type Firestore, getFirestore } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { onRequest } from "firebase-functions/v2/https";
 import {
@@ -15,6 +15,55 @@ import {
   upsertDriverActiveLocation,
 } from "./driverActiveLocationIngest.js";
 import { ensureAdminApp } from "./adminInit.js";
+
+/** Doc Firestore onde guardamos o token partilhado para autenticação do OwnTracks. */
+const OWNTRACKS_CONFIG_DOC = { collection: "sot_state", id: "owntracks" } as const;
+
+/**
+ * Cache em memória do token OwnTracks; renovado a cada 60s. Evita uma leitura Firestore
+ * por cada POST do telemóvel (que pode ser ~12/h × N motoristas).
+ */
+let owntracksTokenCache: { value: string | null; readAt: number } = { value: null, readAt: 0 };
+
+async function readOwntracksSharedToken(db: Firestore, now: number = Date.now()): Promise<string | null> {
+  if (owntracksTokenCache.value && now - owntracksTokenCache.readAt < 60_000) {
+    return owntracksTokenCache.value;
+  }
+  try {
+    const snap = await db.collection(OWNTRACKS_CONFIG_DOC.collection).doc(OWNTRACKS_CONFIG_DOC.id).get();
+    const data = snap.exists ? (snap.data() ?? {}) : {};
+    /**
+     * O cliente grava com `setSotStateDoc` que embrulha como `{ payload: { token, bindings } }`.
+     * Aceitamos também a forma "plana" para resiliência (caso a configuração seja escrita
+     * directamente por outro script).
+     */
+    const payloadRaw = (data as { payload?: unknown }).payload;
+    const candidate =
+      payloadRaw && typeof payloadRaw === "object" ? (payloadRaw as Record<string, unknown>) : (data as Record<string, unknown>);
+    const tokenRaw = candidate.token;
+    const token = typeof tokenRaw === "string" && tokenRaw.trim().length >= 16 ? tokenRaw.trim() : null;
+    owntracksTokenCache = { value: token, readAt: now };
+    return token;
+  } catch (e) {
+    logger.warn("readOwntracksSharedToken Firestore error", e);
+    return null;
+  }
+}
+
+/** Decode HTTP Basic Auth. */
+function decodeBasicAuthPassword(authHeader: string | undefined): string | null {
+  if (!authHeader) return null;
+  const m = /^Basic\s+(\S+)/i.exec(authHeader);
+  if (!m?.[1]) return null;
+  try {
+    const decoded = Buffer.from(m[1], "base64").toString("utf8");
+    const idx = decoded.indexOf(":");
+    if (idx < 0) return null;
+    return decoded.slice(idx + 1);
+  } catch {
+    return null;
+  }
+}
 
 function readJsonBody(req: { body?: unknown }): Record<string, unknown> {
   const raw = req.body;
@@ -166,6 +215,138 @@ export const postDriverLocation = onRequest(
         });
         return;
       }
+      res.status(500).json({ error: "internal" });
+    }
+  },
+);
+
+const MOTORISTA_ACTIVE_ASSIGNMENTS_COLLECTION = "motorista_active_assignments";
+
+/**
+ * Devolve a placa actualmente atribuída a este motorista (escrita pelo SOT mobile quando
+ * o motorista faz "Iniciar Saída"). `null` se não houver atribuição activa.
+ */
+async function readActivePlacaForMotorista(
+  db: Firestore,
+  motoristaSlug: string,
+): Promise<{ placa: string; departureId: string } | null> {
+  if (!motoristaSlug) return null;
+  try {
+    const snap = await db.collection(MOTORISTA_ACTIVE_ASSIGNMENTS_COLLECTION).doc(motoristaSlug).get();
+    if (!snap.exists) return null;
+    const data = snap.data() ?? {};
+    if (data.active !== true) return null;
+    const placa = typeof data.placa === "string" ? data.placa.trim() : "";
+    if (!placa || placa.length > PLACA_MAX_LENGTH) return null;
+    const departureId = typeof data.departureId === "string" ? data.departureId.slice(0, 512) : "";
+    return { placa, departureId };
+  } catch (e) {
+    logger.warn("readActivePlacaForMotorista Firestore error", e);
+    return null;
+  }
+}
+
+/**
+ * Endpoint público para receber posições de iPhones via app OwnTracks.
+ *
+ * Diferenças face a `postDriverLocation`:
+ *  - Autenticação por **Basic Auth** (OwnTracks não suporta Firebase ID tokens). A password
+ *    é um token partilhado guardado em Firestore `sot_state/owntracks.token` (gerado e
+ *    rodado pelo admin na página de Configurações → Mobile — rastreamento (GPS)).
+ *  - Payload no formato OwnTracks (`_type: "location"`, `lat`, `lon`, `tst` em segundos).
+ *  - A **placa NÃO vem do QR** (cada motorista pode conduzir várias viaturas). O QR
+ *    contém apenas o `motorista` (slug). A placa é descoberta no servidor lendo
+ *    `motorista_active_assignments/{slug}` — gravada pelo SOT mobile quando o motorista
+ *    toca "Iniciar Saída".
+ *  - Tipos diferentes de `_type` (lwt, transition, waypoint, status) respondem 200 sem efeito.
+ */
+export const postOwntracksLocation = onRequest(
+  {
+    region: "southamerica-east1",
+    cors: true,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "method_not_allowed" });
+      return;
+    }
+
+    ensureAdminApp();
+    const db = getFirestore();
+
+    try {
+      const expectedToken = await readOwntracksSharedToken(db);
+      if (!expectedToken) {
+        res.status(503).json({ error: "owntracks_not_configured" });
+        return;
+      }
+      const provided = decodeBasicAuthPassword(req.headers.authorization as string | undefined);
+      if (!provided || provided !== expectedToken) {
+        res.status(401).json({ error: "invalid_token" });
+        return;
+      }
+
+      const motoristaSlug = String(req.query.motorista ?? "").trim().toLowerCase().slice(0, 64);
+      if (!motoristaSlug) {
+        res.status(400).json({ error: "missing_motorista" });
+        return;
+      }
+
+      const body = readJsonBody(req);
+      const type = typeof body._type === "string" ? body._type : "";
+
+      // Mensagens não-location (lwt/transition/waypoint/...): aceitar com 200 para o OwnTracks
+      // não tentar reenviar; mas não escrevemos nada no Firestore.
+      if (type !== "location") {
+        res.status(200).json({ ok: true, ignored: type || "unknown" });
+        return;
+      }
+
+      const lat = Number(body.lat);
+      const lng = Number(body.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        res.status(400).json({ error: "invalid_coordinates" });
+        return;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        res.status(400).json({ error: "coordinates_out_of_range" });
+        return;
+      }
+
+      // Descobrir placa actual do motorista: registada pelo SOT mobile no "Iniciar Saída".
+      const assignment = await readActivePlacaForMotorista(db, motoristaSlug);
+      if (!assignment) {
+        // Motorista sem viagem em curso. Aceitamos para o OwnTracks parar de retentar.
+        logger.info("postOwntracksLocation no_active_assignment", { motoristaSlug });
+        res.status(200).json({ ok: true, ignored: "no_active_assignment" });
+        return;
+      }
+
+      const tst = Number(body.tst);
+      const capturedAt =
+        Number.isFinite(tst) && tst > 0 ? new Date(tst * 1000).toISOString() : new Date().toISOString();
+
+      await upsertDriverActiveLocation(db, `owntracks:${motoristaSlug}`, {
+        placa: assignment.placa,
+        latitude: lat,
+        longitude: lng,
+        departureId: assignment.departureId || `owntracks:${motoristaSlug}`,
+        capturedAt,
+      });
+
+      logger.info("postOwntracksLocation ok", {
+        collection: DRIVER_ACTIVE_LOCATIONS_COLLECTION,
+        placaKeySlice: assignment.placa.slice(0, 12),
+        motoristaSlug,
+      });
+      res.status(200).json({ ok: true });
+    } catch (e) {
+      logger.error("postOwntracksLocation", e);
       res.status(500).json({ error: "internal" });
     }
   },
