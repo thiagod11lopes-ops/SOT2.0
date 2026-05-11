@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Importar configuração — OwnTracks (SOT)</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f0f6ff;
+        --card: #ffffff;
+        --text: #0c2240;
+        --muted: #5b6b80;
+        --accent: #0a66c2;
+        --accent-hover: #084d92;
+        --border: #cdd9ea;
+        --error: #b91c1c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #061026;
+          --card: #0c1a36;
+          --text: #e3edff;
+          --muted: #94a4be;
+          --border: #1d2d4d;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; height: 100%; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        padding: 24px 16px;
+        min-height: 100vh;
+      }
+      .card {
+        max-width: 480px;
+        margin: 0 auto;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px 18px 18px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+      }
+      h1 { margin: 0 0 6px; font-size: 19px; }
+      p { margin: 8px 0; color: var(--muted); }
+      .primary {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        background: var(--accent);
+        color: white;
+        text-align: center;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        margin: 14px 0 8px;
+      }
+      .primary:hover, .primary:active { background: var(--accent-hover); }
+      .secondary {
+        display: block;
+        text-align: center;
+        padding: 10px;
+        color: var(--accent);
+        text-decoration: none;
+        border-radius: 8px;
+        margin: 4px 0;
+        border: 1px solid var(--border);
+        background: transparent;
+        font-size: 14px;
+      }
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+      details {
+        margin-top: 16px;
+        font-size: 13px;
+      }
+      details summary { cursor: pointer; color: var(--muted); }
+      pre {
+        margin: 8px 0 0;
+        padding: 10px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 11px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .error { color: var(--error); font-weight: 600; }
+      .ok { color: #1a8a4c; font-weight: 600; }
+      .footer {
+        max-width: 480px;
+        margin: 16px auto 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Importar configuração OwnTracks</h1>
+      <p id="status">A preparar...</p>
+
+      <button id="openBtn" class="primary" type="button" disabled>
+        Abrir no OwnTracks
+      </button>
+
+      <div class="row">
+        <a class="secondary" id="iosStore" href="https://apps.apple.com/app/owntracks/id692424691" target="_blank" rel="noopener">
+          App Store (iPhone)
+        </a>
+        <a class="secondary" id="androidStore" href="https://play.google.com/store/apps/details?id=org.owntracks.android" target="_blank" rel="noopener">
+          Play Store (Android)
+        </a>
+      </div>
+
+      <details>
+        <summary>Configuração manual (se o botão não funcionar)</summary>
+        <p>
+          Abre o OwnTracks → Settings → muda <strong>Mode</strong> para <strong>HTTP</strong> →
+          preenche os campos com os valores em baixo.
+        </p>
+        <pre id="payloadPreview">—</pre>
+      </details>
+    </div>
+
+    <p class="footer">
+      Esta página é parte do SOT 2.0. Não envia dados — toda a configuração fica no teu telemóvel.
+    </p>
+
+    <script>
+      (function () {
+        var status = document.getElementById("status");
+        var btn = document.getElementById("openBtn");
+        var preview = document.getElementById("payloadPreview");
+
+        function decodeBase64Url(s) {
+          try {
+            var pad = s.length % 4;
+            if (pad) s += "=".repeat(4 - pad);
+            var b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+            var bin = atob(b64);
+            return decodeURIComponent(
+              Array.prototype.map
+                .call(bin, function (c) {
+                  return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+                })
+                .join(""),
+            );
+          } catch (e) {
+            return null;
+          }
+        }
+
+        var hash = window.location.hash.replace(/^#/, "");
+        var params = new URLSearchParams(hash);
+        var payload = params.get("payload");
+
+        if (!payload) {
+          status.innerHTML = '<span class="error">Link inválido</span>: não contém configuração. Pede ao administrador para gerar novamente.';
+          return;
+        }
+
+        var json = decodeBase64Url(payload);
+        if (!json) {
+          status.innerHTML = '<span class="error">Não foi possível ler a configuração</span>. Pede ao administrador para gerar novamente.';
+          return;
+        }
+
+        // Mostra um pré-visualizador (sem password) para diagnóstico
+        try {
+          var parsed = JSON.parse(json);
+          var safe = JSON.parse(JSON.stringify(parsed));
+          if (safe.password) safe.password = "********";
+          preview.textContent = JSON.stringify(safe, null, 2);
+        } catch (e) {
+          preview.textContent = "(JSON inválido)";
+        }
+
+        var owntracksUrl = "owntracks:///config?inline=" + payload;
+
+        status.innerHTML =
+          '<span class="ok">Configuração pronta.</span> Tem o OwnTracks instalado? Toca o botão em baixo.';
+        btn.disabled = false;
+        btn.addEventListener("click", function () {
+          window.location.href = owntracksUrl;
+        });
+
+        // Tenta abrir automaticamente após 1.5s — alguns sistemas iOS abrem na hora
+        setTimeout(function () {
+          try {
+            window.location.href = owntracksUrl;
+          } catch (e) {
+            /* ignorar */
+          }
+        }, 1500);
+      })();
+    </script>
+  </body>
+</html>

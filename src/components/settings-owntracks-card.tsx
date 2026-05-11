@@ -198,11 +198,18 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
         intervalSeconds,
       });
       const payload = toBase64Url(JSON.stringify(json));
-      const link = `owntracks:///config?inline=${payload}`;
+      /**
+       * Em vez de devolver um link `owntracks:///` directo (que muitos messengers truncam ou
+       * convertem em landing page), apontamos para uma página HTTPS no próprio site SOT. Essa
+       * página tem um botão "Abrir no OwnTracks" e a configuração está no hash fragment
+       * (`#payload=...`) — nunca chega ao servidor.
+       */
+      const base = `${window.location.origin}${import.meta.env.BASE_URL ?? "/"}`;
+      const link = `${base.replace(/\/$/, "")}/owntracks-import.html#payload=${payload}`;
       try {
         await navigator.clipboard?.writeText(link);
         alert(
-          `Link copiado para a área de transferência (${link.length} caracteres). Cola no WhatsApp/email do motorista. Ao tocar no link, o iPhone abre o OwnTracks e importa a config automaticamente.`,
+          `Link copiado para a área de transferência (${link.length} caracteres). Cola no WhatsApp/email do motorista. Ao tocar no link, abre uma página com um botão "Abrir no OwnTracks" — toca aí e a config é importada.`,
         );
       } catch {
         window.prompt("Copia este link e envia ao motorista:", link);
