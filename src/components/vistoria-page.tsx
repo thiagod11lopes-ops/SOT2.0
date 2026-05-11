@@ -94,14 +94,8 @@ function describeInspectionDeletionImpact(ins: VistoriaInspection): string[] {
       lines.push(`${label} (Anotações)`);
     }
   }
-  const loc = ins.localizacaoViatura;
-  if (loc === "Na Oficina" || loc === "Destacada") {
-    lines.push(`Localização: ${loc}`);
-  }
   if (lines.length === 0) {
-    lines.push(
-      "Sem itens em «Alterações» nem localização na oficina/destacada — remove-se o registo completo da vistoria.",
-    );
+    lines.push("Sem itens em «Alterações» — remove-se o registo completo da vistoria do calendário e da nuvem.");
   }
   return lines;
 }
@@ -897,7 +891,6 @@ export function VistoriaPage() {
       .filter((ins) => createdAtSafe(ins) >= effectiveCutoffMs)
       .sort((a, b) => createdAtSafe(b) - createdAtSafe(a));
     const latestByViaturaItem = new Map<string, EstadoViaturaRow>();
-    const latestByViaturaLocalizacao = new Map<string, EstadoViaturaRow>();
 
     for (const ins of sorted) {
       const viatura = ins.viatura.trim();
@@ -941,32 +934,9 @@ export function VistoriaPage() {
           itemKey: item.key,
         });
       }
-
-      // Linha de localização apenas para estados que exigem destaque na tabela.
-      const localizacao = ins.localizacaoViatura;
-      if (localizacao === "Na Oficina" || localizacao === "Destacada") {
-        const rowId = `${viatura.toLowerCase()}::localizacao`;
-        if (!latestByViaturaLocalizacao.has(rowId)) {
-          latestByViaturaLocalizacao.set(rowId, {
-            rowId,
-            inspectionId: ins.id,
-            viatura,
-            vistoriador: ins.motorista,
-            inspectionDate: ins.inspectionDate,
-            createdAt: createdAtSafe(ins),
-            observacoes: {
-              kind: "localizacao",
-              prefix: "Localização da viatura:",
-              value: localizacao,
-            },
-            rubrica,
-            rowKind: "localizacao",
-          });
-        }
-      }
     }
 
-    const rows = [...latestByViaturaItem.values(), ...latestByViaturaLocalizacao.values()].filter((row) => {
+    const rows = [...latestByViaturaItem.values()].filter((row) => {
       const deletedAt = effectiveDeletedMap[row.rowId];
       if (!deletedAt) return true;
       return row.createdAt > deletedAt;
