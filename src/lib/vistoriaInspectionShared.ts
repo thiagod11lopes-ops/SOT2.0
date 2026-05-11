@@ -572,6 +572,128 @@ export function readVistoriaAssignments(): VistoriaAssignment[] {
   return parsed.filter((item) => item && item.motorista && item.viatura);
 }
 
+function mapStoredInspectionItem(item: VistoriaInspection): VistoriaInspection {
+  const localizacaoViatura = migrateLocalizacaoViaturaFromStorage(
+    item as { localizacaoViatura?: unknown; viaturaNaOficina?: unknown },
+  );
+  const createdAtMs = Number((item as { createdAt?: unknown }).createdAt);
+  const createdAtSafe = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+  const meta = item as {
+    vistoriaAdministrativa?: unknown;
+    rubricaAdministrativa?: unknown;
+    rubrica?: unknown;
+    origemMobile?: unknown;
+    prefillSourceInspectionId?: unknown;
+    prefillMotorista?: unknown;
+    prefillInspectionDate?: unknown;
+    itensAlteradosAdministracao?: unknown;
+    observacaoSegmentacaoAdmin?: unknown;
+  };
+  const observacaoSegmentacaoAdmin = (() => {
+    const o = meta.observacaoSegmentacaoAdmin;
+    if (!o || typeof o !== "object") return undefined;
+    const out: Partial<Record<ChecklistKey, { plain: string; italic: string }>> = {};
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (!isChecklistKey(k)) continue;
+      const seg = v as { plain?: unknown; italic?: unknown };
+      out[k] = {
+        plain: typeof seg.plain === "string" ? seg.plain : "",
+        italic: typeof seg.italic === "string" ? seg.italic : "",
+      };
+    }
+    return Object.keys(out).length ? out : undefined;
+  })();
+  const itensAlteradosAdministracao = (() => {
+    const arr = meta.itensAlteradosAdministracao;
+    if (!Array.isArray(arr)) return undefined;
+    const keys = arr.filter(isChecklistKey);
+    return keys.length ? keys : undefined;
+  })();
+  return {
+    id: String((item as { id?: unknown }).id ?? ""),
+    motorista: String((item as { motorista?: unknown }).motorista ?? ""),
+    viatura: String((item as { viatura?: unknown }).viatura ?? ""),
+    inspectionDate:
+      typeof item.inspectionDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.inspectionDate)
+        ? item.inspectionDate
+        : isoDateFromDate(new Date(createdAtSafe)),
+    localizacaoViatura,
+    checklist: { ...emptyChecklist(), ...(item.checklist ?? {}) },
+    checklistNotes: { ...emptyChecklistNotes(), ...(item.checklistNotes ?? {}) },
+    createdAt: createdAtSafe,
+    rubrica: typeof meta.rubrica === "string" ? meta.rubrica : undefined,
+    vistoriaAdministrativa: meta.vistoriaAdministrativa === true ? true : undefined,
+    rubricaAdministrativa:
+      typeof meta.rubricaAdministrativa === "string" ? meta.rubricaAdministrativa : undefined,
+    origemMobile: meta.origemMobile === true ? true : undefined,
+    prefillSourceInspectionId:
+      typeof meta.prefillSourceInspectionId === "string" ? meta.prefillSourceInspectionId : undefined,
+    prefillMotorista: typeof meta.prefillMotorista === "string" ? meta.prefillMotorista : undefined,
+    prefillInspectionDate:
+      typeof meta.prefillInspectionDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(meta.prefillInspectionDate)
+        ? meta.prefillInspectionDate
+        : undefined,
+    itensAlteradosAdministracao,
+    observacaoSegmentacaoAdmin,
+  };
+}
+
+/** Extrai `inspections` de backup completo, doc `vistoria` ou JSON mínimo `{ inspections }`. */
+export function extractInspectionsArrayFromUnknownBackupRoot(root: unknown): unknown[] {
+  if (!root || typeof root !== "object") return [];
+  const o = root as Record<string, unknown>;
+  if (Array.isArray(o.inspections)) return o.inspections;
+  const vistoriaDirect = o.vistoria;
+  if (vistoriaDirect && typeof vistoriaDirect === "object") {
+    const a = (vistoriaDirect as Record<string, unknown>).inspections;
+    if (Array.isArray(a)) return a;
+  }
+  const sot = o.sotState;
+  if (sot && typeof sot === "object") {
+    const vis = (sot as Record<string, unknown>).vistoria;
+    if (vis && typeof vis === "object") {
+      const a = (vis as Record<string, unknown>).inspections;
+      if (Array.isArray(a)) return a;
+    }
+  }
+  return [];
+}
+
+/** Valida campos mínimos para gravar uma vistoria importada. */
+export function sanitizeVistoriaInspectionImport(item: unknown): VistoriaInspection | null {
+  if (!item || typeof item !== "object") return null;
+  const row = item as VistoriaInspection;
+  if (typeof row.motorista !== "string" || typeof row.viatura !== "string") return null;
+  const mapped = mapStoredInspectionItem(row);
+  if (!mapped.id.trim() || !mapped.motorista.trim() || !mapped.viatura.trim()) return null;
+  return mapped;
+}
+
+export function normalizeImportedVistoriaInspectionsList(rawList: unknown[]): VistoriaInspection[] {
+  const out: VistoriaInspection[] = [];
+  for (const row of rawList) {
+    const one = sanitizeVistoriaInspectionImport(row);
+    if (one) out.push(one);
+  }
+  return out;
+}
+
+export function parseVistoriaInspectionsFromBackupJsonText(jsonText: string): VistoriaInspection[] {
+  const parsed: unknown = JSON.parse(jsonText);
+  const raw = extractInspectionsArrayFromUnknownBackupRoot(parsed);
+  return normalizeImportedVistoriaInspectionsList(raw);
+}
+
+export function mergeVistoriaInspectionsById(
+  prev: readonly VistoriaInspection[],
+  imported: readonly VistoriaInspection[],
+): VistoriaInspection[] {
+  const byId = new Map<string, VistoriaInspection>();
+  for (const i of prev) byId.set(i.id, i);
+  for (const i of imported) byId.set(i.id, i);
+  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+}
+
 export function readVistoriaInspections(): VistoriaInspection[] {
   ensureVistoriaCloudStateSyncStarted();
   try {
@@ -579,72 +701,7 @@ export function readVistoriaInspections(): VistoriaInspection[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item.motorista === "string" && typeof item.viatura === "string")
-      .map((item) => {
-        const localizacaoViatura = migrateLocalizacaoViaturaFromStorage(
-          item as { localizacaoViatura?: unknown; viaturaNaOficina?: unknown },
-        );
-        const createdAtMs = Number((item as { createdAt?: unknown }).createdAt);
-        const createdAtSafe = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
-        const meta = item as {
-          vistoriaAdministrativa?: unknown;
-          rubricaAdministrativa?: unknown;
-          rubrica?: unknown;
-          origemMobile?: unknown;
-          prefillSourceInspectionId?: unknown;
-          prefillMotorista?: unknown;
-          prefillInspectionDate?: unknown;
-          itensAlteradosAdministracao?: unknown;
-          observacaoSegmentacaoAdmin?: unknown;
-        };
-        const observacaoSegmentacaoAdmin = (() => {
-          const o = meta.observacaoSegmentacaoAdmin;
-          if (!o || typeof o !== "object") return undefined;
-          const out: Partial<Record<ChecklistKey, { plain: string; italic: string }>> = {};
-          for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-            if (!isChecklistKey(k)) continue;
-            const seg = v as { plain?: unknown; italic?: unknown };
-            out[k] = {
-              plain: typeof seg.plain === "string" ? seg.plain : "",
-              italic: typeof seg.italic === "string" ? seg.italic : "",
-            };
-          }
-          return Object.keys(out).length ? out : undefined;
-        })();
-        const itensAlteradosAdministracao = (() => {
-          const arr = meta.itensAlteradosAdministracao;
-          if (!Array.isArray(arr)) return undefined;
-          const keys = arr.filter(isChecklistKey);
-          return keys.length ? keys : undefined;
-        })();
-        return {
-          id: String((item as { id?: unknown }).id ?? ""),
-          motorista: String((item as { motorista?: unknown }).motorista ?? ""),
-          viatura: String((item as { viatura?: unknown }).viatura ?? ""),
-          inspectionDate:
-            typeof item.inspectionDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.inspectionDate)
-              ? item.inspectionDate
-              : isoDateFromDate(new Date(createdAtSafe)),
-          localizacaoViatura,
-          checklist: { ...emptyChecklist(), ...(item.checklist ?? {}) },
-          checklistNotes: { ...emptyChecklistNotes(), ...(item.checklistNotes ?? {}) },
-          createdAt: createdAtSafe,
-          rubrica: typeof meta.rubrica === "string" ? meta.rubrica : undefined,
-          vistoriaAdministrativa: meta.vistoriaAdministrativa === true ? true : undefined,
-          rubricaAdministrativa:
-            typeof meta.rubricaAdministrativa === "string" ? meta.rubricaAdministrativa : undefined,
-          origemMobile: meta.origemMobile === true ? true : undefined,
-          prefillSourceInspectionId:
-            typeof meta.prefillSourceInspectionId === "string" ? meta.prefillSourceInspectionId : undefined,
-          prefillMotorista: typeof meta.prefillMotorista === "string" ? meta.prefillMotorista : undefined,
-          prefillInspectionDate:
-            typeof meta.prefillInspectionDate === "string" &&
-            /^\d{4}-\d{2}-\d{2}$/.test(meta.prefillInspectionDate)
-              ? meta.prefillInspectionDate
-              : undefined,
-          itensAlteradosAdministracao,
-          observacaoSegmentacaoAdmin,
-        };
-      });
+      .map((item) => mapStoredInspectionItem(item as VistoriaInspection));
   } catch {
     return [];
   }

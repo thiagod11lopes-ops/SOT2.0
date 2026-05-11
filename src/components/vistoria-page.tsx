@@ -25,8 +25,10 @@ import {
   isoDateFromDate,
   VIATURA_LOCALIZACAO_OPCOES,
   type ViaturaLocalizacao,
+  mergeVistoriaInspectionsById,
   normalizeDriverKey,
   parseIsoDate,
+  parseVistoriaInspectionsFromBackupJsonText,
   readVistoriaAssignments,
   resolveViaturasParaMotoristaEscala,
   readVistoriaInspections,
@@ -391,6 +393,7 @@ function buildVtrSituacaoPendenteRow(args: {
 export function VistoriaPage() {
   const { items } = useCatalogItems();
   const assignmentsImportInputRef = useRef<HTMLInputElement>(null);
+  const inspectionsImportInputRef = useRef<HTMLInputElement>(null);
   const applyingCloudRef = useRef(false);
   const cloudReadyRef = useRef(false);
   const lastPriorityOrderSyncedRef = useRef("[]");
@@ -1304,6 +1307,43 @@ export function VistoriaPage() {
     }
   }
 
+  async function handleInspectionsImportFileSelected(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const imported = parseVistoriaInspectionsFromBackupJsonText(text);
+      if (imported.length === 0) {
+        window.alert(
+          "Nenhuma vistoria válida encontrada no arquivo. Use um backup completo ou um objeto com a lista inspections (no topo ou em sotState.vistoria).",
+        );
+        return;
+      }
+      const merge = window.confirm(
+        `Encontradas ${imported.length} vistoria(s) no arquivo.\n\nOK = mesclar por ID com as ${inspections.length} vistoria(s) atuais (substitui registos com o mesmo ID).\nCancel = substituir todas as vistorias atuais pelo arquivo.`,
+      );
+      let nextList: VistoriaInspection[];
+      if (merge) {
+        nextList = mergeVistoriaInspectionsById(inspections, imported);
+      } else {
+        const okReplace = window.confirm(
+          `Isso remove as ${inspections.length} vistoria(s) atuais e deixa apenas as ${imported.length} do arquivo. Continuar?`,
+        );
+        if (!okReplace) return;
+        nextList = imported;
+      }
+      await updateVistoriaCloudState((prev) => ({
+        ...prev,
+        inspections: nextList,
+      }));
+    } catch (err) {
+      console.error("[SOT] Falha ao importar vistorias:", err);
+      window.alert("Não foi possível ler o JSON. Verifique se o arquivo é válido.");
+    } finally {
+      if (inspectionsImportInputRef.current) inspectionsImportInputRef.current.value = "";
+    }
+  }
+
   function handleOpenInspection(motorista: string, viatura: string) {
     inspectionFormDirtyRef.current = false;
     const motoristaRef = motorista.trim();
@@ -1645,6 +1685,27 @@ export function VistoriaPage() {
                 <strong>Responsabilidade de Vistoria</strong>. Verde: todas as placas do modal foram vistoriadas;
                 laranja claro: pelo menos uma placa foi vistoriada; vermelho: nenhuma placa foi vistoriada.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  ref={inspectionsImportInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => void handleInspectionsImportFileSelected(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => inspectionsImportInputRef.current?.click()}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar vistorias (JSON)
+                </Button>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  Restaura registos do backup; rubricas por referência precisam existir no Firebase.
+                </p>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 p-5">
               <div className="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))/0.15] px-3 py-2">
