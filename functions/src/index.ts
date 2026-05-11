@@ -267,6 +267,18 @@ export const postOwntracksLocation = onRequest(
     invoker: "public",
   },
   async (req, res) => {
+    // Log "raw" para diagnóstico — toda a chamada que chegue a este endpoint, mesmo se falhar a
+    // autenticação ou validação. Permite verificar se o OwnTracks no telemóvel está sequer a
+    // alcançar o servidor.
+    logger.info("postOwntracksLocation request", {
+      method: req.method,
+      query: req.query,
+      hasAuth: typeof req.headers.authorization === "string",
+      ua: typeof req.headers["user-agent"] === "string" ? String(req.headers["user-agent"]).slice(0, 120) : null,
+      contentType: typeof req.headers["content-type"] === "string" ? req.headers["content-type"] : null,
+      contentLength: req.headers["content-length"] ?? null,
+    });
+
     if (req.method === "OPTIONS") {
       res.status(204).send("");
       return;
@@ -282,17 +294,24 @@ export const postOwntracksLocation = onRequest(
     try {
       const expectedToken = await readOwntracksSharedToken(db);
       if (!expectedToken) {
+        logger.warn("postOwntracksLocation owntracks_not_configured");
         res.status(503).json({ error: "owntracks_not_configured" });
         return;
       }
       const provided = decodeBasicAuthPassword(req.headers.authorization as string | undefined);
       if (!provided || provided !== expectedToken) {
+        logger.warn("postOwntracksLocation invalid_token", {
+          hasProvided: Boolean(provided),
+          providedSlice: provided ? provided.slice(0, 6) : null,
+          expectedSlice: expectedToken.slice(0, 6),
+        });
         res.status(401).json({ error: "invalid_token" });
         return;
       }
 
       const motoristaSlug = String(req.query.motorista ?? "").trim().toLowerCase().slice(0, 64);
       if (!motoristaSlug) {
+        logger.warn("postOwntracksLocation missing_motorista", { query: req.query });
         res.status(400).json({ error: "missing_motorista" });
         return;
       }
@@ -303,6 +322,7 @@ export const postOwntracksLocation = onRequest(
       // Mensagens não-location (lwt/transition/waypoint/...): aceitar com 200 para o OwnTracks
       // não tentar reenviar; mas não escrevemos nada no Firestore.
       if (type !== "location") {
+        logger.info("postOwntracksLocation non_location", { motoristaSlug, type });
         res.status(200).json({ ok: true, ignored: type || "unknown" });
         return;
       }
