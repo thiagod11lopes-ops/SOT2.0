@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { Apple, Copy, KeyRound, Plus, QrCode, RefreshCw, Trash2 } from "lucide-react";
+import { Apple, Copy, Download, KeyRound, Plus, QrCode, RefreshCw, Trash2 } from "lucide-react";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
@@ -156,6 +156,55 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
     [endpointUrl, state.token, intervalSeconds],
   );
 
+  /**
+   * Gera e descarrega um ficheiro `.otrc` com a configuração do OwnTracks para este motorista.
+   * No iPhone, abrir o ficheiro (por exemplo a partir da app Mail ou Files) faz aparecer
+   * "Abrir com OwnTracks?" — o motorista confirma e fica configurado em um toque.
+   */
+  const handleDownloadOtrc = useCallback(
+    (binding: OwntracksBinding) => {
+      if (!endpointUrl) {
+        alert(
+          "URL da Cloud Function indisponível. Confirma que o Firebase está configurado e VITE_DRIVER_LOCATION_POST_URL (ou VITE_FIREBASE_PROJECT_ID) está definido nas variáveis de ambiente.",
+        );
+        return;
+      }
+      if (!state.token) {
+        alert("Gera primeiro o token partilhado.");
+        return;
+      }
+      const json = buildOwntracksConfigJson({
+        endpointUrl,
+        motorista: binding.motorista,
+        token: state.token,
+        intervalSeconds,
+      });
+      const text = JSON.stringify(json, null, 2);
+      const slug = binding.motorista
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const filename = `owntracks-${slug || "motorista"}.otrc`;
+      try {
+        const blob = new Blob([text], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        console.error("OTRC download failed", e);
+        alert("Falhou o download do .otrc. Detalhes na consola.");
+      }
+    },
+    [endpointUrl, state.token, intervalSeconds],
+  );
+
   const handleCopyToken = useCallback(async () => {
     if (!state.token) return;
     try {
@@ -286,6 +335,16 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={() => handleDownloadOtrc(b)}
+                  disabled={!state.token || !endpointUrl}
+                  title="Descarrega o ficheiro .otrc para enviares ao motorista (iPhone abre directamente no OwnTracks)."
+                >
+                  <Download className="mr-1 h-3.5 w-3.5" /> .otrc
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleRemoveBinding(b.motorista)}
                   className="border-red-300 text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40"
                 >
@@ -323,11 +382,16 @@ export function SettingsOwntracksCard(props: { intervaloMinutos: number }) {
           <li>
             Instala-se a app <strong>OwnTracks</strong> (gratuita, App Store).
           </li>
-          <li>Aqui em cima, gera o QR code para esse motorista (botão "Gerar QR").</li>
           <li>
-            Envia-lhe a imagem PNG do QR por WhatsApp/email, ou mostra o ecrã. No telemóvel, dentro
-            do OwnTracks: <strong>☰ Settings → Configuration → Import → QR Code</strong> → aponta a
-            câmara à imagem. Toca em <em>Use</em> para confirmar.
+            <strong>Método recomendado (iPhone) — ficheiro .otrc:</strong> em cima, clica em{" "}
+            <em>.otrc</em>. Vai descarregar um ficheiro pequeno. Envia-o ao motorista por email ou
+            WhatsApp. No iPhone, ele abre o ficheiro → o iOS pergunta <em>"Abrir com OwnTracks?"</em>
+            → confirma → o app importa tudo automaticamente (incluindo passar para modo HTTP).
+          </li>
+          <li>
+            <strong>Método alternativo — QR code:</strong> o botão <em>"Gerar QR"</em> mostra um QR.
+            Só funciona se a versão do OwnTracks no iPhone tiver scanner integrado (muitas não têm).
+            Se o ficheiro .otrc estiver disponível, é mais fiável.
           </li>
           <li>
             Na 1.ª utilização o iOS pergunta sobre permissão de localização — escolher
