@@ -16,9 +16,6 @@
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-// `leaflet-rotate` estende `L.Map` com `setBearing()` e opções `rotate`/`bearing`/`touchRotate`,
-// permitindo girar todo o mapa (tiles + camadas) à volta da posição do motorista — estilo Waze.
-import "leaflet-rotate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
@@ -82,6 +79,8 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   const animatingRef = useRef<boolean>(false);
   /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
   const headingRef = useRef<number | null>(null);
+  /** True se o plugin `leaflet-rotate` carregou em runtime sem erros. */
+  const rotateAvailableRef = useRef<boolean>(false);
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
@@ -188,46 +187,91 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   useEffect(() => {
     if (!open || !containerRef.current) return;
     const el = containerRef.current;
-    const mapOptions: RotatableMapOptions = {
-      zoomControl: true,
-      attributionControl: true,
-      // leaflet-rotate
-      rotate: true,
-      rotateControl: false, // sem botão visível
-      touchRotate: false, // desactiva rotação por gesto (evita rotações acidentais durante a condução)
-      bearing: 0,
-    };
-    const map = L.map(el, mapOptions).setView([-22.9, -43.2], 6);
-    L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
-    mapRef.current = map;
 
-    // Quando o utilizador arrasta o mapa com o dedo enquanto está em modo seguir,
-    // sai-se do modo follow e mostra-se um botão "Recentrar" — tal como Google Maps/Waze.
-    const onDragStart = () => {
-      if (animatingRef.current) return; // ignora pan programático (flyTo/panTo)
-      if (isFollowingRef.current) {
-        setIsFollowing(false);
-        setUserInterrupted(true);
+    let cancelled = false;
+    let map: L.Map | null = null;
+    let onDragStart: (() => void) | null = null;
+    let rafId = 0;
+    let tmo = 0;
+
+    /**
+     * Inicializa o mapa. Tenta carregar dinamicamente `leaflet-rotate`; se falhar
+     * (por incompatibilidade com a versão de Leaflet, bug do plugin, etc.) cai
+     * graciosamente para um mapa sem rotação — preserva toda a app de crashar.
+     */
+    async function init() {
+      let rotateOk = false;
+      try {
+        await import("leaflet-rotate");
+        rotateOk = true;
+      } catch (err) {
+        console.warn("[SOT] leaflet-rotate indisponível — mapa sem rotação:", err);
+        rotateOk = false;
       }
-    };
-    map.on("dragstart", onDragStart);
+      if (cancelled || !containerRef.current) return;
+      rotateAvailableRef.current = rotateOk;
 
-    // Compensa flicker durante a animação de abertura do modal.
-    const rafId = requestAnimationFrame(() => {
-      map.invalidateSize();
-      requestAnimationFrame(() => map.invalidateSize());
-    });
-    const tmo = window.setTimeout(() => map.invalidateSize(), 320);
+      const mapOptions: RotatableMapOptions = rotateOk
+        ? {
+            zoomControl: true,
+            attributionControl: true,
+            rotate: true,
+            rotateControl: false,
+            touchRotate: false,
+            bearing: 0,
+          }
+        : {
+            zoomControl: true,
+            attributionControl: true,
+          };
+
+      try {
+        map = L.map(el, mapOptions).setView([-22.9, -43.2], 6);
+      } catch (err) {
+        // Última proteção: se mesmo assim crashar (ex.: plugin partido), cria mapa
+        // sem opções de rotação.
+        console.warn("[SOT] L.map falhou com opções rotativas, a tentar sem:", err);
+        rotateAvailableRef.current = false;
+        map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
+          [-22.9, -43.2],
+          6,
+        );
+      }
+
+      L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
+      mapRef.current = map;
+
+      onDragStart = () => {
+        if (animatingRef.current) return;
+        if (isFollowingRef.current) {
+          setIsFollowing(false);
+          setUserInterrupted(true);
+        }
+      };
+      map.on("dragstart", onDragStart);
+
+      rafId = requestAnimationFrame(() => {
+        map?.invalidateSize();
+        requestAnimationFrame(() => map?.invalidateSize());
+      });
+      tmo = window.setTimeout(() => map?.invalidateSize(), 320);
+    }
+
+    void init();
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(rafId);
       window.clearTimeout(tmo);
-      map.off("dragstart", onDragStart);
-      map.remove();
+      if (map) {
+        if (onDragStart) map.off("dragstart", onDragStart);
+        map.remove();
+      }
       mapRef.current = null;
       routeLayerRef.current = null;
       driverMarkerRef.current = null;
       destMarkerRef.current = null;
+      rotateAvailableRef.current = false;
     };
   }, [open]);
 
@@ -263,14 +307,15 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
       driverMarkerRef.current.setLatLng([origin.lat, origin.lng]);
     }
 
-    // Aplica rotação ao DIV interno apenas quando o **mapa** NÃO está a rodar.
-    // Em modo follow é o mapa inteiro que roda — manter o ícone sempre apontado
-    // para cima evita que a seta gire duas vezes.
+    // Aplica rotação ao DIV interno. Quando o **mapa** está a rodar (plugin activo
+    // + modo follow) deixamos o ícone apontado para cima — o mapa já gira por baixo.
+    // Caso contrário, o ícone gira para mostrar a direcção de marcha.
     const el = driverMarkerRef.current.getElement?.();
     const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
     if (rot) {
       const h = headingRef.current;
-      if (isFollowingRef.current) {
+      const mapRotating = isFollowingRef.current && rotateAvailableRef.current;
+      if (mapRotating) {
         rot.style.transform = "rotate(0deg)";
       } else if (h !== null && Number.isFinite(h)) {
         rot.style.transform = `rotate(${h}deg)`;
@@ -344,17 +389,21 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         maybeSpeakNextManeuver(here);
 
         // Se estamos no modo seguir, faz pan suave da câmara para acompanhar o motorista
-        // e roda o mapa (leaflet-rotate) para a direcção de marcha apontar para cima.
+        // e (se o plugin de rotação estiver activo) roda o mapa para a marcha apontar para cima.
         const map = mapRef.current as RotatableMap | null;
         if (map && isFollowingRef.current) {
           animatingRef.current = true;
           try {
             map.panTo([here.lat, here.lng], { animate: true, duration: 0.6 });
-            const h = headingRef.current;
-            if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
-              // setBearing recebe ângulo do mapa em sentido CCW. Para a direcção de
-              // marcha apontar para cima, rodamos o mapa em sentido contrário (-heading).
-              map.setBearing(360 - h);
+            if (rotateAvailableRef.current) {
+              const h = headingRef.current;
+              if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
+                try {
+                  map.setBearing(360 - h);
+                } catch (err) {
+                  console.warn("[SOT] setBearing falhou:", err);
+                }
+              }
             }
           } finally {
             window.setTimeout(() => {
@@ -431,9 +480,15 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     animatingRef.current = true;
     try {
       map.flyTo([origin.lat, origin.lng], 17, { animate: true, duration: 1.4 });
-      const h = headingRef.current;
-      if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
-        map.setBearing(360 - h);
+      if (rotateAvailableRef.current) {
+        const h = headingRef.current;
+        if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
+          try {
+            map.setBearing(360 - h);
+          } catch (err) {
+            console.warn("[SOT] setBearing falhou:", err);
+          }
+        }
       }
     } finally {
       window.setTimeout(() => {
@@ -442,16 +497,17 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     }
   }
 
-  // Quando sai-se do modo seguir (ex.: motorista arrastou o mapa, fechou navegação),
-  // alinha o mapa com o norte para cima de novo.
+  // Quando sai-se do modo seguir, alinha o mapa com o norte para cima de novo (se houve rotação).
   useEffect(() => {
     if (isFollowing) return;
     const map = mapRef.current as RotatableMap | null;
-    if (map && typeof map.setBearing === "function") {
-      map.setBearing(0);
+    if (map && rotateAvailableRef.current && typeof map.setBearing === "function") {
+      try {
+        map.setBearing(0);
+      } catch (err) {
+        console.warn("[SOT] setBearing(0) falhou:", err);
+      }
     }
-    // Restaurar rotação do ícone do motorista (apontando para heading) quando o mapa
-    // volta a ficar com norte para cima.
     const el = driverMarkerRef.current?.getElement?.();
     const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
     if (rot) {
