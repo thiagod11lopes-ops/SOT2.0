@@ -14,6 +14,7 @@ import { getFirebaseIdTokenForFunctions, postDriverLocation, resolveDriverLocati
 import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
 import { NativeScheduledLocationPost } from "./nativeScheduledLocationPost";
+import { loadActiveMobileMotorista } from "./mobileMotoristaCredentials";
 import { writeMotoristaActiveAssignment } from "./motoristaActiveAssignment";
 
 /**
