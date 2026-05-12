@@ -51,5 +51,15 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if false;
     }
+
+    /**
+     * Atribuição motorista→placa actual.
+     * Escrita pelo SOT mobile no "Iniciar Saída" para a Cloud Function `postOwntracksLocation`
+     * (iPhones a usarem OwnTracks) saber em que placa registar a posição. Limpa no "Finalizar".
+     */
+    match /motorista_active_assignments/{motoristaSlug} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
   }
 }
