@@ -60,6 +60,10 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   const destMarkerRef = useRef<L.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const spokenStepIdxRef = useRef<number>(-1);
+  /** True quando estamos no meio de uma animação programática (evita confundir com pan manual). */
+  const animatingRef = useRef<boolean>(false);
+  /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
+  const headingRef = useRef<number | null>(null);
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
@@ -67,6 +71,16 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   const [loading, setLoading] = useState<"" | "locating" | "geocoding" | "routing">("");
   const [error, setError] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [confirmStopOpen, setConfirmStopOpen] = useState(false);
+  /** Modo "seguir motorista": câmara acompanha automaticamente a posição actual. */
+  const [isFollowing, setIsFollowing] = useState(false);
+  /** True quando o utilizador interagiu manualmente com o mapa após entrar em follow mode. */
+  const [userInterrupted, setUserInterrupted] = useState(false);
+  /** Mantém o último valor de `isFollowing` acessível sem re-criar callbacks. */
+  const isFollowingRef = useRef(false);
+  useEffect(() => {
+    isFollowingRef.current = isFollowing;
+  }, [isFollowing]);
 
   const destinationQuery = useMemo(() => buildDestinationQuery(record), [record]);
 
@@ -163,6 +177,17 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
     mapRef.current = map;
 
+    // Quando o utilizador arrasta o mapa com o dedo enquanto está em modo seguir,
+    // sai-se do modo follow e mostra-se um botão "Recentrar" — tal como Google Maps/Waze.
+    const onDragStart = () => {
+      if (animatingRef.current) return; // ignora pan programático (flyTo/panTo)
+      if (isFollowingRef.current) {
+        setIsFollowing(false);
+        setUserInterrupted(true);
+      }
+    };
+    map.on("dragstart", onDragStart);
+
     // Compensa flicker durante a animação de abertura do modal.
     const rafId = requestAnimationFrame(() => {
       map.invalidateSize();
@@ -173,6 +198,7 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     return () => {
       cancelAnimationFrame(rafId);
       window.clearTimeout(tmo);
+      map.off("dragstart", onDragStart);
       map.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
@@ -188,17 +214,37 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     const map = mapRef.current;
     if (!map || !origin) return;
 
-    // Marcador do motorista (origem actual).
-    const driverIcon = L.divIcon({
-      className: "sot-nav-driver-icon",
-      html: '<div style="width:18px;height:18px;background:#2563eb;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(37,99,235,0.45);"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
-    if (driverMarkerRef.current) {
-      driverMarkerRef.current.setLatLng([origin.lat, origin.lng]);
+    // Marcador do motorista: chevron azul (estilo Google Maps/Waze). O DIV interno
+    // rotaciona em função da `headingRef` para indicar a direcção de marcha.
+    if (!driverMarkerRef.current) {
+      const driverIcon = L.divIcon({
+        className: "sot-nav-driver-icon",
+        html:
+          '<div class="sot-nav-driver-rotate" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;transform:rotate(0deg);transition:transform 200ms linear;">' +
+          '<svg viewBox="0 0 24 24" width="36" height="36" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.45));">' +
+          // Círculo de fundo branco
+          '<circle cx="12" cy="12" r="10" fill="#fff"/>' +
+          // Seta azul interna (apontando para cima — norte)
+          '<path d="M12 4 L18 18 L12 15 L6 18 Z" fill="#2563eb" stroke="#1d4ed8" stroke-width="0.6" stroke-linejoin="round"/>' +
+          "</svg></div>",
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+      driverMarkerRef.current = L.marker([origin.lat, origin.lng], {
+        icon: driverIcon,
+        interactive: false,
+        keyboard: false,
+      }).addTo(map);
     } else {
-      driverMarkerRef.current = L.marker([origin.lat, origin.lng], { icon: driverIcon }).addTo(map);
+      driverMarkerRef.current.setLatLng([origin.lat, origin.lng]);
+    }
+
+    // Aplica rotação ao DIV interno (se temos heading).
+    const el = driverMarkerRef.current.getElement?.();
+    const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
+    if (rot) {
+      const h = headingRef.current;
+      rot.style.transform = h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
     }
   }, [origin]);
 
@@ -255,9 +301,29 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const here: Coord = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        // Heading só é fiável quando há velocidade — ignoramos abaixo de 0.5 m/s (~1.8 km/h).
+        const speed = typeof pos.coords.speed === "number" ? pos.coords.speed : null;
+        const rawHeading = typeof pos.coords.heading === "number" ? pos.coords.heading : null;
+        if (rawHeading !== null && Number.isFinite(rawHeading) && (speed === null || speed > 0.5)) {
+          headingRef.current = rawHeading;
+        }
         setOrigin(here);
         if (driverMarkerRef.current) driverMarkerRef.current.setLatLng([here.lat, here.lng]);
         maybeSpeakNextManeuver(here);
+
+        // Se estamos no modo seguir, faz pan suave da câmara para acompanhar o motorista.
+        const map = mapRef.current;
+        if (map && isFollowingRef.current) {
+          animatingRef.current = true;
+          try {
+            map.panTo([here.lat, here.lng], { animate: true, duration: 0.6 });
+          } finally {
+            // Liberta a flag depois da animação para não interpretar este pan como manual.
+            window.setTimeout(() => {
+              animatingRef.current = false;
+            }, 700);
+          }
+        }
       },
       undefined,
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
@@ -313,6 +379,27 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   // ---------------------------------------------------------------------------
   // Acções dos botões inferiores.
   // ---------------------------------------------------------------------------
+
+  /**
+   * Activa o modo "seguir motorista": aproxima a câmara à posição actual com uma
+   * animação suave (estilo Google Maps/Waze) e a partir daí faz pan automático a
+   * cada actualização de `watchPosition`.
+   */
+  function startFollowing() {
+    const map = mapRef.current;
+    if (!map || !origin) return;
+    setIsFollowing(true);
+    setUserInterrupted(false);
+    animatingRef.current = true;
+    try {
+      map.flyTo([origin.lat, origin.lng], 17, { animate: true, duration: 1.4 });
+    } finally {
+      window.setTimeout(() => {
+        animatingRef.current = false;
+      }, 1500);
+    }
+  }
+
   function openInWaze() {
     if (!destination) return;
     const url = `https://waze.com/ul?ll=${destination.lat},${destination.lng}&navigate=yes`;
@@ -343,19 +430,6 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
         <div className="pointer-events-auto flex items-start gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              window.speechSynthesis?.cancel?.();
-              onClose();
-            }}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow"
-            aria-label="Fechar navegação"
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" />
-            </svg>
-          </button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs uppercase tracking-wider text-white/80">Destino</p>
             <p className="truncate text-sm font-semibold leading-tight">
@@ -427,9 +501,9 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         )}
       </div>
 
-      {/* Barra inferior: acções rápidas. */}
+      {/* Barra inferior: acções rápidas + botão PARE em destaque. */}
       <div
-        className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 flex justify-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-6"
+        className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-6"
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
         <div className="pointer-events-auto flex w-full max-w-md gap-2">
@@ -452,7 +526,85 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
             Waze
           </Button>
         </div>
+
+        {/* Iniciar navegação / Recentrar — só faz sentido se já temos posição. */}
+        {origin && (!isFollowing || userInterrupted) ? (
+          <button
+            type="button"
+            onClick={startFollowing}
+            className="pointer-events-auto flex h-12 w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold uppercase tracking-[0.14em] text-white shadow-lg shadow-emerald-900/30 active:bg-emerald-700"
+            aria-label={isFollowing ? "Recentrar no motorista" : "Iniciar navegação"}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              {isFollowing ? (
+                // Ícone de centrar: alvo
+                <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21z" />
+              ) : (
+                // Ícone de seta de navegação
+                <path d="M12 2 5 21l7-4 7 4z" />
+              )}
+            </svg>
+            {isFollowing ? "Recentrar" : "Iniciar navegação"}
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => setConfirmStopOpen(true)}
+          className="pointer-events-auto flex h-14 w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-red-600 text-lg font-extrabold uppercase tracking-[0.18em] text-white shadow-lg shadow-red-900/40 active:bg-red-700"
+          aria-label="Parar navegação"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+            <path d="M6 6h12v12H6z" />
+          </svg>
+          Pare
+        </button>
       </div>
+
+      {/* Modal de confirmação para parar a navegação. */}
+      {confirmStopOpen ? (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sot-nav-stop-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmStopOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id="sot-nav-stop-title" className="mb-1 text-lg font-bold text-slate-900">
+              Parar navegação?
+            </h2>
+            <p className="mb-4 text-sm text-slate-600">
+              O mapa irá fechar-se. O rastreamento de localização da viatura continuará
+              ativo até finalizar a saída.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="h-11 flex-1 rounded-xl"
+                onClick={() => setConfirmStopOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="h-11 flex-1 rounded-xl bg-red-600 font-bold uppercase tracking-wider text-white hover:bg-red-700"
+                onClick={() => {
+                  window.speechSynthesis?.cancel?.();
+                  setConfirmStopOpen(false);
+                  onClose();
+                }}
+              >
+                Parar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

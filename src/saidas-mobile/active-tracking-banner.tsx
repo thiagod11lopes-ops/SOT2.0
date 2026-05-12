@@ -37,14 +37,15 @@ export function ActiveTrackingBanner() {
       role="status"
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 z-[540] flex justify-center px-3"
-      style={{ top: "calc(var(--safe-top) + 0.5rem)" }}
+      style={{
+        // Fixar imediatamente acima da barra de navegação (Administrativas/Ambulância).
+        // Altura ~4.25rem (botões 3.25rem + paddings 1rem) + área segura iOS + 0.5rem de gap.
+        bottom: "calc(4.5rem + var(--safe-bottom, 0px) + 0.5rem)",
+      }}
     >
       <div className="pointer-events-auto w-full max-w-lg rounded-2xl border border-emerald-300/80 bg-emerald-50/95 px-3 py-2 text-emerald-900 shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className="relative flex h-2.5 w-2.5"
-          >
+          <span aria-hidden className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" />
           </span>
