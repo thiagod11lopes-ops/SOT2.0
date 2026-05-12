@@ -2,6 +2,9 @@
 # ou aprove em Actions → execução → Review deployments.
 name: Deploy GitHub Pages
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -26,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       # Aviso se faltar Firebase — o build continua (app funciona só com dados locais no browser).

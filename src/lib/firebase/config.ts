@@ -1,4 +1,20 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { initializeFirestore } from "firebase/firestore";
+
+/**
+ * No WebView Android (Capacitor), o transporte WebChannel por `fetch` pode falhar se o
+ * `CapacitorHttp` estiver a patchar `fetch`. Long-polling evita esse caminho quando necessário.
+ * Deve correr antes de qualquer `getFirestore(app)`.
+ */
+function ensureFirestoreWebViewFriendlyTransport(app: FirebaseApp): void {
+  try {
+    initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    });
+  } catch {
+    /* já inicializado nesta sessão */
+  }
+}
 
 /** True quando VITE_FIREBASE_* obrigatórios estão definidos (build / .env). */
 export function isFirebaseConfigured(): boolean {
@@ -14,9 +30,11 @@ export function getFirebaseApp(): FirebaseApp {
     throw new Error("Firebase não configurado: defina VITE_FIREBASE_* no .env");
   }
   if (getApps().length > 0) {
-    return getApp();
+    const app = getApp();
+    ensureFirestoreWebViewFriendlyTransport(app);
+    return app;
   }
-  return initializeApp({
+  const app = initializeApp({
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -24,4 +42,6 @@ export function getFirebaseApp(): FirebaseApp {
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || undefined,
     appId: import.meta.env.VITE_FIREBASE_APP_ID || undefined,
   });
+  ensureFirestoreWebViewFriendlyTransport(app);
+  return app;
 }
