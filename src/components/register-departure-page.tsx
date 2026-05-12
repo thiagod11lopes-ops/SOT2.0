@@ -149,11 +149,29 @@ function getMissingExternoBatchWeekdayDates(records: DepartureRecord[]): Date[] 
   );
 }
 
-function viaturaRdvOption(v: string, keyPrefix: string, rdvInoperantes: Set<string>) {
-  const blocked = rdvInoperantes.has(v.trim().toLowerCase());
+function viaturaRdvOption(
+  v: string,
+  keyPrefix: string,
+  rdvInoperantes: Set<string>,
+  rdvNaOficina: Set<string>,
+) {
+  const key = v.trim().toLowerCase();
+  const inoperante = rdvInoperantes.has(key);
+  const naOficina = rdvNaOficina.has(key);
+  const label =
+    inoperante && naOficina
+      ? `${v} — Inoperante · Oficina (RDV)`
+      : inoperante
+        ? `${v} — Inoperante (RDV)`
+        : naOficina
+          ? `${v} — Oficina (RDV)`
+          : v;
+  let color: string | undefined;
+  if (naOficina) color = "#6b7280";
+  else if (inoperante) color = "#dc2626";
   return (
-    <option key={`${keyPrefix}-${v}`} value={v} style={blocked ? { color: "#dc2626" } : undefined}>
-      {blocked ? `${v} — Inoperante (RDV)` : v}
+    <option key={`${keyPrefix}-${v}`} value={v} disabled={naOficina} style={color ? { color } : undefined}>
+      {label}
     </option>
   );
 }
@@ -713,45 +731,33 @@ export function RegisterDeparturePage() {
     );
   }, [rdvInopTick]);
 
-  const viaturasAdminDisponiveis = useMemo(
-    () =>
-      catalogItems.viaturasAdministrativas.filter((p) => !rdvPlacasNaOficinaLower.has(p.trim().toLowerCase())),
-    [catalogItems.viaturasAdministrativas, rdvPlacasNaOficinaLower],
-  );
+  /** Todas as viaturas do catálogo (Frota e Pessoal), alinhado às listas de cadastro. */
+  const mergedViaturasCatalogFull = useMemo(() => mergeViaturasCatalog(catalogItems), [catalogItems]);
 
-  const viaturasAmbDisponiveis = useMemo(
-    () => catalogItems.ambulancias.filter((p) => !rdvPlacasNaOficinaLower.has(p.trim().toLowerCase())),
-    [catalogItems.ambulancias, rdvPlacasNaOficinaLower],
-  );
-
-  const mergedViaturasCatalog = useMemo(
-    () =>
-      mergeViaturasCatalog({
-        ...catalogItems,
-        viaturasAdministrativas: viaturasAdminDisponiveis,
-        ambulancias: viaturasAmbDisponiveis,
-      }),
-    [catalogItems, viaturasAdminDisponiveis, viaturasAmbDisponiveis],
-  );
-
-  /** Evita a mesma placa em dois grupos do select (cadastro duplicado por engano). */
+  /**
+   * Evita a mesma placa em dois grupos do select (cadastro duplicado por engano).
+   * Usa a lista administrativa completa para deduplicar contra ambulâncias.
+   */
   const ambulanciaOptionsForSelect = useMemo(() => {
     const admin = new Set(
-      viaturasAdminDisponiveis.map((x) => x.trim().toLowerCase()).filter(Boolean),
+      catalogItems.viaturasAdministrativas.map((x) => x.trim().toLowerCase()).filter(Boolean),
     );
-    return viaturasAmbDisponiveis.filter((x) => !admin.has(x.trim().toLowerCase()));
-  }, [viaturasAdminDisponiveis, viaturasAmbDisponiveis]);
+    return catalogItems.ambulancias.filter((x) => !admin.has(x.trim().toLowerCase()));
+  }, [catalogItems.viaturasAdministrativas, catalogItems.ambulancias]);
 
-  /** Administrativa: todas disponíveis; Ambulância: só ambulâncias disponíveis (fora da oficina). */
+  /**
+   * Validação / valor órfão: todas as placas cadastradas. Placas «Oficina» no RDV continuam no
+   * catálogo (aparecem disabled no select); o envio do formulário continua bloqueado nesses casos.
+   */
   const viaturasCatalogForCurrentTipo = useMemo(() => {
-    if (departureType === "Ambulância") return viaturasAmbDisponiveis;
-    return mergedViaturasCatalog;
-  }, [departureType, mergedViaturasCatalog, viaturasAmbDisponiveis]);
+    if (departureType === "Ambulância") return catalogItems.ambulancias;
+    return mergedViaturasCatalogFull;
+  }, [departureType, mergedViaturasCatalogFull, catalogItems.ambulancias]);
 
   const viaturaSelectHasOptions =
     departureType === "Ambulância"
-      ? viaturasAmbDisponiveis.length > 0
-      : mergedViaturasCatalog.length > 0;
+      ? catalogItems.ambulancias.length > 0
+      : mergedViaturasCatalogFull.length > 0;
 
   const ultimoKmSaidaPorViaturaLower = useMemo(() => {
     const ultimasSaidasPorViatura = new Map<string, { kmSaidaRaw: string; stamp: number; oficinaRubricada: boolean }>();
@@ -1750,7 +1756,7 @@ export function RegisterDeparturePage() {
                 open={ocorrenciasModalOpen}
                 onOpenChange={setOcorrenciasModalOpen}
                 rows={departures}
-                viaturasOptions={mergedViaturasCatalog}
+                viaturasOptions={mergedViaturasCatalogFull}
                 motoristasOptions={catalogItems.motoristas}
               />
             </>
@@ -1941,25 +1947,25 @@ export function RegisterDeparturePage() {
                       ) : null}
                       {departureType === "Administrativa" ? (
                         <>
-                          {viaturasAdminDisponiveis.length > 0 ? (
+                          {catalogItems.viaturasAdministrativas.length > 0 ? (
                             <optgroup label="Viaturas administrativas">
-                              {viaturasAdminDisponiveis.map((v) =>
-                                viaturaRdvOption(v, "adm", rdvPlacasInoperantes),
+                              {catalogItems.viaturasAdministrativas.map((v) =>
+                                viaturaRdvOption(v, "adm", rdvPlacasInoperantes, rdvPlacasNaOficinaLower),
                               )}
                             </optgroup>
                           ) : null}
                           {ambulanciaOptionsForSelect.length > 0 ? (
                             <optgroup label="Ambulâncias">
                               {ambulanciaOptionsForSelect.map((v) =>
-                                viaturaRdvOption(v, "amb-adm", rdvPlacasInoperantes),
+                                viaturaRdvOption(v, "amb-adm", rdvPlacasInoperantes, rdvPlacasNaOficinaLower),
                               )}
                             </optgroup>
                           ) : null}
                         </>
                       ) : (
                         <optgroup label="Ambulâncias">
-                          {viaturasAmbDisponiveis.map((v) =>
-                            viaturaRdvOption(v, "amb", rdvPlacasInoperantes),
+                          {catalogItems.ambulancias.map((v) =>
+                            viaturaRdvOption(v, "amb", rdvPlacasInoperantes, rdvPlacasNaOficinaLower),
                           )}
                         </optgroup>
                       )}

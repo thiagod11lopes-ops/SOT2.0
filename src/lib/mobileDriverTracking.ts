@@ -320,19 +320,18 @@ function readCurrentPositionOnce(): Promise<{ lat: number; lng: number }> {
 
 /**
  * Cada disparo:
- *  - Em **Capacitor native** depende do watcher do plugin para manter `lastPos` actualizado
- *    (foreground service Android, background mode iOS — funciona com ecrã bloqueado).
- *  - Em **browser** tenta um fix novo via `getCurrentPosition`; se falhar usa o último.
+ *  - Tenta sempre um fix via `getCurrentPosition` (intervalo configurado). No **browser** já era
+ *    assim; no **Capacitor native** também é necessário porque o callback do plugin pode ser
+ *    espacioso e o WebView Android pode estrangular `Worker`/`setInterval` em segundo plano.
+ *  - Se `getCurrentPosition` falhar, usa `lastPos` ainda actualizado pelo watcher nativo (quando existir).
  */
 async function performTick(session: ActiveSession): Promise<void> {
   if (active?.recordId !== session.recordId) return;
-  if (!runningInsideCapacitorNative()) {
-    try {
-      const pos = await readCurrentPositionOnce();
-      lastPos = { ...pos, capturedAt: Date.now() };
-    } catch (e) {
-      console.warn("[SOT mobile] getCurrentPosition tick falhou:", e);
-    }
+  try {
+    const pos = await readCurrentPositionOnce();
+    lastPos = { ...pos, capturedAt: Date.now() };
+  } catch (e) {
+    console.warn("[SOT mobile] getCurrentPosition tick:", e);
   }
   if (active?.recordId !== session.recordId) return;
   if (!lastPos) return;
@@ -349,9 +348,9 @@ async function performTick(session: ActiveSession): Promise<void> {
 }
 
 /**
- * Inicia `watchPosition` (para manter `lastPos` actualizado quando há sinal/movimento),
- * monta Worker dedicado para disparar ticks a cada intervalo configurado e mantém o tab
- * activo via WakeLock + áudio silencioso. Substitui qualquer sessão anterior.
+ * Inicia `watchPosition` no browser (ou watcher nativo no app), dispara ticks no intervalo
+ * configurado (Worker no browser; `setInterval` no Capacitor nativo) e mantém o tab activo
+ * via WakeLock + áudio silencioso no browser. Substitui qualquer sessão anterior.
  */
 export async function startMobileDriverTrackingSession(args: { recordId: string; placa: string }): Promise<void> {
   clearSessionLocks();
@@ -418,7 +417,11 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
     wakeLock = await requestScreenWakeLock();
   }
 
-  const workerEntry = createTrackingWorker();
+  /**
+   * No WebView Android, Workers com `Blob` URL são menos fiáveis para timers longos; o
+   * `setInterval` na main thread mantém-se alinhado ao foreground service do plugin.
+   */
+  const workerEntry = insideNative ? null : createTrackingWorker();
 
   const session: ActiveSession = {
     recordId: args.recordId,
