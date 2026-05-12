@@ -30,6 +30,7 @@ import {
 } from "../lib/motoristaActiveAssignment";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
+import { NavigationFullScreenModal } from "./navigation-fullscreen-modal";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
@@ -59,6 +60,7 @@ export function DepartureCard({
 }) {
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -221,6 +223,7 @@ export function DepartureCard({
     try {
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
       setOpen(false);
+      setNavigationOpen(true);
     } catch (e) {
       if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
         window.alert(e.message);
@@ -856,6 +859,12 @@ export function DepartureCard({
           </div>
         </div>
       ) : null}
+
+      <NavigationFullScreenModal
+        open={navigationOpen}
+        record={record}
+        onClose={() => setNavigationOpen(false)}
+      />
     </article>
   );
 }
