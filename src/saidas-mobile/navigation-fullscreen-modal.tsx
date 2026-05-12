@@ -87,6 +87,8 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   const rotateAvailableRef = useRef<boolean>(false);
   /** Timestamp do último toque na overlay preta — usado para detectar duplo-clique. */
   const lastLockTapRef = useRef<number>(0);
+  /** Wake Lock activo (mantém ecrã aceso durante a navegação). */
+  const wakeLockRef = useRef<unknown | null>(null);
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
@@ -618,6 +620,61 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     setScreenLocked(false);
     spokenStepIdxRef.current = -1;
   }, [open]);
+
+  // ---------------------------------------------------------------------------
+  // Wake Lock: pede ao sistema operativo para NÃO apagar o ecrã enquanto a
+  // navegação está aberta. Sem isto, iOS apaga ao fim de ~30 s e o GPS pausa.
+  // A API (`navigator.wakeLock`) está em todos os browsers modernos (Safari 16.4+).
+  // Re-adquirimos o lock se a página volta a ficar visível (após mudança de aba).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!open) return;
+
+    async function acquire() {
+      try {
+        const nav = navigator as unknown as {
+          wakeLock?: { request: (type: "screen") => Promise<unknown> };
+        };
+        if (nav.wakeLock && typeof nav.wakeLock.request === "function") {
+          wakeLockRef.current = await nav.wakeLock.request("screen");
+        }
+      } catch (e) {
+        console.warn("[SOT] Wake Lock indisponível:", e);
+      }
+    }
+
+    void acquire();
+
+    function onVisibility() {
+      if (document.visibilityState === "visible") void acquire();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      const lock = wakeLockRef.current as { release?: () => Promise<void> } | null;
+      if (lock && typeof lock.release === "function") {
+        lock.release().catch(() => {
+          /* ignore */
+        });
+      }
+      wakeLockRef.current = null;
+    };
+  }, [open]);
+
+  // Quando a tela está trancada, força um `filter: brightness(0)` no `<html>` —
+  // garante que qualquer pixel fora da overlay (chrome do browser em Safari mobile,
+  // por exemplo) também fica a preto absoluto. Em ecrãs OLED isto traduz-se em
+  // emissão de luz praticamente nula.
+  useEffect(() => {
+    if (!screenLocked) return;
+    const html = document.documentElement;
+    const prev = html.style.filter;
+    html.style.filter = "brightness(0)";
+    return () => {
+      html.style.filter = prev;
+    };
+  }, [screenLocked]);
 
   /**
    * Handler do duplo-clique para destrancar a tela. Se o segundo toque vier num
