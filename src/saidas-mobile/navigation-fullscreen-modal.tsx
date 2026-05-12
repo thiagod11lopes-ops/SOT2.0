@@ -6,7 +6,11 @@
  *  - Mapa Leaflet a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (posição atual, azul) e destino (vermelho).
  *  - Barra superior com nome do destino, distância e tempo previsto.
- *  - Barra inferior com botões: fechar, abrir Waze/Google Maps, ligar/desligar voz.
+ *  - Botão "Iniciar navegação" (canto sup. dir.) que aproxima a câmara à posição actual
+ *    e a partir daí segue o motorista mantendo o ícone na parte inferior do ecrã,
+ *    estilo Waze. Quando o motorista interage manualmente com o mapa, o botão muda
+ *    para "Recentrar".
+ *  - Botão vermelho "PARE" (base) com modal de confirmação.
  *  - Acompanhamento contínuo da posição via `watchPosition`.
  *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista se aproxima
  *    de cada passo.
@@ -389,12 +393,12 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         maybeSpeakNextManeuver(here);
 
         // Se estamos no modo seguir, faz pan suave da câmara para acompanhar o motorista
-        // e (se o plugin de rotação estiver activo) roda o mapa para a marcha apontar para cima.
+        // (mantendo-o na parte inferior do ecrã — câmara atrás, estilo Waze) e roda o
+        // mapa para a direcção de marcha apontar para cima, caso o plugin esteja activo.
         const map = mapRef.current as RotatableMap | null;
         if (map && isFollowingRef.current) {
           animatingRef.current = true;
           try {
-            map.panTo([here.lat, here.lng], { animate: true, duration: 0.6 });
             if (rotateAvailableRef.current) {
               const h = headingRef.current;
               if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
@@ -405,6 +409,7 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
                 }
               }
             }
+            panSoDriverSitsAtBottom(map, here, 0.6);
           } finally {
             window.setTimeout(() => {
               animatingRef.current = false;
@@ -464,13 +469,34 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   );
 
   // ---------------------------------------------------------------------------
-  // Acções dos botões inferiores.
+  // Acções dos botões.
   // ---------------------------------------------------------------------------
 
   /**
+   * Coloca a posição actual na parte inferior do ecrã (~78 % da altura) para criar
+   * a sensação de câmara "atrás" do veículo, como no Waze. Usa `panBy` em screen
+   * pixels — assim funciona mesmo com o mapa rotado (leaflet-rotate ajusta).
+   */
+  function panSoDriverSitsAtBottom(map: L.Map, here: Coord, durationSec: number) {
+    try {
+      const sz = map.getSize();
+      const desired = L.point(sz.x / 2, sz.y * 0.78);
+      const current = map.latLngToContainerPoint([here.lat, here.lng]);
+      const dx = current.x - desired.x;
+      const dy = current.y - desired.y;
+      // panBy([dx, dy]) move a vista por (dx, dy) — o ponto fixo move-se (-dx, -dy)
+      // no ecrã, levando o motorista de `current` até `desired`.
+      map.panBy([dx, dy], { animate: true, duration: durationSec });
+    } catch {
+      // Fallback: pan simples para o centro.
+      map.panTo([here.lat, here.lng], { animate: true, duration: durationSec });
+    }
+  }
+
+  /**
    * Activa o modo "seguir motorista": aproxima a câmara à posição actual com uma
-   * animação suave (estilo Google Maps/Waze) e a partir daí faz pan automático a
-   * cada actualização de `watchPosition`.
+   * animação suave (estilo Waze) e a partir daí faz pan automático a cada
+   * actualização de `watchPosition`. A posição actual fica na parte inferior do ecrã.
    */
   function startFollowing() {
     const map = mapRef.current as RotatableMap | null;
@@ -479,7 +505,7 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     setUserInterrupted(false);
     animatingRef.current = true;
     try {
-      map.flyTo([origin.lat, origin.lng], 17, { animate: true, duration: 1.4 });
+      map.flyTo([origin.lat, origin.lng], 18, { animate: true, duration: 1.4 });
       if (rotateAvailableRef.current) {
         const h = headingRef.current;
         if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
@@ -490,10 +516,16 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
           }
         }
       }
+      // Depois da animação principal terminar, empurra a vista para o motorista
+      // ficar visualmente na parte de baixo — simula câmara atrás do veículo.
+      window.setTimeout(() => {
+        if (!isFollowingRef.current || !mapRef.current || !origin) return;
+        panSoDriverSitsAtBottom(mapRef.current, origin, 0.4);
+      }, 1500);
     } finally {
       window.setTimeout(() => {
         animatingRef.current = false;
-      }, 1500);
+      }, 2100);
     }
   }
 
@@ -515,18 +547,6 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
       rot.style.transform = h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
     }
   }, [isFollowing]);
-
-  function openInWaze() {
-    if (!destination) return;
-    const url = `https://waze.com/ul?ll=${destination.lat},${destination.lng}&navigate=yes`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
-  function openInGoogleMaps() {
-    if (!destination) return;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lng}&travelmode=driving`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
 
   if (!open) return null;
 
@@ -617,53 +637,32 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         )}
       </div>
 
-      {/* Barra inferior: acções rápidas + botão PARE em destaque. */}
+      {/* Botão flutuante: Iniciar navegação / Recentrar no canto superior direito. */}
+      {origin && (!isFollowing || userInterrupted) ? (
+        <button
+          type="button"
+          onClick={startFollowing}
+          className="pointer-events-auto absolute right-3 z-10 flex h-11 items-center justify-center gap-2 rounded-full bg-emerald-600 px-4 text-sm font-bold uppercase tracking-[0.12em] text-white shadow-lg shadow-emerald-900/40 active:bg-emerald-700"
+          // Coloca o botão logo abaixo da barra superior (cartão com distância/tempo).
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
+          aria-label={isFollowing ? "Recentrar no motorista" : "Iniciar navegação"}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            {isFollowing ? (
+              <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21z" />
+            ) : (
+              <path d="M12 2 5 21l7-4 7 4z" />
+            )}
+          </svg>
+          {isFollowing ? "Recentrar" : "Iniciar navegação"}
+        </button>
+      ) : null}
+
+      {/* Barra inferior: botão PARE em destaque. */}
       <div
         className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-6"
         style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
       >
-        <div className="pointer-events-auto flex w-full max-w-md gap-2">
-          <Button
-            variant="outline"
-            className="h-11 flex-1 rounded-xl bg-white/95 text-slate-900 hover:bg-white"
-            onClick={openInGoogleMaps}
-            disabled={!destination}
-            title="Abrir esta rota no Google Maps"
-          >
-            Google Maps
-          </Button>
-          <Button
-            variant="outline"
-            className="h-11 flex-1 rounded-xl bg-white/95 text-slate-900 hover:bg-white"
-            onClick={openInWaze}
-            disabled={!destination}
-            title="Abrir esta rota no Waze"
-          >
-            Waze
-          </Button>
-        </div>
-
-        {/* Iniciar navegação / Recentrar — só faz sentido se já temos posição. */}
-        {origin && (!isFollowing || userInterrupted) ? (
-          <button
-            type="button"
-            onClick={startFollowing}
-            className="pointer-events-auto flex h-12 w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold uppercase tracking-[0.14em] text-white shadow-lg shadow-emerald-900/30 active:bg-emerald-700"
-            aria-label={isFollowing ? "Recentrar no motorista" : "Iniciar navegação"}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-              {isFollowing ? (
-                // Ícone de centrar: alvo
-                <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21z" />
-              ) : (
-                // Ícone de seta de navegação
-                <path d="M12 2 5 21l7-4 7 4z" />
-              )}
-            </svg>
-            {isFollowing ? "Recentrar" : "Iniciar navegação"}
-          </button>
-        ) : null}
-
         <button
           type="button"
           onClick={() => setConfirmStopOpen(true)}
