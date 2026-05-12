@@ -23,6 +23,8 @@ import { getSyncClientId } from "../lib/firebase/clientIdentity";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { stopMobileDriverTrackingSessionIfMatches } from "../lib/mobileDriverTracking";
+import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
+import { clearMotoristaActiveAssignmentIfDeparture } from "../lib/motoristaActiveAssignment";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import type { DepartureRecord } from "../types/departure";
@@ -614,6 +616,10 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
             console.warn("[SOT] clearDriverActiveLocation on removeDeparture:", e),
           );
         }
+        // Limpa a atribuição motorista→placa (para o OwnTracks parar) — só se esta saída
+        // era mesmo a actual. A função verifica `departureId === id` antes de mexer.
+        const motorista = loadActiveMobileMotorista();
+        if (motorista) void clearMotoristaActiveAssignmentIfDeparture(motorista, id);
       }
       if (useCloud) {
         bumpLocalMutation();

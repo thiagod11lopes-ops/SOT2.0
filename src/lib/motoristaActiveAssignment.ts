@@ -11,7 +11,7 @@
  * placa "pré-cravada" num QR code.
  */
 
-import { doc, getFirestore, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, getFirestore, setDoc, serverTimestamp } from "firebase/firestore";
 import { ensureFirebaseAuth } from "./firebase/auth";
 import { getFirebaseApp, isFirebaseConfigured } from "./firebase/config";
 import { slugifyMotoristaName } from "./owntracksConfig";
@@ -71,5 +71,39 @@ export async function clearMotoristaActiveAssignment(motorista: string): Promise
     );
   } catch (e) {
     console.warn("[SOT] clearMotoristaActiveAssignment falhou:", e);
+  }
+}
+
+/**
+ * Limpa a atribuição apenas se ela apontar para esta saída (`departureId === expectedDepartureId`).
+ * Evita limpar a errada quando o motorista tem várias saídas e finaliza uma que não é a actual.
+ */
+export async function clearMotoristaActiveAssignmentIfDeparture(
+  motorista: string,
+  expectedDepartureId: string,
+): Promise<void> {
+  if (!isFirebaseConfigured()) return;
+  const slug = slugifyMotoristaName(motorista);
+  if (!slug || !expectedDepartureId) return;
+  try {
+    await ensureFirebaseAuth();
+    const db = getFirestore(getFirebaseApp());
+    const ref = doc(db, MOTORISTA_ACTIVE_ASSIGNMENTS_COLLECTION, slug);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data() as { departureId?: unknown; active?: unknown };
+    if (data.active !== true) return;
+    if (typeof data.departureId !== "string" || data.departureId !== expectedDepartureId) return;
+    await setDoc(
+      ref,
+      {
+        active: false,
+        endedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (e) {
+    console.warn("[SOT] clearMotoristaActiveAssignmentIfDeparture falhou:", e);
   }
 }

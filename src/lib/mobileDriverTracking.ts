@@ -14,10 +14,7 @@ import { postDriverLocation } from "./driverLocationPost";
 import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
 import { loadActiveMobileMotorista } from "./mobileMotoristaCredentials";
-import {
-  clearMotoristaActiveAssignment,
-  writeMotoristaActiveAssignment,
-} from "./motoristaActiveAssignment";
+import { writeMotoristaActiveAssignment } from "./motoristaActiveAssignment";
 
 /**
  * Plugin nativo Capacitor para localização em background (foreground service Android, modo
@@ -185,15 +182,22 @@ function clearSessionLocks() {
   notifyTrackingChanged();
 }
 
-/** Encerra só se esta saída for a que iniciou o rastreamento. */
+/**
+ * Encerra só se esta saída for a que iniciou o rastreamento.
+ *
+ * Nota: **NÃO** limpamos a `motorista_active_assignments` aqui automaticamente. Há duas razões:
+ *  1. O OwnTracks pode estar a executar em paralelo (iPhone bloqueado) e queremos que continue a
+ *     registar até o user explicitamente terminar o turno (mudando OwnTracks para Quiet).
+ *  2. Esta função pode ser chamada por engano durante remount/visibility changes; limpá-la aqui
+ *     causaria perda da atribuição sem ter sido pedido pelo motorista.
+ *
+ * A atribuição é sobrescrita naturalmente no próximo "Iniciar Saída" (com placa nova) ou pode ser
+ * apagada manualmente por um admin no painel.
+ */
 export function stopMobileDriverTrackingSessionIfMatches(recordId: string): void {
   if (active?.recordId === recordId) {
     clearSessionLocks();
     lastPos = null;
-    // Encerra também a atribuição motorista→placa no Firestore: o OwnTracks no iPhone
-    // pode estar ainda em modo Move; a próxima leitura na Cloud Function vai ignorar.
-    const activeMotorista = loadActiveMobileMotorista();
-    if (activeMotorista) void clearMotoristaActiveAssignment(activeMotorista);
   }
 }
 

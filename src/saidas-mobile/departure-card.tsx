@@ -23,6 +23,11 @@ import {
 } from "../lib/mobileDriverTracking";
 import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
+import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
+import {
+  clearMotoristaActiveAssignmentIfDeparture,
+  writeMotoristaActiveAssignment,
+} from "../lib/motoristaActiveAssignment";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -103,9 +108,45 @@ export function DepartureCard({
   const saidaFinalizada =
     kmSaidaPreenchido && ((kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina);
 
+  /**
+   * Detecta a transição **in-curso → finalizada**: o motorista acabou agora de preencher
+   * KM chegada + chegada (ou marcou "ficou na oficina"). Só nesta transição limpamos o
+   * rastreamento (sessão em memória + atribuição Firestore se apontar para esta saída).
+   *
+   * O ref evita falsos positivos no remount do componente — quando o Safari reabre numa saída
+   * já finalizada, `saidaFinalizada` já chega `true`, mas como o ref também inicializa `true`,
+   * a transição não é detectada e nada é limpo.
+   */
+  const prevSaidaFinalizadaRef = useRef(saidaFinalizada);
   useEffect(() => {
-    if (saidaFinalizada) stopMobileDriverTrackingSessionIfMatches(record.id);
+    const transicionou = !prevSaidaFinalizadaRef.current && saidaFinalizada;
+    prevSaidaFinalizadaRef.current = saidaFinalizada;
+    if (!transicionou) return;
+    stopMobileDriverTrackingSessionIfMatches(record.id);
+    const motorista = loadActiveMobileMotorista();
+    if (motorista) void clearMotoristaActiveAssignmentIfDeparture(motorista, record.id);
   }, [saidaFinalizada, record.id]);
+
+  /**
+   * Re-escreve a atribuição `motorista_active_assignments` no Firestore sempre que esta saída
+   * está em curso (KM saída preenchido sem KM chegada) e há um motorista logado neste device.
+   *
+   * Porquê: a atribuição é a fonte de verdade que o servidor consulta para saber em que placa
+   * gravar os envios do OwnTracks. Se o motorista bloquear o iPhone e voltar a abrir o Safari
+   * mais tarde — ou se algum efeito secundário tiver marcado o doc como inactivo — este efeito
+   * volta a pôr o doc activo com a placa actual da saída, no remount do componente.
+   *
+   * É chamado apenas para saídas **em curso**, e tem custo Firestore mínimo (1 write por placa).
+   */
+  const saidaEmCurso = kmSaidaPreenchido && !saidaFinalizada;
+  useEffect(() => {
+    if (!saidaEmCurso) return;
+    const placa = primaryPlacaFromViaturasField(record.viaturas);
+    if (!placa) return;
+    const motorista = loadActiveMobileMotorista();
+    if (!motorista) return;
+    void writeMotoristaActiveAssignment({ motorista, placa, departureId: record.id });
+  }, [saidaEmCurso, record.id, record.viaturas]);
 
   function applyAmbPatch(partial: Partial<DepartureRecord>) {
     if (!editavel || !updateDeparture) return;
