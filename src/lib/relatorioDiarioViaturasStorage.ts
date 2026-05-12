@@ -325,11 +325,25 @@ export function getLatestPersistedRdvIsoDate(): string | null {
 }
 
 /**
- * Placas «Inoperante» no RDV da **data mais recente** entre os relatórios gravados.
- * Usado em Cadastrar Saída para bloquear viatura (sempre alinhado ao último RDV guardado).
+ * Data a usar para estado operacional (oficina / inoperante) alinhado ao RDV «em vigor».
+ *
+ * Preferimos o **último dia com PDF gerado** (`pdfSalvo`): é o relatório oficial. Rascunhos
+ * gravados em datas **posteriores** (ex.: replicação para o mês seguinte) deixavam de ser
+ * editados mas continuavam com checkboxes antigos — `getLatestPersistedRdvIsoDate()` lia
+ * sempre essa data futura e o Cadastrar Saída mostrava Oficina errada após corrigir um dia
+ * anterior. Sem PDF nenhum, mantém-se o último dia gravado (comportamento anterior).
+ */
+export function getLatestPersistedRdvIsoDateForOperationalSnapshot(): string | null {
+  return getLatestPersistedRdvIsoWithPdfSalvo() ?? getLatestPersistedRdvIsoDate();
+}
+
+/**
+ * Placas «Inoperante» no RDV da data usada para o estado operacional (ver
+ * `getLatestPersistedRdvIsoDateForOperationalSnapshot`).
+ * Usado em Cadastrar Saída para bloquear viatura.
  */
 export function getRdvPlacasInoperantesFromLatestPersistedRdv(): Set<string> {
-  const iso = getLatestPersistedRdvIsoDate();
+  const iso = getLatestPersistedRdvIsoDateForOperationalSnapshot();
   if (!iso) return new Set();
   return getRdvPlacasInoperantesForDate(iso);
 }
@@ -394,9 +408,9 @@ export function getRdvPlacasNaOficinaForDate(isoDate: string): string[] {
   return getRdvPlacasNaOficinaComObservacaoForDate(isoDate).map((x) => x.placa);
 }
 
-/** Placas «Oficina» no RDV da data mais recente gravada (alinhado ao último relatório guardado). */
+/** Placas «Oficina» no RDV da data usada para o estado operacional (ver `getLatestPersistedRdvIsoDateForOperationalSnapshot`). */
 export function getRdvPlacasNaOficinaFromLatestPersistedRdv(): string[] {
-  const iso = getLatestPersistedRdvIsoDate();
+  const iso = getLatestPersistedRdvIsoDateForOperationalSnapshot();
   if (!iso) return [];
   return getRdvPlacasNaOficinaForDate(iso);
 }

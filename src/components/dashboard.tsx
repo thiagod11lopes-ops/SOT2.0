@@ -15,7 +15,7 @@ import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
 import {
-  getLatestPersistedRdvIsoDate,
+  getLatestPersistedRdvIsoDateForOperationalSnapshot,
   getRdvPlacasNaOficinaComObservacaoForDate,
   getRdvPlacasPorSituacaoComObservacaoForDate,
   getRdvPlacasPorSituacaoForDate,
@@ -354,9 +354,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     };
   }, [isOnline]);
 
-  /** Oficina, Inoperante e Destacada no RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  /** Oficina, Inoperante e Destacada no RDV do último relatório com PDF (fallback: última data gravada). */
   void rdvOficinaTick;
-  const isoRdvFrota = getLatestPersistedRdvIsoDate();
+  const isoRdvFrota = getLatestPersistedRdvIsoDateForOperationalSnapshot();
   const rdvFrotaHome = !isoRdvFrota
     ? {
         isoDate: null as string | null,

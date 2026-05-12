@@ -37,7 +37,7 @@ import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
 import { parseKmCampo } from "../lib/oilMaintenance";
 import {
-  getLatestPersistedRdvIsoDate,
+  getLatestPersistedRdvIsoDateForOperationalSnapshot,
   getRdvPlacasInoperantesFromLatestPersistedRdv,
   getRdvPlacasNaOficinaFromLatestPersistedRdv,
   getRdvPlacasPorSituacaoComObservacaoForDate,
@@ -721,7 +721,7 @@ export function RegisterDeparturePage() {
     return list;
   }, [cityNeighborhoods, neighborhood]);
 
-  /** Oficina conforme coluna Oficina no RDV gravado com data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  /** Oficina conforme coluna Oficina no RDV do último relatório com PDF (fallback: última data gravada). */
   const rdvPlacasNaOficinaLower = useMemo(() => {
     void rdvInopTick;
     return new Set(
@@ -869,7 +869,7 @@ export function RegisterDeparturePage() {
     return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
   }, []);
 
-  /** Inoperantes conforme o RDV gravado com a data mais recente (atualiza com `RDV_STORAGE_EVENT`). */
+  /** Inoperantes conforme o RDV do último relatório com PDF (fallback: última data gravada). */
   const rdvPlacasInoperantes = useMemo(() => {
     void rdvInopTick;
     return getRdvPlacasInoperantesFromLatestPersistedRdv();
@@ -877,7 +877,7 @@ export function RegisterDeparturePage() {
 
   void rdvInopTick;
   const rdvInoperanteReasonByPlacaLower = (() => {
-    const iso = getLatestPersistedRdvIsoDate();
+    const iso = getLatestPersistedRdvIsoDateForOperationalSnapshot();
     if (!iso) return new Map<string, string>();
     const entries = getRdvPlacasPorSituacaoComObservacaoForDate(iso, "Inoperante");
     const byPlaca = new Map<string, string>();
