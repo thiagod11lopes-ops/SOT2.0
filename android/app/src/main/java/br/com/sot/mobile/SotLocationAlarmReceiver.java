@@ -57,25 +57,47 @@ public class SotLocationAlarmReceiver extends BroadcastReceiver {
 
         FusedLocationProviderClient fused = LocationServices.getFusedLocationProviderClient(app);
         CancellationTokenSource cts = new CancellationTokenSource();
+
+        Runnable finishCycle =
+                () -> {
+                    SotNativeLocationPostPlugin.scheduleNextFromPrefs(app);
+                    pending.finish();
+                };
+
         fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.getToken())
-                .addOnCompleteListener(task -> {
-                    try {
-                        if (task.isSuccessful()) {
-                            Location loc = task.getResult();
+                .addOnCompleteListener(
+                        task -> {
+                            Location loc = null;
+                            if (task.isSuccessful()) {
+                                loc = task.getResult();
+                            } else {
+                                Exception ex = task.getException();
+                                Log.w(TAG, "getCurrentLocation: " + (ex != null ? ex.getMessage() : "?"));
+                            }
                             if (loc != null) {
                                 post(url, token, placa, depId, loc);
+                                finishCycle.run();
+                                return;
                             }
-                        } else {
-                            Exception ex = task.getException();
-                            Log.w(TAG, "getCurrentLocation failed: " + (ex != null ? ex.getMessage() : "?"));
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "location/post", e);
-                    } finally {
-                        SotNativeLocationPostPlugin.scheduleNextFromPrefs(app);
-                        pending.finish();
-                    }
-                });
+                            fused.getLastLocation()
+                                    .addOnCompleteListener(
+                                            t2 -> {
+                                                try {
+                                                    if (t2.isSuccessful()) {
+                                                        Location loc2 = t2.getResult();
+                                                        if (loc2 != null) {
+                                                            post(url, token, placa, depId, loc2);
+                                                        } else {
+                                                            Log.w(TAG, "getLastLocation null");
+                                                        }
+                                                    }
+                                                } catch (Exception e) {
+                                                    Log.e(TAG, "getLastLocation", e);
+                                                } finally {
+                                                    finishCycle.run();
+                                                }
+                                            });
+                        });
     }
 
     private static void post(String urlStr, String token, String placa, String departureId, Location loc) {

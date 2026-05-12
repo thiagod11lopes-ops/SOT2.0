@@ -9,7 +9,6 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -40,7 +39,7 @@ public class SotNativeLocationPostPlugin extends Plugin {
         AlarmManager am = (AlarmManager) appCtx.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
         PendingIntent pi = alarmPendingIntent(appCtx);
-        long trigger = SystemClock.elapsedRealtime() + Math.max(5_000L, delayMs);
+        long trigger = SystemClock.elapsedRealtime() + Math.max(250L, delayMs);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, trigger, pi);
@@ -82,7 +81,8 @@ public class SotNativeLocationPostPlugin extends Plugin {
         ed.apply();
 
         cancelAlarm(app);
-        scheduleOneShot(app, 2_000L);
+        /* Primeiro disparo rápido; os seguintes usam o intervalo em prefs. */
+        scheduleOneShot(app, 750L);
         call.resolve();
     }
 

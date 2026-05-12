@@ -89,6 +89,12 @@ type ActiveSession = {
 };
 
 let active: ActiveSession | null = null;
+
+/**
+ * Quando `true`, o envio periódico em Android fica a cargo do `AlarmManager` nativo
+ * (evita duplicar com `fetch` no WebView). Até lá mantém-se envio via JS (primeira fix).
+ */
+let androidNativeLocationAlarmActive = false;
 let lastPos: { lat: number; lng: number; capturedAt: number } | null = null;
 
 const TRACKING_EVENT_NAME = "sot-mobile-tracking-changed";
@@ -131,6 +137,7 @@ function safeReleaseWakeLock(handle: WakeLockHandle): void {
 
 function clearSessionLocks() {
   if (!active) return;
+  androidNativeLocationAlarmActive = false;
   try {
     if (runningInsideCapacitorNative() && Capacitor.getPlatform() === "android") {
       void NativeScheduledLocationPost.stop().catch(() => {});
@@ -333,7 +340,12 @@ function readCurrentPositionOnce(): Promise<{ lat: number; lng: number }> {
  * No Android nativo o callback do plugin continua em segundo plano; o `setInterval` do WebView não.
  */
 function tryPostThrottled(session: ActiveSession): void {
-  if (runningInsideCapacitorNative() && Capacitor.getPlatform() === "android" && session.nativeWatcherId !== null) {
+  if (
+    runningInsideCapacitorNative() &&
+    Capacitor.getPlatform() === "android" &&
+    androidNativeLocationAlarmActive &&
+    session.nativeWatcherId !== null
+  ) {
     return;
   }
   if (active?.recordId !== session.recordId) return;
@@ -529,7 +541,9 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
           departureId: args.recordId,
           intervalMs,
         });
+        androidNativeLocationAlarmActive = true;
       } catch (e) {
+        androidNativeLocationAlarmActive = false;
         console.error("[SOT mobile] NativeScheduledLocationPost.start:", e);
       }
     })();
