@@ -19,35 +19,46 @@ export type GeocodeResult = {
 };
 
 /**
- * Converte texto livre numa coordenada (geocoding). Devolve `null` se nada encontrado ou erro.
- *
- * Tenta diversas combinações de termos antes de desistir, para tolerar entradas como
- * "Hospital Militar" / "Hospital Militar, Centro" / "Hospital, Rio".
+ * Pesquisa endereços no Nominatim devolvendo até `limit` candidatos (default 5).
+ * Útil quando o texto é ambíguo (vários "Hospital São José" em cidades diferentes).
  */
-export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
+export async function geocodeAddresses(query: string, limit = 5): Promise<GeocodeResult[]> {
   const q = query.trim();
-  if (!q) return null;
+  if (!q) return [];
   try {
     const url = new URL("https://nominatim.openstreetmap.org/search");
     url.searchParams.set("q", q);
     url.searchParams.set("format", "json");
-    url.searchParams.set("limit", "1");
-    url.searchParams.set("countrycodes", "br,pt"); // restringe a Brasil/Portugal para melhor precisão
+    url.searchParams.set("limit", String(Math.max(1, Math.min(20, limit))));
+    url.searchParams.set("countrycodes", "br,pt"); // restringe para melhor precisão
+    url.searchParams.set("addressdetails", "0");
     const resp = await fetch(url.toString(), {
       headers: { "Accept-Language": "pt-PT,pt;q=0.9" },
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) return [];
     const arr = (await resp.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    const r = arr[0];
-    const lat = Number(r.lat);
-    const lng = Number(r.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, displayName: String(r.display_name || q) };
+    if (!Array.isArray(arr)) return [];
+    const out: GeocodeResult[] = [];
+    for (const r of arr) {
+      const lat = Number(r.lat);
+      const lng = Number(r.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      out.push({ lat, lng, displayName: String(r.display_name || q) });
+    }
+    return out;
   } catch (e) {
-    console.warn("[SOT] geocodeAddress falhou:", e);
-    return null;
+    console.warn("[SOT] geocodeAddresses falhou:", e);
+    return [];
   }
+}
+
+/**
+ * Converte texto livre numa única coordenada (primeiro resultado). Mantida para
+ * compatibilidade; chamadores novos devem usar `geocodeAddresses`.
+ */
+export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
+  const arr = await geocodeAddresses(query, 1);
+  return arr.length > 0 ? arr[0] : null;
 }
 
 /** Manobra/instrução individual de uma rota OSRM. */

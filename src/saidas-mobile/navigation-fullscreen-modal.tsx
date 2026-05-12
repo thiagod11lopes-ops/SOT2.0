@@ -30,7 +30,7 @@ import {
   fetchDrivingRoute,
   formatDistance,
   formatDuration,
-  geocodeAddress,
+  geocodeAddresses,
   maneuverToPortuguese,
 } from "../lib/navigationRouting";
 
@@ -85,14 +85,31 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   const headingRef = useRef<number | null>(null);
   /** True se o plugin `leaflet-rotate` carregou em runtime sem erros. */
   const rotateAvailableRef = useRef<boolean>(false);
+  /** Timestamp do último toque na overlay preta — usado para detectar duplo-clique. */
+  const lastLockTapRef = useRef<number>(0);
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
+  /**
+   * Candidatos devolvidos pelo geocoder quando o nome do destino é ambíguo
+   * (ex.: vários "Hospital São José" pelo país). Sempre ordenados do mais próximo
+   * para o mais distante em relação a `origin`. Quando há > 1 candidato e o motorista
+   * ainda não escolheu, mostramos uma lista de selecção.
+   */
+  const [candidates, setCandidates] = useState<
+    Array<GeocodeResult & { distanceMeters: number }>
+  >([]);
   const [route, setRoute] = useState<DrivingRoute | null>(null);
   const [loading, setLoading] = useState<"" | "locating" | "geocoding" | "routing">("");
   const [error, setError] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [confirmStopOpen, setConfirmStopOpen] = useState(false);
+  /**
+   * Quando true, sobrepõe-se ao mapa um overlay 100 % preto que tapa toda a UI —
+   * o motorista poupa bateria/brilho e continua a ser guiado pela voz das manobras.
+   * Desbloqueia-se com **duplo toque** em qualquer parte do ecrã.
+   */
+  const [screenLocked, setScreenLocked] = useState(false);
   /** Modo "seguir motorista": câmara acompanha automaticamente a posição actual. */
   const [isFollowing, setIsFollowing] = useState(false);
   /** True quando o utilizador interagiu manualmente com o mapa após entrar em follow mode. */
@@ -135,7 +152,10 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
   }, [open]);
 
   // ---------------------------------------------------------------------------
-  // 2) Geocodificar o destino.
+  // 2) Geocodificar o destino. Espera por `origin` antes de pesquisar — sem origem,
+  // não conseguimos ordenar os candidatos por distância. Se houver > 1 resultado,
+  // a UI mostra uma lista para o motorista escolher; caso contrário, selecciona
+  // automaticamente o único candidato.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
@@ -145,22 +165,32 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
       );
       return;
     }
+    if (!origin) return;
+    if (destination) return; // já temos destino escolhido
     let cancelled = false;
     setLoading("geocoding");
-    geocodeAddress(destinationQuery).then((res) => {
+    geocodeAddresses(destinationQuery, 6).then((results) => {
       if (cancelled) return;
-      if (!res) {
+      if (results.length === 0) {
         setError(`Não foi possível localizar "${destinationQuery}" no mapa.`);
         setLoading("");
         return;
       }
-      setDestination(res);
+      // Ordena por distância à posição actual (mais próximo primeiro).
+      const withDistance = results
+        .map((r) => ({ ...r, distanceMeters: haversineMeters(origin, { lat: r.lat, lng: r.lng }) }))
+        .sort((a, b) => a.distanceMeters - b.distanceMeters);
+      if (withDistance.length === 1) {
+        setDestination(withDistance[0]);
+      } else {
+        setCandidates(withDistance);
+      }
       setLoading("");
     });
     return () => {
       cancelled = true;
     };
-  }, [open, destinationQuery]);
+  }, [open, destinationQuery, origin, destination]);
 
   // ---------------------------------------------------------------------------
   // 3) Calcular rota assim que origem + destino existirem.
@@ -529,6 +559,32 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     }
   }
 
+  /**
+   * Sai do modo "seguir motorista" e afasta a câmara para a vista geral da rota
+   * (a mesma que aparece inicialmente, com origem + destino visíveis).
+   */
+  function exitFollowing() {
+    const map = mapRef.current as RotatableMap | null;
+    setIsFollowing(false);
+    setUserInterrupted(false);
+    if (!map) return;
+    animatingRef.current = true;
+    try {
+      const poly = routeLayerRef.current;
+      if (poly) {
+        // `flyToBounds` é uma animação suave (não brusca como fitBounds).
+        map.flyToBounds(poly.getBounds(), { padding: [80, 80], duration: 1.2 });
+      } else if (origin) {
+        // Sem rota desenhada (caso raro): apenas afasta o zoom da posição actual.
+        map.flyTo([origin.lat, origin.lng], 13, { animate: true, duration: 1.0 });
+      }
+    } finally {
+      window.setTimeout(() => {
+        animatingRef.current = false;
+      }, 1300);
+    }
+  }
+
   // Quando sai-se do modo seguir, alinha o mapa com o norte para cima de novo (se houve rotação).
   useEffect(() => {
     if (isFollowing) return;
@@ -547,6 +603,35 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
       rot.style.transform = h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
     }
   }, [isFollowing]);
+
+  // Limpa o estado de geocoding/rota assim que o modal fecha — garantindo que a
+  // próxima abertura recomeça do zero (e re-pergunta o destino se ambíguo).
+  useEffect(() => {
+    if (open) return;
+    setDestination(null);
+    setCandidates([]);
+    setRoute(null);
+    setError(null);
+    setLoading("");
+    setIsFollowing(false);
+    setUserInterrupted(false);
+    setScreenLocked(false);
+    spokenStepIdxRef.current = -1;
+  }, [open]);
+
+  /**
+   * Handler do duplo-clique para destrancar a tela. Se o segundo toque vier num
+   * intervalo curto (< 380 ms), considera-se duplo-tap e desbloqueia.
+   */
+  function handleLockOverlayTap() {
+    const now = Date.now();
+    if (now - lastLockTapRef.current < 380) {
+      setScreenLocked(false);
+      lastLockTapRef.current = 0;
+    } else {
+      lastLockTapRef.current = now;
+    }
+  }
 
   if (!open) return null;
 
@@ -637,24 +722,62 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
         )}
       </div>
 
-      {/* Botão flutuante: Iniciar navegação / Recentrar no canto superior direito. */}
-      {origin && (!isFollowing || userInterrupted) ? (
+      {/* Botão flutuante: trancar tela (canto superior esquerdo, alinhado em altura
+          com o botão Iniciar navegação à direita). */}
+      <button
+        type="button"
+        onClick={() => {
+          lastLockTapRef.current = 0;
+          setScreenLocked(true);
+        }}
+        className="pointer-events-auto absolute left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
+        aria-label="Trancar a tela (poupa brilho/bateria — toque duas vezes para destravar)"
+        title="Trancar tela"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+          {/* Ícone de cadeado fechado. */}
+          <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z" />
+        </svg>
+      </button>
+
+      {/* Botão flutuante: três estados.
+          - !isFollowing && !userInterrupted → verde "Iniciar navegação" (entra em follow)
+          - isFollowing                       → vermelho "Sair" (afasta para a vista geral da rota)
+          - !isFollowing && userInterrupted   → verde "Recentrar" (volta a entrar em follow)
+       */}
+      {origin ? (
         <button
           type="button"
-          onClick={startFollowing}
-          className="pointer-events-auto absolute right-3 z-10 flex h-11 items-center justify-center gap-2 rounded-full bg-emerald-600 px-4 text-sm font-bold uppercase tracking-[0.12em] text-white shadow-lg shadow-emerald-900/40 active:bg-emerald-700"
-          // Coloca o botão logo abaixo da barra superior (cartão com distância/tempo).
+          onClick={isFollowing ? exitFollowing : startFollowing}
+          className={
+            "pointer-events-auto absolute right-3 z-10 flex h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-bold uppercase tracking-[0.12em] text-white shadow-lg " +
+            (isFollowing
+              ? "bg-red-600 shadow-red-900/40 active:bg-red-700"
+              : "bg-emerald-600 shadow-emerald-900/40 active:bg-emerald-700")
+          }
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
-          aria-label={isFollowing ? "Recentrar no motorista" : "Iniciar navegação"}
+          aria-label={
+            isFollowing
+              ? "Sair da navegação e ver toda a rota"
+              : userInterrupted
+                ? "Recentrar no motorista"
+                : "Iniciar navegação"
+          }
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
             {isFollowing ? (
+              // Ícone "fechar/sair" — X
+              <path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z" />
+            ) : userInterrupted ? (
+              // Ícone alvo — recentrar
               <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21z" />
             ) : (
+              // Ícone navegação — seta
               <path d="M12 2 5 21l7-4 7 4z" />
             )}
           </svg>
-          {isFollowing ? "Recentrar" : "Iniciar navegação"}
+          {isFollowing ? "Sair" : userInterrupted ? "Recentrar" : "Iniciar navegação"}
         </button>
       ) : null}
 
@@ -675,6 +798,83 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
           Pare
         </button>
       </div>
+
+      {/* Lista de selecção de destino (quando o nome é ambíguo).
+          Apresentada do mais próximo para o mais distante; o motorista escolhe. */}
+      {!destination && candidates.length > 1 ? (
+        <div
+          className="absolute inset-0 z-20 flex items-end justify-center bg-black/55 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sot-nav-pick-title"
+        >
+          <div className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:rounded-2xl">
+            <h2 id="sot-nav-pick-title" className="mb-1 text-base font-bold text-slate-900">
+              Escolher destino
+            </h2>
+            <p className="mb-3 text-xs text-slate-600">
+              Existem várias localizações para
+              <span className="font-semibold"> «{destinationQuery}»</span>. Toque na correcta —
+              estão ordenadas da mais próxima para a mais distante.
+            </p>
+            <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto">
+              {candidates.map((c, idx) => (
+                <li key={`${c.lat}-${c.lng}-${idx}`}>
+                  <button
+                    type="button"
+                    className="flex w-full items-start gap-3 px-2 py-3 text-left hover:bg-slate-50 active:bg-slate-100"
+                    onClick={() => {
+                      const { distanceMeters: _ignored, ...picked } = c;
+                      void _ignored;
+                      setDestination(picked);
+                      setCandidates([]);
+                    }}
+                  >
+                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
+                      {idx + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-sm font-medium text-slate-900">
+                        {c.displayName}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        em linha reta {formatDistance(c.distanceMeters)}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex">
+              <Button
+                variant="outline"
+                className="h-10 flex-1 rounded-xl"
+                onClick={() => {
+                  window.speechSynthesis?.cancel?.();
+                  onClose();
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Overlay 100 % preta para poupar brilho/bateria.
+          Tapa todo o ecrã — incluindo barras e botões — para minimizar emissão de luz
+          (ideal em painéis OLED). Desbloqueia com duplo toque em qualquer parte.
+          A navegação por voz continua a anunciar manobras normalmente. */}
+      {screenLocked ? (
+        <div
+          className="absolute inset-0 z-[50] cursor-pointer select-none"
+          style={{ background: "#000" }}
+          onClick={handleLockOverlayTap}
+          role="button"
+          aria-label="Tela trancada. Toque duas vezes para destravar."
+          tabIndex={0}
+        />
+      ) : null}
 
       {/* Modal de confirmação para parar a navegação. */}
       {confirmStopOpen ? (
