@@ -9,6 +9,11 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- Envio periódico de GPS fora do WebView (Android suspende JS em segundo plano). -->
+        <receiver
+            android:name=".SotLocationAlarmReceiver"
+            android:exported="false" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

@@ -135,6 +135,25 @@ jobs:
           path: sot-saidas-android.apk
           retention-days: 14
 
+      - name: Resumo — onde baixar o APK
+        if: success()
+        run: |
+          {
+            echo "## Onde baixar o APK"
+            echo ""
+            echo "O GitHub **não** coloca um botão de download no topo da execução. Usa uma destas opções:"
+            echo ""
+            echo "### 1. Artefactos (sempre disponível nesta execução)"
+            echo "1. Na **mesma página** desta execução, **rola até ao fim**."
+            echo "2. Secção **Artefatos** → clica em **\`sot-saidas-android-apk\`** (descarrega um ZIP)."
+            echo "3. No PC, extrai o ZIP — dentro está o ficheiro **\`sot-saidas-android.apk\`**."
+            echo ""
+            echo "### 2. Release «android-latest» (URL directo ao .apk, se o passo de release correu)"
+            echo "[Abrir release android-latest](https://github.com/${{ github.repository }}/releases/tag/android-latest) — nos *Assets* deve aparecer **sot-saidas-android.apk**."
+            echo ""
+            echo "Se a release falhar (permissões, tag), usa sempre a opção **Artefactos** acima."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Mantém uma release "android-latest" sempre actualizada com o APK mais recente —
       # esse é o URL público estável que o botão na app usa.
       - name: Publicar/actualizar release android-latest

@@ -69,7 +69,7 @@ function formatFunctionsHttpError(status: number, bodyText: string): string {
 }
 
 /** Token fresco para a Cloud Function validar com Admin SDK (evita ID token expirado → 401). */
-async function getFirebaseIdTokenForFunctions(): Promise<string> {
+export async function getFirebaseIdTokenForFunctions(): Promise<string> {
   await ensureFirebaseAuth();
   const user = getAuth(getFirebaseApp()).currentUser;
   if (!user) {

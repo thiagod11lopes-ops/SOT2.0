@@ -10,10 +10,10 @@ import {
   type RastreamentoMotoristasPayload,
   DEFAULT_INTERVALO_RASTREAMENTO_MINUTOS,
 } from "./driverTrackingConfig";
-import { postDriverLocation } from "./driverLocationPost";
+import { getFirebaseIdTokenForFunctions, postDriverLocation, resolveDriverLocationPostUrl } from "./driverLocationPost";
 import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
-import { loadActiveMobileMotorista } from "./mobileMotoristaCredentials";
+import { NativeScheduledLocationPost } from "./nativeScheduledLocationPost";
 import { writeMotoristaActiveAssignment } from "./motoristaActiveAssignment";
 
 /**
@@ -130,6 +130,13 @@ function safeReleaseWakeLock(handle: WakeLockHandle): void {
 
 function clearSessionLocks() {
   if (!active) return;
+  try {
+    if (runningInsideCapacitorNative() && Capacitor.getPlatform() === "android") {
+      void NativeScheduledLocationPost.stop().catch(() => {});
+    }
+  } catch {
+    /* ignore: plugin só existe no APK Android */
+  }
   if (active.watchId !== null) {
     try {
       navigator.geolocation.clearWatch(active.watchId);
@@ -325,6 +332,9 @@ function readCurrentPositionOnce(): Promise<{ lat: number; lng: number }> {
  * No Android nativo o callback do plugin continua em segundo plano; o `setInterval` do WebView não.
  */
 function tryPostThrottled(session: ActiveSession): void {
+  if (runningInsideCapacitorNative() && Capacitor.getPlatform() === "android" && session.nativeWatcherId !== null) {
+    return;
+  }
   if (active?.recordId !== session.recordId) return;
   if (!lastPos) return;
   const now = Date.now();
@@ -502,6 +512,28 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
     }, intervalMs);
   }
 
+  if (insideNative && Capacitor.getPlatform() === "android") {
+    void (async () => {
+      const url = resolveDriverLocationPostUrl();
+      if (!url) {
+        console.warn("[SOT mobile] Sem URL para envio nativo de localização (VITE_FIREBASE_* / VITE_DRIVER_LOCATION_POST_URL).");
+        return;
+      }
+      try {
+        const token = await getFirebaseIdTokenForFunctions();
+        await NativeScheduledLocationPost.start({
+          url,
+          token,
+          placa: args.placa,
+          departureId: args.recordId,
+          intervalMs,
+        });
+      } catch (e) {
+        console.error("[SOT mobile] NativeScheduledLocationPost.start:", e);
+      }
+    })();
+  }
+
   /**
    * No browser, ao voltar a foreground, reactivamos wake lock + áudio silencioso (foram
    * libertados pelo SO) e disparamos um tick imediato. No app nativo o envio periódico
@@ -531,5 +563,23 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
       document.addEventListener("visibilitychange", visibilityHandler);
     }
     session.visibilityHandler = visibilityHandler;
+  } else if (insideNative && Capacitor.getPlatform() === "android") {
+    const refreshNativeToken = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+      const current = active;
+      if (!current || current.recordId !== args.recordId) return;
+      void (async () => {
+        try {
+          const t = await getFirebaseIdTokenForFunctions();
+          await NativeScheduledLocationPost.updateToken({ token: t });
+        } catch (e) {
+          console.warn("[SOT mobile] NativeScheduledLocationPost.updateToken:", e);
+        }
+      })();
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refreshNativeToken);
+    }
+    session.visibilityHandler = refreshNativeToken;
   }
 }
