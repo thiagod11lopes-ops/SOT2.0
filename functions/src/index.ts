@@ -341,8 +341,28 @@ export const postOwntracksLocation = onRequest(
       // Descobrir placa actual do motorista: registada pelo SOT mobile no "Iniciar Saída".
       const assignment = await readActivePlacaForMotorista(db, motoristaSlug);
       if (!assignment) {
-        // Motorista sem viagem em curso. Aceitamos para o OwnTracks parar de retentar.
-        logger.info("postOwntracksLocation no_active_assignment", { motoristaSlug });
+        /**
+         * Diagnóstico verboso: lista o que existe na colecção `motorista_active_assignments`
+         * para tornar visível um eventual desalinhamento de slugs (e.g. utilizador escreveu
+         * "SG Thiago Lopes" no painel OwnTracks mas o motorista logado no SOT mobile chama-se
+         * "Thiago Lopes").
+         */
+        try {
+          const all = await db.collection(MOTORISTA_ACTIVE_ASSIGNMENTS_COLLECTION).get();
+          const docs = all.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              active: data.active === true,
+              placa: typeof data.placa === "string" ? data.placa : null,
+              startedAt:
+                data.startedAt && typeof data.startedAt.toMillis === "function" ? data.startedAt.toMillis() : null,
+            };
+          });
+          logger.info("postOwntracksLocation no_active_assignment", { motoristaSlug, allDocs: docs });
+        } catch (e) {
+          logger.warn("postOwntracksLocation no_active_assignment (listing failed)", { motoristaSlug, error: String(e) });
+        }
         res.status(200).json({ ok: true, ignored: "no_active_assignment" });
         return;
       }
