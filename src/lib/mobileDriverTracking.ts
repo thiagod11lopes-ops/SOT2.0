@@ -79,6 +79,8 @@ type ActiveSession = {
   /** No browser `window.setInterval` devolve um `number` (timer id). */
   fallbackIntervalId: number | null;
   intervalMs: number;
+  /** Última tentativa de envio ao servidor (respeita `intervaloRastreamento`). */
+  lastPostedAt: number;
   silentAudio: HTMLAudioElement | null;
   wakeLock: WakeLockHandle;
   visibilityHandler: (() => void) | null;
@@ -319,32 +321,45 @@ function readCurrentPositionOnce(): Promise<{ lat: number; lng: number }> {
 }
 
 /**
+ * Envia `lastPos` ao servidor no máximo de X em X ms (`session.intervalMs`).
+ * No Android nativo o callback do plugin continua em segundo plano; o `setInterval` do WebView não.
+ */
+function tryPostThrottled(session: ActiveSession): void {
+  if (active?.recordId !== session.recordId) return;
+  if (!lastPos) return;
+  const now = Date.now();
+  if (now - session.lastPostedAt < session.intervalMs) return;
+  session.lastPostedAt = now;
+  void postDriverLocation({
+    placa: session.placa,
+    latitude: lastPos.lat,
+    longitude: lastPos.lng,
+    departureId: session.recordId,
+  }).catch((e) => {
+    console.warn("[SOT mobile] postDriverLocation:", e);
+  });
+}
+
+/**
  * Cada disparo:
- *  - Tenta sempre um fix via `getCurrentPosition` (intervalo configurado). No **browser** já era
- *    assim; no **Capacitor native** também é necessário porque o callback do plugin pode ser
- *    espacioso e o WebView Android pode estrangular `Worker`/`setInterval` em segundo plano.
- *  - Se `getCurrentPosition` falhar, usa `lastPos` ainda actualizado pelo watcher nativo (quando existir).
+ *  - **Browser:** `getCurrentPosition` no intervalo + envio.
+ *  - **Capacitor nativo:** não usar `getCurrentPosition` no tick (WebView em segundo plano falha
+ *    ou bloqueia); `lastPos` vem do `addWatcher` nativo e o envio também é feito lá com throttle.
+ *    O intervalo aqui serve só de cópia de segurança quando o SO voltar a despachar JS.
  */
 async function performTick(session: ActiveSession): Promise<void> {
   if (active?.recordId !== session.recordId) return;
-  try {
-    const pos = await readCurrentPositionOnce();
-    lastPos = { ...pos, capturedAt: Date.now() };
-  } catch (e) {
-    console.warn("[SOT mobile] getCurrentPosition tick:", e);
+  const nativeActive = session.nativeWatcherId !== null;
+  if (!nativeActive) {
+    try {
+      const pos = await readCurrentPositionOnce();
+      lastPos = { ...pos, capturedAt: Date.now() };
+    } catch (e) {
+      console.warn("[SOT mobile] getCurrentPosition tick:", e);
+    }
   }
   if (active?.recordId !== session.recordId) return;
-  if (!lastPos) return;
-  try {
-    await postDriverLocation({
-      placa: session.placa,
-      latitude: lastPos.lat,
-      longitude: lastPos.lng,
-      departureId: session.recordId,
-    });
-  } catch (e) {
-    console.warn("[SOT mobile] postDriverLocation:", e);
-  }
+  tryPostThrottled(session);
 }
 
 /**
@@ -376,7 +391,8 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
           backgroundTitle: "SOT — Rastreamento de viagem",
           backgroundMessage: `Localização ativa para ${args.placa}. Não feche o app.`,
           requestPermissions: true,
-          stale: false,
+          /** Permite última posição conhecida enquanto o GPS re-fixa — ajuda em segundo plano. */
+          stale: true,
           distanceFilter: 0,
         },
         (position: CapLocation | undefined, error: CapCallbackError | undefined) => {
@@ -390,6 +406,9 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
             lng: position.longitude,
             capturedAt: typeof position.time === "number" ? position.time : Date.now(),
           };
+          const current = active;
+          if (!current || current.recordId !== args.recordId) return;
+          tryPostThrottled(current);
         },
       );
     } catch (e) {
@@ -419,7 +438,8 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
 
   /**
    * No WebView Android, Workers com `Blob` URL são menos fiáveis para timers longos; o
-   * `setInterval` na main thread mantém-se alinhado ao foreground service do plugin.
+   * `setInterval` na main thread serve de cópia de segurança — o envio em segundo plano
+   * depende do callback nativo `addWatcher` (ver `tryPostThrottled`).
    */
   const workerEntry = insideNative ? null : createTrackingWorker();
 
@@ -432,6 +452,7 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
     workerObjectUrl: workerEntry?.objectUrl ?? null,
     fallbackIntervalId: null,
     intervalMs,
+    lastPostedAt: 0,
     silentAudio,
     wakeLock,
     visibilityHandler: null,
@@ -483,8 +504,8 @@ export async function startMobileDriverTrackingSession(args: { recordId: string;
 
   /**
    * No browser, ao voltar a foreground, reactivamos wake lock + áudio silencioso (foram
-   * libertados pelo SO) e disparamos um tick imediato. No app Capacitor isto é irrelevante
-   * — o foreground service mantém tudo vivo.
+   * libertados pelo SO) e disparamos um tick imediato. No app nativo o envio periódico
+   * em segundo plano vem do callback do plugin; este tick ajuda ao voltar ao primeiro plano.
    */
   if (!insideNative) {
     const visibilityHandler = () => {
