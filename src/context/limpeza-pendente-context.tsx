@@ -81,7 +81,7 @@ export function LimpezaPendenteProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
+                hydratedRef.current = true;
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) return;

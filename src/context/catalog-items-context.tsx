@@ -252,7 +252,10 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
+                // Doc ausente na nuvem: sem isto `hydratedRef` nunca passa a true e o efeito
+                // que grava na nuvem não corre — instalação mobile nova fica com catálogo vazio
+                // para sempre mesmo com "Nuvem ativa" (sincronização de saídas é outro fluxo).
+                hydratedRef.current = true;
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {

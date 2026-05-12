@@ -65,7 +65,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
     }
     return {
       label: "Nuvem ativa",
-      detail: "Firestore online",
+      detail: "Firestore (lista de saídas)",
       icon: Cloud,
       className:
         "border-emerald-800/70 bg-emerald-900/95 text-emerald-50 shadow-sm dark:border-emerald-950/80 dark:bg-emerald-950 dark:text-emerald-100",
