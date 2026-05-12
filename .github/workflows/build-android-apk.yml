@@ -6,11 +6,6 @@
 
 name: Build Android APK
 
-# Runtime JavaScript das ações oficiais (checkout, cache, setup-node, etc.): migração Node 20 → 24.
-# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 on:
   workflow_dispatch:
   push:
@@ -29,27 +24,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # @capacitor/cli 8.x exige Node >= 22 (engines.node). Sem isto, `cap sync` falha
       # silenciosamente ao tentar carregar `capacitor.config.ts`.
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
 
       - name: Setup JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -107,7 +102,7 @@ jobs:
 
       - name: Upload cap-sync.log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cap-sync-log
           path: cap-sync.log
@@ -134,7 +129,7 @@ jobs:
         run: ls -lh sot-saidas-android.apk
 
       - name: Upload artifact (download via Actions)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sot-saidas-android-apk
           path: sot-saidas-android.apk
@@ -143,7 +138,7 @@ jobs:
       # Mantém uma release "android-latest" sempre actualizada com o APK mais recente —
       # esse é o URL público estável que o botão na app usa.
       - name: Publicar/actualizar release android-latest
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: android-latest
           name: SOT Saídas — Android (latest)
@@ -166,7 +161,7 @@ jobs:
       # Se vier de um tag vX.Y.Z, também publica uma release versionada (não-latest).
       - name: Publicar release versionada (apenas em push de tag)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: SOT Saídas — ${{ github.ref_name }}
