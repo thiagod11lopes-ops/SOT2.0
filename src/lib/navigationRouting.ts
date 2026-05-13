@@ -210,20 +210,368 @@ export type RouteStep = {
   geometry: { type: "LineString"; coordinates: [number, number][] };
 };
 
-/** Rota completa devolvida pela OSRM. */
+/**
+ * Intervalo de trânsito num segmento da polilinha (apenas com Google Routes
+ * API). Os índices referem-se à `geometry.coordinates`: o troço entre o
+ * ponto `startIndex` e `endIndex` (inclusivos) tem a condição `speed`.
+ */
+export type SpeedInterval = {
+  startIndex: number;
+  endIndex: number;
+  speed: "NORMAL" | "SLOW" | "TRAFFIC_JAM" | "UNKNOWN";
+};
+
+/** Rota completa devolvida pela OSRM ou Google Routes API. */
 export type DrivingRoute = {
   /** Distância total em **metros**. */
   distance: number;
-  /** Duração total em **segundos**. */
+  /**
+   * Duração total em **segundos**. Quando vem da Google Routes API com
+   * `TRAFFIC_AWARE`, já inclui o trânsito actual; com OSRM é a duração
+   * estática baseada apenas em limites de velocidade.
+   */
   duration: number;
+  /**
+   * Duração SEM trânsito em **segundos**, apenas disponível com Google
+   * Routes API. `null` quando a rota vem do OSRM (que não tem dados de
+   * trânsito de todo).
+   */
+  staticDuration?: number | null;
   /** GeoJSON `LineString` do percurso completo. */
   geometry: { type: "LineString"; coordinates: [number, number][] };
   steps: RouteStep[];
+  /**
+   * Intervalos de trânsito por segmento da polilinha (apenas Google Routes
+   * API com `TRAFFIC_AWARE`). Quando ausente, o motorista vê a polilinha
+   * inteira a azul; quando presente, os troços com trânsito ficam laranja
+   * (`SLOW`) ou vermelho (`TRAFFIC_JAM`).
+   */
+  speedIntervals?: SpeedInterval[];
+  /** Origem dos dados — útil para badges no UI e para depuração. */
+  provider?: "google" | "osrm";
 };
 
 /** Timeout por tentativa (ms). 10 s é generoso para 3G/4G e curto o suficiente
  *  para falharmos para o próximo endpoint sem manter o motorista à espera. */
 const OSRM_TIMEOUT_MS = 10000;
+
+/** Endpoint da Google Routes API v2. */
+const GOOGLE_ROUTES_ENDPOINT =
+  "https://routes.googleapis.com/directions/v2:computeRoutes";
+
+/**
+ * Field mask enviado no header `X-Goog-FieldMask` — controla quais campos a
+ * Routes API devolve (e o que pagamos por eles). Pedimos:
+ *  - duração com trânsito + duração estática (para badge "com trânsito");
+ *  - polilinha codificada (decodificada depois);
+ *  - manobras passo a passo (para a voz e cartão de manobra);
+ *  - `travelAdvisory.speedReadingIntervals` (cores do trânsito por troço).
+ */
+const GOOGLE_ROUTES_FIELD_MASK = [
+  "routes.duration",
+  "routes.staticDuration",
+  "routes.distanceMeters",
+  "routes.polyline.encodedPolyline",
+  "routes.legs.steps.distanceMeters",
+  "routes.legs.steps.staticDuration",
+  "routes.legs.steps.polyline.encodedPolyline",
+  "routes.legs.steps.navigationInstruction.instructions",
+  "routes.legs.steps.navigationInstruction.maneuver",
+  "routes.travelAdvisory.speedReadingIntervals",
+].join(",");
+
+/** Timeout do pedido à Routes API (ms). */
+const GOOGLE_ROUTES_TIMEOUT_MS = 12000;
+
+/**
+ * Descodifica uma polilinha codificada do Google (algoritmo de Polyline
+ * Encoding) em pares `[lng, lat]` (formato GeoJSON, compatível com o resto
+ * deste módulo).
+ *
+ * Algoritmo: https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+ * Cada coordenada é codificada como dois inteiros assinados (lat, lng) em
+ * incrementos relativos ao ponto anterior, em escala 1e5.
+ */
+function decodeGooglePolyline(encoded: string): [number, number][] {
+  if (!encoded) return [];
+  const result: [number, number][] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  const len = encoded.length;
+
+  while (index < len) {
+    let byte: number;
+    let shift = 0;
+    let acc = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      acc |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const dLat = acc & 1 ? ~(acc >> 1) : acc >> 1;
+    lat += dLat;
+
+    shift = 0;
+    acc = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      acc |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const dLng = acc & 1 ? ~(acc >> 1) : acc >> 1;
+    lng += dLng;
+
+    result.push([lng / 1e5, lat / 1e5]);
+  }
+  return result;
+}
+
+/**
+ * Converte o enum de manobra da Google Routes API para o formato OSRM
+ * `{ type, modifier }` que o resto do código (cartão de manobra, voz)
+ * já sabe interpretar. Mapeamento empírico baseado na documentação:
+ * https://developers.google.com/maps/documentation/routes/reference/rest/v2/Maneuver
+ */
+function mapGoogleManeuverToOsrm(
+  m: string | undefined,
+): RouteStep["maneuver"] {
+  if (!m || m === "MANEUVER_UNSPECIFIED") return { type: "continue" };
+  switch (m) {
+    case "DEPART":
+      return { type: "depart" };
+    case "DESTINATION":
+    case "DESTINATION_LEFT":
+    case "DESTINATION_RIGHT":
+      return { type: "arrive" };
+    case "STRAIGHT":
+      return { type: "continue", modifier: "straight" };
+    case "TURN_LEFT":
+      return { type: "turn", modifier: "left" };
+    case "TURN_RIGHT":
+      return { type: "turn", modifier: "right" };
+    case "TURN_SLIGHT_LEFT":
+      return { type: "turn", modifier: "slight left" };
+    case "TURN_SLIGHT_RIGHT":
+      return { type: "turn", modifier: "slight right" };
+    case "TURN_SHARP_LEFT":
+      return { type: "turn", modifier: "sharp left" };
+    case "TURN_SHARP_RIGHT":
+      return { type: "turn", modifier: "sharp right" };
+    case "TURN_U_TURN_CLOCKWISE":
+    case "TURN_U_TURN_COUNTERCLOCKWISE":
+      return { type: "turn", modifier: "uturn" };
+    case "FORK_LEFT":
+      return { type: "fork", modifier: "left" };
+    case "FORK_RIGHT":
+      return { type: "fork", modifier: "right" };
+    case "MERGE_LEFT":
+      return { type: "merge", modifier: "left" };
+    case "MERGE_RIGHT":
+      return { type: "merge", modifier: "right" };
+    case "ROUNDABOUT_CLOCKWISE":
+    case "ROUNDABOUT_COUNTERCLOCKWISE":
+    case "ROUNDABOUT_LEFT":
+    case "ROUNDABOUT_RIGHT":
+      return { type: "roundabout" };
+    case "ROUNDABOUT_EXIT_CLOCKWISE":
+    case "ROUNDABOUT_EXIT_COUNTERCLOCKWISE":
+      return { type: "exit roundabout" };
+    case "NAME_CHANGE":
+      return { type: "new name" };
+    case "ON_RAMP_LEFT":
+      return { type: "fork", modifier: "left" };
+    case "ON_RAMP_RIGHT":
+      return { type: "fork", modifier: "right" };
+    case "OFF_RAMP_LEFT":
+      return { type: "turn", modifier: "slight left" };
+    case "OFF_RAMP_RIGHT":
+      return { type: "turn", modifier: "slight right" };
+    default:
+      return { type: "continue" };
+  }
+}
+
+/** Converte string ISO "215s" (Google duration) para segundos numéricos. */
+function parseGoogleDuration(s: string | undefined | null): number {
+  if (!s) return 0;
+  const m = /^(\d+(?:\.\d+)?)s$/.exec(s);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Chama a Google Routes API com `routingPreference: TRAFFIC_AWARE`.
+ *
+ * Pré-requisitos:
+ *  - A chave Google Maps (`VITE_GOOGLE_MAPS_API_KEY`) tem de ter a **Routes API**
+ *    activada no Cloud Console (separado da Maps JavaScript API).
+ *  - O billing tem de estar activo (já está).
+ *
+ * Custo: ~10 USD por 1 000 chamadas Advanced (com trânsito). Com o crédito
+ * gratuito mensal de 200 USD do Google Maps Platform, escalas pequenas/
+ * médias ficam praticamente em zero.
+ *
+ * Devolve `null` quando a chave não está configurada ou quando a API responde
+ * com erro — o caller faz fallback para o OSRM nesse caso.
+ */
+async function fetchGoogleRoute(
+  apiKey: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<DrivingRoute | null> {
+  if (!apiKey) return null;
+
+  const body = {
+    origin: {
+      location: {
+        latLng: { latitude: origin.lat, longitude: origin.lng },
+      },
+    },
+    destination: {
+      location: {
+        latLng: { latitude: destination.lat, longitude: destination.lng },
+      },
+    },
+    travelMode: "DRIVE",
+    routingPreference: "TRAFFIC_AWARE",
+    computeAlternativeRoutes: false,
+    languageCode: "pt-BR",
+    units: "METRIC",
+    polylineQuality: "HIGH_QUALITY",
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_ROUTES_TIMEOUT_MS);
+
+  try {
+    const resp = await fetch(GOOGLE_ROUTES_ENDPOINT, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": GOOGLE_ROUTES_FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      console.warn(
+        `[SOT] Google Routes API HTTP ${resp.status}:`,
+        text.slice(0, 240),
+      );
+      return null;
+    }
+    const data = (await resp.json()) as {
+      routes?: Array<{
+        distanceMeters?: number;
+        duration?: string;
+        staticDuration?: string;
+        polyline?: { encodedPolyline?: string };
+        legs?: Array<{
+          steps?: Array<{
+            distanceMeters?: number;
+            staticDuration?: string;
+            polyline?: { encodedPolyline?: string };
+            navigationInstruction?: {
+              instructions?: string;
+              maneuver?: string;
+            };
+          }>;
+        }>;
+        travelAdvisory?: {
+          speedReadingIntervals?: Array<{
+            startPolylinePointIndex?: number;
+            endPolylinePointIndex?: number;
+            speed?: SpeedInterval["speed"];
+          }>;
+        };
+      }>;
+    };
+
+    const r = data.routes?.[0];
+    if (!r) {
+      console.warn("[SOT] Google Routes API sem rotas na resposta");
+      return null;
+    }
+    const encoded = r.polyline?.encodedPolyline ?? "";
+    const coordinates = decodeGooglePolyline(encoded);
+    if (coordinates.length === 0) {
+      console.warn("[SOT] Google Routes API rota sem polilinha");
+      return null;
+    }
+
+    const steps: RouteStep[] = [];
+    const legs = r.legs ?? [];
+    for (const leg of legs) {
+      const rawSteps = leg.steps ?? [];
+      for (const s of rawSteps) {
+        const stepEnc = s.polyline?.encodedPolyline ?? "";
+        const stepCoords = decodeGooglePolyline(stepEnc);
+        steps.push({
+          distance: Number(s.distanceMeters) || 0,
+          duration: parseGoogleDuration(s.staticDuration),
+          name: "",
+          maneuver: mapGoogleManeuverToOsrm(s.navigationInstruction?.maneuver),
+          geometry: { type: "LineString", coordinates: stepCoords },
+        });
+      }
+    }
+
+    const speedIntervals: SpeedInterval[] = [];
+    for (const iv of r.travelAdvisory?.speedReadingIntervals ?? []) {
+      if (
+        typeof iv.startPolylinePointIndex === "number" &&
+        typeof iv.endPolylinePointIndex === "number" &&
+        iv.speed
+      ) {
+        speedIntervals.push({
+          startIndex: iv.startPolylinePointIndex,
+          endIndex: iv.endPolylinePointIndex,
+          speed: iv.speed,
+        });
+      } else if (
+        // Quando o primeiro intervalo começa em 0, a Routes API omite
+        // `startPolylinePointIndex` (default 0). Tratamos esse caso.
+        typeof iv.endPolylinePointIndex === "number" &&
+        iv.speed
+      ) {
+        speedIntervals.push({
+          startIndex: 0,
+          endIndex: iv.endPolylinePointIndex,
+          speed: iv.speed,
+        });
+      }
+    }
+
+    const duration = parseGoogleDuration(r.duration);
+    const staticDuration = parseGoogleDuration(r.staticDuration);
+    const distance = Number(r.distanceMeters) || 0;
+
+    console.info(
+      `[SOT] Google Routes devolveu rota: ${Math.round(distance)} m em ${Math.round(duration)} s (${Math.round(staticDuration)} s sem trânsito, ${speedIntervals.length} intervalos)`,
+    );
+
+    return {
+      distance,
+      duration,
+      staticDuration: staticDuration || null,
+      geometry: { type: "LineString", coordinates },
+      steps,
+      speedIntervals: speedIntervals.length > 0 ? speedIntervals : undefined,
+      provider: "google",
+    };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      console.warn(`[SOT] Google Routes API timeout (>${GOOGLE_ROUTES_TIMEOUT_MS}ms)`);
+    } else {
+      console.warn("[SOT] Google Routes API falhou:", e);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Lista de servidores OSRM públicos a tentar em sequência. Quando o primeiro
@@ -293,19 +641,7 @@ async function fetchOsrmOnce(
   }
 }
 
-/**
- * Calcula a rota de condução entre dois pontos.
- *
- * Estratégia de robustez (failover automático entre servidores OSRM públicos):
- *  1. Tenta `router.project-osrm.org` com timeout de 10 s.
- *  2. Se falhar, tenta `routing.openstreetmap.de` (mesma API OSRM, infra mais
- *     robusta) com outro timeout de 10 s.
- *  3. Se ambos falharem, devolve `null` — o UI trata esse caso oferecendo
- *     estimativa em linha recta + botão "Tentar novamente".
- *
- * Worst case: ~20 s antes de desistir. Best case: ~2 s para o primeiro.
- */
-export async function fetchDrivingRoute(
+async function fetchOsrmRoute(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
 ): Promise<DrivingRoute | null> {
@@ -317,6 +653,60 @@ export async function fetchDrivingRoute(
     const label = i === 0 ? "OSRM primário" : "OSRM fallback OSM-DE";
     const result = await fetchOsrmOnce(`${base}/${query}`, OSRM_TIMEOUT_MS, label);
     if (result) return result;
+  }
+  return null;
+}
+
+/** Opções aceites por `fetchDrivingRoute`. */
+export type FetchDrivingRouteOptions = {
+  /**
+   * Chave da Google Maps Platform. Quando presente, tentamos a Routes API
+   * primeiro (com `TRAFFIC_AWARE` → tempo de viagem inclui trânsito actual
+   * + cores de congestão por troço). Se a Routes API não estiver activada
+   * para o projecto ou a chamada falhar, fazemos fallback para OSRM
+   * (geometria sem trânsito).
+   */
+  googleApiKey?: string;
+};
+
+/**
+ * Calcula a rota de condução entre dois pontos.
+ *
+ * Estratégia:
+ *  1. **Google Routes API** (se `googleApiKey` fornecida) com `TRAFFIC_AWARE`.
+ *     Devolve duração com trânsito + intervalos de congestão por segmento.
+ *     ~10 USD por 1 000 chamadas; tipicamente coberto pelo crédito grátis
+ *     mensal de 200 USD do Google Maps Platform.
+ *  2. **OSRM** (fallback gratuito) — failover automático entre
+ *     `router.project-osrm.org` e `routing.openstreetmap.de`, cada um com
+ *     timeout de 10 s. Sem dados de trânsito.
+ *  3. Se tudo falhar, devolve `null` — o UI trata mostrando estimativa em
+ *     linha recta + botão "Tentar novamente".
+ *
+ * Em produção, o caller fornece a chave; em testes/dev sem chave o sistema
+ * usa OSRM directamente.
+ */
+export async function fetchDrivingRoute(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  options: FetchDrivingRouteOptions = {},
+): Promise<DrivingRoute | null> {
+  // 1) Google Routes API com trânsito (se houver chave).
+  if (options.googleApiKey) {
+    const googleResult = await fetchGoogleRoute(
+      options.googleApiKey,
+      origin,
+      destination,
+    );
+    if (googleResult) return googleResult;
+    console.info(
+      "[SOT] Routes API indisponível, a recorrer ao OSRM (sem dados de trânsito).",
+    );
+  }
+  // 2) OSRM público.
+  const osrmResult = await fetchOsrmRoute(origin, destination);
+  if (osrmResult) {
+    return { ...osrmResult, provider: "osrm" };
   }
   return null;
 }

@@ -44,6 +44,7 @@ import {
   type DrivingRoute,
   type GeocodeResult,
   type RouteStep,
+  type SpeedInterval,
   fetchDrivingRoute,
   formatDistance,
   formatDuration,
@@ -139,6 +140,24 @@ const ROUTE_POLYLINE_OPTIONS: google.maps.PolylineOptions = {
   geodesic: false,
   clickable: false,
   zIndex: 5,
+};
+
+/**
+ * Cores dos troços de trânsito (apenas quando a Routes API devolve
+ * `speedReadingIntervals`). `NORMAL` mantém o azul base; os outros estados
+ * são desenhados POR CIMA do azul, garantindo continuidade visual.
+ *
+ *  - NORMAL       → azul (igual à polilinha base — só pintamos os troços
+ *                   anormais para reduzir ruído visual)
+ *  - SLOW         → laranja
+ *  - TRAFFIC_JAM  → vermelho
+ *  - UNKNOWN      → cinzento claro (raro; Google ainda não tem dados)
+ */
+const TRAFFIC_OVERLAY_COLORS: Record<SpeedInterval["speed"], string | null> = {
+  NORMAL: null,
+  SLOW: "#f59e0b",
+  TRAFFIC_JAM: "#dc2626",
+  UNKNOWN: "#94a3b8",
 };
 
 /**
@@ -482,7 +501,7 @@ export function NavigationFullScreenModal({
     console.info(
       `[SOT] a pedir rota: ${usedOrigin.lat.toFixed(5)},${usedOrigin.lng.toFixed(5)} → ${usedDest.lat.toFixed(5)},${usedDest.lng.toFixed(5)}`,
     );
-    fetchDrivingRoute(usedOrigin, usedDest).then((r) => {
+    fetchDrivingRoute(usedOrigin, usedDest, { googleApiKey: apiKey }).then((r) => {
       if (cancelled) return;
       if (!r) {
         routingStartedRef.current = false;
@@ -502,7 +521,7 @@ export function NavigationFullScreenModal({
     return () => {
       cancelled = true;
     };
-  }, [open, hasOrigin, hasDestination, routeAttempt]);
+  }, [open, hasOrigin, hasDestination, routeAttempt, apiKey]);
 
   // ---------------------------------------------------------------------------
   // 3b) Centra o mapa na primeira posição GPS conhecida — só uma vez, antes
@@ -548,6 +567,44 @@ export function NavigationFullScreenModal({
     if (!route) return [];
     return route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
   }, [route]);
+
+  // ---------------------------------------------------------------------------
+  // 5b) Overlays de trânsito — só com Google Routes API. Cada intervalo
+  //     `SLOW`/`TRAFFIC_JAM` vira uma `<Polyline>` por cima da base azul,
+  //     usando os pontos da `routePath` no intervalo [startIndex, endIndex].
+  //     Adicionamos +1 ao `endIndex` (slice exclusivo) para o último ponto
+  //     ser incluído. Intervalos `NORMAL` são ignorados (mantemos o azul).
+  // ---------------------------------------------------------------------------
+  const trafficOverlays = useMemo<
+    Array<{ key: string; path: Coord[]; color: string }>
+  >(() => {
+    if (!route?.speedIntervals || routePath.length === 0) return [];
+    const out: Array<{ key: string; path: Coord[]; color: string }> = [];
+    for (const iv of route.speedIntervals) {
+      const color = TRAFFIC_OVERLAY_COLORS[iv.speed];
+      if (!color) continue;
+      const start = Math.max(0, Math.min(iv.startIndex, routePath.length - 1));
+      const end = Math.max(start, Math.min(iv.endIndex + 1, routePath.length));
+      if (end - start < 2) continue;
+      out.push({
+        key: `${iv.speed}-${start}-${end}`,
+        path: routePath.slice(start, end),
+        color,
+      });
+    }
+    return out;
+  }, [route, routePath]);
+
+  /** `true` se há pelo menos um troço com trânsito anormal (laranja/vermelho). */
+  const hasTrafficIssues = useMemo(
+    () =>
+      Boolean(
+        route?.speedIntervals?.some(
+          (iv) => iv.speed === "SLOW" || iv.speed === "TRAFFIC_JAM",
+        ),
+      ),
+    [route],
+  );
 
   // ---------------------------------------------------------------------------
   // 6) Ícones dos marcadores. Construídos apenas quando o script Google
@@ -823,9 +880,28 @@ export function NavigationFullScreenModal({
             onLoad={handleMapLoad}
             onUnmount={handleMapUnmount}
           >
-            {/* Polilinha da rota (azul) — só renderiza após OSRM responder. */}
+            {/* Polilinha da rota (azul base) — só renderiza após routing responder. */}
             {routePath.length > 0 ? (
-              <Polyline path={routePath} options={ROUTE_POLYLINE_OPTIONS} />
+              <>
+                <Polyline path={routePath} options={ROUTE_POLYLINE_OPTIONS} />
+                {/* Overlays de trânsito por cima do azul: laranja para SLOW,
+                    vermelho para TRAFFIC_JAM. Apenas presente quando a Routes
+                    API responder com `speedReadingIntervals`. */}
+                {trafficOverlays.map((seg) => (
+                  <Polyline
+                    key={seg.key}
+                    path={seg.path}
+                    options={{
+                      strokeColor: seg.color,
+                      strokeOpacity: 0.95,
+                      strokeWeight: 6,
+                      geodesic: false,
+                      clickable: false,
+                      zIndex: 6,
+                    }}
+                  />
+                ))}
+              </>
             ) : origin && destination ? (
               // Fallback: linha recta tracejada cinzenta quando ainda não há
               // rota calculada (a calcular, ou OSRM falhou). Dá ao motorista
@@ -1017,6 +1093,29 @@ export function NavigationFullScreenModal({
               <span className="whitespace-nowrap text-base font-bold leading-tight">
                 {route ? formatDuration(route.duration) : "—"}
               </span>
+              {/* Badge com trânsito (só com Routes API). Mostra também a
+                  duração sem trânsito quando o atraso é > 1 min para o
+                  motorista perceber o impacto do congestionamento. */}
+              {route?.provider === "google" ? (
+                <span
+                  className={`mt-0.5 inline-flex w-fit items-center gap-1 rounded text-[9px] font-bold uppercase tracking-wider ${
+                    hasTrafficIssues
+                      ? "bg-red-100 px-1.5 py-px text-red-700"
+                      : "bg-emerald-100 px-1.5 py-px text-emerald-700"
+                  }`}
+                  title={
+                    typeof route.staticDuration === "number"
+                      ? `Sem trânsito: ${formatDuration(route.staticDuration)}`
+                      : undefined
+                  }
+                >
+                  {hasTrafficIssues ? "C/ trânsito" : "Fluido"}
+                  {typeof route.staticDuration === "number" &&
+                  route.duration - route.staticDuration > 60
+                    ? ` · +${formatDuration(route.duration - route.staticDuration)}`
+                    : null}
+                </span>
+              ) : null}
             </div>
             <div className="h-8 w-px bg-slate-200" />
             <div className="flex min-w-0 flex-col">
