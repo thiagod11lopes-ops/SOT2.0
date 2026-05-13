@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
@@ -72,6 +72,12 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
   const { filterDatePtBr: filterDate, setFilterDatePtBr: setFilterDate } = useSaidasMobileFilterDate();
   /** Ambulância: saída marcada ao tocar no cartão; só essa pode ser excluída pelo botão. */
   const [selectedAmbulanciaId, setSelectedAmbulanciaId] = useState<string | null>(null);
+  /**
+   * ID do registo que acabou de ser criado e ainda precisa de ser centrado na
+   * viewport. Um `useEffect` reage à próxima renderização da lista para
+   * localizar o `<li>` correspondente e fazer `scrollIntoView({block:"center"})`.
+   */
+  const [pendingCenterId, setPendingCenterId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     let list = departures.filter((d) => d.tipo === tipo);
@@ -113,8 +119,47 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
 
   function handleNovaAmbulancia() {
     if (!filtroEhHojeCompleto) return;
-    addDeparture(newAmbulanciaPayload(filterDate));
+    const newId = addDeparture(newAmbulanciaPayload(filterDate));
+    setPendingCenterId(newId);
   }
+
+  /**
+   * Centra o cartão recém-criado na viewport assim que ele aparece na lista
+   * filtrada. Usamos dois `requestAnimationFrame` aninhados para garantir que
+   * o navegador já fez layout do novo `<li>` antes do scroll, evitando casos
+   * em que `scrollIntoView` corre antes do nó estar pronto e desliza para o
+   * sítio errado (sintoma típico em iOS Safari/Capacitor).
+   */
+  const lastCenterAttemptRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingCenterId) return;
+    if (!rows.some((r) => r.id === pendingCenterId)) return;
+    if (lastCenterAttemptRef.current === pendingCenterId) return;
+    lastCenterAttemptRef.current = pendingCenterId;
+
+    let rafA = 0;
+    let rafB = 0;
+    rafA = window.requestAnimationFrame(() => {
+      rafB = window.requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>(
+          `[data-departure-id="${pendingCenterId}"]`,
+        );
+        if (el) {
+          try {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          } catch {
+            // Browsers sem `ScrollIntoViewOptions` (raro) — fallback brusco.
+            el.scrollIntoView();
+          }
+        }
+        setPendingCenterId(null);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(rafA);
+      window.cancelAnimationFrame(rafB);
+    };
+  }, [pendingCenterId, rows]);
 
   function handleAbrirModalExcluirAmbulancia() {
     if (!selectedAmbulanciaId) return;
@@ -280,7 +325,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
             const editavelMobile = r.dataSaida === hoje;
             const cardKey = group.records.map((x) => x.id).join("|");
             return (
-              <li key={cardKey}>
+              <li key={cardKey} data-departure-id={r.id}>
                 <DepartureCard
                   record={r}
                   mergedDestinoDisplay={group.destinoDisplay}

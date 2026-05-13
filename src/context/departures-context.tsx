@@ -46,7 +46,11 @@ export type CloudDeparturesSyncState = {
 
 type DeparturesContextValue = {
   departures: DepartureRecord[];
-  addDeparture: (data: Omit<DepartureRecord, "id" | "createdAt">) => void;
+  /**
+   * Cria uma nova saída e devolve o `id` gerado — útil para o chamador focar/
+   * destacar/scrollar até ao novo registo logo após a inserção.
+   */
+  addDeparture: (data: Omit<DepartureRecord, "id" | "createdAt">) => string;
   mergeDeparturesFromBackup: (rows: DepartureRecord[]) => void;
   clearAllDepartures: () => void;
   updateDeparture: (
@@ -450,7 +454,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", onStorage);
   }, [useCloud]);
 
-  const addDeparture = useCallback((data: Omit<DepartureRecord, "id" | "createdAt">) => {
+  const addDeparture = useCallback((data: Omit<DepartureRecord, "id" | "createdAt">): string => {
     const now = Date.now();
     const row: DepartureRecord = {
       ...data,
@@ -467,9 +471,10 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         () => upsertDepartureRecord(row),
         { generic: "Não foi possível gravar a saída na nuvem. Verifique a ligação e as regras do Firestore." },
       );
-      return;
+      return row.id;
     }
     setDepartures((prev) => [row, ...prev]);
+    return row.id;
   }, [useCloud, bumpLocalMutation, markTouched, enqueueWrite]);
 
   const mergeDeparturesFromBackup = useCallback(
