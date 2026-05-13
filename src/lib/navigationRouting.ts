@@ -438,6 +438,16 @@ async function fetchGoogleRoute(
     languageCode: "pt-BR",
     units: "METRIC",
     polylineQuality: "HIGH_QUALITY",
+    /**
+     * `TRAFFIC_ON_POLYLINE` é o que faz o Google devolver os
+     * `speedReadingIntervals` por troço (com `NORMAL`/`SLOW`/`TRAFFIC_JAM`).
+     * Sem este flag, a duração já vem ajustada ao trânsito mas os
+     * segmentos coloridos no mapa não vêm. Implica passar do SKU
+     * "Compute Routes Advanced" para "Compute Routes Preferred"
+     * (≈15 USD por 1 000 chamadas em vez de 10 USD), o que continua
+     * bem dentro do crédito gratuito mensal de 200 USD.
+     */
+    extraComputations: ["TRAFFIC_ON_POLYLINE"],
   };
 
   const controller = new AbortController();

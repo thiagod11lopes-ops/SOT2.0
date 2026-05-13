@@ -595,16 +595,31 @@ export function NavigationFullScreenModal({
     return out;
   }, [route, routePath]);
 
-  /** `true` se há pelo menos um troço com trânsito anormal (laranja/vermelho). */
-  const hasTrafficIssues = useMemo(
-    () =>
-      Boolean(
-        route?.speedIntervals?.some(
-          (iv) => iv.speed === "SLOW" || iv.speed === "TRAFFIC_JAM",
-        ),
-      ),
-    [route],
-  );
+  /**
+   * Severidade global do trânsito na rota.
+   *
+   * Combina duas fontes:
+   *  1. `speedIntervals` (apenas Routes API com `TRAFFIC_ON_POLYLINE`):
+   *     se houver pelo menos um troço SLOW/TRAFFIC_JAM, classificamos como
+   *     "slow" ou "jam" consoante o pior dos troços.
+   *  2. Delta `duration - staticDuration` (sempre disponível com Routes API):
+   *     fallback útil quando o Google ainda não tem intervalos por troço
+   *     mas já reflectiu o trânsito no tempo total. > 5 min de atraso
+   *     considera-se engarrafamento severo; > 1 min considera-se lento.
+   */
+  const trafficSeverity = useMemo<"none" | "slow" | "jam">(() => {
+    if (!route) return "none";
+    const hasJam = route.speedIntervals?.some((iv) => iv.speed === "TRAFFIC_JAM");
+    if (hasJam) return "jam";
+    const hasSlow = route.speedIntervals?.some((iv) => iv.speed === "SLOW");
+    if (hasSlow) return "slow";
+    if (typeof route.staticDuration === "number") {
+      const delta = route.duration - route.staticDuration;
+      if (delta > 300) return "jam";
+      if (delta > 60) return "slow";
+    }
+    return "none";
+  }, [route]);
 
   // ---------------------------------------------------------------------------
   // 6) Ícones dos marcadores. Construídos apenas quando o script Google
@@ -1093,15 +1108,17 @@ export function NavigationFullScreenModal({
               <span className="whitespace-nowrap text-base font-bold leading-tight">
                 {route ? formatDuration(route.duration) : "—"}
               </span>
-              {/* Badge com trânsito (só com Routes API). Mostra também a
-                  duração sem trânsito quando o atraso é > 1 min para o
-                  motorista perceber o impacto do congestionamento. */}
+              {/* Badge de trânsito (só com Routes API). Mostra a severidade
+                  global (fluido/lento/congestionado) e o atraso em minutos
+                  quando significativo, para o motorista perceber o impacto. */}
               {route?.provider === "google" ? (
                 <span
-                  className={`mt-0.5 inline-flex w-fit items-center gap-1 rounded text-[9px] font-bold uppercase tracking-wider ${
-                    hasTrafficIssues
-                      ? "bg-red-100 px-1.5 py-px text-red-700"
-                      : "bg-emerald-100 px-1.5 py-px text-emerald-700"
+                  className={`mt-0.5 inline-flex w-fit items-center gap-1 rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-wider ${
+                    trafficSeverity === "jam"
+                      ? "bg-red-100 text-red-700"
+                      : trafficSeverity === "slow"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-emerald-100 text-emerald-700"
                   }`}
                   title={
                     typeof route.staticDuration === "number"
@@ -1109,7 +1126,11 @@ export function NavigationFullScreenModal({
                       : undefined
                   }
                 >
-                  {hasTrafficIssues ? "C/ trânsito" : "Fluido"}
+                  {trafficSeverity === "jam"
+                    ? "Congestionado"
+                    : trafficSeverity === "slow"
+                      ? "Lento"
+                      : "Fluido"}
                   {typeof route.staticDuration === "number" &&
                   route.duration - route.staticDuration > 60
                     ? ` · +${formatDuration(route.duration - route.staticDuration)}`
