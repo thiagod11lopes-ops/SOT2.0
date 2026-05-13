@@ -69,9 +69,21 @@ type Props = {
   open: boolean;
   record: DepartureRecord;
   onClose: () => void;
+  /**
+   * Quando true, o modal abre já em modo "tela trancada" (overlay preta + Wake Lock).
+   * Útil para o modo "Segundo plano": o motorista escolheu não acompanhar o mapa
+   * visualmente — a voz das manobras continua a guiar e o ecrã fica praticamente
+   * apagado para poupar bateria.
+   */
+  initialScreenLocked?: boolean;
 };
 
-export function NavigationFullScreenModal({ open, record, onClose }: Props) {
+export function NavigationFullScreenModal({
+  open,
+  record,
+  onClose,
+  initialScreenLocked = false,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
@@ -112,6 +124,12 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
    * Desbloqueia-se com **duplo toque** em qualquer parte do ecrã.
    */
   const [screenLocked, setScreenLocked] = useState(false);
+
+  // Quando o utilizador escolhe iniciar a saída em "Segundo plano", o modal abre
+  // já com a tela trancada. Aplicamos no primeiro ciclo após o `open` virar true.
+  useEffect(() => {
+    if (open && initialScreenLocked) setScreenLocked(true);
+  }, [open, initialScreenLocked]);
   /** Modo "seguir motorista": câmara acompanha automaticamente a posição actual. */
   const [isFollowing, setIsFollowing] = useState(false);
   /** True quando o utilizador interagiu manualmente com o mapa após entrar em follow mode. */
