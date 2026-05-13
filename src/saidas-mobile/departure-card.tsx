@@ -502,6 +502,7 @@ export function DepartureCard({
               value={record.bairro}
               onCommit={(v) => applyAmbPatch({ bairro: v })}
               disabled={!editavel}
+              autocompleteAddress
             />
             <div className="col-span-1 flex items-end gap-2">
               <div className="min-w-0 flex-1">
@@ -652,6 +653,7 @@ export function DepartureCard({
                 value={record.bairro}
                 onCommit={(v) => applyAdminCadastroPatch({ bairro: v })}
                 disabled={!editavel || !updateDeparture}
+                autocompleteAddress
               />
             </div>
             <div className="col-span-1 flex items-end gap-2">
