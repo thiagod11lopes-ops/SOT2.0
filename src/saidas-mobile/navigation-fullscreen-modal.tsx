@@ -333,10 +333,35 @@ export function NavigationFullScreenModal({
   }, [open]);
 
   // ---------------------------------------------------------------------------
+  // Refs sempre actualizados com `origin` e `destination` — usados pelos
+  // efeitos de geocoding/routing para evitar re-execuções (e cancelamentos)
+  // a cada tick do GPS. Sem isto, `setOrigin({ lat, lng })` cria um novo
+  // objecto a cada update; o efeito vê `origin` mudar, faz cleanup com
+  // `cancelled = true`, e a promise OSRM já em curso descarta o resultado.
+  // É exactamente isto que fazia o log "OSRM devolveu rota: ..." aparecer
+  // mas `setRoute()` nunca ser chamado.
+  // ---------------------------------------------------------------------------
+  const originRef = useRef<Coord | null>(null);
+  const destinationRef = useRef<GeocodeResult | null>(null);
+  useEffect(() => {
+    originRef.current = origin;
+  }, [origin]);
+  useEffect(() => {
+    destinationRef.current = destination;
+  }, [destination]);
+
+  /** Booleano estável: só muda quando origin/destination transitam null↔valor. */
+  const hasOrigin = origin !== null;
+  const hasDestination = destination !== null;
+
+  // ---------------------------------------------------------------------------
   // 2) Geocodificar o destino. Espera por `origin` antes de pesquisar — sem
   //    origem, não conseguimos ordenar os candidatos por distância. Auto-escolhe
   //    sempre o candidato mais próximo (o motorista já escolheu o endereço
   //    durante a digitação no campo «Destino» com autocomplete).
+  //
+  //    Importante: depende de `hasOrigin` (boolean) e NÃO de `origin` (objecto).
+  //    Assim os ticks do GPS não cancelam o geocoding em curso.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
@@ -346,8 +371,8 @@ export function NavigationFullScreenModal({
       );
       return;
     }
-    if (!origin) return;
-    if (destination) return;
+    if (!hasOrigin) return;
+    if (hasDestination) return;
     let cancelled = false;
     setLoading("geocoding");
     geocodeAddresses(destinationQuery, 6).then((results) => {
@@ -357,8 +382,14 @@ export function NavigationFullScreenModal({
         setLoading("");
         return;
       }
+      const refOrigin = originRef.current;
       const withDistance = results
-        .map((r) => ({ ...r, distanceMeters: haversineMeters(origin, { lat: r.lat, lng: r.lng }) }))
+        .map((r) => ({
+          ...r,
+          distanceMeters: refOrigin
+            ? haversineMeters(refOrigin, { lat: r.lat, lng: r.lng })
+            : 0,
+        }))
         .sort((a, b) => a.distanceMeters - b.distanceMeters);
       const { distanceMeters: _ignored, ...picked } = withDistance[0];
       void _ignored;
@@ -368,23 +399,35 @@ export function NavigationFullScreenModal({
     return () => {
       cancelled = true;
     };
-  }, [open, destinationQuery, origin, destination]);
+  }, [open, destinationQuery, hasOrigin, hasDestination]);
 
   // ---------------------------------------------------------------------------
   // 3) Calcular rota assim que origem + destino existirem.
-  //    A função `fetchDrivingRoute` já trata timeout (15 s) + retry interno;
-  //    se mesmo assim falhar, mostramos um erro + botão "Tentar novamente".
+  //    A função `fetchDrivingRoute` já trata timeout (10 s/endpoint) + failover
+  //    automático entre dois servidores OSRM; se ambos falharem, mostramos um
+  //    erro + botão "Tentar novamente".
+  //
+  //    Importante: depende de `hasOrigin`/`hasDestination` (booleans) e NÃO
+  //    de `origin`/`destination` (objectos). Os valores reais são lidos via
+  //    refs no momento do fetch. Assim ticks do GPS não disparam re-execuções
+  //    do efeito (e cancelamentos da promise OSRM em curso).
   // ---------------------------------------------------------------------------
   /** Contador de tentativas (cada incremento dispara nova chamada OSRM). */
   const [routeAttempt, setRouteAttempt] = useState(0);
   useEffect(() => {
-    if (!open || !origin || !destination) return;
+    if (!open || !hasOrigin || !hasDestination) return;
     if (routingStartedRef.current && routeAttempt === 0) return;
+    const usedOrigin = originRef.current;
+    const usedDest = destinationRef.current;
+    if (!usedOrigin || !usedDest) return;
     routingStartedRef.current = true;
     let cancelled = false;
     setError(null);
     setLoading("routing");
-    fetchDrivingRoute(origin, destination).then((r) => {
+    console.info(
+      `[SOT] a pedir rota: ${usedOrigin.lat.toFixed(5)},${usedOrigin.lng.toFixed(5)} → ${usedDest.lat.toFixed(5)},${usedDest.lng.toFixed(5)}`,
+    );
+    fetchDrivingRoute(usedOrigin, usedDest).then((r) => {
       if (cancelled) return;
       if (!r) {
         routingStartedRef.current = false;
@@ -404,7 +447,7 @@ export function NavigationFullScreenModal({
     return () => {
       cancelled = true;
     };
-  }, [open, origin, destination, routeAttempt]);
+  }, [open, hasOrigin, hasDestination, routeAttempt]);
 
   // ---------------------------------------------------------------------------
   // 3b) Centra o mapa na primeira posição GPS conhecida — só uma vez, antes
