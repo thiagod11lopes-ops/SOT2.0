@@ -311,6 +311,12 @@ export function NavigationFullScreenModal({
   const [navigating, setNavigating] = useState(false);
   /** `true` após a primeira centragem em modo navegação (para fazer zoom 17 só uma vez). */
   const navInitializedRef = useRef(false);
+  /**
+   * `true` quando o motorista arrasta o mapa em modo navegação — pausa o
+   * auto-follow para ele poder explorar o trajeto sem o mapa "saltar" para
+   * a posição actual a cada tick GPS. O botão "Centralizar" reactiva.
+   */
+  const [userPanned, setUserPanned] = useState(false);
 
   // ─── Rastreamento GPS contínuo via hook reutilizável ─────────────────────
   // Activo enquanto o modal estiver aberto. Cleanup automático no unmount.
@@ -697,6 +703,8 @@ export function NavigationFullScreenModal({
   //     - Primeira vez que entra em `navigating`: zoom 17 + panTo.
   //     - Ticks seguintes do GPS: apenas panTo (zoom preservado, motorista
   //       pode ajustar manualmente). Heading roda o mapa para "norte = frente".
+  //     - Se o motorista arrastou o mapa (`userPanned = true`), pausa o
+  //       auto-follow até clicar em "Centralizar".
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
@@ -704,6 +712,7 @@ export function NavigationFullScreenModal({
       mapInstance.setZoom(17);
       navInitializedRef.current = true;
     }
+    if (userPanned) return;
     mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
     // Rotação opcional — só com heading válida (velocidade > 0,5 m/s).
     if (heading !== null && Number.isFinite(heading)) {
@@ -713,7 +722,7 @@ export function NavigationFullScreenModal({
         // setHeading só funciona com tilt 0 ou mapas vector; ignora se falhar.
       }
     }
-  }, [navigating, mapInstance, origin, heading]);
+  }, [navigating, mapInstance, origin, heading, userPanned]);
 
   // ---------------------------------------------------------------------------
   // 7) Voz: anuncia a próxima manobra quando o motorista está a < 120 m do
@@ -780,6 +789,7 @@ export function NavigationFullScreenModal({
     centeredOnFirstFixRef.current = false;
     navInitializedRef.current = false;
     setNavigating(false);
+    setUserPanned(false);
     setStaticCenter(DEFAULT_CENTER);
     setStaticZoom(6);
   }, [open]);
@@ -894,6 +904,12 @@ export function NavigationFullScreenModal({
             options={MAP_OPTIONS}
             onLoad={handleMapLoad}
             onUnmount={handleMapUnmount}
+            // `dragstart` só dispara em arrasto humano (panTo programático
+            // não o emite). Em modo navegação, pausa o auto-follow até o
+            // motorista clicar em "Centralizar".
+            onDragStart={() => {
+              if (navigating) setUserPanned(true);
+            }}
           >
             {/* Polilinha da rota (azul base) — só renderiza após routing responder. */}
             {routePath.length > 0 ? (
@@ -1264,6 +1280,7 @@ export function NavigationFullScreenModal({
           type="button"
           onClick={() => {
             navInitializedRef.current = false;
+            setUserPanned(false);
             setNavigating(true);
           }}
           className="pointer-events-auto absolute left-1/2 z-10 flex h-14 -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-6 text-white shadow-xl shadow-emerald-900/40 backdrop-blur active:bg-emerald-700"
@@ -1281,6 +1298,54 @@ export function NavigationFullScreenModal({
             <path d="M6 4l16 8-16 8V4z" />
           </svg>
           <span className="text-base font-bold uppercase tracking-wider">Iniciar</span>
+        </button>
+      ) : null}
+
+      {/* Botão "Centralizar" — circular com crosshair GPS. Sempre visível
+          quando há posição. Em navegação, fica empilhado por cima do
+          "Visão geral"; em preview ocupa o canto inferior direito sozinho.
+          Acção: pan + zoom 17 + reactivar auto-follow (se estiver em nav). */}
+      {origin ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (mapInstance) {
+              mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
+              mapInstance.setZoom(17);
+            }
+            setUserPanned(false);
+          }}
+          className={`pointer-events-auto absolute right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
+            navigating && userPanned
+              ? "bg-blue-600 text-white"
+              : "bg-white/95 text-blue-600"
+          }`}
+          style={{
+            bottom: navigating
+              ? "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)"
+              : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+          }}
+          aria-label="Centralizar na minha posição"
+          title="Centralizar na minha posição"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="22"
+            height="22"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <circle cx="12" cy="12" r="8" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="5" y2="12" />
+            <line x1="19" y1="12" x2="22" y2="12" />
+          </svg>
         </button>
       ) : null}
 
