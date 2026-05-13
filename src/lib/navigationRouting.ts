@@ -221,24 +221,26 @@ export type DrivingRoute = {
   steps: RouteStep[];
 };
 
-/**
- * Calcula a rota de condução entre dois pontos. Devolve `null` em erro ou ausência de rota.
- */
-export async function fetchDrivingRoute(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-): Promise<DrivingRoute | null> {
+/** Timeout padrão para o pedido OSRM (ms). Em redes móveis lentas, > 15 s
+ *  costuma indicar que o servidor público está saturado — preferimos falhar
+ *  rápido e oferecer ao motorista um botão "Tentar novamente". */
+const OSRM_TIMEOUT_MS = 15000;
+
+/** Fetch único ao OSRM com `AbortController` para garantir timeout. */
+async function fetchOsrmOnce(url: string, timeoutMs: number): Promise<DrivingRoute | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-    const url = new URL(`https://router.project-osrm.org/route/v1/driving/${coords}`);
-    url.searchParams.set("overview", "full");
-    url.searchParams.set("geometries", "geojson");
-    url.searchParams.set("steps", "true");
-    url.searchParams.set("annotations", "false");
-    const resp = await fetch(url.toString());
-    if (!resp.ok) return null;
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) {
+      console.warn(`[SOT] OSRM respondeu HTTP ${resp.status}`);
+      return null;
+    }
     const data = await resp.json();
-    if (data.code !== "Ok" || !Array.isArray(data.routes) || data.routes.length === 0) return null;
+    if (data.code !== "Ok" || !Array.isArray(data.routes) || data.routes.length === 0) {
+      console.warn("[SOT] OSRM sem rota:", data.code, data.message);
+      return null;
+    }
     const r = data.routes[0];
     const leg = Array.isArray(r.legs) && r.legs[0] ? r.legs[0] : null;
     const rawSteps = leg && Array.isArray(leg.steps) ? leg.steps : [];
@@ -256,9 +258,46 @@ export async function fetchDrivingRoute(
       steps,
     };
   } catch (e) {
-    console.warn("[SOT] fetchDrivingRoute falhou:", e);
+    if (e instanceof DOMException && e.name === "AbortError") {
+      console.warn(`[SOT] OSRM timeout (>${timeoutMs}ms)`);
+    } else {
+      console.warn("[SOT] OSRM falhou:", e);
+    }
     return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Calcula a rota de condução entre dois pontos.
+ *
+ * Implementa **timeout** (15 s por tentativa) + **retry automático** (1×)
+ * porque o servidor público `router.project-osrm.org` está sob "fair use" e
+ * por vezes responde lento ou rejeita pontualmente em horas de pico. Devolve
+ * `null` em erro persistente ou ausência de rota — o UI da navegação trata
+ * esse caso mostrando uma estimativa em linha recta + botão "Tentar de novo".
+ */
+export async function fetchDrivingRoute(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+): Promise<DrivingRoute | null> {
+  const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
+  const url = new URL(`https://router.project-osrm.org/route/v1/driving/${coords}`);
+  url.searchParams.set("overview", "full");
+  url.searchParams.set("geometries", "geojson");
+  url.searchParams.set("steps", "true");
+  url.searchParams.set("annotations", "false");
+  const finalUrl = url.toString();
+
+  // Primeira tentativa.
+  const first = await fetchOsrmOnce(finalUrl, OSRM_TIMEOUT_MS);
+  if (first) return first;
+
+  // Retry único após 2 s — cobre flakes transitórios sem castigar o servidor.
+  console.warn("[SOT] A tentar OSRM uma segunda vez após 2 s…");
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  return fetchOsrmOnce(finalUrl, OSRM_TIMEOUT_MS);
 }
 
 /** Formata uma duração em segundos como "1h 23min" ou "23min" ou "<1min". */

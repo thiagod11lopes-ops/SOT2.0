@@ -338,19 +338,25 @@ export function NavigationFullScreenModal({
 
   // ---------------------------------------------------------------------------
   // 3) Calcular rota assim que origem + destino existirem.
-  //    Só corre **uma vez por sessão** (guardado por `routingStartedRef`).
+  //    A função `fetchDrivingRoute` já trata timeout (15 s) + retry interno;
+  //    se mesmo assim falhar, mostramos um erro + botão "Tentar novamente".
   // ---------------------------------------------------------------------------
+  /** Contador de tentativas (cada incremento dispara nova chamada OSRM). */
+  const [routeAttempt, setRouteAttempt] = useState(0);
   useEffect(() => {
     if (!open || !origin || !destination) return;
-    if (routingStartedRef.current) return;
+    if (routingStartedRef.current && routeAttempt === 0) return;
     routingStartedRef.current = true;
     let cancelled = false;
+    setError(null);
     setLoading("routing");
     fetchDrivingRoute(origin, destination).then((r) => {
       if (cancelled) return;
       if (!r) {
         routingStartedRef.current = false;
-        setError("Não foi possível calcular a rota até ao destino.");
+        setError(
+          "Não foi possível calcular a rota (servidor OSRM ocupado ou rede instável).",
+        );
         setLoading("");
         return;
       }
@@ -361,7 +367,7 @@ export function NavigationFullScreenModal({
     return () => {
       cancelled = true;
     };
-  }, [open, origin, destination]);
+  }, [open, origin, destination, routeAttempt]);
 
   // ---------------------------------------------------------------------------
   // 4) `fitBounds` à rota — uma única vez por sessão.
@@ -740,13 +746,27 @@ export function NavigationFullScreenModal({
 
         {/* Status pequeno (a carregar / erro) — não esconde o cartão. */}
         {!route ? (
-          <p className="pointer-events-auto mt-1 inline-block self-start rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
-            {loading === "locating" && "A localizar-se…"}
-            {loading === "geocoding" && "A procurar destino…"}
-            {loading === "routing" && "A calcular rota…"}
-            {!loading && (error ?? "A preparar navegação…")}
-            {origin && destination ? " · * distância em linha recta" : null}
-          </p>
+          <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-2 self-start">
+            <p className="inline-block rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
+              {loading === "locating" && "A localizar-se…"}
+              {loading === "geocoding" && "A procurar destino…"}
+              {loading === "routing" && "A calcular rota…"}
+              {!loading && (error ?? "A preparar navegação…")}
+              {origin && destination ? " · * distância em linha recta" : null}
+            </p>
+            {error && !loading && origin && destination ? (
+              <button
+                type="button"
+                onClick={() => {
+                  routingStartedRef.current = false;
+                  setRouteAttempt((n) => n + 1);
+                }}
+                className="rounded-md bg-blue-600 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-sm active:bg-blue-700"
+              >
+                Tentar novamente
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {error && route && (
