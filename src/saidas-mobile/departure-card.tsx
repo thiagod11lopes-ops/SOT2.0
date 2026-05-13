@@ -866,12 +866,10 @@ export function DepartureCard({
 
       {/* Modal de escolha após Iniciar Saída: acompanhar trajeto no mapa ou ir directo
           para segundo plano (tela 100 % preta + voz das manobras a guiar).
-          Posicionado mais para baixo (ligeiramente abaixo do centro vertical) para
-          ficar mais perto do polegar do motorista. */}
+          Centralizado verticalmente. */}
       {chooseModeOpen ? (
         <div
           className="pointer-events-auto fixed inset-0 z-[600] flex items-center justify-center bg-black/55 p-4"
-          style={{ paddingTop: "55vh" }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="sot-saida-choose-mode-title"
