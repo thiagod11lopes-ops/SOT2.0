@@ -558,8 +558,22 @@ async function fetchGoogleRoute(
     const staticDuration = parseGoogleDuration(r.staticDuration);
     const distance = Number(r.distanceMeters) || 0;
 
+    // Breakdown dos intervalos por severidade — ajuda muito a diagnosticar
+    // "porque não vejo cores no mapa?". Se tudo for NORMAL é trânsito fluido,
+    // o sistema está a funcionar; se houver SLOW/JAM esperamos ver troços
+    // laranja/vermelho na polilinha.
+    const breakdown = { NORMAL: 0, SLOW: 0, TRAFFIC_JAM: 0, UNKNOWN: 0 };
+    for (const iv of speedIntervals) {
+      breakdown[iv.speed] = (breakdown[iv.speed] || 0) + 1;
+    }
+    const delaySec = Math.round(duration - staticDuration);
+    const delayLabel =
+      delaySec > 60 ? ` (+${Math.round(delaySec / 60)} min de trânsito)` : "";
     console.info(
-      `[SOT] Google Routes devolveu rota: ${Math.round(distance)} m em ${Math.round(duration)} s (${Math.round(staticDuration)} s sem trânsito, ${speedIntervals.length} intervalos)`,
+      `[SOT] Google Routes: ${Math.round(distance)} m em ${Math.round(duration)} s` +
+        ` (sem trânsito ${Math.round(staticDuration)} s${delayLabel}) — ` +
+        `intervalos: ${breakdown.NORMAL} normais, ${breakdown.SLOW} lentos, ` +
+        `${breakdown.TRAFFIC_JAM} congestionados, ${breakdown.UNKNOWN} sem dados`,
     );
 
     return {
