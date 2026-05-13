@@ -43,6 +43,7 @@ import type { DepartureRecord } from "../types/departure";
 import {
   type DrivingRoute,
   type GeocodeResult,
+  type RouteStep,
   fetchDrivingRoute,
   formatDistance,
   formatDuration,
@@ -161,6 +162,51 @@ const FALLBACK_LINE_OPTIONS: google.maps.PolylineOptions = {
   ],
 };
 
+/**
+ * Devolve o SVG path de uma seta apropriada para a manobra OSRM. Cobre os
+ * tipos mais comuns; o resto cai numa seta "em frente". Tamanho viewBox 24×24,
+ * stroke preto sobre fundo branco fica perfeito sobre a barra de navegação.
+ */
+function maneuverArrowPath(step: RouteStep): string {
+  const m = step.maneuver;
+  if (!m) return "M12 4 L12 20 M5 11 L12 4 L19 11";
+  const mod = m.modifier ?? "";
+  switch (m.type) {
+    case "depart":
+      return "M12 4 L12 20 M5 11 L12 4 L19 11";
+    case "arrive":
+      // Bandeira de chegada
+      return "M5 21 L5 4 M5 4 H17 L14 8 L17 12 H5";
+    case "roundabout":
+    case "rotary":
+      // Círculo + seta a sair
+      return "M12 6 a6 6 0 1 0 6 6 M18 12 L22 12 M18 12 L20 9";
+    case "turn":
+    case "end of road":
+    case "fork":
+    case "continue":
+    case "merge":
+    case "new name":
+    default: {
+      if (mod === "left")
+        return "M19 20 L19 12 a4 4 0 0 0 -4 -4 L7 8 M7 8 L11 4 M7 8 L11 12";
+      if (mod === "right")
+        return "M5 20 L5 12 a4 4 0 0 1 4 -4 L17 8 M17 8 L13 4 M17 8 L13 12";
+      if (mod === "slight left")
+        return "M15 20 L11 8 M11 8 L7 11 M11 8 L13 12";
+      if (mod === "slight right")
+        return "M9 20 L13 8 M13 8 L17 11 M13 8 L11 12";
+      if (mod === "sharp left")
+        return "M19 20 L19 14 a4 4 0 0 0 -4 -4 H6 M6 10 L10 6 M6 10 L10 14";
+      if (mod === "sharp right")
+        return "M5 20 L5 14 a4 4 0 0 1 4 -4 H18 M18 10 L14 6 M18 10 L14 14";
+      if (mod === "uturn")
+        return "M5 20 L5 11 a4 4 0 0 1 4 -4 H13 a4 4 0 0 1 4 4 V20 M17 16 L13 20 M17 16 L13 12";
+      return "M12 4 L12 20 M5 11 L12 4 L19 11";
+    }
+  }
+}
+
 export function NavigationFullScreenModal({
   open,
   record,
@@ -237,6 +283,15 @@ export function NavigationFullScreenModal({
   const [screenLocked, setScreenLocked] = useState(false);
   /** Animação "Até já — boa viagem" antes de bloquear a tela (modo segundo plano). */
   const [farewellAnimating, setFarewellAnimating] = useState(false);
+
+  /**
+   * `true` enquanto o motorista está em modo navegação activa (após clicar
+   * "Iniciar"). Em vez do preview/overview com `fitBounds`, a câmara segue
+   * o motorista (panTo + zoom alto) e mostramos a próxima manobra a destaque.
+   */
+  const [navigating, setNavigating] = useState(false);
+  /** `true` após a primeira centragem em modo navegação (para fazer zoom 17 só uma vez). */
+  const navInitializedRef = useRef(false);
 
   // ─── Rastreamento GPS contínuo via hook reutilizável ─────────────────────
   // Activo enquanto o modal estiver aberto. Cleanup automático no unmount.
@@ -539,6 +594,56 @@ export function NavigationFullScreenModal({
   }, [gmapsLoaded]);
 
   // ---------------------------------------------------------------------------
+  // 6b) Próxima manobra a apresentar — usado pela barra superior em modo
+  //     navegação activa. Escolhe o passo cujo `start` está mais próximo do
+  //     motorista, ignorando passos que já foram ultrapassados (fim mais
+  //     próximo do que o início). O passo "depart" é sempre ignorado porque
+  //     é o ponto de partida (instrução "siga em frente" inicial não ajuda).
+  // ---------------------------------------------------------------------------
+  const nextManeuver = useMemo<{ step: RouteStep; distM: number } | null>(() => {
+    if (!route || !origin) return null;
+    let best: { step: RouteStep; distM: number } | null = null;
+    for (let i = 1; i < route.steps.length; i++) {
+      const step = route.steps[i];
+      const coords = step.geometry?.coordinates;
+      if (!coords || coords.length === 0) continue;
+      const [lngS, latS] = coords[0];
+      const [lngE, latE] = coords[coords.length - 1];
+      const distStart = haversineMeters(origin, { lat: latS, lng: lngS });
+      const distEnd = haversineMeters(origin, { lat: latE, lng: lngE });
+      // Já passámos este passo? (fim mais perto do que o início, e início > 30 m)
+      if (distEnd < distStart && distStart > 30) continue;
+      if (!best || distStart < best.distM) {
+        best = { step, distM: distStart };
+      }
+    }
+    return best;
+  }, [route, origin]);
+
+  // ---------------------------------------------------------------------------
+  // 6c) Câmara segue o motorista em modo navegação activa.
+  //     - Primeira vez que entra em `navigating`: zoom 17 + panTo.
+  //     - Ticks seguintes do GPS: apenas panTo (zoom preservado, motorista
+  //       pode ajustar manualmente). Heading roda o mapa para "norte = frente".
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!navigating || !mapInstance || !origin) return;
+    if (!navInitializedRef.current) {
+      mapInstance.setZoom(17);
+      navInitializedRef.current = true;
+    }
+    mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
+    // Rotação opcional — só com heading válida (velocidade > 0,5 m/s).
+    if (heading !== null && Number.isFinite(heading)) {
+      try {
+        mapInstance.setHeading(heading);
+      } catch {
+        // setHeading só funciona com tilt 0 ou mapas vector; ignora se falhar.
+      }
+    }
+  }, [navigating, mapInstance, origin, heading]);
+
+  // ---------------------------------------------------------------------------
   // 7) Voz: anuncia a próxima manobra quando o motorista está a < 120 m do
   //    início dela. Usa Web Speech API.
   // ---------------------------------------------------------------------------
@@ -601,6 +706,8 @@ export function NavigationFullScreenModal({
     routingStartedRef.current = false;
     routeFittedRef.current = false;
     centeredOnFirstFixRef.current = false;
+    navInitializedRef.current = false;
+    setNavigating(false);
     setStaticCenter(DEFAULT_CENTER);
     setStaticZoom(6);
   }, [open]);
@@ -793,102 +900,187 @@ export function NavigationFullScreenModal({
         )}
       </div>
 
-      {/* Barra superior: destino + distância/tempo. */}
-      <div
-        className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 bg-gradient-to-b from-black/55 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-      >
-        <div className="pointer-events-auto flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs uppercase tracking-wider text-white/80">Destino</p>
-            <p className="truncate text-sm font-semibold leading-tight">
-              {destination?.displayName ?? destinationQuery ?? "—"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setVoiceEnabled((v) => !v)}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow"
-            aria-label={voiceEnabled ? "Desligar voz" : "Ligar voz"}
-            title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
-          >
-            {voiceEnabled ? (
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-                <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7 7 0 0 1 14 18.7v2.07a9 9 0 0 0 0-17.54z" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-                <path d="M3 10v4h4l5 5V5L7 10H3zm13.59 2L19 9.41 17.59 8 15 10.59 12.41 8 11 9.41 13.59 12 11 14.59 12.41 16 15 13.41 17.59 16 19 14.59z" />
-              </svg>
-            )}
-          </button>
-        </div>
-
-        {/* Cartão de distância / tempo / chegada — SEMPRE visível.
-            Quando a rota ainda não foi calculada (ou falhou), mostramos uma
-            estimativa em linha recta para a "Distância" e «—» nos restantes. */}
-        <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-white px-3 py-2 text-slate-900 shadow-md">
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">
-              Distância
-            </span>
-            <span className="whitespace-nowrap text-base font-bold leading-tight">
-              {route
-                ? formatDistance(route.distance)
-                : origin && destination
-                  ? `${formatDistance(haversineMeters(origin, { lat: destination.lat, lng: destination.lng }))} *`
-                  : "—"}
-            </span>
-          </div>
-          <div className="h-8 w-px bg-slate-200" />
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">
-              Tempo previsto
-            </span>
-            <span className="whitespace-nowrap text-base font-bold leading-tight">
-              {route ? formatDuration(route.duration) : "—"}
-            </span>
-          </div>
-          <div className="h-8 w-px bg-slate-200" />
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">Chegada</span>
-            <span className="whitespace-nowrap text-base font-bold leading-tight">
-              {route ? formatEta(route.duration) : "—"}
-            </span>
-          </div>
-        </div>
-
-        {/* Status pequeno (a carregar / erro) — não esconde o cartão. */}
-        {!route ? (
-          <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-2 self-start">
-            <p className="inline-block rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
-              {loading === "locating" && "A localizar-se…"}
-              {loading === "geocoding" && "A procurar destino…"}
-              {loading === "routing" && "A calcular rota…"}
-              {!loading && (error ?? "A preparar navegação…")}
-              {origin && destination ? " · * distância em linha recta" : null}
-            </p>
-            {error && !loading && origin && destination ? (
-              <button
-                type="button"
-                onClick={() => {
-                  routingStartedRef.current = false;
-                  setRouteAttempt((n) => n + 1);
-                }}
-                className="rounded-md bg-blue-600 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-sm active:bg-blue-700"
+      {/* Barra superior — DUAS variantes:
+          - Modo preview (`!navigating`): destino + cartão dist/tempo/chegada.
+          - Modo navegação activa: cartão da PRÓXIMA MANOBRA (seta + texto +
+            distância até à manobra), estilo Google Maps. */}
+      {navigating && nextManeuver ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+          style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+        >
+          <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-lg backdrop-blur">
+            {/* Seta da manobra. */}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-slate-900">
+              <svg
+                viewBox="0 0 24 24"
+                width="36"
+                height="36"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
               >
-                Tentar novamente
-              </button>
-            ) : null}
+                <path d={maneuverArrowPath(nextManeuver.step)} />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-2xl font-bold leading-none">
+                {nextManeuver.distM < 50
+                  ? "Agora"
+                  : nextManeuver.distM < 1000
+                    ? `Em ${Math.round(nextManeuver.distM / 10) * 10} m`
+                    : `Em ${(nextManeuver.distM / 1000).toLocaleString("pt-PT", {
+                        maximumFractionDigits: 1,
+                      })} km`}
+              </p>
+              <p className="mt-1 truncate text-sm text-white/85">
+                {maneuverToPortuguese(nextManeuver.step) ||
+                  (nextManeuver.step.name
+                    ? `Continue na ${nextManeuver.step.name}`
+                    : "Continue em frente")}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVoiceEnabled((v) => !v)}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white"
+              aria-label={voiceEnabled ? "Desligar voz" : "Ligar voz"}
+              title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
+            >
+              {voiceEnabled ? (
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7 7 0 0 1 14 18.7v2.07a9 9 0 0 0 0-17.54z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.59 2L19 9.41 17.59 8 15 10.59 12.41 8 11 9.41 13.59 12 11 14.59 12.41 16 15 13.41 17.59 16 19 14.59z" />
+                </svg>
+              )}
+            </button>
           </div>
-        ) : null}
+        </div>
+      ) : (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 bg-gradient-to-b from-black/55 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white"
+          style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+        >
+          <div className="pointer-events-auto flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs uppercase tracking-wider text-white/80">Destino</p>
+              <p className="truncate text-sm font-semibold leading-tight">
+                {destination?.displayName ?? destinationQuery ?? "—"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVoiceEnabled((v) => !v)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow"
+              aria-label={voiceEnabled ? "Desligar voz" : "Ligar voz"}
+              title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
+            >
+              {voiceEnabled ? (
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7 7 0 0 1 14 18.7v2.07a9 9 0 0 0 0-17.54z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.59 2L19 9.41 17.59 8 15 10.59 12.41 8 11 9.41 13.59 12 11 14.59 12.41 16 15 13.41 17.59 16 19 14.59z" />
+                </svg>
+              )}
+            </button>
+          </div>
 
-        {error && route && (
-          <p className="pointer-events-auto mt-1 rounded-md bg-red-600/90 px-3 py-2 text-xs text-white shadow">
-            {error}
-          </p>
-        )}
-      </div>
+          {/* Cartão de distância / tempo / chegada — SEMPRE visível.
+              Quando a rota ainda não foi calculada (ou falhou), mostramos uma
+              estimativa em linha recta para a "Distância" e «—» nos restantes. */}
+          <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-white px-3 py-2 text-slate-900 shadow-md">
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                Distância
+              </span>
+              <span className="whitespace-nowrap text-base font-bold leading-tight">
+                {route
+                  ? formatDistance(route.distance)
+                  : origin && destination
+                    ? `${formatDistance(haversineMeters(origin, { lat: destination.lat, lng: destination.lng }))} *`
+                    : "—"}
+              </span>
+            </div>
+            <div className="h-8 w-px bg-slate-200" />
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                Tempo previsto
+              </span>
+              <span className="whitespace-nowrap text-base font-bold leading-tight">
+                {route ? formatDuration(route.duration) : "—"}
+              </span>
+            </div>
+            <div className="h-8 w-px bg-slate-200" />
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500">Chegada</span>
+              <span className="whitespace-nowrap text-base font-bold leading-tight">
+                {route ? formatEta(route.duration) : "—"}
+              </span>
+            </div>
+          </div>
+
+          {/* Status pequeno (a carregar / erro) — não esconde o cartão. */}
+          {!route ? (
+            <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-2 self-start">
+              <p className="inline-block rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
+                {loading === "locating" && "A localizar-se…"}
+                {loading === "geocoding" && "A procurar destino…"}
+                {loading === "routing" && "A calcular rota…"}
+                {!loading && (error ?? "A preparar navegação…")}
+                {origin && destination ? " · * distância em linha recta" : null}
+              </p>
+              {error && !loading && origin && destination ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    routingStartedRef.current = false;
+                    setRouteAttempt((n) => n + 1);
+                  }}
+                  className="rounded-md bg-blue-600 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-sm active:bg-blue-700"
+                >
+                  Tentar novamente
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {error && route && (
+            <p className="pointer-events-auto mt-1 rounded-md bg-red-600/90 px-3 py-2 text-xs text-white shadow">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Rodapé compacto (apenas em modo navegação): km restantes · ETA. */}
+      {navigating && route ? (
+        <div
+          className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.25rem)" }}
+        >
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-slate-900 shadow-md backdrop-blur">
+            <span className="text-sm font-bold leading-none">
+              {formatDistance(route.distance)}
+            </span>
+            <span className="h-4 w-px bg-slate-300" />
+            <span className="text-sm font-semibold leading-none">
+              {formatDuration(route.duration)}
+            </span>
+            <span className="h-4 w-px bg-slate-300" />
+            <span className="text-sm font-semibold leading-none text-slate-600">
+              {formatEta(route.duration)}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {/* Botão flutuante: trancar tela (canto superior esquerdo). */}
       <button
@@ -942,6 +1134,66 @@ export function NavigationFullScreenModal({
             {otherPins.length === 1 ? "viatura" : "viaturas"}
           </span>
         </div>
+      ) : null}
+
+      {/* Botão "Iniciar" — só aparece em modo preview (antes de navegar) e
+          quando há rota calculada. Estilo Google Maps: pílula verde grande
+          ao centro inferior, com seta de play. */}
+      {route && !navigating ? (
+        <button
+          type="button"
+          onClick={() => {
+            navInitializedRef.current = false;
+            setNavigating(true);
+          }}
+          className="pointer-events-auto absolute left-1/2 z-10 flex h-14 -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-6 text-white shadow-xl shadow-emerald-900/40 backdrop-blur active:bg-emerald-700"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+          aria-label="Iniciar navegação"
+          title="Iniciar navegação"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M6 4l16 8-16 8V4z" />
+          </svg>
+          <span className="text-base font-bold uppercase tracking-wider">Iniciar</span>
+        </button>
+      ) : null}
+
+      {/* Botão "Visão geral" — em modo navegação volta ao preview com fitBounds. */}
+      {navigating ? (
+        <button
+          type="button"
+          onClick={() => {
+            // Voltar ao preview: para a câmara seguir, e reaplica o fitBounds.
+            setNavigating(false);
+            routeFittedRef.current = false;
+          }}
+          className="pointer-events-auto absolute right-3 z-10 flex h-12 items-center gap-2 rounded-full bg-white/95 px-4 text-slate-900 shadow-lg backdrop-blur active:bg-slate-100"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+          aria-label="Voltar à visão geral da rota"
+          title="Visão geral"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-9-4z" />
+            <line x1="3" y1="7" x2="21" y2="7" />
+          </svg>
+          <span className="text-xs font-bold uppercase tracking-wider">Visão geral</span>
+        </button>
       ) : null}
 
       {/* Botão "Voltar" discreto no canto inferior esquerdo. */}
