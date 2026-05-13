@@ -50,7 +50,7 @@
  */
 
 import { Circle, GoogleMap, Marker, useJsApiLoader, type Libraries } from "@react-google-maps/api";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import {
   useWatchUserLocation,
@@ -206,7 +206,7 @@ export type GoogleMapComponentProps = {
  */
 function resolveApiKey(propKey?: string): string {
   if (propKey && propKey.trim()) return propKey.trim();
-  const envKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? "";
+  const envKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "";
   if (envKey.trim()) return envKey.trim();
   return FALLBACK_GOOGLE_MAPS_API_KEY;
 }
@@ -320,7 +320,10 @@ export function GoogleMapComponent({
   onWakeLockChange,
   showAccuracyCircle = true,
 }: GoogleMapComponentProps) {
-  const resolvedKey = useMemo(() => resolveApiKey(apiKey), [apiKey]);
+  // Não memoizamos: `resolveApiKey` lê `import.meta.env` (Vite substitui em
+  // build-time, mas o ESLint v7 `react-hooks/purity` vê o acesso como impuro).
+  // O cálculo é trivial e a chave raramente muda entre renders.
+  const resolvedKey = resolveApiKey(apiKey);
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-maps-script",

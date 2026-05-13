@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID?: string;
   /** Opcional — URL HTTPS que recebe POST de localização da viatura. Por omissão: Cloud Function «postDriverLocation» na região southamerica-east1. */
   readonly VITE_DRIVER_LOCATION_POST_URL?: string;
+  /** Opcional — Chave da Google Maps JavaScript API (consumida pelo `GoogleMapComponent`). */
+  readonly VITE_GOOGLE_MAPS_API_KEY?: string;
 }
 
 interface ImportMeta {

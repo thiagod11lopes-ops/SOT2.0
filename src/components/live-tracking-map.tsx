@@ -21,7 +21,7 @@
  *      ◉ `useScreenWakeLock` liberta a `WakeLockSentinel` no unmount.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleMapComponent, type GoogleMapComponentProps } from "./google-map";
 import { setUserLocation } from "../lib/firebase/userLocationFirestore";
 import { isFirebaseConfigured } from "../lib/firebase/config";
@@ -210,6 +210,22 @@ type StatusOverlayProps = {
   persistEnabled: boolean;
 };
 
+/**
+ * Devolve uma etiqueta humana ("agora mesmo", "há 12s", "há 3 min", …) para a
+ * última escrita ao Firestore. **Não memoizamos** propositadamente: o cálculo
+ * usa `Date.now()` (impuro) que mudaria o resultado a cada render mesmo com
+ * dependências iguais. Recalcular em cada render é trivial e mantém o eslint
+ * `react-hooks/purity` (v7) feliz.
+ */
+function formatLastWriteLabel(lastWriteAt: number | null): string | null {
+  if (!lastWriteAt) return null;
+  const diffSec = Math.round((Date.now() - lastWriteAt) / 1000);
+  if (diffSec < 5) return "agora mesmo";
+  if (diffSec < 60) return `há ${diffSec}s`;
+  if (diffSec < 3600) return `há ${Math.round(diffSec / 60)} min`;
+  return `há ${Math.round(diffSec / 3600)} h`;
+}
+
 function StatusOverlay({
   locationStatus,
   locationError,
@@ -219,14 +235,7 @@ function StatusOverlay({
   lastWriteAt,
   persistEnabled,
 }: StatusOverlayProps) {
-  const lastWriteLabel = useMemo(() => {
-    if (!lastWriteAt) return null;
-    const diffSec = Math.round((Date.now() - lastWriteAt) / 1000);
-    if (diffSec < 5) return "agora mesmo";
-    if (diffSec < 60) return `há ${diffSec}s`;
-    if (diffSec < 3600) return `há ${Math.round(diffSec / 60)} min`;
-    return `há ${Math.round(diffSec / 3600)} h`;
-  }, [lastWriteAt]);
+  const lastWriteLabel = formatLastWriteLabel(lastWriteAt);
 
   return (
     <div
