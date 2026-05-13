@@ -9,7 +9,10 @@
  *    via `useDriverActiveLocations`). Mostra a placa de cada uma como tooltip
  *    permanente; toque abre popup com o timestamp da última posição.
  *  - Barra superior com nome do destino, distância e tempo previsto.
- *  - Botão vermelho "PARE" (base) com modal de confirmação.
+ *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
+ *    devolve o motorista ao quadro de saídas. **Não** cancela o
+ *    rastreamento de localização da viatura (que continua activo até a
+ *    saída ser finalizada manualmente).
  *  - Acompanhamento contínuo da posição via `watchPosition` (apenas actualiza
  *    o marcador do motorista — o motorista controla o mapa manualmente).
  *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista se aproxima
@@ -22,7 +25,6 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "../components/ui/button";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
@@ -147,7 +149,6 @@ export function NavigationFullScreenModal({
   const [loading, setLoading] = useState<"" | "locating" | "geocoding" | "routing">("");
   const [error, setError] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [confirmStopOpen, setConfirmStopOpen] = useState(false);
   /**
    * Quando true, sobrepõe-se ao mapa um overlay 100 % preto que tapa toda a UI —
    * o motorista poupa bateria/brilho e continua a ser guiado pela voz das manobras.
@@ -812,23 +813,38 @@ export function NavigationFullScreenModal({
         </div>
       ) : null}
 
-      {/* Barra inferior: botão PARE em destaque. */}
-      <div
-        className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-6"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      {/* Botão "Voltar" discreto no canto inferior esquerdo.
+          Apenas fecha o modal de navegação — **não** interfere com o
+          rastreamento de localização da viatura, que continua activo até o
+          motorista finalizar a saída no quadro principal. Visual igual aos
+          restantes botões flutuantes (círculo escuro semi-transparente). */}
+      <button
+        type="button"
+        onClick={() => {
+          window.speechSynthesis?.cancel?.();
+          onClose();
+        }}
+        className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+        aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
+        title="Voltar"
       >
-        <button
-          type="button"
-          onClick={() => setConfirmStopOpen(true)}
-          className="pointer-events-auto flex h-14 w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-red-600 text-lg font-extrabold uppercase tracking-[0.18em] text-white shadow-lg shadow-red-900/40 active:bg-red-700"
-          aria-label="Parar navegação"
+        <svg
+          viewBox="0 0 24 24"
+          width="24"
+          height="24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-            <path d="M6 6h12v12H6z" />
-          </svg>
-          Pare
-        </button>
-      </div>
+          {/* Seta para a esquerda — símbolo universal de "voltar". */}
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
+      </button>
 
       {/* Seletor de destino ambíguo removido: o motorista já escolhe o endereço
           canónico durante a digitação no campo «Destino» (autocomplete estilo
@@ -866,50 +882,6 @@ export function NavigationFullScreenModal({
         />
       ) : null}
 
-      {/* Modal de confirmação para parar a navegação. */}
-      {confirmStopOpen ? (
-        <div
-          className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sot-nav-stop-title"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmStopOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <h2 id="sot-nav-stop-title" className="mb-1 text-lg font-bold text-slate-900">
-              Parar navegação?
-            </h2>
-            <p className="mb-4 text-sm text-slate-600">
-              O mapa irá fechar-se. O rastreamento de localização da viatura continuará
-              ativo até finalizar a saída.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="h-11 flex-1 rounded-xl"
-                onClick={() => setConfirmStopOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="h-11 flex-1 rounded-xl bg-red-600 font-bold uppercase tracking-wider text-white hover:bg-red-700"
-                onClick={() => {
-                  window.speechSynthesis?.cancel?.();
-                  setConfirmStopOpen(false);
-                  onClose();
-                }}
-              >
-                Parar
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
