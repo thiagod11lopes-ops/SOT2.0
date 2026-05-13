@@ -109,6 +109,14 @@ export function NavigationFullScreenModal({
   const spokenStepIdxRef = useRef<number>(-1);
   /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
   const headingRef = useRef<number | null>(null);
+  /**
+   * `true` enquanto a rota desta sessão estiver a ser pedida ou já foi recebida —
+   * evita refetch a cada actualização do GPS (que sobrescrevia o `route` e
+   * disparava `fitBounds`, perdendo o zoom/pan que o motorista tinha aplicado).
+   */
+  const routingStartedRef = useRef(false);
+  /** `true` depois da primeira vez que enquadramos a vista para a rota — evita refit posterior. */
+  const routeFittedRef = useRef(false);
 
   /** Placa **do motorista actual** (primeiro item do campo `viaturas`) — filtrada da lista de outras viaturas. */
   const currentPlacaNorm = useMemo(
@@ -234,14 +242,20 @@ export function NavigationFullScreenModal({
 
   // ---------------------------------------------------------------------------
   // 3) Calcular rota assim que origem + destino existirem.
+  //    Só corre **uma vez por sessão** (guardado por `routingStartedRef`) — caso
+  //    contrário cada update do GPS recalcularia a rota e o redesenho voltaria
+  //    a chamar `fitBounds`, destruindo o zoom/pan do utilizador.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open || !origin || !destination) return;
+    if (routingStartedRef.current) return;
+    routingStartedRef.current = true;
     let cancelled = false;
     setLoading("routing");
     fetchDrivingRoute(origin, destination).then((r) => {
       if (cancelled) return;
       if (!r) {
+        routingStartedRef.current = false; // permite retry no próximo tick do GPS
         setError("Não foi possível calcular a rota até ao destino.");
         setLoading("");
         return;
@@ -385,9 +399,13 @@ export function NavigationFullScreenModal({
     }).addTo(map);
     routeLayerRef.current = poly;
 
-    // Ajustar visualização a toda a rota.
-    const bounds = poly.getBounds();
-    map.fitBounds(bounds, { padding: [80, 80] });
+    // Enquadra a vista a toda a rota apenas **uma vez** por sessão — depois
+    // disso o motorista controla pan/zoom livremente sem o mapa "fugir".
+    if (!routeFittedRef.current) {
+      const bounds = poly.getBounds();
+      map.fitBounds(bounds, { padding: [80, 80] });
+      routeFittedRef.current = true;
+    }
   }, [route]);
 
   // ---------------------------------------------------------------------------
@@ -513,6 +531,8 @@ export function NavigationFullScreenModal({
     setScreenLocked(false);
     setFarewellAnimating(false);
     spokenStepIdxRef.current = -1;
+    routingStartedRef.current = false;
+    routeFittedRef.current = false;
   }, [open]);
 
   // ---------------------------------------------------------------------------
