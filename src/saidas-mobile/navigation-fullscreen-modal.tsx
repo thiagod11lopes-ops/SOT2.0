@@ -723,12 +723,23 @@ export function NavigationFullScreenModal({
         }}
         className="pointer-events-auto absolute left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
         style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
-        aria-label="Trancar a tela (poupa brilho/bateria — toque duas vezes para destravar)"
-        title="Trancar tela"
+        aria-label="Desligar a tela (poupa brilho/bateria — toque duas vezes para voltar)"
+        title="Desligar tela"
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-          {/* Ícone de cadeado fechado. */}
-          <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z" />
+        <svg
+          viewBox="0 0 24 24"
+          width="22"
+          height="22"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {/* Símbolo universal de "power" — arco aberto no topo + traço vertical. */}
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+          <line x1="12" y1="2" x2="12" y2="12" />
         </svg>
       </button>
 
