@@ -1,31 +1,42 @@
 /**
  * Modal de navegação em ecrã cheio.
  *
- * Após o motorista tocar em "Iniciar Saída" no SOT mobile, este componente abre por cima
- * da app e mostra:
- *  - Mapa Leaflet a todo o ecrã com a rota desenhada (OSRM).
- *  - Marcadores de origem (posição atual, azul) e destino (vermelho).
+ * Após o motorista tocar em "Iniciar Saída" no SOT mobile, este componente abre
+ * por cima da app e mostra:
+ *  - Mapa **Google Maps** a todo o ecrã com a rota desenhada (OSRM).
+ *  - Marcadores de origem (chevron azul rotativo) e destino (pino vermelho).
  *  - Pinos laranjas das **outras viaturas com saída em curso** (tempo real,
- *    via `useDriverActiveLocations`). Mostra a placa de cada uma como tooltip
- *    permanente; toque abre popup com o timestamp da última posição.
+ *    via `useDriverActiveLocations`). A placa aparece como label permanente;
+ *    o toque abre uma `InfoWindow` com o timestamp da última posição.
  *  - Barra superior com nome do destino, distância e tempo previsto.
  *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
  *    devolve o motorista ao quadro de saídas. **Não** cancela o
- *    rastreamento de localização da viatura (que continua activo até a
- *    saída ser finalizada manualmente).
- *  - Acompanhamento contínuo da posição via `watchPosition` (apenas actualiza
- *    o marcador do motorista — o motorista controla o mapa manualmente).
- *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista se aproxima
- *    de cada passo.
+ *    rastreamento de localização da viatura.
+ *  - Acompanhamento contínuo da posição via `useWatchUserLocation` (apenas
+ *    actualiza o marcador do motorista — o motorista controla o mapa
+ *    manualmente após o primeiro `fitBounds`).
+ *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista
+ *    se aproxima de cada passo.
+ *  - Wake Lock (`useScreenWakeLock`) para o ecrã não apagar em viagem.
  *
- * Toda a stack é grátis: Nominatim + OSRM + Leaflet + tiles OSM. Sem chaves.
+ * Stack: Maps JavaScript API (Google) para renderização + OSRM (gratuito)
+ * para rotas + Nominatim (gratuito) para geocoding. A chave Google é lida
+ * do secret `VITE_GOOGLE_MAPS_API_KEY` (sem chave, mostra placeholder).
  */
 
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import {
+  GoogleMap,
+  InfoWindow,
+  Marker,
+  Polyline,
+  useJsApiLoader,
+  type Libraries,
+} from "@react-google-maps/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
+import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
+import { useWatchUserLocation } from "../hooks/useWatchUserLocation";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
@@ -40,17 +51,18 @@ import {
   maneuverToPortuguese,
 } from "../lib/navigationRouting";
 
-const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+/**
+ * Bibliotecas adicionais carregadas com o Maps JS. Mantido fora do componente
+ * (referência estável) — caso contrário o `useJsApiLoader` re-injecta o script
+ * a cada render, gerando o aviso "LoadScript has been reloaded unintentionally".
+ */
+const GMAPS_LIBRARIES: Libraries = ["geometry"];
 
-/** Escape HTML para popup do Leaflet — evita XSS via placa adulterada. */
-function escapePopupHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+/**
+ * Mesmo `id` que o `GoogleMapComponent` reutilizável — `useJsApiLoader`
+ * partilha o script entre todas as instâncias com o mesmo id.
+ */
+const GMAPS_LOADER_ID = "google-maps-script";
 
 /** Texto relativo curto: "agora mesmo", "há 3 min", "há 2 h", "há 1 dia". */
 function formatRelativeTime(ms: number, now: number = Date.now()): string {
@@ -95,53 +107,91 @@ type Props = {
   initialScreenLocked?: boolean;
 };
 
+/** Estilo CSS do contentor do `<GoogleMap>` — ocupa todo o `<div>` pai. */
+const MAP_CONTAINER_STYLE: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+};
+
+/** Centro inicial enquanto o GPS ainda não fixou — Rio de Janeiro, BR. */
+const DEFAULT_CENTER: Coord = { lat: -22.9, lng: -43.2 };
+
+/** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
+const MAP_OPTIONS: google.maps.MapOptions = {
+  streetViewControl: false,
+  mapTypeControl: false,
+  fullscreenControl: false,
+  rotateControl: false,
+  scaleControl: false,
+  zoomControl: true,
+  clickableIcons: false,
+  gestureHandling: "greedy",
+  disableDefaultUI: false,
+  keyboardShortcuts: false,
+};
+
+/** Estilo da polilinha da rota — azul sólido, espessura confortável em mobile. */
+const ROUTE_POLYLINE_OPTIONS: google.maps.PolylineOptions = {
+  strokeColor: "#2563eb",
+  strokeOpacity: 0.9,
+  strokeWeight: 6,
+  geodesic: false,
+  clickable: false,
+  zIndex: 5,
+};
+
 export function NavigationFullScreenModal({
   open,
   record,
   onClose,
   initialScreenLocked = false,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const routeLayerRef = useRef<L.Polyline | null>(null);
-  const driverMarkerRef = useRef<L.Marker | null>(null);
-  const destMarkerRef = useRef<L.Marker | null>(null);
-  /** Layer group dos pinos de **outras** viaturas com saída em curso (tempo real). */
-  const othersLayerRef = useRef<L.LayerGroup | null>(null);
-  const watchIdRef = useRef<number | null>(null);
+  // ─── Loader do Google Maps script ────────────────────────────────────────
+  // Lê a chave da variável Vite (substituída no build pelo workflow GitHub).
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "";
+  const { isLoaded: gmapsLoaded, loadError: gmapsLoadError } = useJsApiLoader({
+    id: GMAPS_LOADER_ID,
+    googleMapsApiKey: apiKey,
+    libraries: GMAPS_LIBRARIES,
+    language: "pt-BR",
+    region: "BR",
+  });
+
+  // ─── Estado / refs ───────────────────────────────────────────────────────
+  /** Instância do mapa Google (definida no `onLoad`). Usada para `fitBounds`. */
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const spokenStepIdxRef = useRef<number>(-1);
-  /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
-  const headingRef = useRef<number | null>(null);
+  /**
+   * Última heading válida (graus, 0 = norte). Mantida em state para forçar
+   * re-render do ícone do motorista a cada actualização da bússola.
+   */
+  const [heading, setHeading] = useState<number | null>(null);
   /**
    * `true` enquanto a rota desta sessão estiver a ser pedida ou já foi recebida —
    * evita refetch a cada actualização do GPS (que sobrescrevia o `route` e
    * disparava `fitBounds`, perdendo o zoom/pan que o motorista tinha aplicado).
    */
   const routingStartedRef = useRef(false);
-  /** `true` depois da primeira vez que enquadramos a vista para a rota — evita refit posterior. */
+  /** `true` depois da primeira vez que enquadramos a vista para a rota. */
   const routeFittedRef = useRef(false);
 
-  /** Placa **do motorista actual** (primeiro item do campo `viaturas`) — filtrada da lista de outras viaturas. */
+  /** Placa **do motorista actual** — filtrada da lista de outras viaturas. */
   const currentPlacaNorm = useMemo(
     () => normalizePlaca(primaryPlacaFromViaturasField(record.viaturas)),
     [record.viaturas],
   );
 
-  /**
-   * Subscrição **em tempo real** (`onSnapshot`) à coleção `driver_active_locations`
-   * do Firestore — devolve todas as viaturas com sessão de rastreamento activa.
-   * Já degrada graciosamente se o Firebase não estiver configurado.
-   */
+  /** Subscrição realtime à coleção `driver_active_locations` (outras viaturas). */
   const { pins: activePins } = useDriverActiveLocations(open);
-  /** Pinos das **outras** viaturas (exclui a própria). */
   const otherPins = useMemo(
     () => activePins.filter((p) => normalizePlaca(p.placa) !== currentPlacaNorm),
     [activePins, currentPlacaNorm],
   );
+  /** Pin actualmente seleccionado (mostra `InfoWindow` com a placa + timestamp). */
+  const [selectedOtherPin, setSelectedOtherPin] = useState<string | null>(null);
+
   /** Timestamp do último toque na overlay preta — usado para detectar duplo-clique. */
   const lastLockTapRef = useRef<number>(0);
-  /** Wake Lock activo (mantém ecrã aceso durante a navegação). */
-  const wakeLockRef = useRef<unknown | null>(null);
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
@@ -149,19 +199,24 @@ export function NavigationFullScreenModal({
   const [loading, setLoading] = useState<"" | "locating" | "geocoding" | "routing">("");
   const [error, setError] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  /**
-   * Quando true, sobrepõe-se ao mapa um overlay 100 % preto que tapa toda a UI —
-   * o motorista poupa bateria/brilho e continua a ser guiado pela voz das manobras.
-   * Desbloqueia-se com **duplo toque** em qualquer parte do ecrã.
-   */
+  /** Overlay 100 % preta que cobre tudo enquanto activa. Desbloqueia com duplo toque. */
   const [screenLocked, setScreenLocked] = useState(false);
-
-  /**
-   * Animação de transição "Adeus, vejo-te lá" quando o motorista escolhe iniciar
-   * em "Segundo plano": uma mão acena no centro enquanto a tela escurece
-   * gradualmente até preto absoluto (≈ 2,2 s). No fim, activa `screenLocked`.
-   */
+  /** Animação "Até já — boa viagem" antes de bloquear a tela (modo segundo plano). */
   const [farewellAnimating, setFarewellAnimating] = useState(false);
+
+  // ─── Rastreamento GPS contínuo via hook reutilizável ─────────────────────
+  // Activo enquanto o modal estiver aberto. Cleanup automático no unmount.
+  const { position: gpsPosition, error: gpsError } = useWatchUserLocation({
+    enabled: open,
+    enableHighAccuracy: true,
+    maximumAge: 5000,
+    timeout: 30000,
+  });
+
+  // ─── Wake Lock via hook reutilizável ─────────────────────────────────────
+  // Mantém o ecrã ligado enquanto o modal está aberto, prevenindo throttling
+  // de GPS pelo iOS/Android. Liberta no unmount automaticamente.
+  useScreenWakeLock({ enabled: open });
 
   /**
    * Publica o estado "modo navegação activo" para o `SaidasLayout` esconder a
@@ -185,42 +240,69 @@ export function NavigationFullScreenModal({
     }, 2200);
     return () => window.clearTimeout(t);
   }, [open, initialScreenLocked]);
+
   const destinationQuery = useMemo(() => buildDestinationQuery(record), [record]);
 
   // ---------------------------------------------------------------------------
-  // 1) Obter posição inicial (uma vez).
+  // 1) Sincronizar `origin` + `heading` a partir do hook GPS.
+  //    A primeira emissão serve como "initial fix"; emissões seguintes
+  //    actualizam o marcador do motorista. A heading só é considerada
+  //    quando há velocidade ≥ 0,5 m/s (≈ 1,8 km/h) — abaixo disso o valor
+  //    do sensor é ruído puro.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
-    setError(null);
-    setLoading("locating");
+    if (gpsPosition) {
+      const next: Coord = { lat: gpsPosition.lat, lng: gpsPosition.lng };
+      setOrigin(next);
+      const rawHeading = gpsPosition.heading;
+      const speed = gpsPosition.speed;
+      if (
+        rawHeading !== null &&
+        Number.isFinite(rawHeading) &&
+        (speed === null || speed > 0.5)
+      ) {
+        setHeading(rawHeading);
+      }
+      if (loading === "locating") setLoading("");
+    }
+  }, [open, gpsPosition, loading]);
+
+  // ---------------------------------------------------------------------------
+  // 1b) Mostrar mensagem de erro de GPS (permissão negada, etc.).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!open) return;
+    if (!gpsError) return;
+    setError(
+      gpsError.code === gpsError.PERMISSION_DENIED
+        ? "Permissão de localização negada. Active nas definições do telemóvel."
+        : "Não foi possível obter a sua localização atual.",
+    );
+    setLoading("");
+  }, [open, gpsError]);
+
+  // ---------------------------------------------------------------------------
+  // 1c) Iniciar status "locating" assim que abre o modal (até o GPS responder).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!open) return;
     if (!("geolocation" in navigator)) {
       setError("Este dispositivo não suporta geolocalização.");
-      setLoading("");
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLoading("");
-      },
-      (err) => {
-        setError(
-          err.code === err.PERMISSION_DENIED
-            ? "Permissão de localização negada. Active nas definições do telemóvel."
-            : "Não foi possível obter a sua localização atual.",
-        );
-        setLoading("");
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
-    );
+    setError(null);
+    if (!gpsPosition) {
+      setLoading("locating");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // ---------------------------------------------------------------------------
-  // 2) Geocodificar o destino. Espera por `origin` antes de pesquisar — sem origem,
-  // não conseguimos ordenar os candidatos por distância. Auto-escolhe sempre o
-  // candidato mais próximo: o motorista já escolheu o endereço durante a digitação
-  // (autocomplete estilo Waze/Maps no campo «Destino»).
+  // 2) Geocodificar o destino. Espera por `origin` antes de pesquisar — sem
+  //    origem, não conseguimos ordenar os candidatos por distância. Auto-escolhe
+  //    sempre o candidato mais próximo (o motorista já escolheu o endereço
+  //    durante a digitação no campo «Destino» com autocomplete).
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
@@ -231,7 +313,7 @@ export function NavigationFullScreenModal({
       return;
     }
     if (!origin) return;
-    if (destination) return; // já temos destino escolhido
+    if (destination) return;
     let cancelled = false;
     setLoading("geocoding");
     geocodeAddresses(destinationQuery, 6).then((results) => {
@@ -256,9 +338,7 @@ export function NavigationFullScreenModal({
 
   // ---------------------------------------------------------------------------
   // 3) Calcular rota assim que origem + destino existirem.
-  //    Só corre **uma vez por sessão** (guardado por `routingStartedRef`) — caso
-  //    contrário cada update do GPS recalcularia a rota e o redesenho voltaria
-  //    a chamar `fitBounds`, destruindo o zoom/pan do utilizador.
+  //    Só corre **uma vez por sessão** (guardado por `routingStartedRef`).
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open || !origin || !destination) return;
@@ -269,7 +349,7 @@ export function NavigationFullScreenModal({
     fetchDrivingRoute(origin, destination).then((r) => {
       if (cancelled) return;
       if (!r) {
-        routingStartedRef.current = false; // permite retry no próximo tick do GPS
+        routingStartedRef.current = false;
         setError("Não foi possível calcular a rota até ao destino.");
         setLoading("");
         return;
@@ -284,218 +364,78 @@ export function NavigationFullScreenModal({
   }, [open, origin, destination]);
 
   // ---------------------------------------------------------------------------
-  // 4) Inicializar mapa Leaflet quando o modal abre.
+  // 4) `fitBounds` à rota — uma única vez por sessão.
+  //    Depois disso o motorista controla o pan/zoom livremente.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!open || !containerRef.current) return;
-    const el = containerRef.current;
-
-    let cancelled = false;
-    let map: L.Map | null = null;
-    let rafId = 0;
-    let tmo = 0;
-
-    function init() {
-      if (cancelled || !containerRef.current) return;
-      map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
-        [-22.9, -43.2],
-        6,
-      );
-
-      L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
-      mapRef.current = map;
-
-      // Layer group das outras viaturas (criado antes dos marcadores do
-      // motorista/destino para ficar visualmente por baixo destes).
-      othersLayerRef.current = L.layerGroup().addTo(map);
-
-      rafId = requestAnimationFrame(() => {
-        map?.invalidateSize();
-        requestAnimationFrame(() => map?.invalidateSize());
-      });
-      tmo = window.setTimeout(() => map?.invalidateSize(), 320);
+    if (!route || !mapInstance) return;
+    if (routeFittedRef.current) return;
+    const bounds = new google.maps.LatLngBounds();
+    for (const [lng, lat] of route.geometry.coordinates) {
+      bounds.extend({ lat, lng });
     }
-
-    init();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-      window.clearTimeout(tmo);
-      if (map) {
-        map.remove();
-      }
-      mapRef.current = null;
-      routeLayerRef.current = null;
-      driverMarkerRef.current = null;
-      destMarkerRef.current = null;
-      othersLayerRef.current = null;
-    };
-  }, [open]);
-
-  // ---------------------------------------------------------------------------
-  // 5) Desenhar marcadores / rota quando os dados chegam.
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !origin) return;
-
-    // Marcador do motorista: chevron azul (estilo Google Maps/Waze). O DIV interno
-    // rotaciona em função da `headingRef` para indicar a direcção de marcha.
-    if (!driverMarkerRef.current) {
-      const driverIcon = L.divIcon({
-        className: "sot-nav-driver-icon",
-        html:
-          '<div class="sot-nav-driver-rotate" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;transform:rotate(0deg);transition:transform 200ms linear;">' +
-          '<svg viewBox="0 0 24 24" width="36" height="36" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.45));">' +
-          // Círculo de fundo branco
-          '<circle cx="12" cy="12" r="10" fill="#fff"/>' +
-          // Seta azul interna (apontando para cima — norte)
-          '<path d="M12 4 L18 18 L12 15 L6 18 Z" fill="#2563eb" stroke="#1d4ed8" stroke-width="0.6" stroke-linejoin="round"/>' +
-          "</svg></div>",
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-      });
-      driverMarkerRef.current = L.marker([origin.lat, origin.lng], {
-        icon: driverIcon,
-        interactive: false,
-        keyboard: false,
-      }).addTo(map);
-    } else {
-      driverMarkerRef.current.setLatLng([origin.lat, origin.lng]);
-    }
-
-    // Aplica rotação ao DIV interno para indicar a direcção de marcha.
-    const el = driverMarkerRef.current.getElement?.();
-    const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
-    if (rot) {
-      const h = headingRef.current;
-      rot.style.transform =
-        h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
-    }
-  }, [origin]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !destination) return;
-
-    const destIcon = L.divIcon({
-      className: "sot-nav-dest-icon",
-      html: '<div style="width:20px;height:20px;background:#dc2626;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px rgba(220,38,38,0.45);"></div>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
-    if (destMarkerRef.current) {
-      destMarkerRef.current.setLatLng([destination.lat, destination.lng]);
-    } else {
-      destMarkerRef.current = L.marker([destination.lat, destination.lng], {
-        icon: destIcon,
-        title: destination.displayName,
-      }).addTo(map);
-    }
-  }, [destination]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !route) return;
-
-    if (routeLayerRef.current) {
-      routeLayerRef.current.remove();
-      routeLayerRef.current = null;
-    }
-    const latlngs: [number, number][] = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-    const poly = L.polyline(latlngs, {
-      color: "#2563eb",
-      weight: 6,
-      opacity: 0.85,
-      lineJoin: "round",
-      lineCap: "round",
-    }).addTo(map);
-    routeLayerRef.current = poly;
-
-    // Enquadra a vista a toda a rota apenas **uma vez** por sessão — depois
-    // disso o motorista controla pan/zoom livremente sem o mapa "fugir".
-    if (!routeFittedRef.current) {
-      const bounds = poly.getBounds();
-      map.fitBounds(bounds, { padding: [80, 80] });
+    if (!bounds.isEmpty()) {
+      mapInstance.fitBounds(bounds, 80);
       routeFittedRef.current = true;
     }
+  }, [route, mapInstance]);
+
+  // ---------------------------------------------------------------------------
+  // 5) Coordenadas da polilinha — memoizadas para evitar recriar o array
+  //    a cada render (o `<Polyline>` re-render é caro com rotas longas).
+  // ---------------------------------------------------------------------------
+  const routePath = useMemo<Coord[]>(() => {
+    if (!route) return [];
+    return route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
   }, [route]);
 
   // ---------------------------------------------------------------------------
-  // 5b) Renderizar pinos das **outras viaturas em curso** (real-time Firestore).
-  //    Marcador laranja com tooltip permanente mostrando a placa. Clique abre
-  //    popup com timestamp da última posição. O motorista actual não aparece
-  //    aqui — já é representado pelo chevron azul.
+  // 6) Ícones dos marcadores. Construídos apenas quando o script Google
+  //    estiver carregado (precisam de `google.maps.SymbolPath`).
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current;
-    const group = othersLayerRef.current;
-    if (!map || !group) return;
+  const driverIcon = useMemo<google.maps.Symbol | null>(() => {
+    if (!gmapsLoaded) return null;
+    return {
+      // Chevron apontando para cima (norte). A rotação é aplicada por `rotation`.
+      path: "M 0,-12 L 8,8 L 0,4 L -8,8 Z",
+      fillColor: "#2563eb",
+      fillOpacity: 1,
+      strokeColor: "#1d4ed8",
+      strokeWeight: 1.5,
+      strokeOpacity: 1,
+      scale: 1.4,
+      rotation: heading ?? 0,
+      anchor: new google.maps.Point(0, 0),
+    };
+  }, [gmapsLoaded, heading]);
 
-    group.clearLayers();
+  const destinationIcon = useMemo<google.maps.Symbol | null>(() => {
+    if (!gmapsLoaded) return null;
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: "#dc2626",
+      fillOpacity: 1,
+      strokeColor: "#FFFFFF",
+      strokeWeight: 3,
+      scale: 9,
+    };
+  }, [gmapsLoaded]);
 
-    const markerOpts: L.CircleMarkerOptions = {
-      radius: 9,
-      color: "#c2410c",
-      weight: 2,
+  const otherVehicleIcon = useMemo<google.maps.Symbol | null>(() => {
+    if (!gmapsLoaded) return null;
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
       fillColor: "#fb923c",
       fillOpacity: 0.9,
+      strokeColor: "#c2410c",
+      strokeWeight: 2,
+      scale: 8,
     };
-
-    for (const p of otherPins) {
-      const m = L.circleMarker([p.lat, p.lng], markerOpts);
-      const placaLabel = escapePopupHtml(p.placa);
-      const popupHtml =
-        p.lastUpdateAtMs !== null
-          ? `<strong>${placaLabel}</strong><br /><span style="font-size:11px;color:#555">Última posição: ${escapePopupHtml(
-              formatRelativeTime(p.lastUpdateAtMs),
-            )}</span>`
-          : `<strong>${placaLabel}</strong><br /><span style="font-size:11px;color:#888">Hora da última posição desconhecida.</span>`;
-      m.bindPopup(popupHtml, { className: "sot-driver-map-popup" });
-      m.bindTooltip(p.placa, {
-        permanent: true,
-        direction: "top",
-        offset: [0, -10],
-        className: "sot-driver-map-placa-tooltip",
-      });
-      m.addTo(group);
-    }
-  }, [otherPins]);
+  }, [gmapsLoaded]);
 
   // ---------------------------------------------------------------------------
-  // 6) Acompanhar a posição com `watchPosition` enquanto o modal está aberto.
-  //    Actualiza o marcador do motorista e anuncia manobras por voz.
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!open) return;
-    if (!("geolocation" in navigator)) return;
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        const here: Coord = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        // Heading só é fiável quando há velocidade — ignoramos abaixo de 0.5 m/s (~1.8 km/h).
-        const speed = typeof pos.coords.speed === "number" ? pos.coords.speed : null;
-        const rawHeading = typeof pos.coords.heading === "number" ? pos.coords.heading : null;
-        if (rawHeading !== null && Number.isFinite(rawHeading) && (speed === null || speed > 0.5)) {
-          headingRef.current = rawHeading;
-        }
-        setOrigin(here);
-        if (driverMarkerRef.current) driverMarkerRef.current.setLatLng([here.lat, here.lng]);
-        maybeSpeakNextManeuver(here);
-      },
-      undefined,
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
-    );
-    watchIdRef.current = id;
-    return () => {
-      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // ---------------------------------------------------------------------------
-  // Voz: anuncia a próxima manobra quando o motorista está a < ~100 m do início dela.
+  // 7) Voz: anuncia a próxima manobra quando o motorista está a < 120 m do
+  //    início dela. Usa Web Speech API.
   // ---------------------------------------------------------------------------
   const speak = useCallback(
     (text: string) => {
@@ -508,7 +448,7 @@ export function NavigationFullScreenModal({
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utter);
       } catch {
-        // ignore
+        /* ignore */
       }
     },
     [voiceEnabled],
@@ -534,8 +474,15 @@ export function NavigationFullScreenModal({
     [route, speak],
   );
 
-  // Limpa o estado de geocoding/rota assim que o modal fecha — garantindo que a
-  // próxima abertura recomeça do zero.
+  // Dispara o `maybeSpeakNextManeuver` a cada nova posição GPS.
+  useEffect(() => {
+    if (!gpsPosition) return;
+    maybeSpeakNextManeuver({ lat: gpsPosition.lat, lng: gpsPosition.lng });
+  }, [gpsPosition, maybeSpeakNextManeuver]);
+
+  // ---------------------------------------------------------------------------
+  // 8) Reset ao fechar — garante que a próxima abertura recomeça do zero.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (open) return;
     setDestination(null);
@@ -544,62 +491,18 @@ export function NavigationFullScreenModal({
     setLoading("");
     setScreenLocked(false);
     setFarewellAnimating(false);
+    setSelectedOtherPin(null);
     spokenStepIdxRef.current = -1;
     routingStartedRef.current = false;
     routeFittedRef.current = false;
   }, [open]);
 
-  // ---------------------------------------------------------------------------
-  // Wake Lock: pede ao sistema operativo para NÃO apagar o ecrã enquanto a
-  // navegação está aberta. Sem isto, iOS apaga ao fim de ~30 s e o GPS pausa.
-  // A API (`navigator.wakeLock`) está em todos os browsers modernos (Safari 16.4+).
-  // Re-adquirimos o lock se a página volta a ficar visível (após mudança de aba).
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!open) return;
-
-    async function acquire() {
-      try {
-        const nav = navigator as unknown as {
-          wakeLock?: { request: (type: "screen") => Promise<unknown> };
-        };
-        if (nav.wakeLock && typeof nav.wakeLock.request === "function") {
-          wakeLockRef.current = await nav.wakeLock.request("screen");
-        }
-      } catch (e) {
-        console.warn("[SOT] Wake Lock indisponível:", e);
-      }
-    }
-
-    void acquire();
-
-    function onVisibility() {
-      if (document.visibilityState === "visible") void acquire();
-    }
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      const lock = wakeLockRef.current as { release?: () => Promise<void> } | null;
-      if (lock && typeof lock.release === "function") {
-        lock.release().catch(() => {
-          /* ignore */
-        });
-      }
-      wakeLockRef.current = null;
-    };
-  }, [open]);
-
   /**
-   * Quando a tela está trancada, aplica várias técnicas para escurecer o máximo
-   * possível do dispositivo, inclusive a status bar (hora/wifi/bateria):
-   *
+   * Quando a tela está trancada, escurece o máximo possível do dispositivo,
+   * inclusive a status bar (hora/wifi/bateria):
    *  1. `filter: brightness(0)` no `<html>` — qualquer pixel fora da overlay vai a preto.
-   *  2. Altera `<meta name="theme-color">` para `#000000` — pinta a status bar no
-   *     Chrome Android e em alguns Safaris (PWA standalone).
-   *  3. Pede Fullscreen API (`requestFullscreen`) — em Chrome Android esconde
-   *     totalmente a status bar + barra de URL. (Safari mobile não suporta
-   *     fullscreen em browser normal, só funciona em PWA standalone.)
+   *  2. Altera `<meta name="theme-color">` para `#000000` (status bar Android).
+   *  3. Pede Fullscreen API — em Chrome Android esconde a status bar + URL.
    */
   useEffect(() => {
     if (!screenLocked) return;
@@ -646,8 +549,8 @@ export function NavigationFullScreenModal({
   }, [screenLocked]);
 
   /**
-   * Handler do duplo-clique para destrancar a tela. Se o segundo toque vier num
-   * intervalo curto (< 380 ms), considera-se duplo-tap e desbloqueia.
+   * Duplo-clique para destrancar — se o segundo toque vier num intervalo
+   * curto (< 380 ms), desbloqueia.
    */
   function handleLockOverlayTap() {
     const now = Date.now();
@@ -659,17 +562,116 @@ export function NavigationFullScreenModal({
     }
   }
 
+  /** Handler do `onLoad` do `<GoogleMap>` — guarda a instância para `fitBounds`. */
+  const handleMapLoad = useCallback((map: google.maps.Map) => {
+    setMapInstance(map);
+  }, []);
+
+  /** Cleanup quando o `<GoogleMap>` é desmontado. */
+  const handleMapUnmount = useCallback(() => {
+    setMapInstance(null);
+  }, []);
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[2000] flex flex-col bg-[hsl(var(--background))]">
       {/* Mapa em fundo, ocupa o resto do ecrã. */}
       <div
-        ref={containerRef}
         className="absolute inset-0"
         style={{ zIndex: 0 }}
         aria-label="Mapa de navegação"
-      />
+      >
+        {!apiKey ? (
+          <MapPlaceholder tone="empty">
+            <strong>Chave Google Maps em falta</strong>
+            <span className="mt-1 text-xs">
+              Define <code>VITE_GOOGLE_MAPS_API_KEY</code> nos secrets do GitHub.
+            </span>
+          </MapPlaceholder>
+        ) : gmapsLoadError ? (
+          <MapPlaceholder tone="error">
+            Falha ao carregar Google Maps: {gmapsLoadError.message}
+          </MapPlaceholder>
+        ) : !gmapsLoaded ? (
+          <MapPlaceholder tone="loading">A carregar mapa…</MapPlaceholder>
+        ) : (
+          <GoogleMap
+            mapContainerStyle={MAP_CONTAINER_STYLE}
+            center={origin ?? DEFAULT_CENTER}
+            zoom={origin ? 14 : 6}
+            options={MAP_OPTIONS}
+            onLoad={handleMapLoad}
+            onUnmount={handleMapUnmount}
+          >
+            {/* Polilinha da rota (azul) — só renderiza após OSRM responder. */}
+            {routePath.length > 0 ? (
+              <Polyline path={routePath} options={ROUTE_POLYLINE_OPTIONS} />
+            ) : null}
+
+            {/* Marcador do destino (círculo vermelho). */}
+            {destination && destinationIcon ? (
+              <Marker
+                position={{ lat: destination.lat, lng: destination.lng }}
+                icon={destinationIcon}
+                title={destination.displayName}
+                zIndex={20}
+              />
+            ) : null}
+
+            {/* Marcador do motorista (chevron azul rotativo). */}
+            {origin && driverIcon ? (
+              <Marker
+                position={origin}
+                icon={driverIcon}
+                clickable={false}
+                zIndex={30}
+              />
+            ) : null}
+
+            {/* Pinos das outras viaturas em curso (laranja). Clique abre InfoWindow. */}
+            {otherVehicleIcon
+              ? otherPins.map((p) => {
+                  const key = `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+                  return (
+                    <Marker
+                      key={key}
+                      position={{ lat: p.lat, lng: p.lng }}
+                      icon={otherVehicleIcon}
+                      label={{
+                        text: p.placa,
+                        fontSize: "11px",
+                        fontWeight: "700",
+                        color: "#7c2d12",
+                        className: "sot-driver-map-placa-tooltip",
+                      }}
+                      onClick={() => setSelectedOtherPin(key)}
+                      zIndex={15}
+                    >
+                      {selectedOtherPin === key ? (
+                        <InfoWindow
+                          position={{ lat: p.lat, lng: p.lng }}
+                          onCloseClick={() => setSelectedOtherPin(null)}
+                        >
+                          <div style={{ fontSize: 12, lineHeight: 1.3 }}>
+                            <strong style={{ display: "block", marginBottom: 2 }}>
+                              {p.placa}
+                            </strong>
+                            <span style={{ color: "#555" }}>
+                              {p.lastUpdateAtMs !== null
+                                ? `Última posição: ${formatRelativeTime(p.lastUpdateAtMs)}`
+                                : "Hora da última posição desconhecida."}
+                            </span>
+                          </div>
+                        </InfoWindow>
+                      ) : null}
+                    </Marker>
+                  );
+                })
+              : null}
+          </GoogleMap>
+        )}
+      </div>
 
       {/* Barra superior: destino + distância/tempo. */}
       <div
@@ -703,10 +705,8 @@ export function NavigationFullScreenModal({
         </div>
 
         {/* Cartão de distância / tempo / chegada — SEMPRE visível.
-            Quando a rota ainda não foi calculada (ou falhou — comum em iPhone
-            Safari com restrições de rede para o OSRM público), mostramos uma
-            estimativa em linha recta para a "Distância" e «—» nos restantes.
-            `flex-wrap` permite acomodar ecrãs estreitos (iPhone SE) sem clipping. */}
+            Quando a rota ainda não foi calculada (ou falhou), mostramos uma
+            estimativa em linha recta para a "Distância" e «—» nos restantes. */}
         <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-white px-3 py-2 text-slate-900 shadow-md">
           <div className="flex min-w-0 flex-col">
             <span className="text-[10px] uppercase tracking-wider text-slate-500">
@@ -785,10 +785,7 @@ export function NavigationFullScreenModal({
         </svg>
       </button>
 
-      {/* Chip flutuante: contagem de outras viaturas com saída em curso (tempo real).
-          Surge no canto superior direito quando há ≥ 1 outra viatura activa.
-          Cor laranja igual aos pinos no mapa para o motorista identificar
-          visualmente. */}
+      {/* Chip flutuante: contagem de outras viaturas com saída em curso. */}
       {otherPins.length > 0 ? (
         <div
           className="pointer-events-none absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg shadow-orange-900/40 backdrop-blur"
@@ -813,11 +810,7 @@ export function NavigationFullScreenModal({
         </div>
       ) : null}
 
-      {/* Botão "Voltar" discreto no canto inferior esquerdo.
-          Apenas fecha o modal de navegação — **não** interfere com o
-          rastreamento de localização da viatura, que continua activo até o
-          motorista finalizar a saída no quadro principal. Visual igual aos
-          restantes botões flutuantes (círculo escuro semi-transparente). */}
+      {/* Botão "Voltar" discreto no canto inferior esquerdo. */}
       <button
         type="button"
         onClick={() => {
@@ -840,21 +833,14 @@ export function NavigationFullScreenModal({
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          {/* Seta para a esquerda — símbolo universal de "voltar". */}
           <line x1="19" y1="12" x2="5" y2="12" />
           <polyline points="12 19 5 12 12 5" />
         </svg>
       </button>
 
-      {/* Seletor de destino ambíguo removido: o motorista já escolhe o endereço
-          canónico durante a digitação no campo «Destino» (autocomplete estilo
-          Waze/Maps). Aqui apenas seleccionamos automaticamente o candidato mais
-          próximo. */}
-
       {/* Animação de despedida: escurece gradualmente até preto enquanto uma mão
           acena no centro. Visível só durante ~2,2 s quando o motorista escolheu
-          "Segundo plano". No fim, dá lugar à `screenLocked` overlay (que é mantida
-          totalmente preta). */}
+          "Segundo plano". No fim, dá lugar à `screenLocked` overlay. */}
       {farewellAnimating && !screenLocked ? (
         <div
           className="sot-farewell-overlay pointer-events-auto absolute inset-0 z-[60] flex flex-col items-center justify-center gap-4"
@@ -868,9 +854,8 @@ export function NavigationFullScreenModal({
       ) : null}
 
       {/* Overlay 100 % preta para poupar brilho/bateria.
-          Tapa todo o ecrã — incluindo barras e botões — para minimizar emissão de luz
-          (ideal em painéis OLED). Desbloqueia com duplo toque em qualquer parte.
-          A navegação por voz continua a anunciar manobras normalmente. */}
+          Tapa todo o ecrã para minimizar emissão de luz (ideal em OLED).
+          Desbloqueia com duplo toque. A voz continua a anunciar manobras. */}
       {screenLocked ? (
         <div
           className="absolute inset-0 z-[50] cursor-pointer select-none"
@@ -881,7 +866,42 @@ export function NavigationFullScreenModal({
           tabIndex={0}
         />
       ) : null}
+    </div>
+  );
+}
 
+/**
+ * Painel mostrado dentro do contentor do mapa enquanto o script Google ainda
+ * não carregou (ou falhou, ou a chave não foi configurada).
+ */
+type MapPlaceholderProps = {
+  children: React.ReactNode;
+  tone: "loading" | "error" | "empty";
+};
+
+function MapPlaceholder({ children, tone }: MapPlaceholderProps) {
+  const color =
+    tone === "error" ? "rgb(185 28 28)" : tone === "empty" ? "rgb(71 85 105)" : "rgb(100 116 139)";
+  return (
+    <div
+      role={tone === "error" ? "alert" : "status"}
+      aria-live="polite"
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "1rem",
+        gap: "0.35rem",
+        color,
+        background: "rgba(241, 245, 249, 0.6)",
+        fontSize: "0.875rem",
+      }}
+    >
+      {children}
     </div>
   );
 }
@@ -894,4 +914,3 @@ function formatEta(durationSeconds: number): string {
   const mm = String(eta.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 }
-
