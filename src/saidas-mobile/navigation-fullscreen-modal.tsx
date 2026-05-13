@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
+import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
 import {
   type DrivingRoute,
@@ -160,6 +161,18 @@ export function NavigationFullScreenModal({
    * gradualmente até preto absoluto (≈ 2,2 s). No fim, activa `screenLocked`.
    */
   const [farewellAnimating, setFarewellAnimating] = useState(false);
+
+  /**
+   * Publica o estado "modo navegação activo" para o `SaidasLayout` esconder a
+   * barra superior (Detalhe de Serviço, Vistoria, Escala do Pão…) e a barra
+   * inferior (Administrativas/Ambulância) enquanto este modal está visível.
+   */
+  useEffect(() => {
+    setMobileNavigationActive(open);
+    return () => {
+      setMobileNavigationActive(false);
+    };
+  }, [open]);
 
   // Quando o modal abre em modo "Segundo plano", arranca a animação de despedida.
   useEffect(() => {

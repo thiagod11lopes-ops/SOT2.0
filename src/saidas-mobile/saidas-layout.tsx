@@ -35,7 +35,7 @@ import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
-import { ActiveTrackingBanner } from "./active-tracking-banner";
+import { useMobileNavigationActive } from "./mobile-navigation-mode";
 
 type AlarmesConfig = {
   beforeDepartureEnabled: boolean;
@@ -105,6 +105,13 @@ function parsePtBrDateAndTimeToLocal(datePtBr: string, timeHhMm: string): Date |
 
 export function SaidasLayout() {
   const { runWithTrackedProgress } = useMobileLoadingOverlay();
+  /**
+   * Quando o modal de navegação em ecrã cheio estiver aberto, escondemos o
+   * cabeçalho (Detalhe de Serviço, Vistoria, Escala do Pão, Vistoria
+   * Administrativa, Cadastro de motorista) e a barra inferior
+   * (Administrativas/Ambulância). Assim o motorista vê apenas o mapa.
+   */
+  const navigationActive = useMobileNavigationActive();
   const { departures } = useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
@@ -451,7 +458,6 @@ export function SaidasLayout() {
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
       <MobileLoadingOverlayHost />
-      <ActiveTrackingBanner />
       {vistoriaAdminModalOpen ? (
         <div
           className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[520]`}
@@ -634,6 +640,7 @@ export function SaidasLayout() {
         onOpenChange={setDetalheServicoOpen}
         filterDatePtBr={filterDatePtBr}
       />
+      {navigationActive ? null : (
       <header
         className="sticky top-0 z-20 w-full min-w-0 overflow-x-hidden border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
         style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
@@ -714,11 +721,13 @@ export function SaidasLayout() {
           )}
         </div>
       </header>
+      )}
 
       <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-lg flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain overscroll-x-none px-3 pb-28 pt-2 min-[480px]:px-4">
         <Outlet />
       </main>
 
+      {navigationActive ? null : (
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 border-t border-[hsl(var(--border))]/80 bg-[hsl(var(--card))]/90 px-2 pb-[calc(0.5rem+var(--safe-bottom))] pt-2 backdrop-blur-2xl"
         style={{ paddingBottom: "max(0.5rem, var(--safe-bottom))" }}
@@ -755,6 +764,7 @@ export function SaidasLayout() {
           </NavLink>
         </div>
       </nav>
+      )}
       {alarmToast ? (
         <div className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-top)+0.65rem)] z-[560] flex justify-center px-3">
           <div className="w-full max-w-lg rounded-xl border border-amber-300/80 bg-amber-100/95 px-3 py-2 shadow-lg backdrop-blur">
