@@ -140,6 +140,27 @@ const ROUTE_POLYLINE_OPTIONS: google.maps.PolylineOptions = {
   zIndex: 5,
 };
 
+/**
+ * Estilo da linha recta de fallback (quando o servidor OSRM não responde).
+ * Cor cinzenta + linha tracejada para o motorista perceber visualmente que
+ * **não é** uma rota calculada — é só uma indicação da direcção do destino.
+ */
+const FALLBACK_LINE_OPTIONS: google.maps.PolylineOptions = {
+  strokeColor: "#94a3b8",
+  strokeOpacity: 0,
+  strokeWeight: 0,
+  geodesic: true,
+  clickable: false,
+  zIndex: 4,
+  icons: [
+    {
+      icon: { path: "M 0,-1 0,1", strokeOpacity: 0.85, scale: 3 },
+      offset: "0",
+      repeat: "12px",
+    },
+  ],
+};
+
 export function NavigationFullScreenModal({
   open,
   record,
@@ -355,7 +376,7 @@ export function NavigationFullScreenModal({
       if (!r) {
         routingStartedRef.current = false;
         setError(
-          "Não foi possível calcular a rota (servidor OSRM ocupado ou rede instável).",
+          "Sem rota detalhada (servidor de routing indisponível). A linha tracejada mostra a direcção em linha recta.",
         );
         setLoading("");
         return;
@@ -613,6 +634,14 @@ export function NavigationFullScreenModal({
             {/* Polilinha da rota (azul) — só renderiza após OSRM responder. */}
             {routePath.length > 0 ? (
               <Polyline path={routePath} options={ROUTE_POLYLINE_OPTIONS} />
+            ) : origin && destination ? (
+              // Fallback: linha recta tracejada cinzenta quando ainda não há
+              // rota calculada (a calcular, ou OSRM falhou). Dá ao motorista
+              // pelo menos uma indicação visual da direcção do destino.
+              <Polyline
+                path={[origin, { lat: destination.lat, lng: destination.lng }]}
+                options={FALLBACK_LINE_OPTIONS}
+              />
             ) : null}
 
             {/* Marcador do destino (círculo vermelho). */}
