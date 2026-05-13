@@ -5,6 +5,9 @@
  * da app e mostra:
  *  - Mapa Leaflet a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (posição atual, azul) e destino (vermelho).
+ *  - Pinos laranjas das **outras viaturas com saída em curso** (tempo real,
+ *    via `useDriverActiveLocations`). Mostra a placa de cada uma como tooltip
+ *    permanente; toque abre popup com o timestamp da última posição.
  *  - Barra superior com nome do destino, distância e tempo previsto.
  *  - Botão vermelho "PARE" (base) com modal de confirmação.
  *  - Acompanhamento contínuo da posição via `watchPosition` (apenas actualiza
@@ -20,6 +23,8 @@ import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
+import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
+import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import type { DepartureRecord } from "../types/departure";
 import {
   type DrivingRoute,
@@ -34,6 +39,32 @@ import {
 
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+/** Escape HTML para popup do Leaflet — evita XSS via placa adulterada. */
+function escapePopupHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Texto relativo curto: "agora mesmo", "há 3 min", "há 2 h", "há 1 dia". */
+function formatRelativeTime(ms: number, now: number = Date.now()): string {
+  const diffSec = Math.max(0, Math.floor((now - ms) / 1000));
+  if (diffSec < 60) return "agora mesmo";
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `há ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `há ${hr} h`;
+  const days = Math.floor(hr / 24);
+  return days === 1 ? "há 1 dia" : `há ${days} dias`;
+}
+
+/** Normaliza placa para comparação (trim + uppercase). */
+function normalizePlaca(p: string): string {
+  return p.trim().toUpperCase();
+}
 
 /**
  * Constrói a query de geocoding a partir dos campos do registo.
@@ -72,10 +103,30 @@ export function NavigationFullScreenModal({
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
+  /** Layer group dos pinos de **outras** viaturas com saída em curso (tempo real). */
+  const othersLayerRef = useRef<L.LayerGroup | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const spokenStepIdxRef = useRef<number>(-1);
   /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
   const headingRef = useRef<number | null>(null);
+
+  /** Placa **do motorista actual** (primeiro item do campo `viaturas`) — filtrada da lista de outras viaturas. */
+  const currentPlacaNorm = useMemo(
+    () => normalizePlaca(primaryPlacaFromViaturasField(record.viaturas)),
+    [record.viaturas],
+  );
+
+  /**
+   * Subscrição **em tempo real** (`onSnapshot`) à coleção `driver_active_locations`
+   * do Firestore — devolve todas as viaturas com sessão de rastreamento activa.
+   * Já degrada graciosamente se o Firebase não estiver configurado.
+   */
+  const { pins: activePins } = useDriverActiveLocations(open);
+  /** Pinos das **outras** viaturas (exclui a própria). */
+  const otherPins = useMemo(
+    () => activePins.filter((p) => normalizePlaca(p.placa) !== currentPlacaNorm),
+    [activePins, currentPlacaNorm],
+  );
   /** Timestamp do último toque na overlay preta — usado para detectar duplo-clique. */
   const lastLockTapRef = useRef<number>(0);
   /** Wake Lock activo (mantém ecrã aceso durante a navegação). */
@@ -226,6 +277,10 @@ export function NavigationFullScreenModal({
       L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
       mapRef.current = map;
 
+      // Layer group das outras viaturas (criado antes dos marcadores do
+      // motorista/destino para ficar visualmente por baixo destes).
+      othersLayerRef.current = L.layerGroup().addTo(map);
+
       rafId = requestAnimationFrame(() => {
         map?.invalidateSize();
         requestAnimationFrame(() => map?.invalidateSize());
@@ -246,6 +301,7 @@ export function NavigationFullScreenModal({
       routeLayerRef.current = null;
       driverMarkerRef.current = null;
       destMarkerRef.current = null;
+      othersLayerRef.current = null;
     };
   }, [open]);
 
@@ -333,6 +389,47 @@ export function NavigationFullScreenModal({
     const bounds = poly.getBounds();
     map.fitBounds(bounds, { padding: [80, 80] });
   }, [route]);
+
+  // ---------------------------------------------------------------------------
+  // 5b) Renderizar pinos das **outras viaturas em curso** (real-time Firestore).
+  //    Marcador laranja com tooltip permanente mostrando a placa. Clique abre
+  //    popup com timestamp da última posição. O motorista actual não aparece
+  //    aqui — já é representado pelo chevron azul.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    const group = othersLayerRef.current;
+    if (!map || !group) return;
+
+    group.clearLayers();
+
+    const markerOpts: L.CircleMarkerOptions = {
+      radius: 9,
+      color: "#c2410c",
+      weight: 2,
+      fillColor: "#fb923c",
+      fillOpacity: 0.9,
+    };
+
+    for (const p of otherPins) {
+      const m = L.circleMarker([p.lat, p.lng], markerOpts);
+      const placaLabel = escapePopupHtml(p.placa);
+      const popupHtml =
+        p.lastUpdateAtMs !== null
+          ? `<strong>${placaLabel}</strong><br /><span style="font-size:11px;color:#555">Última posição: ${escapePopupHtml(
+              formatRelativeTime(p.lastUpdateAtMs),
+            )}</span>`
+          : `<strong>${placaLabel}</strong><br /><span style="font-size:11px;color:#888">Hora da última posição desconhecida.</span>`;
+      m.bindPopup(popupHtml, { className: "sot-driver-map-popup" });
+      m.bindTooltip(p.placa, {
+        permanent: true,
+        direction: "top",
+        offset: [0, -10],
+        className: "sot-driver-map-placa-tooltip",
+      });
+      m.addTo(group);
+    }
+  }, [otherPins]);
 
   // ---------------------------------------------------------------------------
   // 6) Acompanhar a posição com `watchPosition` enquanto o modal está aberto.
@@ -634,6 +731,34 @@ export function NavigationFullScreenModal({
           <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z" />
         </svg>
       </button>
+
+      {/* Chip flutuante: contagem de outras viaturas com saída em curso (tempo real).
+          Surge no canto superior direito quando há ≥ 1 outra viatura activa.
+          Cor laranja igual aos pinos no mapa para o motorista identificar
+          visualmente. */}
+      {otherPins.length > 0 ? (
+        <div
+          className="pointer-events-none absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg shadow-orange-900/40 backdrop-blur"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
+          role="status"
+          aria-label={`${otherPins.length} ${
+            otherPins.length === 1 ? "outra viatura" : "outras viaturas"
+          } com saída em curso`}
+          title={`${otherPins.length} ${
+            otherPins.length === 1 ? "outra viatura" : "outras viaturas"
+          } com saída em curso`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11h.5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 19.5 19H19v1.25A.75.75 0 0 1 18.25 21h-1.5a.75.75 0 0 1-.75-.75V19H8v1.25A.75.75 0 0 1 7.25 21h-1.5A.75.75 0 0 1 5 20.25V19h-.5A1.5 1.5 0 0 1 3 17.5v-5A1.5 1.5 0 0 1 4.5 11H5zm2.16-.5h9.68l-1-3.3a.5.5 0 0 0-.48-.37H8.64a.5.5 0 0 0-.48.37l-1 3.3zM7 16a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm10 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
+          </svg>
+          <span className="text-sm font-bold uppercase tracking-wider leading-none">
+            {otherPins.length}
+          </span>
+          <span className="text-[0.7rem] font-semibold leading-none">
+            {otherPins.length === 1 ? "viatura" : "viaturas"}
+          </span>
+        </div>
+      ) : null}
 
       {/* Barra inferior: botão PARE em destaque. */}
       <div
