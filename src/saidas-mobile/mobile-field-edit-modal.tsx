@@ -180,9 +180,10 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
 
   function handleSuggestionTap(suggestion: AddressSuggestion) {
     suggestionAppliedRef.current = true;
-    setDraft(suggestion.displayName);
+    const label = suggestion.shortLabel || suggestion.displayName;
+    setDraft(label);
     setAddressSuggestions([]);
-    lastQueriedRef.current = suggestion.displayName;
+    lastQueriedRef.current = label;
     inputRef.current?.focus({ preventScroll: true });
   }
 
@@ -350,7 +351,7 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
                             className="flex w-full items-start gap-3 px-3 py-2.5 text-left leading-snug active:bg-[hsl(var(--muted))]/40 hover:bg-[hsl(var(--muted))]/30"
                           >
                             <span className="min-w-0 flex-1 text-sm text-[hsl(var(--foreground))]">
-                              {suggestion.displayName}
+                              {suggestion.shortLabel || suggestion.displayName}
                             </span>
                             {suggestion.distanceMeters !== null ? (
                               <span className="mt-0.5 shrink-0 rounded-full bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.7rem] font-semibold tabular-nums text-[hsl(var(--muted-foreground))]">

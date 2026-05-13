@@ -11,16 +11,141 @@
  * Não precisamos de chaves API. Tudo gratuito desde que o uso seja razoável.
  */
 
+/**
+ * Subconjunto do objecto `address` devolvido pelo Nominatim com `addressdetails=1`.
+ * Mantemos apenas os campos úteis para apresentar nas sugestões (nome do local,
+ * rua, número, bairro). Restantes campos (cidade, estado, CEP, país) são
+ * ignorados — o pedido do utilizador é mostrar só estes quatro.
+ */
+export type NominatimAddress = {
+  amenity?: string;
+  shop?: string;
+  building?: string;
+  tourism?: string;
+  leisure?: string;
+  office?: string;
+  healthcare?: string;
+  hospital?: string;
+  school?: string;
+  university?: string;
+  attraction?: string;
+  road?: string;
+  pedestrian?: string;
+  footway?: string;
+  residential?: string;
+  cycleway?: string;
+  path?: string;
+  house_number?: string;
+  suburb?: string;
+  neighbourhood?: string;
+  quarter?: string;
+  city_district?: string;
+  hamlet?: string;
+  village?: string;
+};
+
 /** Resultado do geocoding. `displayName` é o endereço canónico devolvido pelo Nominatim. */
 export type GeocodeResult = {
   lat: number;
   lng: number;
+  /** Texto longo devolvido pelo Nominatim (todos os campos hierárquicos). */
   displayName: string;
+  /**
+   * Versão compacta para apresentar ao motorista: nome do local (se houver) +
+   * rua + número + bairro. Construída a partir de `address` quando disponível.
+   */
+  shortLabel: string;
+  /** Estrutura `address` original do Nominatim (quando pedimos `addressdetails=1`). */
+  address?: NominatimAddress;
 };
+
+/**
+ * Constrói o rótulo curto "Nome do local, Rua, Número, Bairro" a partir de uma
+ * resposta estruturada do Nominatim. Cada parte é incluída só se existir, e o
+ * "nome do local" só é incluído quando representa uma POI clara (hospital,
+ * shopping, escola, etc.) — para endereços puramente residenciais ficamos com
+ * "Rua, Número, Bairro".
+ */
+export function buildShortAddressLabel(args: {
+  displayName: string;
+  address?: NominatimAddress;
+}): string {
+  const { displayName, address } = args;
+  if (!address) {
+    // Sem detalhes: pega os 3-4 primeiros segmentos do display_name (heurística
+    // razoável já que o Nominatim ordena do mais específico para o mais geral).
+    const parts = displayName.split(",").map((s) => s.trim()).filter(Boolean);
+    return parts.slice(0, 4).join(", ") || displayName;
+  }
+
+  const poiName =
+    address.amenity ||
+    address.shop ||
+    address.tourism ||
+    address.leisure ||
+    address.office ||
+    address.healthcare ||
+    address.hospital ||
+    address.school ||
+    address.university ||
+    address.attraction ||
+    address.building ||
+    "";
+
+  const road =
+    address.road ||
+    address.pedestrian ||
+    address.residential ||
+    address.footway ||
+    address.cycleway ||
+    address.path ||
+    "";
+
+  const houseNumber = address.house_number || "";
+  const bairro =
+    address.suburb ||
+    address.neighbourhood ||
+    address.quarter ||
+    address.city_district ||
+    address.village ||
+    address.hamlet ||
+    "";
+
+  const firstSegment = displayName.split(",")[0]?.trim() ?? "";
+  const isPoiFirstSegment =
+    Boolean(poiName) &&
+    firstSegment.toLowerCase() === poiName.toLowerCase();
+  const isRoadFirstSegment =
+    Boolean(road) && firstSegment.toLowerCase() === road.toLowerCase();
+
+  const partes: string[] = [];
+  // Inclui o nome do local quando o Nominatim coloca-o em primeiro lugar ou
+  // quando há um POI explícito (hospital, escola, shopping, etc.) — evita
+  // duplicar quando o "nome" é, na verdade, o número de porta ou o bairro.
+  if (poiName && (isPoiFirstSegment || (!isRoadFirstSegment && !houseNumber))) {
+    partes.push(poiName);
+  } else if (!poiName && firstSegment && !isRoadFirstSegment && !/^\d+/.test(firstSegment)) {
+    // Sem POI estruturado mas há um "nome" no início do display_name que não é
+    // a própria rua e não começa por número — provavelmente é o nome do local.
+    partes.push(firstSegment);
+  }
+  if (road) partes.push(road);
+  if (houseNumber) partes.push(houseNumber);
+  if (bairro) partes.push(bairro);
+
+  if (partes.length === 0) {
+    const parts = displayName.split(",").map((s) => s.trim()).filter(Boolean);
+    return parts.slice(0, 4).join(", ") || displayName;
+  }
+  return partes.join(", ");
+}
 
 /**
  * Pesquisa endereços no Nominatim devolvendo até `limit` candidatos (default 5).
  * Útil quando o texto é ambíguo (vários "Hospital São José" em cidades diferentes).
+ *
+ * Pede `addressdetails=1` para podermos construir um rótulo curto (nome do local,
+ * rua, número, bairro) — mais legível que o `display_name` completo.
  */
 export async function geocodeAddresses(query: string, limit = 5): Promise<GeocodeResult[]> {
   const q = query.trim();
@@ -31,19 +156,26 @@ export async function geocodeAddresses(query: string, limit = 5): Promise<Geocod
     url.searchParams.set("format", "json");
     url.searchParams.set("limit", String(Math.max(1, Math.min(20, limit))));
     url.searchParams.set("countrycodes", "br,pt"); // restringe para melhor precisão
-    url.searchParams.set("addressdetails", "0");
+    url.searchParams.set("addressdetails", "1");
     const resp = await fetch(url.toString(), {
       headers: { "Accept-Language": "pt-PT,pt;q=0.9" },
     });
     if (!resp.ok) return [];
-    const arr = (await resp.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+    const arr = (await resp.json()) as Array<{
+      lat: string;
+      lon: string;
+      display_name: string;
+      address?: NominatimAddress;
+    }>;
     if (!Array.isArray(arr)) return [];
     const out: GeocodeResult[] = [];
     for (const r of arr) {
       const lat = Number(r.lat);
       const lng = Number(r.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      out.push({ lat, lng, displayName: String(r.display_name || q) });
+      const displayName = String(r.display_name || q);
+      const shortLabel = buildShortAddressLabel({ displayName, address: r.address });
+      out.push({ lat, lng, displayName, shortLabel, address: r.address });
     }
     return out;
   } catch (e) {
