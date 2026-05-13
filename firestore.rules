@@ -61,5 +61,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
     }
+
+    /**
+     * Localização em tempo real do utilizador autenticado (escrita directa do
+     * cliente, sem Cloud Function). Cada utilizador só pode escrever no
+     * documento que tem o seu próprio uid; qualquer utilizador autenticado pode
+     * ler (para o mapa partilhado). Usado pelo `LiveTrackingMap`.
+     */
+    match /user_locations/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
   }
 }
