@@ -14,6 +14,13 @@ interface ImportMetaEnv {
   readonly VITE_DRIVER_LOCATION_POST_URL?: string;
   /** Opcional — Chave da Google Maps JavaScript API (consumida pelo `GoogleMapComponent`). */
   readonly VITE_GOOGLE_MAPS_API_KEY?: string;
+  /**
+   * Opcional mas recomendado — Map ID (Cloud-based Maps Styling).
+   * Necessário para `AdvancedMarkerElement` (marcadores HTML modernos no
+   * modal de navegação). Criar em Cloud Console → Maps Platform → Map
+   * Styles → Criar novo mapa (tipo Vector).
+   */
+  readonly VITE_GOOGLE_MAP_ID?: string;
 }
 
 interface ImportMeta {

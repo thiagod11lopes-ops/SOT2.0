@@ -27,12 +27,13 @@
 import {
   GoogleMap,
   InfoWindow,
-  Marker,
   Polyline,
+  useGoogleMap,
   useJsApiLoader,
   type Libraries,
 } from "@react-google-maps/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
@@ -57,8 +58,13 @@ import {
  * Bibliotecas adicionais carregadas com o Maps JS. Mantido fora do componente
  * (referência estável) — caso contrário o `useJsApiLoader` re-injecta o script
  * a cada render, gerando o aviso "LoadScript has been reloaded unintentionally".
+ *
+ * - `geometry` — encoding/decoding de polilinhas, cálculos geo.
+ * - `marker` — `google.maps.marker.AdvancedMarkerElement` (marcadores HTML
+ *   modernos com rotação por CSS, qualidade visual superior, e que substitui
+ *   o `google.maps.Marker` clássico que está em depreciação).
  */
-const GMAPS_LIBRARIES: Libraries = ["geometry"];
+const GMAPS_LIBRARIES: Libraries = ["geometry", "marker"];
 
 /**
  * Mesmo `id` que o `GoogleMapComponent` reutilizável — `useJsApiLoader`
@@ -81,6 +87,27 @@ function formatRelativeTime(ms: number, now: number = Date.now()): string {
 /** Normaliza placa para comparação (trim + uppercase). */
 function normalizePlaca(p: string): string {
   return p.trim().toUpperCase();
+}
+
+/**
+ * Determina a variante visual do ícone da viatura a partir do texto livre do
+ * campo `viaturas` do registo. Heurística simples: se contém "ambul", "samu"
+ * ou "uti" é uma ambulância; senão usa-se a silhueta genérica de carro.
+ */
+function vehicleVariantFromViaturas(
+  viaturas: string | null | undefined,
+): "ambulance" | "car" {
+  const s = (viaturas ?? "").toLowerCase();
+  if (
+    s.includes("ambul") ||
+    s.includes("samu") ||
+    /\buti\b/.test(s) ||
+    /\busa\b/.test(s) || // Unidade de Suporte Avançado/Básico
+    /\busb\b/.test(s)
+  ) {
+    return "ambulance";
+  }
+  return "car";
 }
 
 /**
@@ -181,6 +208,192 @@ const FALLBACK_LINE_OPTIONS: google.maps.PolylineOptions = {
   ],
 };
 
+// =============================================================================
+// AdvancedHTMLMarker — wrapper imperativo
+// =============================================================================
+// O `@react-google-maps/api@2.20` ainda não tem `<AdvancedMarker>`. Esta
+// implementação criar manualmente `google.maps.marker.AdvancedMarkerElement`
+// e renderiza conteúdo React arbitrário no seu `content` via `createPortal`.
+//
+// Padrão recomendado pela documentação Google quando se usa React:
+//  https://developers.google.com/maps/documentation/javascript/advanced-markers/migration
+// =============================================================================
+
+type AdvancedHTMLMarkerProps = {
+  /** Coordenada do marcador. */
+  position: { lat: number; lng: number };
+  /** zIndex (motorista > destino > outras viaturas). */
+  zIndex?: number;
+  /** Callback ao tocar/clicar no marcador. */
+  onClick?: () => void;
+  /** `title` (tooltip nativa do browser). */
+  title?: string;
+  /** Conteúdo React renderizado dentro do marcador. */
+  children: React.ReactNode;
+};
+
+/**
+ * Marcador HTML moderno baseado em `AdvancedMarkerElement`. Precisa de:
+ *  - script Maps JS carregado com a biblioteca `marker`
+ *  - `<GoogleMap>` ancestor com `mapId` configurado (Cloud-based Map Style)
+ *
+ * Se algum dos dois falhar, o marcador simplesmente não renderiza
+ * (com aviso no console). Não há fallback automático para `<Marker>` —
+ * para isso seria preciso configurar o Map ID em Cloud Console.
+ */
+function AdvancedHTMLMarker({
+  position,
+  zIndex,
+  onClick,
+  title,
+  children,
+}: AdvancedHTMLMarkerProps) {
+  const map = useGoogleMap();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  if (containerRef.current === null && typeof document !== "undefined") {
+    containerRef.current = document.createElement("div");
+  }
+  const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+
+  // Cria o marcador uma única vez por par (map, container) e remove no
+  // unmount. Posição, zIndex, title e onClick são actualizados em efeitos
+  // separados para evitar re-criar o marcador a cada render (re-criar é
+  // caro e remove o DOM da página).
+  useEffect(() => {
+    if (!map || !containerRef.current) return;
+    if (typeof google === "undefined" || !google.maps?.marker?.AdvancedMarkerElement) {
+      console.warn(
+        "[SOT] google.maps.marker.AdvancedMarkerElement indisponível — verifica se a biblioteca 'marker' foi carregada.",
+      );
+      return;
+    }
+    const marker = new google.maps.marker.AdvancedMarkerElement({
+      map,
+      position,
+      content: containerRef.current,
+    });
+    markerRef.current = marker;
+    return () => {
+      marker.map = null;
+      markerRef.current = null;
+      if (clickListenerRef.current) {
+        clickListenerRef.current.remove();
+        clickListenerRef.current = null;
+      }
+    };
+    // Deliberadamente sem `position`/`zIndex`/`onClick` — esses são
+    // actualizados a baixo sem destruir o marcador.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  // Actualiza a posição sem re-criar o marcador.
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    m.position = { lat: position.lat, lng: position.lng };
+  }, [position.lat, position.lng]);
+
+  // Actualiza zIndex sem re-criar.
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    m.zIndex = zIndex ?? null;
+  }, [zIndex]);
+
+  // Actualiza title.
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    m.title = title ?? "";
+  }, [title]);
+
+  // (Re)regista o listener `gmp-click` sempre que `onClick` mudar.
+  useEffect(() => {
+    const m = markerRef.current;
+    if (!m) return;
+    if (clickListenerRef.current) {
+      clickListenerRef.current.remove();
+      clickListenerRef.current = null;
+    }
+    if (onClick) {
+      clickListenerRef.current = m.addListener("gmp-click", onClick);
+    }
+  }, [onClick]);
+
+  // Renderiza o conteúdo React dentro do `<div>` que serve de `content`
+  // do `AdvancedMarkerElement`. O DOM permanece atómico (Google insere o
+  // div sozinho como filho do `AdvancedMarkerElement`).
+  if (!containerRef.current) return null;
+  return createPortal(children, containerRef.current);
+}
+
+// =============================================================================
+// Ícones de viatura (SVG inline) — usados no conteúdo de AdvancedHTMLMarker.
+// =============================================================================
+
+/**
+ * Silhueta de carro/ambulância vista de cima. Single-color outline + body,
+ * boa visibilidade em zoom 14-18. O `style` externo aplica `rotate(...)`
+ * para alinhar com o `heading` do GPS.
+ */
+function VehicleSvg({
+  variant,
+  size,
+}: {
+  variant: "ambulance" | "car";
+  size: number;
+}) {
+  const isAmbulance = variant === "ambulance";
+  return (
+    <svg
+      viewBox="0 0 40 60"
+      width={size}
+      height={(size * 60) / 40}
+      aria-hidden="true"
+    >
+      {/* Sombra suave por baixo */}
+      <ellipse cx="20" cy="55" rx="14" ry="3" fill="rgba(0,0,0,0.35)" />
+      {/* Corpo da viatura (rectângulo arredondado) */}
+      <rect
+        x="6"
+        y="6"
+        width="28"
+        height="46"
+        rx="6"
+        ry="6"
+        fill={isAmbulance ? "#ffffff" : "#2563eb"}
+        stroke={isAmbulance ? "#dc2626" : "#1d4ed8"}
+        strokeWidth="2.5"
+      />
+      {/* Para-brisas frontal */}
+      <path
+        d="M9 14 L31 14 L29 22 L11 22 Z"
+        fill={isAmbulance ? "#bfdbfe" : "#dbeafe"}
+        opacity="0.9"
+      />
+      {/* Para-brisas traseiro */}
+      <path
+        d="M11 38 L29 38 L31 46 L9 46 Z"
+        fill={isAmbulance ? "#bfdbfe" : "#dbeafe"}
+        opacity="0.7"
+      />
+      {/* Cruz médica (ambulância) ou faixa lateral (carro) */}
+      {isAmbulance ? (
+        <>
+          <rect x="17" y="26" width="6" height="10" fill="#dc2626" />
+          <rect x="13" y="28" width="14" height="6" fill="#dc2626" />
+        </>
+      ) : (
+        <rect x="6" y="28" width="28" height="4" fill="#1d4ed8" opacity="0.5" />
+      )}
+      {/* Faróis dianteiros */}
+      <circle cx="11" cy="10" r="1.5" fill="#fef3c7" />
+      <circle cx="29" cy="10" r="1.5" fill="#fef3c7" />
+    </svg>
+  );
+}
+
 /**
  * Devolve o SVG path de uma seta apropriada para a manobra OSRM. Cobre os
  * tipos mais comuns; o resto cai numa seta "em frente". Tamanho viewBox 24×24,
@@ -235,6 +448,12 @@ export function NavigationFullScreenModal({
   // ─── Loader do Google Maps script ────────────────────────────────────────
   // Lê a chave da variável Vite (substituída no build pelo workflow GitHub).
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "";
+  /**
+   * Map ID obrigatório para `AdvancedMarkerElement`. Configurado em Cloud
+   * Console → Maps Platform → Map Styles. Sem isto, os marcadores não
+   * renderizam (com aviso em console).
+   */
+  const mapId = import.meta.env.VITE_GOOGLE_MAP_ID ?? "";
   const { isLoaded: gmapsLoaded, loadError: gmapsLoadError } = useJsApiLoader({
     id: GMAPS_LOADER_ID,
     googleMapsApiKey: apiKey,
@@ -242,6 +461,22 @@ export function NavigationFullScreenModal({
     language: "pt-BR",
     region: "BR",
   });
+
+  /**
+   * Opções dinâmicas do `<GoogleMap>`: inclui `mapId` quando configurado.
+   * Aviso uma vez no console se faltar para ajudar diagnóstico.
+   */
+  useEffect(() => {
+    if (open && !mapId) {
+      console.warn(
+        "[SOT] VITE_GOOGLE_MAP_ID não configurado — os marcadores AdvancedMarkerElement não vão renderizar. Cria um Map ID em https://console.cloud.google.com/google/maps-apis/studio/maps",
+      );
+    }
+  }, [open, mapId]);
+  const mapOptionsWithId = useMemo<google.maps.MapOptions>(
+    () => (mapId ? { ...MAP_OPTIONS, mapId } : MAP_OPTIONS),
+    [mapId],
+  );
 
   // ─── Estado / refs ───────────────────────────────────────────────────────
   /** Instância do mapa Google (definida no `onLoad`). Usada para `fitBounds`. */
@@ -628,48 +863,15 @@ export function NavigationFullScreenModal({
   }, [route]);
 
   // ---------------------------------------------------------------------------
-  // 6) Ícones dos marcadores. Construídos apenas quando o script Google
-  //    estiver carregado (precisam de `google.maps.SymbolPath`).
+  // 6) Variante visual da viatura do motorista — detectada a partir do texto
+  //    do campo `viaturas` do registo. Influencia o ícone SVG mostrado no
+  //    marcador `AdvancedHTMLMarker` (ambulância com cruz vermelha vs.
+  //    carro genérico azul).
   // ---------------------------------------------------------------------------
-  const driverIcon = useMemo<google.maps.Symbol | null>(() => {
-    if (!gmapsLoaded) return null;
-    return {
-      // Chevron apontando para cima (norte). A rotação é aplicada por `rotation`.
-      path: "M 0,-12 L 8,8 L 0,4 L -8,8 Z",
-      fillColor: "#2563eb",
-      fillOpacity: 1,
-      strokeColor: "#1d4ed8",
-      strokeWeight: 1.5,
-      strokeOpacity: 1,
-      scale: 1.4,
-      rotation: heading ?? 0,
-      anchor: new google.maps.Point(0, 0),
-    };
-  }, [gmapsLoaded, heading]);
-
-  const destinationIcon = useMemo<google.maps.Symbol | null>(() => {
-    if (!gmapsLoaded) return null;
-    return {
-      path: google.maps.SymbolPath.CIRCLE,
-      fillColor: "#dc2626",
-      fillOpacity: 1,
-      strokeColor: "#FFFFFF",
-      strokeWeight: 3,
-      scale: 9,
-    };
-  }, [gmapsLoaded]);
-
-  const otherVehicleIcon = useMemo<google.maps.Symbol | null>(() => {
-    if (!gmapsLoaded) return null;
-    return {
-      path: google.maps.SymbolPath.CIRCLE,
-      fillColor: "#fb923c",
-      fillOpacity: 0.9,
-      strokeColor: "#c2410c",
-      strokeWeight: 2,
-      scale: 8,
-    };
-  }, [gmapsLoaded]);
+  const driverVehicleVariant = useMemo(
+    () => vehicleVariantFromViaturas(record.viaturas),
+    [record.viaturas],
+  );
 
   // ---------------------------------------------------------------------------
   // 6b) Próxima manobra a apresentar — usado pela barra superior em modo
@@ -901,7 +1103,7 @@ export function NavigationFullScreenModal({
             // e o pan/zoom manual do motorista.
             center={staticCenter}
             zoom={staticZoom}
-            options={MAP_OPTIONS}
+            options={mapOptionsWithId}
             onLoad={handleMapLoad}
             onUnmount={handleMapUnmount}
             // `dragstart` só dispara em arrasto humano (panTo programático
@@ -943,65 +1145,129 @@ export function NavigationFullScreenModal({
               />
             ) : null}
 
-            {/* Marcador do destino (círculo vermelho). */}
-            {destination && destinationIcon ? (
-              <Marker
+            {/* Marcador do destino — pino vermelho HTML. */}
+            {destination ? (
+              <AdvancedHTMLMarker
                 position={{ lat: destination.lat, lng: destination.lng }}
-                icon={destinationIcon}
                 title={destination.displayName}
                 zIndex={20}
-              />
+              >
+                <div
+                  style={{
+                    transform: "translate(0, -50%)",
+                    filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.35))",
+                  }}
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 32" width="32" height="42">
+                    <path
+                      d="M12 0 C5 0 0 5 0 12 C0 20 12 32 12 32 C12 32 24 20 24 12 C24 5 19 0 12 0 Z"
+                      fill="#dc2626"
+                      stroke="#ffffff"
+                      strokeWidth="2"
+                    />
+                    <circle cx="12" cy="12" r="4" fill="#ffffff" />
+                  </svg>
+                </div>
+              </AdvancedHTMLMarker>
             ) : null}
 
-            {/* Marcador do motorista (chevron azul rotativo). */}
-            {origin && driverIcon ? (
-              <Marker
-                position={origin}
-                icon={driverIcon}
-                clickable={false}
-                zIndex={30}
-              />
+            {/* Marcador do motorista — silhueta de viatura rotacionada pelo
+                heading do GPS. Multi-cor (corpo + para-brisas + faróis). */}
+            {origin ? (
+              <AdvancedHTMLMarker position={origin} zIndex={30}>
+                <div
+                  style={{
+                    transform: `rotate(${heading ?? 0}deg)`,
+                    transformOrigin: "center",
+                    transition: "transform 200ms ease-out",
+                    filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
+                  }}
+                  aria-hidden="true"
+                >
+                  <VehicleSvg variant={driverVehicleVariant} size={36} />
+                </div>
+              </AdvancedHTMLMarker>
             ) : null}
 
-            {/* Pinos das outras viaturas em curso (laranja). Clique abre InfoWindow. */}
-            {otherVehicleIcon
-              ? otherPins.map((p) => {
-                  const key = `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
-                  return (
-                    <Marker
-                      key={key}
-                      position={{ lat: p.lat, lng: p.lng }}
-                      icon={otherVehicleIcon}
-                      label={{
-                        text: p.placa,
-                        fontSize: "11px",
-                        fontWeight: "700",
+            {/* Pinos das outras viaturas — silhueta laranja + placa por cima.
+                O clique abre uma `InfoWindow` com placa + timestamp. */}
+            {otherPins.map((p) => {
+              const key = `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+              return (
+                <AdvancedHTMLMarker
+                  key={key}
+                  position={{ lat: p.lat, lng: p.lng }}
+                  zIndex={15}
+                  onClick={() => setSelectedOtherPin(key)}
+                  title={`${p.placa} — outra viatura em curso`}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "2px",
+                      transform: "translate(0, -50%)",
+                      filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      style={{
+                        background: "rgba(255,255,255,0.95)",
                         color: "#7c2d12",
-                        className: "sot-driver-map-placa-tooltip",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        whiteSpace: "nowrap",
+                        border: "1px solid #fb923c",
                       }}
-                      onClick={() => setSelectedOtherPin(key)}
-                      zIndex={15}
                     >
-                      {selectedOtherPin === key ? (
-                        <InfoWindow
-                          position={{ lat: p.lat, lng: p.lng }}
-                          onCloseClick={() => setSelectedOtherPin(null)}
-                        >
-                          <div style={{ fontSize: 12, lineHeight: 1.3 }}>
-                            <strong style={{ display: "block", marginBottom: 2 }}>
-                              {p.placa}
-                            </strong>
-                            <span style={{ color: "#555" }}>
-                              {p.lastUpdateAtMs !== null
-                                ? `Última posição: ${formatRelativeTime(p.lastUpdateAtMs)}`
-                                : "Hora da última posição desconhecida."}
-                            </span>
-                          </div>
-                        </InfoWindow>
-                      ) : null}
-                    </Marker>
-                  );
-                })
+                      {p.placa}
+                    </span>
+                    <div
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        background: "#fb923c",
+                        border: "2px solid #c2410c",
+                      }}
+                    />
+                  </div>
+                </AdvancedHTMLMarker>
+              );
+            })}
+
+            {/* InfoWindow do pin seleccionado — renderizada fora do
+                AdvancedHTMLMarker para evitar problemas de portal. */}
+            {selectedOtherPin
+              ? otherPins
+                  .filter(
+                    (p) =>
+                      `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}` ===
+                      selectedOtherPin,
+                  )
+                  .map((p) => (
+                    <InfoWindow
+                      key={`info-${selectedOtherPin}`}
+                      position={{ lat: p.lat, lng: p.lng }}
+                      onCloseClick={() => setSelectedOtherPin(null)}
+                    >
+                      <div style={{ fontSize: 12, lineHeight: 1.3 }}>
+                        <strong style={{ display: "block", marginBottom: 2 }}>
+                          {p.placa}
+                        </strong>
+                        <span style={{ color: "#555" }}>
+                          {p.lastUpdateAtMs !== null
+                            ? `Última posição: ${formatRelativeTime(p.lastUpdateAtMs)}`
+                            : "Hora da última posição desconhecida."}
+                        </span>
+                      </div>
+                    </InfoWindow>
+                  ))
               : null}
           </GoogleMap>
         )}
