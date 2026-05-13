@@ -488,3 +488,64 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
 }
+
+/* ===========================================================================
+ * Animação de "tchau" ao entrar em modo Segundo plano
+ * O fundo escurece gradualmente de transparente até preto absoluto enquanto
+ * uma mão (emoji 👋) acena no centro do ecrã. No fim da animação, o overlay
+ * fica 100 % preto e o motorista pode destravar com duplo-toque.
+ * =========================================================================== */
+@keyframes sot-fade-to-black {
+  0% {
+    background-color: rgba(0, 0, 0, 0);
+  }
+  100% {
+    background-color: rgba(0, 0, 0, 1);
+  }
+}
+
+@keyframes sot-wave-hand {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: rotate(-22deg);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes sot-fade-out-text {
+  0% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.sot-farewell-overlay {
+  animation: sot-fade-to-black 2200ms ease-in forwards;
+}
+
+.sot-farewell-hand {
+  display: inline-block;
+  transform-origin: 70% 80%;
+  animation: sot-wave-hand 1100ms ease-in-out infinite;
+}
+
+.sot-farewell-text {
+  animation: sot-fade-out-text 2200ms ease-in forwards;
+}

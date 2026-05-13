@@ -125,10 +125,22 @@ export function NavigationFullScreenModal({
    */
   const [screenLocked, setScreenLocked] = useState(false);
 
-  // Quando o utilizador escolhe iniciar a saída em "Segundo plano", o modal abre
-  // já com a tela trancada. Aplicamos no primeiro ciclo após o `open` virar true.
+  /**
+   * Animação de transição "Adeus, vejo-te lá" quando o motorista escolhe iniciar
+   * em "Segundo plano": uma mão acena no centro enquanto a tela escurece
+   * gradualmente até preto absoluto (≈ 2,2 s). No fim, activa `screenLocked`.
+   */
+  const [farewellAnimating, setFarewellAnimating] = useState(false);
+
+  // Quando o modal abre em modo "Segundo plano", arranca a animação de despedida.
   useEffect(() => {
-    if (open && initialScreenLocked) setScreenLocked(true);
+    if (!open || !initialScreenLocked) return;
+    setFarewellAnimating(true);
+    const t = window.setTimeout(() => {
+      setScreenLocked(true);
+      setFarewellAnimating(false);
+    }, 2200);
+    return () => window.clearTimeout(t);
   }, [open, initialScreenLocked]);
   /** Modo "seguir motorista": câmara acompanha automaticamente a posição actual. */
   const [isFollowing, setIsFollowing] = useState(false);
@@ -636,6 +648,7 @@ export function NavigationFullScreenModal({
     setIsFollowing(false);
     setUserInterrupted(false);
     setScreenLocked(false);
+    setFarewellAnimating(false);
     spokenStepIdxRef.current = -1;
   }, [open]);
 
@@ -974,6 +987,22 @@ export function NavigationFullScreenModal({
               </Button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {/* Animação de despedida: escurece gradualmente até preto enquanto uma mão
+          acena no centro. Visível só durante ~2,2 s quando o motorista escolheu
+          "Segundo plano". No fim, dá lugar à `screenLocked` overlay (que é mantida
+          totalmente preta). */}
+      {farewellAnimating && !screenLocked ? (
+        <div
+          className="sot-farewell-overlay pointer-events-auto absolute inset-0 z-[60] flex flex-col items-center justify-center gap-4"
+          aria-hidden="true"
+        >
+          <span className="sot-farewell-hand text-7xl">👋</span>
+          <span className="sot-farewell-text text-base font-semibold uppercase tracking-[0.18em] text-white">
+            Até já — boa viagem
+          </span>
         </div>
       ) : null}
 
