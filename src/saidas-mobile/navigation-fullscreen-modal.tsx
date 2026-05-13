@@ -662,17 +662,58 @@ export function NavigationFullScreenModal({ open, record, onClose }: Props) {
     };
   }, [open]);
 
-  // Quando a tela está trancada, força um `filter: brightness(0)` no `<html>` —
-  // garante que qualquer pixel fora da overlay (chrome do browser em Safari mobile,
-  // por exemplo) também fica a preto absoluto. Em ecrãs OLED isto traduz-se em
-  // emissão de luz praticamente nula.
+  /**
+   * Quando a tela está trancada, aplica várias técnicas para escurecer o máximo
+   * possível do dispositivo, inclusive a status bar (hora/wifi/bateria):
+   *
+   *  1. `filter: brightness(0)` no `<html>` — qualquer pixel fora da overlay vai a preto.
+   *  2. Altera `<meta name="theme-color">` para `#000000` — pinta a status bar no
+   *     Chrome Android e em alguns Safaris (PWA standalone).
+   *  3. Pede Fullscreen API (`requestFullscreen`) — em Chrome Android esconde
+   *     totalmente a status bar + barra de URL. (Safari mobile não suporta
+   *     fullscreen em browser normal, só funciona em PWA standalone.)
+   */
   useEffect(() => {
     if (!screenLocked) return;
+
     const html = document.documentElement;
-    const prev = html.style.filter;
+    const prevFilter = html.style.filter;
     html.style.filter = "brightness(0)";
+
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    const prevThemeContent = metaThemeColor?.getAttribute("content") ?? null;
+    if (metaThemeColor) metaThemeColor.setAttribute("content", "#000000");
+
+    let wentFullscreen = false;
+    try {
+      if (!document.fullscreenElement && html.requestFullscreen) {
+        void html
+          .requestFullscreen({ navigationUI: "hide" } as FullscreenOptions)
+          .then(() => {
+            wentFullscreen = true;
+          })
+          .catch(() => {
+            /* iOS Safari recusa fora de PWA — ok */
+          });
+      }
+    } catch {
+      /* ignore */
+    }
+
     return () => {
-      html.style.filter = prev;
+      html.style.filter = prevFilter;
+      if (metaThemeColor) {
+        if (prevThemeContent !== null) {
+          metaThemeColor.setAttribute("content", prevThemeContent);
+        } else {
+          metaThemeColor.removeAttribute("content");
+        }
+      }
+      if (wentFullscreen && document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {
+          /* ignore */
+        });
+      }
     };
   }, [screenLocked]);
 
