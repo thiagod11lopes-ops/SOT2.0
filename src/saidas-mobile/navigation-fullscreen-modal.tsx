@@ -31,6 +31,7 @@ import {
   formatDistance,
   formatDuration,
   geocodeAddresses,
+  haversineMeters,
   maneuverToPortuguese,
 } from "../lib/navigationRouting";
 
@@ -104,15 +105,6 @@ export function NavigationFullScreenModal({
 
   const [origin, setOrigin] = useState<Coord | null>(null);
   const [destination, setDestination] = useState<GeocodeResult | null>(null);
-  /**
-   * Candidatos devolvidos pelo geocoder quando o nome do destino é ambíguo
-   * (ex.: vários "Hospital São José" pelo país). Sempre ordenados do mais próximo
-   * para o mais distante em relação a `origin`. Quando há > 1 candidato e o motorista
-   * ainda não escolheu, mostramos uma lista de selecção.
-   */
-  const [candidates, setCandidates] = useState<
-    Array<GeocodeResult & { distanceMeters: number }>
-  >([]);
   const [route, setRoute] = useState<DrivingRoute | null>(null);
   const [loading, setLoading] = useState<"" | "locating" | "geocoding" | "routing">("");
   const [error, setError] = useState<string | null>(null);
@@ -185,9 +177,9 @@ export function NavigationFullScreenModal({
 
   // ---------------------------------------------------------------------------
   // 2) Geocodificar o destino. Espera por `origin` antes de pesquisar — sem origem,
-  // não conseguimos ordenar os candidatos por distância. Se houver > 1 resultado,
-  // a UI mostra uma lista para o motorista escolher; caso contrário, selecciona
-  // automaticamente o único candidato.
+  // não conseguimos ordenar os candidatos por distância. Auto-escolhe sempre o
+  // candidato mais próximo: o motorista já escolheu o endereço durante a digitação
+  // (autocomplete estilo Waze/Maps no campo «Destino»).
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
@@ -208,15 +200,12 @@ export function NavigationFullScreenModal({
         setLoading("");
         return;
       }
-      // Ordena por distância à posição actual (mais próximo primeiro).
       const withDistance = results
         .map((r) => ({ ...r, distanceMeters: haversineMeters(origin, { lat: r.lat, lng: r.lng }) }))
         .sort((a, b) => a.distanceMeters - b.distanceMeters);
-      if (withDistance.length === 1) {
-        setDestination(withDistance[0]);
-      } else {
-        setCandidates(withDistance);
-      }
+      const { distanceMeters: _ignored, ...picked } = withDistance[0];
+      void _ignored;
+      setDestination(picked);
       setLoading("");
     });
     return () => {
@@ -641,7 +630,6 @@ export function NavigationFullScreenModal({
   useEffect(() => {
     if (open) return;
     setDestination(null);
-    setCandidates([]);
     setRoute(null);
     setError(null);
     setLoading("");
@@ -928,67 +916,10 @@ export function NavigationFullScreenModal({
         </button>
       </div>
 
-      {/* Lista de selecção de destino (quando o nome é ambíguo).
-          Apresentada do mais próximo para o mais distante; o motorista escolhe. */}
-      {!destination && candidates.length > 1 ? (
-        <div
-          className="absolute inset-0 z-20 flex items-end justify-center bg-black/55 sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sot-nav-pick-title"
-        >
-          <div className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:rounded-2xl">
-            <h2 id="sot-nav-pick-title" className="mb-1 text-base font-bold text-slate-900">
-              Escolher destino
-            </h2>
-            <p className="mb-3 text-xs text-slate-600">
-              Existem várias localizações para
-              <span className="font-semibold"> «{destinationQuery}»</span>. Toque na correcta —
-              estão ordenadas da mais próxima para a mais distante.
-            </p>
-            <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto">
-              {candidates.map((c, idx) => (
-                <li key={`${c.lat}-${c.lng}-${idx}`}>
-                  <button
-                    type="button"
-                    className="flex w-full items-start gap-3 px-2 py-3 text-left hover:bg-slate-50 active:bg-slate-100"
-                    onClick={() => {
-                      const { distanceMeters: _ignored, ...picked } = c;
-                      void _ignored;
-                      setDestination(picked);
-                      setCandidates([]);
-                    }}
-                  >
-                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
-                      {idx + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block break-words text-sm font-medium text-slate-900">
-                        {c.displayName}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-slate-500">
-                        em linha reta {formatDistance(c.distanceMeters)}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 flex">
-              <Button
-                variant="outline"
-                className="h-10 flex-1 rounded-xl"
-                onClick={() => {
-                  window.speechSynthesis?.cancel?.();
-                  onClose();
-                }}
-              >
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* Seletor de destino ambíguo removido: o motorista já escolhe o endereço
+          canónico durante a digitação no campo «Destino» (autocomplete estilo
+          Waze/Maps). Aqui apenas seleccionamos automaticamente o candidato mais
+          próximo. */}
 
       {/* Animação de despedida: escurece gradualmente até preto enquanto uma mão
           acena no centro. Visível só durante ~2,2 s quando o motorista escolheu
@@ -1076,18 +1007,5 @@ function formatEta(durationSeconds: number): string {
   const hh = String(eta.getHours()).padStart(2, "0");
   const mm = String(eta.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
-}
-
-/** Distância haversine entre dois pontos, em metros. */
-function haversineMeters(a: Coord, b: Coord): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
 }
 

@@ -148,6 +148,26 @@ export function formatDistance(meters: number): string {
 }
 
 /**
+ * Distância haversine (em metros) entre dois pontos geográficos. Boa o suficiente
+ * para ordenar candidatos de geocoding por proximidade (não precisamos da rota
+ * real para isso).
+ */
+export function haversineMeters(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/**
  * Constrói uma frase em português para uma manobra OSRM (usada pelo Text-to-Speech).
  *
  * Cobre os tipos mais comuns (`turn`, `merge`, `roundabout`, `arrive`, `depart`, etc).

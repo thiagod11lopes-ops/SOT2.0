@@ -1,10 +1,22 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "../components/ui/button";
-import { geocodeAddresses, type GeocodeResult } from "../lib/navigationRouting";
+import {
+  formatDistance,
+  geocodeAddresses,
+  haversineMeters,
+  type GeocodeResult,
+} from "../lib/navigationRouting";
 import { normalize24hTime, normalize24hTimeWithCaret } from "../lib/timeInput";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
+
+type AddressSuggestion = GeocodeResult & {
+  /** Distância em metros à posição actual do utilizador (null se desconhecida). */
+  distanceMeters: number | null;
+};
+
+type UserCoord = { lat: number; lng: number };
 
 type BaseProps = {
   open: boolean;
@@ -50,8 +62,10 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
   const isTime24h = props.variant === "input" ? Boolean(props.time24h) : false;
   const autocompleteAddress =
     props.variant === "input" ? Boolean(props.autocompleteAddress) : false;
-  const [addressSuggestions, setAddressSuggestions] = useState<GeocodeResult[]>([]);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
+  /** Posição actual do utilizador (mais próximo primeiro nas sugestões). */
+  const [userCoord, setUserCoord] = useState<UserCoord | null>(null);
   /**
    * Sinaliza que o último valor de `draft` veio de uma sugestão tocada — nesse caso
    * não voltamos a procurar para não substituir as sugestões durante a selecção.
@@ -75,8 +89,53 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
   }, [props.open, props.initialValue, isTime24h]);
 
   /**
+   * Pede a posição actual do utilizador uma vez ao abrir o modal de endereço.
+   * `maximumAge: 60000` reutiliza a leitura recente do GPS (sem novo prompt) e
+   * evita atrasos. Em caso de falha (permissão recusada, timeout, dispositivo
+   * sem GPS) deixamos `userCoord` a `null` — o autocomplete continua a funcionar,
+   * apenas sem ordenação por proximidade.
+   */
+  useEffect(() => {
+    if (!props.open || !autocompleteAddress) return;
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        setUserCoord({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        // Sem localização: fica null, sem ordenação por distância.
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [props.open, autocompleteAddress]);
+
+  /**
+   * Quando a localização chega depois das sugestões já estarem no ar, reordena-as
+   * pela nova distância sem nova chamada ao geocoder.
+   */
+  useEffect(() => {
+    if (!userCoord) return;
+    setAddressSuggestions((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev
+        .map((s) => ({
+          ...s,
+          distanceMeters: haversineMeters(userCoord, { lat: s.lat, lng: s.lng }),
+        }))
+        .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
+      return next;
+    });
+  }, [userCoord]);
+
+  /**
    * Autocomplete de endereços (Nominatim). Debounced ~350 ms para respeitar
-   * o limite "1 req/s" do servidor público.
+   * o limite "1 req/s" do servidor público. Resultados ordenados do mais
+   * próximo (em linha recta) para o mais distante quando temos `userCoord`.
    */
   useEffect(() => {
     if (!props.open || !autocompleteAddress) return;
@@ -98,7 +157,17 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
       setAddressLoading(true);
       try {
         const results = await geocodeAddresses(query, 8);
-        if (!cancelled) setAddressSuggestions(results);
+        if (cancelled) return;
+        const withDistance: AddressSuggestion[] = results.map((r) => ({
+          ...r,
+          distanceMeters: userCoord
+            ? haversineMeters(userCoord, { lat: r.lat, lng: r.lng })
+            : null,
+        }));
+        withDistance.sort(
+          (a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity),
+        );
+        setAddressSuggestions(withDistance);
       } finally {
         if (!cancelled) setAddressLoading(false);
       }
@@ -107,9 +176,9 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [draft, props.open, autocompleteAddress]);
+  }, [draft, props.open, autocompleteAddress, userCoord]);
 
-  function handleSuggestionTap(suggestion: GeocodeResult) {
+  function handleSuggestionTap(suggestion: AddressSuggestion) {
     suggestionAppliedRef.current = true;
     setDraft(suggestion.displayName);
     setAddressSuggestions([]);
@@ -278,9 +347,16 @@ export function MobileFieldEditModal(props: MobileFieldEditModalProps) {
                           <button
                             type="button"
                             onClick={() => handleSuggestionTap(suggestion)}
-                            className="block w-full px-3 py-2.5 text-left text-sm leading-snug text-[hsl(var(--foreground))] active:bg-[hsl(var(--muted))]/40 hover:bg-[hsl(var(--muted))]/30"
+                            className="flex w-full items-start gap-3 px-3 py-2.5 text-left leading-snug active:bg-[hsl(var(--muted))]/40 hover:bg-[hsl(var(--muted))]/30"
                           >
-                            {suggestion.displayName}
+                            <span className="min-w-0 flex-1 text-sm text-[hsl(var(--foreground))]">
+                              {suggestion.displayName}
+                            </span>
+                            {suggestion.distanceMeters !== null ? (
+                              <span className="mt-0.5 shrink-0 rounded-full bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[0.7rem] font-semibold tabular-nums text-[hsl(var(--muted-foreground))]">
+                                {formatDistance(suggestion.distanceMeters)}
+                              </span>
+                            ) : null}
                           </button>
                         </li>
                       ))}
