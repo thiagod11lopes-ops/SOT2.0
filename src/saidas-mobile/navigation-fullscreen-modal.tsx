@@ -195,6 +195,19 @@ export function NavigationFullScreenModal({
   const routingStartedRef = useRef(false);
   /** `true` depois da primeira vez que enquadramos a vista para a rota. */
   const routeFittedRef = useRef(false);
+  /** `true` após a primeira centragem na posição do motorista (antes da rota). */
+  const centeredOnFirstFixRef = useRef(false);
+
+  /**
+   * Centro "congelado" que passamos ao prop `center` do `<GoogleMap>`. O
+   * `react-google-maps/api` re-chama `map.setCenter()` sempre que este prop
+   * muda — se ligássemos directamente ao `origin`, o mapa ficaria a saltar
+   * a cada tick do GPS, sobrescrevendo o `fitBounds` da rota e o pan/zoom
+   * do motorista. Por isso só actualizamos uma vez (na primeira posição) e
+   * depois deixamos o controlo programático/manual tomar conta.
+   */
+  const [staticCenter, setStaticCenter] = useState<Coord>(DEFAULT_CENTER);
+  const [staticZoom, setStaticZoom] = useState<number>(6);
 
   /** Placa **do motorista actual** — filtrada da lista de outras viaturas. */
   const currentPlacaNorm = useMemo(
@@ -381,6 +394,9 @@ export function NavigationFullScreenModal({
         setLoading("");
         return;
       }
+      console.info(
+        `[SOT] rota armazenada em estado: ${r.geometry.coordinates.length} pontos`,
+      );
       setRoute(r);
       setLoading("");
       spokenStepIdxRef.current = -1;
@@ -391,8 +407,26 @@ export function NavigationFullScreenModal({
   }, [open, origin, destination, routeAttempt]);
 
   // ---------------------------------------------------------------------------
+  // 3b) Centra o mapa na primeira posição GPS conhecida — só uma vez, antes
+  //     do `fitBounds` da rota tomar conta. Sem isto, com `defaultCenter`
+  //     uncontrolled, o mapa ficaria fixo no Rio de Janeiro até a rota chegar.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!origin) return;
+    if (centeredOnFirstFixRef.current) return;
+    setStaticCenter({ lat: origin.lat, lng: origin.lng });
+    setStaticZoom(14);
+    centeredOnFirstFixRef.current = true;
+  }, [origin]);
+
+  // ---------------------------------------------------------------------------
   // 4) `fitBounds` à rota — uma única vez por sessão.
   //    Depois disso o motorista controla o pan/zoom livremente.
+  //
+  //    Padding desigual para compensar o cartão branco superior (~230px de
+  //    altura com Destino + Distância/Tempo/Chegada) e o botão "Voltar" no
+  //    canto inferior. Sem este ajuste, com rotas longas (> 20 km) parte
+  //    da polilinha ficava escondida atrás do cartão.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!route || !mapInstance) return;
@@ -402,7 +436,8 @@ export function NavigationFullScreenModal({
       bounds.extend({ lat, lng });
     }
     if (!bounds.isEmpty()) {
-      mapInstance.fitBounds(bounds, 80);
+      mapInstance.fitBounds(bounds, { top: 240, right: 60, bottom: 110, left: 60 });
+      console.info("[SOT] fitBounds aplicado à rota");
       routeFittedRef.current = true;
     }
   }, [route, mapInstance]);
@@ -522,6 +557,9 @@ export function NavigationFullScreenModal({
     spokenStepIdxRef.current = -1;
     routingStartedRef.current = false;
     routeFittedRef.current = false;
+    centeredOnFirstFixRef.current = false;
+    setStaticCenter(DEFAULT_CENTER);
+    setStaticZoom(6);
   }, [open]);
 
   /**
@@ -625,8 +663,12 @@ export function NavigationFullScreenModal({
         ) : (
           <GoogleMap
             mapContainerStyle={MAP_CONTAINER_STYLE}
-            center={origin ?? DEFAULT_CENTER}
-            zoom={origin ? 14 : 6}
+            // `staticCenter`/`staticZoom` só mudam UMA VEZ (quando o GPS dá
+            // a primeira posição). Sem este lock, cada tick do GPS chamaria
+            // `map.setCenter()` por baixo, anulando o `fitBounds` da rota
+            // e o pan/zoom manual do motorista.
+            center={staticCenter}
+            zoom={staticZoom}
             options={MAP_OPTIONS}
             onLoad={handleMapLoad}
             onUnmount={handleMapUnmount}
