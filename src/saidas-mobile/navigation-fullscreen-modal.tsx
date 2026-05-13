@@ -724,14 +724,14 @@ export function NavigationFullScreenModal({
           </div>
         </div>
 
-        {/* Status pequeno (carregar / erro) — não esconde o cartão. */}
-        {loading || (!route && error) ? (
+        {/* Status pequeno (a carregar / erro) — não esconde o cartão. */}
+        {!route ? (
           <p className="pointer-events-auto mt-1 inline-block self-start rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
             {loading === "locating" && "A localizar-se…"}
             {loading === "geocoding" && "A procurar destino…"}
             {loading === "routing" && "A calcular rota…"}
-            {!loading && !route && error}
-            {!route && origin && destination ? " · * distância em linha recta" : null}
+            {!loading && (error ?? "A preparar navegação…")}
+            {origin && destination ? " · * distância em linha recta" : null}
           </p>
         ) : null}
 
