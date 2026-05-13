@@ -688,44 +688,52 @@ export function NavigationFullScreenModal({
           </button>
         </div>
 
-        {/* Cartão de distância / tempo. */}
-        <div className="pointer-events-auto mt-1 flex items-center gap-3 rounded-xl bg-white/95 px-3 py-2 text-slate-900 shadow-md">
-          {loading || !route ? (
-            <p className="text-sm font-medium">
-              {loading === "locating" && "A localizar-se…"}
-              {loading === "geocoding" && "A procurar destino…"}
-              {loading === "routing" && "A calcular rota…"}
-              {!loading && !route && (error ?? "A preparar navegação…")}
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">
-                  Distância
-                </span>
-                <span className="text-base font-bold leading-tight">
-                  {formatDistance(route.distance)}
-                </span>
-              </div>
-              <div className="h-8 w-px bg-slate-200" />
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">
-                  Tempo previsto
-                </span>
-                <span className="text-base font-bold leading-tight">
-                  {formatDuration(route.duration)}
-                </span>
-              </div>
-              <div className="h-8 w-px bg-slate-200" />
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">Chegada</span>
-                <span className="text-base font-bold leading-tight">
-                  {formatEta(route.duration)}
-                </span>
-              </div>
-            </>
-          )}
+        {/* Cartão de distância / tempo / chegada — SEMPRE visível.
+            Quando a rota ainda não foi calculada (ou falhou — comum em iPhone
+            Safari com restrições de rede para o OSRM público), mostramos uma
+            estimativa em linha recta para a "Distância" e «—» nos restantes.
+            `flex-wrap` permite acomodar ecrãs estreitos (iPhone SE) sem clipping. */}
+        <div className="pointer-events-auto mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-white px-3 py-2 text-slate-900 shadow-md">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">
+              Distância
+            </span>
+            <span className="whitespace-nowrap text-base font-bold leading-tight">
+              {route
+                ? formatDistance(route.distance)
+                : origin && destination
+                  ? `${formatDistance(haversineMeters(origin, { lat: destination.lat, lng: destination.lng }))} *`
+                  : "—"}
+            </span>
+          </div>
+          <div className="h-8 w-px bg-slate-200" />
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">
+              Tempo previsto
+            </span>
+            <span className="whitespace-nowrap text-base font-bold leading-tight">
+              {route ? formatDuration(route.duration) : "—"}
+            </span>
+          </div>
+          <div className="h-8 w-px bg-slate-200" />
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">Chegada</span>
+            <span className="whitespace-nowrap text-base font-bold leading-tight">
+              {route ? formatEta(route.duration) : "—"}
+            </span>
+          </div>
         </div>
+
+        {/* Status pequeno (carregar / erro) — não esconde o cartão. */}
+        {loading || (!route && error) ? (
+          <p className="pointer-events-auto mt-1 inline-block self-start rounded-md bg-black/55 px-2 py-1 text-[0.7rem] font-medium text-white shadow-sm">
+            {loading === "locating" && "A localizar-se…"}
+            {loading === "geocoding" && "A procurar destino…"}
+            {loading === "routing" && "A calcular rota…"}
+            {!loading && !route && error}
+            {!route && origin && destination ? " · * distância em linha recta" : null}
+          </p>
+        ) : null}
 
         {error && route && (
           <p className="pointer-events-auto mt-1 rounded-md bg-red-600/90 px-3 py-2 text-xs text-white shadow">
