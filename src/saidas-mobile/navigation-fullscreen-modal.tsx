@@ -1301,10 +1301,10 @@ export function NavigationFullScreenModal({
         </button>
       ) : null}
 
-      {/* Botão "Centralizar" — circular com crosshair GPS. Sempre visível
-          quando há posição. Em navegação, fica empilhado por cima do
-          "Visão geral"; em preview ocupa o canto inferior direito sozinho.
-          Acção: pan + zoom 17 + reactivar auto-follow (se estiver em nav). */}
+      {/* Botão "Centralizar" — circular com crosshair GPS, empilhado por
+          cima do "Voltar" no canto inferior esquerdo. Sempre visível quando
+          há posição. Acção: pan + zoom 17 + reactivar auto-follow (se
+          estiver em navegação). */}
       {origin ? (
         <button
           type="button"
@@ -1315,15 +1315,13 @@ export function NavigationFullScreenModal({
             }
             setUserPanned(false);
           }}
-          className={`pointer-events-auto absolute right-3 z-10 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
+          className={`pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
             navigating && userPanned
               ? "bg-blue-600 text-white"
               : "bg-white/95 text-blue-600"
           }`}
           style={{
-            bottom: navigating
-              ? "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)"
-              : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)",
           }}
           aria-label="Centralizar na minha posição"
           title="Centralizar na minha posição"
