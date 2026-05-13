@@ -6,12 +6,9 @@
  *  - Mapa Leaflet a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (posição atual, azul) e destino (vermelho).
  *  - Barra superior com nome do destino, distância e tempo previsto.
- *  - Botão "Iniciar navegação" (canto sup. dir.) que aproxima a câmara em 2x
- *    (zoom actual + 1) e centra o ícone do motorista no ecrã; daí em diante
- *    segue o motorista mantendo-o sempre centrado. Quando o motorista interage
- *    manualmente com o mapa, o botão muda para "Recentrar".
  *  - Botão vermelho "PARE" (base) com modal de confirmação.
- *  - Acompanhamento contínuo da posição via `watchPosition`.
+ *  - Acompanhamento contínuo da posição via `watchPosition` (apenas actualiza
+ *    o marcador do motorista — o motorista controla o mapa manualmente).
  *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista se aproxima
  *    de cada passo.
  *
@@ -37,21 +34,6 @@ import {
 
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-/**
- * `leaflet-rotate` não publica tipos. Aqui declaramos só o subconjunto que usamos.
- * — `rotate: true` activa a rotação.
- * — `setBearing(deg)` roda o mapa (0 = norte para cima).
- */
-type RotatableMap = L.Map & {
-  setBearing: (deg: number) => void;
-};
-type RotatableMapOptions = L.MapOptions & {
-  rotate?: boolean;
-  rotateControl?: boolean;
-  touchRotate?: boolean;
-  bearing?: number;
-};
 
 /**
  * Constrói a query de geocoding a partir dos campos do registo.
@@ -92,12 +74,8 @@ export function NavigationFullScreenModal({
   const destMarkerRef = useRef<L.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const spokenStepIdxRef = useRef<number>(-1);
-  /** True quando estamos no meio de uma animação programática (evita confundir com pan manual). */
-  const animatingRef = useRef<boolean>(false);
   /** Última heading conhecida (graus, 0 = norte). Usada para rotar o ícone do motorista. */
   const headingRef = useRef<number | null>(null);
-  /** True se o plugin `leaflet-rotate` carregou em runtime sem erros. */
-  const rotateAvailableRef = useRef<boolean>(false);
   /** Timestamp do último toque na overlay preta — usado para detectar duplo-clique. */
   const lastLockTapRef = useRef<number>(0);
   /** Wake Lock activo (mantém ecrã aceso durante a navegação). */
@@ -134,16 +112,6 @@ export function NavigationFullScreenModal({
     }, 2200);
     return () => window.clearTimeout(t);
   }, [open, initialScreenLocked]);
-  /** Modo "seguir motorista": câmara acompanha automaticamente a posição actual. */
-  const [isFollowing, setIsFollowing] = useState(false);
-  /** True quando o utilizador interagiu manualmente com o mapa após entrar em follow mode. */
-  const [userInterrupted, setUserInterrupted] = useState(false);
-  /** Mantém o último valor de `isFollowing` acessível sem re-criar callbacks. */
-  const isFollowingRef = useRef(false);
-  useEffect(() => {
-    isFollowingRef.current = isFollowing;
-  }, [isFollowing]);
-
   const destinationQuery = useMemo(() => buildDestinationQuery(record), [record]);
 
   // ---------------------------------------------------------------------------
@@ -245,65 +213,18 @@ export function NavigationFullScreenModal({
 
     let cancelled = false;
     let map: L.Map | null = null;
-    let onDragStart: (() => void) | null = null;
     let rafId = 0;
     let tmo = 0;
 
-    /**
-     * Inicializa o mapa. Tenta carregar dinamicamente `leaflet-rotate`; se falhar
-     * (por incompatibilidade com a versão de Leaflet, bug do plugin, etc.) cai
-     * graciosamente para um mapa sem rotação — preserva toda a app de crashar.
-     */
-    async function init() {
-      let rotateOk = false;
-      try {
-        await import("leaflet-rotate");
-        rotateOk = true;
-      } catch (err) {
-        console.warn("[SOT] leaflet-rotate indisponível — mapa sem rotação:", err);
-        rotateOk = false;
-      }
+    function init() {
       if (cancelled || !containerRef.current) return;
-      rotateAvailableRef.current = rotateOk;
-
-      const mapOptions: RotatableMapOptions = rotateOk
-        ? {
-            zoomControl: true,
-            attributionControl: true,
-            rotate: true,
-            rotateControl: false,
-            touchRotate: false,
-            bearing: 0,
-          }
-        : {
-            zoomControl: true,
-            attributionControl: true,
-          };
-
-      try {
-        map = L.map(el, mapOptions).setView([-22.9, -43.2], 6);
-      } catch (err) {
-        // Última proteção: se mesmo assim crashar (ex.: plugin partido), cria mapa
-        // sem opções de rotação.
-        console.warn("[SOT] L.map falhou com opções rotativas, a tentar sem:", err);
-        rotateAvailableRef.current = false;
-        map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
-          [-22.9, -43.2],
-          6,
-        );
-      }
+      map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
+        [-22.9, -43.2],
+        6,
+      );
 
       L.tileLayer(OSM_TILE, { maxZoom: 19, attribution: OSM_ATTRIB }).addTo(map);
       mapRef.current = map;
-
-      onDragStart = () => {
-        if (animatingRef.current) return;
-        if (isFollowingRef.current) {
-          setIsFollowing(false);
-          setUserInterrupted(true);
-        }
-      };
-      map.on("dragstart", onDragStart);
 
       rafId = requestAnimationFrame(() => {
         map?.invalidateSize();
@@ -312,21 +233,19 @@ export function NavigationFullScreenModal({
       tmo = window.setTimeout(() => map?.invalidateSize(), 320);
     }
 
-    void init();
+    init();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(rafId);
       window.clearTimeout(tmo);
       if (map) {
-        if (onDragStart) map.off("dragstart", onDragStart);
         map.remove();
       }
       mapRef.current = null;
       routeLayerRef.current = null;
       driverMarkerRef.current = null;
       destMarkerRef.current = null;
-      rotateAvailableRef.current = false;
     };
   }, [open]);
 
@@ -362,21 +281,13 @@ export function NavigationFullScreenModal({
       driverMarkerRef.current.setLatLng([origin.lat, origin.lng]);
     }
 
-    // Aplica rotação ao DIV interno. Quando o **mapa** está a rodar (plugin activo
-    // + modo follow) deixamos o ícone apontado para cima — o mapa já gira por baixo.
-    // Caso contrário, o ícone gira para mostrar a direcção de marcha.
+    // Aplica rotação ao DIV interno para indicar a direcção de marcha.
     const el = driverMarkerRef.current.getElement?.();
     const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
     if (rot) {
       const h = headingRef.current;
-      const mapRotating = isFollowingRef.current && rotateAvailableRef.current;
-      if (mapRotating) {
-        rot.style.transform = "rotate(0deg)";
-      } else if (h !== null && Number.isFinite(h)) {
-        rot.style.transform = `rotate(${h}deg)`;
-      } else {
-        rot.style.transform = "rotate(0deg)";
-      }
+      rot.style.transform =
+        h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
     }
   }, [origin]);
 
@@ -442,31 +353,6 @@ export function NavigationFullScreenModal({
         setOrigin(here);
         if (driverMarkerRef.current) driverMarkerRef.current.setLatLng([here.lat, here.lng]);
         maybeSpeakNextManeuver(here);
-
-        // Se estamos no modo seguir, faz pan suave da câmara para manter o
-        // motorista **centrado** no ecrã, e roda o mapa para a direcção de
-        // marcha apontar para cima (quando o plugin de rotação está activo).
-        const map = mapRef.current as RotatableMap | null;
-        if (map && isFollowingRef.current) {
-          animatingRef.current = true;
-          try {
-            if (rotateAvailableRef.current) {
-              const h = headingRef.current;
-              if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
-                try {
-                  map.setBearing(360 - h);
-                } catch (err) {
-                  console.warn("[SOT] setBearing falhou:", err);
-                }
-              }
-            }
-            map.panTo([here.lat, here.lng], { animate: true, duration: 0.6 });
-          } finally {
-            window.setTimeout(() => {
-              animatingRef.current = false;
-            }, 700);
-          }
-        }
       },
       undefined,
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 },
@@ -519,103 +405,14 @@ export function NavigationFullScreenModal({
     [route, speak],
   );
 
-  // ---------------------------------------------------------------------------
-  // Acções dos botões.
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Activa o modo "seguir motorista": aproxima a câmara à posição actual com uma
-   * animação suave e mantém o motorista **centrado** no ecrã. O zoom alvo é o
-   * zoom atual **+ 1**, ou seja, duplica a escala (2x) para "aproximar a tela".
-   * A partir daí, cada actualização de `watchPosition` faz pan automático para
-   * o motorista continuar centrado.
-   */
-  function startFollowing() {
-    const map = mapRef.current as RotatableMap | null;
-    if (!map || !origin) return;
-    setIsFollowing(true);
-    setUserInterrupted(false);
-    animatingRef.current = true;
-    try {
-      const currentZoom = map.getZoom();
-      const maxZoom = map.getMaxZoom?.() ?? 19;
-      const targetZoom = Math.min(currentZoom + 1, maxZoom);
-      map.flyTo([origin.lat, origin.lng], targetZoom, {
-        animate: true,
-        duration: 1.0,
-      });
-      if (rotateAvailableRef.current) {
-        const h = headingRef.current;
-        if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
-          try {
-            map.setBearing(360 - h);
-          } catch (err) {
-            console.warn("[SOT] setBearing falhou:", err);
-          }
-        }
-      }
-    } finally {
-      window.setTimeout(() => {
-        animatingRef.current = false;
-      }, 1100);
-    }
-  }
-
-  /**
-   * Sai do modo "seguir motorista" e afasta a câmara para a vista geral da rota
-   * (a mesma que aparece inicialmente, com origem + destino visíveis).
-   */
-  function exitFollowing() {
-    const map = mapRef.current as RotatableMap | null;
-    setIsFollowing(false);
-    setUserInterrupted(false);
-    if (!map) return;
-    animatingRef.current = true;
-    try {
-      const poly = routeLayerRef.current;
-      if (poly) {
-        // `flyToBounds` é uma animação suave (não brusca como fitBounds).
-        map.flyToBounds(poly.getBounds(), { padding: [80, 80], duration: 1.2 });
-      } else if (origin) {
-        // Sem rota desenhada (caso raro): apenas afasta o zoom da posição actual.
-        map.flyTo([origin.lat, origin.lng], 13, { animate: true, duration: 1.0 });
-      }
-    } finally {
-      window.setTimeout(() => {
-        animatingRef.current = false;
-      }, 1300);
-    }
-  }
-
-  // Quando sai-se do modo seguir, alinha o mapa com o norte para cima de novo (se houve rotação).
-  useEffect(() => {
-    if (isFollowing) return;
-    const map = mapRef.current as RotatableMap | null;
-    if (map && rotateAvailableRef.current && typeof map.setBearing === "function") {
-      try {
-        map.setBearing(0);
-      } catch (err) {
-        console.warn("[SOT] setBearing(0) falhou:", err);
-      }
-    }
-    const el = driverMarkerRef.current?.getElement?.();
-    const rot = el?.querySelector?.(".sot-nav-driver-rotate") as HTMLElement | null;
-    if (rot) {
-      const h = headingRef.current;
-      rot.style.transform = h !== null && Number.isFinite(h) ? `rotate(${h}deg)` : "rotate(0deg)";
-    }
-  }, [isFollowing]);
-
   // Limpa o estado de geocoding/rota assim que o modal fecha — garantindo que a
-  // próxima abertura recomeça do zero (e re-pergunta o destino se ambíguo).
+  // próxima abertura recomeça do zero.
   useEffect(() => {
     if (open) return;
     setDestination(null);
     setRoute(null);
     setError(null);
     setLoading("");
-    setIsFollowing(false);
-    setUserInterrupted(false);
     setScreenLocked(false);
     setFarewellAnimating(false);
     spokenStepIdxRef.current = -1;
@@ -820,8 +617,7 @@ export function NavigationFullScreenModal({
         )}
       </div>
 
-      {/* Botão flutuante: trancar tela (canto superior esquerdo, alinhado em altura
-          com o botão Iniciar navegação à direita). */}
+      {/* Botão flutuante: trancar tela (canto superior esquerdo). */}
       <button
         type="button"
         onClick={() => {
@@ -838,46 +634,6 @@ export function NavigationFullScreenModal({
           <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z" />
         </svg>
       </button>
-
-      {/* Botão flutuante: três estados.
-          - !isFollowing && !userInterrupted → verde "Iniciar navegação" (entra em follow)
-          - isFollowing                       → vermelho "Sair" (afasta para a vista geral da rota)
-          - !isFollowing && userInterrupted   → verde "Recentrar" (volta a entrar em follow)
-       */}
-      {origin ? (
-        <button
-          type="button"
-          onClick={isFollowing ? exitFollowing : startFollowing}
-          className={
-            "pointer-events-auto absolute right-3 z-10 flex h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-bold uppercase tracking-[0.12em] text-white shadow-lg " +
-            (isFollowing
-              ? "bg-red-600 shadow-red-900/40 active:bg-red-700"
-              : "bg-emerald-600 shadow-emerald-900/40 active:bg-emerald-700")
-          }
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
-          aria-label={
-            isFollowing
-              ? "Sair da navegação e ver toda a rota"
-              : userInterrupted
-                ? "Recentrar no motorista"
-                : "Iniciar navegação"
-          }
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-            {isFollowing ? (
-              // Ícone "fechar/sair" — X
-              <path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z" />
-            ) : userInterrupted ? (
-              // Ícone alvo — recentrar
-              <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21z" />
-            ) : (
-              // Ícone navegação — seta
-              <path d="M12 2 5 21l7-4 7 4z" />
-            )}
-          </svg>
-          {isFollowing ? "Sair" : userInterrupted ? "Recentrar" : "Iniciar navegação"}
-        </button>
-      ) : null}
 
       {/* Barra inferior: botão PARE em destaque. */}
       <div
