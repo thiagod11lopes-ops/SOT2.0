@@ -6,10 +6,10 @@
  *  - Mapa Leaflet a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (posição atual, azul) e destino (vermelho).
  *  - Barra superior com nome do destino, distância e tempo previsto.
- *  - Botão "Iniciar navegação" (canto sup. dir.) que aproxima a câmara à posição actual
- *    e a partir daí segue o motorista mantendo o ícone na parte inferior do ecrã,
- *    estilo Waze. Quando o motorista interage manualmente com o mapa, o botão muda
- *    para "Recentrar".
+ *  - Botão "Iniciar navegação" (canto sup. dir.) que aproxima a câmara em 2x
+ *    (zoom actual + 1) e centra o ícone do motorista no ecrã; daí em diante
+ *    segue o motorista mantendo-o sempre centrado. Quando o motorista interage
+ *    manualmente com o mapa, o botão muda para "Recentrar".
  *  - Botão vermelho "PARE" (base) com modal de confirmação.
  *  - Acompanhamento contínuo da posição via `watchPosition`.
  *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista se aproxima
@@ -443,9 +443,9 @@ export function NavigationFullScreenModal({
         if (driverMarkerRef.current) driverMarkerRef.current.setLatLng([here.lat, here.lng]);
         maybeSpeakNextManeuver(here);
 
-        // Se estamos no modo seguir, faz pan suave da câmara para acompanhar o motorista
-        // (mantendo-o na parte inferior do ecrã — câmara atrás, estilo Waze) e roda o
-        // mapa para a direcção de marcha apontar para cima, caso o plugin esteja activo.
+        // Se estamos no modo seguir, faz pan suave da câmara para manter o
+        // motorista **centrado** no ecrã, e roda o mapa para a direcção de
+        // marcha apontar para cima (quando o plugin de rotação está activo).
         const map = mapRef.current as RotatableMap | null;
         if (map && isFollowingRef.current) {
           animatingRef.current = true;
@@ -460,7 +460,7 @@ export function NavigationFullScreenModal({
                 }
               }
             }
-            panSoDriverSitsAtBottom(map, here, 0.6);
+            map.panTo([here.lat, here.lng], { animate: true, duration: 0.6 });
           } finally {
             window.setTimeout(() => {
               animatingRef.current = false;
@@ -524,30 +524,11 @@ export function NavigationFullScreenModal({
   // ---------------------------------------------------------------------------
 
   /**
-   * Coloca a posição actual na parte inferior do ecrã (~78 % da altura) para criar
-   * a sensação de câmara "atrás" do veículo, como no Waze. Usa `panBy` em screen
-   * pixels — assim funciona mesmo com o mapa rotado (leaflet-rotate ajusta).
-   */
-  function panSoDriverSitsAtBottom(map: L.Map, here: Coord, durationSec: number) {
-    try {
-      const sz = map.getSize();
-      const desired = L.point(sz.x / 2, sz.y * 0.78);
-      const current = map.latLngToContainerPoint([here.lat, here.lng]);
-      const dx = current.x - desired.x;
-      const dy = current.y - desired.y;
-      // panBy([dx, dy]) move a vista por (dx, dy) — o ponto fixo move-se (-dx, -dy)
-      // no ecrã, levando o motorista de `current` até `desired`.
-      map.panBy([dx, dy], { animate: true, duration: durationSec });
-    } catch {
-      // Fallback: pan simples para o centro.
-      map.panTo([here.lat, here.lng], { animate: true, duration: durationSec });
-    }
-  }
-
-  /**
    * Activa o modo "seguir motorista": aproxima a câmara à posição actual com uma
-   * animação suave (estilo Waze) e a partir daí faz pan automático a cada
-   * actualização de `watchPosition`. A posição actual fica na parte inferior do ecrã.
+   * animação suave e mantém o motorista **centrado** no ecrã. O zoom alvo é o
+   * zoom atual **+ 1**, ou seja, duplica a escala (2x) para "aproximar a tela".
+   * A partir daí, cada actualização de `watchPosition` faz pan automático para
+   * o motorista continuar centrado.
    */
   function startFollowing() {
     const map = mapRef.current as RotatableMap | null;
@@ -556,7 +537,13 @@ export function NavigationFullScreenModal({
     setUserInterrupted(false);
     animatingRef.current = true;
     try {
-      map.flyTo([origin.lat, origin.lng], 18, { animate: true, duration: 1.4 });
+      const currentZoom = map.getZoom();
+      const maxZoom = map.getMaxZoom?.() ?? 19;
+      const targetZoom = Math.min(currentZoom + 1, maxZoom);
+      map.flyTo([origin.lat, origin.lng], targetZoom, {
+        animate: true,
+        duration: 1.0,
+      });
       if (rotateAvailableRef.current) {
         const h = headingRef.current;
         if (h !== null && Number.isFinite(h) && typeof map.setBearing === "function") {
@@ -567,16 +554,10 @@ export function NavigationFullScreenModal({
           }
         }
       }
-      // Depois da animação principal terminar, empurra a vista para o motorista
-      // ficar visualmente na parte de baixo — simula câmara atrás do veículo.
-      window.setTimeout(() => {
-        if (!isFollowingRef.current || !mapRef.current || !origin) return;
-        panSoDriverSitsAtBottom(mapRef.current, origin, 0.4);
-      }, 1500);
     } finally {
       window.setTimeout(() => {
         animatingRef.current = false;
-      }, 2100);
+      }, 1100);
     }
   }
 
