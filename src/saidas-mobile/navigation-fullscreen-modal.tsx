@@ -35,6 +35,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useCatalogItems } from "../context/catalog-items-context";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
@@ -852,13 +853,22 @@ export function NavigationFullScreenModal({
   //    camião cinza).
   // ---------------------------------------------------------------------------
   const vehicleTypeByPlaca = useVehicleTypeByPlaca();
+  const { items: catalogItems } = useCatalogItems();
+  const vehicleCatalogHint = useMemo(
+    () => ({
+      ambulancias: catalogItems.ambulancias,
+      viaturasAdministrativas: catalogItems.viaturasAdministrativas,
+    }),
+    [catalogItems.ambulancias, catalogItems.viaturasAdministrativas],
+  );
   const driverPlaca = useMemo(
     () => primaryPlacaFromViaturasField(record.viaturas ?? ""),
     [record.viaturas],
   );
   const driverVehicleVariant = useMemo(
-    () => resolveVehicleType(driverPlaca, record.viaturas, vehicleTypeByPlaca),
-    [driverPlaca, record.viaturas, vehicleTypeByPlaca],
+    () =>
+      resolveVehicleType(driverPlaca, record.viaturas, vehicleTypeByPlaca, vehicleCatalogHint),
+    [driverPlaca, record.viaturas, vehicleTypeByPlaca, vehicleCatalogHint],
   );
 
   // Diagnóstico (apenas 1 vez ao abrir o modal) — ajuda a perceber se a
@@ -1229,7 +1239,12 @@ export function NavigationFullScreenModal({
                 O clique abre uma `InfoWindow` com placa + timestamp. */}
             {otherPins.map((p) => {
               const key = `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
-              const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca);
+              const variant = resolveVehicleType(
+                p.placa,
+                p.placa,
+                vehicleTypeByPlaca,
+                vehicleCatalogHint,
+              );
               return (
                 <AdvancedHTMLMarker
                   key={key}

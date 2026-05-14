@@ -3,10 +3,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Map as MapIcon, X } from "lucide-react";
+import { useCatalogItems } from "../context/catalog-items-context";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { resolveVehicleType, type VehicleTypeByPlaca } from "../lib/vehicleTypeByPlaca";
+import {
+  resolveVehicleType,
+  type VehicleCatalogHint,
+  type VehicleTypeByPlaca,
+} from "../lib/vehicleTypeByPlaca";
 import { Button } from "./ui/button";
 import { VehicleIcon } from "./vehicle-icon";
 
@@ -78,6 +83,13 @@ export function DesktopDriverLocationsMapProvider({
   // dos pinos no mapa Leaflet seguem esta configuração (definida em
   // Configurações → Mobile — rastreamento GPS).
   const vehicleTypeByPlaca = useVehicleTypeByPlaca();
+  // Pista do catálogo — placas em `ambulancias` defaultam para ambulância
+  // mesmo sem configuração explícita no mapa acima.
+  const { items: catalogItems } = useCatalogItems();
+  const catalogHint: VehicleCatalogHint = {
+    ambulancias: catalogItems.ambulancias,
+    viaturasAdministrativas: catalogItems.viaturasAdministrativas,
+  };
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -190,6 +202,7 @@ export function DesktopDriverLocationsMapProvider({
             layerRef={layerRef}
             pins={pins}
             vehicleTypeByPlaca={vehicleTypeByPlaca}
+            catalogHint={catalogHint}
           />
         </>
       ) : null}
@@ -266,6 +279,7 @@ function MapLeafletHost({
   layerRef,
   pins,
   vehicleTypeByPlaca,
+  catalogHint,
 }: {
   visible: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -273,6 +287,7 @@ function MapLeafletHost({
   layerRef: React.RefObject<L.LayerGroup | null>;
   pins: { placa: string; lat: number; lng: number; lastUpdateAtMs: number | null }[];
   vehicleTypeByPlaca: VehicleTypeByPlaca;
+  catalogHint: VehicleCatalogHint;
 }) {
   const prevPinCountRef = useRef<number | null>(null);
 
@@ -323,8 +338,8 @@ function MapLeafletHost({
 
     for (const p of pins) {
       // Resolve o tipo de viatura configurado na aba GPS (com fallback
-      // heurístico se a placa ainda não estiver configurada).
-      const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca);
+      // pelo catálogo + heurístico se a placa não estiver configurada).
+      const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca, catalogHint);
       const icon = buildVehicleDivIcon(p.placa, variant);
       const m = L.marker([p.lat, p.lng], { icon, riseOnHover: true });
       const label = escapePopupHtml(p.placa);
@@ -360,7 +375,7 @@ function MapLeafletHost({
     }
 
     requestAnimationFrame(() => map.invalidateSize());
-  }, [visible, pins, vehicleTypeByPlaca]);
+  }, [visible, pins, vehicleTypeByPlaca, catalogHint]);
 
   return null;
 }

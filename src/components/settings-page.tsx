@@ -219,6 +219,33 @@ function VehicleTypeByPlacaEditor({
     return rows;
   }, [catalog.viaturasAdministrativas, catalog.ambulancias]);
 
+  // ─── Auto-commit dos defaults ─────────────────────────────────────────────
+  // Quando o catálogo tem placas que ainda NÃO estão no mapa guardado,
+  // adiciona-as com o defaultType (ambulância para placas em `ambulancias`,
+  // carro para administrativas/heurística). Isto garante que "o que o
+  // utilizador vê na UI é o que está guardado" — sem isto, abrir a página
+  // mostra defaults pré-selecionados que parecem guardados mas só ficam
+  // guardados se o utilizador clicar manualmente em cada dropdown.
+  //
+  // O `vehicleTypeFirstSyncRef` no pai garante que isto só corre DEPOIS do
+  // 1.º snapshot do Firestore chegar — portanto não sobrescreve dados.
+  useEffect(() => {
+    const missing: Array<[string, VehicleType]> = [];
+    for (const { placa, defaultType } of placas) {
+      const key = normalizePlacaKey(placa);
+      if (!key) continue;
+      if (!(key in value)) missing.push([key, defaultType]);
+    }
+    if (missing.length === 0) return;
+    const next = { ...value };
+    for (const [k, t] of missing) next[k] = t;
+    onChange(next);
+    // Deliberadamente sem `value`/`onChange` nas deps — só queremos correr
+    // quando o catálogo de placas muda, e referenciamos `value` snapshot via
+    // closure (o auto-commit é idempotente: se já foi feito, missing fica []).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placas]);
+
   if (placas.length === 0) {
     return (
       <p className="mt-3 text-xs italic text-[hsl(var(--muted-foreground))]">

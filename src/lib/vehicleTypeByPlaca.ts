@@ -112,6 +112,16 @@ export function heuristicVehicleTypeFromText(text: string | null | undefined): V
 }
 
 /**
+ * Pista do catálogo passada ao `resolveVehicleType` quando a placa não está
+ * explicitamente configurada no mapa. Listas extraídas de `CatalogItemsState`
+ * (`ambulancias` e `viaturasAdministrativas`).
+ */
+export type VehicleCatalogHint = {
+  ambulancias?: readonly string[];
+  viaturasAdministrativas?: readonly string[];
+};
+
+/**
  * Resolve o tipo de viatura para uma placa de saída. Estratégia em cadeia
  * (parar na 1ª que devolva resultado):
  *  1. Lookup directo no mapa configurado (chave normalizada strict).
@@ -120,17 +130,25 @@ export function heuristicVehicleTypeFromText(text: string | null | undefined): V
  *  3. Sub-string match: alguma placa configurada aparece dentro do
  *     `viaturasText`? Cobre o caso em que o campo livre contém texto
  *     adicional além da placa (ex.: "RKK-9I27 SAMU Tipo D").
- *  4. Fallback para heurística textual ("ambul"/"samu"/"uti"/…).
+ *  4. Catálogo: se a placa estiver na lista `ambulancias` do catálogo,
+ *     defaulta para "ambulance" — assim o utilizador só precisa de
+ *     configurar excepções (ex.: marcar uma viatura administrativa
+ *     específica como "truck").
+ *  5. Fallback para heurística textual ("ambul"/"samu"/"uti"/…).
  *
  * @param placa Placa principal extraída do campo viaturas (já trimmed).
  * @param viaturasText Texto completo do campo `viaturas` (todas as placas
  *   ou nomes), usado como input adicional para lookup substring + heurística.
  * @param map Estado actual do `vehicleTypeByPlaca`.
+ * @param catalogHint Listas do catálogo (opcional) — quando fornecidas,
+ *   permitem inferir "ambulance" para placas marcadas como ambulância no
+ *   catálogo, sem precisar de configuração explícita.
  */
 export function resolveVehicleType(
   placa: string,
   viaturasText: string | null | undefined,
   map: VehicleTypeByPlaca,
+  catalogHint?: VehicleCatalogHint,
 ): VehicleType {
   // 1) Match directo (mais comum).
   const key = normalizePlacaKey(placa);
@@ -158,6 +176,18 @@ export function resolveVehicleType(
     }
   }
 
-  // 4) Última hipótese — heurística textual.
+  // 4) Catálogo — se a placa está na categoria "ambulancias", defaulta
+  //    para ambulância (utilizador só precisa de configurar excepções).
+  if (catalogHint?.ambulancias && (key || placa)) {
+    const lookupKey = key || placa.trim().toUpperCase();
+    const lookupLoose = looseKey(placa);
+    for (const p of catalogHint.ambulancias) {
+      const pKey = normalizePlacaKey(p);
+      if (pKey === lookupKey) return "ambulance";
+      if (looseKey(p) === lookupLoose && lookupLoose) return "ambulance";
+    }
+  }
+
+  // 5) Última hipótese — heurística textual.
   return heuristicVehicleTypeFromText(`${placa} ${viaturasText ?? ""}`);
 }
