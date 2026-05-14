@@ -305,7 +305,7 @@ const PREVIEW_RECENTER_ZOOM = 17;
  * Isso permite ver mais espaço à frente do veículo, evitando que o
  * cartão de distância/tempo/chegada na base da tela o cubra.
  */
-const NAV_2D_OFFSET_LAT_DEGREES = 0.0003;
+const NAV_2D_OFFSET_LAT_DEGREES = 0.001;
 
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
 const MAP_OPTIONS: google.maps.MapOptions = {
