@@ -1324,15 +1324,15 @@ export function NavigationFullScreenModal({
   //          navegação, ou sempre que a heading muda em 3D. Separado do
   //          efeito acima para não esfregar tilt/heading a cada tick GPS
   //          em modo 2D (poupa renders e evita "shakes" visuais).
+  //          Em 3D (vista "north-up") o `heading` do mapa é sempre 0;
+  //          a viatura "gira" sobre o mapa que está fixo a Norte.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!navigating || !mapInstance) return;
     try {
       if (view3D) {
         mapInstance.setTilt(NAV_TILT_DEGREES);
-        if (heading !== null && Number.isFinite(heading)) {
-          mapInstance.setHeading(heading);
-        }
+        mapInstance.setHeading(0); // Em 3D a câmara não gira; viatura "gira" no mapa.
       } else {
         mapInstance.setTilt(0);
         mapInstance.setHeading(0);
@@ -1340,7 +1340,7 @@ export function NavigationFullScreenModal({
     } catch {
       // setTilt/setHeading requerem tile vector — ignora em raster.
     }
-  }, [navigating, view3D, heading, mapInstance]);
+  }, [navigating, view3D, mapInstance]);
 
   // ---------------------------------------------------------------------------
   // 6c-ter) Ajusta zoom sempre que o motorista alterna entre 2D e 3D em
@@ -2253,9 +2253,7 @@ export function NavigationFullScreenModal({
               if (navigating && view3D) {
                 try {
                   mapInstance.setTilt(NAV_TILT_DEGREES);
-                  if (heading !== null && Number.isFinite(heading)) {
-                    mapInstance.setHeading(heading);
-                  }
+                  mapInstance.setHeading(0); // Em 3D a câmara não gira; viatura "gira" no mapa.
                 } catch {
                   // ignora se mapa raster
                 }
