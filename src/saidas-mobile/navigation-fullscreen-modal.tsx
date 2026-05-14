@@ -1117,31 +1117,96 @@ export function NavigationFullScreenModal({
   }, [route]);
 
   // ---------------------------------------------------------------------------
+  // 5a) Índice do segmento da rota mais próximo da posição actual do veículo.
+  //     Em modo navegação, usamos isto para "trimar" a polilinha azul de
+  //     forma a que comece sempre na viatura — o ícone fica perpetuamente
+  //     na base da linha, como o antigo triângulo. Em preview (sem
+  //     navegação) devolvemos -1 e mostramos a rota inteira.
+  //
+  //     Projecção planar (Cartesiana sobre lng/lat) suficiente para
+  //     distâncias curtas. Vai segmento a segmento, encontra a projecção
+  //     mais próxima da origem e devolve o índice do primeiro ponto desse
+  //     segmento. A polilinha exibida será [origin, routePath[idx+1],
+  //     routePath[idx+2], …, destino].
+  // ---------------------------------------------------------------------------
+  const trimmedFromIdx = useMemo<number>(() => {
+    if (!navigating || !origin || routePath.length < 2) return -1;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < routePath.length - 1; i++) {
+      const a = routePath[i];
+      const b = routePath[i + 1];
+      const dx = b.lng - a.lng;
+      const dy = b.lat - a.lat;
+      const lenSq = dx * dx + dy * dy;
+      let projLng: number;
+      let projLat: number;
+      if (lenSq < 1e-12) {
+        projLng = a.lng;
+        projLat = a.lat;
+      } else {
+        const t =
+          ((origin.lng - a.lng) * dx + (origin.lat - a.lat) * dy) / lenSq;
+        const tc = Math.max(0, Math.min(1, t));
+        projLng = a.lng + tc * dx;
+        projLat = a.lat + tc * dy;
+      }
+      const dist = haversineMeters(origin, { lat: projLat, lng: projLng });
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }, [navigating, origin, routePath]);
+
+  /**
+   * Polilinha azul efectivamente desenhada. Em navegação activa começa
+   * exactamente na posição do veículo (para o ícone ficar sempre "na
+   * base da linha"); em preview mostra a rota completa para o motorista
+   * ver o trajeto até ao destino.
+   */
+  const displayRoutePath = useMemo<Coord[]>(() => {
+    if (routePath.length === 0) return [];
+    if (trimmedFromIdx < 0 || !origin) return routePath;
+    return [origin, ...routePath.slice(trimmedFromIdx + 1)];
+  }, [routePath, origin, trimmedFromIdx]);
+
+  // ---------------------------------------------------------------------------
   // 5b) Overlays de trânsito — só com Google Routes API. Cada intervalo
   //     `SLOW`/`TRAFFIC_JAM` vira uma `<Polyline>` por cima da base azul,
-  //     usando os pontos da `routePath` no intervalo [startIndex, endIndex].
+  //     usando os pontos da rota no intervalo [startIndex, endIndex].
   //     Adicionamos +1 ao `endIndex` (slice exclusivo) para o último ponto
   //     ser incluído. Intervalos `NORMAL` são ignorados (mantemos o azul).
+  //
+  //     Em modo navegação, os índices originais (relativos a `routePath`)
+  //     são deslocados pelo `trimmedFromIdx` para alinharem com a
+  //     `displayRoutePath` truncada — assim os troços vermelhos/laranja
+  //     ficam visíveis apenas para a porção da rota ainda à frente do
+  //     veículo (também não há polilinha base atrás dele).
   // ---------------------------------------------------------------------------
   const trafficOverlays = useMemo<
     Array<{ key: string; path: Coord[]; color: string }>
   >(() => {
-    if (!route?.speedIntervals || routePath.length === 0) return [];
+    if (!route?.speedIntervals || displayRoutePath.length === 0) return [];
+    const offset = trimmedFromIdx >= 0 ? trimmedFromIdx : 0;
     const out: Array<{ key: string; path: Coord[]; color: string }> = [];
     for (const iv of route.speedIntervals) {
       const color = TRAFFIC_OVERLAY_COLORS[iv.speed];
       if (!color) continue;
-      const start = Math.max(0, Math.min(iv.startIndex, routePath.length - 1));
-      const end = Math.max(start, Math.min(iv.endIndex + 1, routePath.length));
-      if (end - start < 2) continue;
+      const start = Math.max(0, iv.startIndex - offset);
+      const end = Math.max(start, iv.endIndex + 1 - offset);
+      const startClamped = Math.min(start, displayRoutePath.length - 1);
+      const endClamped = Math.min(end, displayRoutePath.length);
+      if (endClamped - startClamped < 2) continue;
       out.push({
-        key: `${iv.speed}-${start}-${end}`,
-        path: routePath.slice(start, end),
+        key: `${iv.speed}-${startClamped}-${endClamped}`,
+        path: displayRoutePath.slice(startClamped, endClamped),
         color,
       });
     }
     return out;
-  }, [route, routePath]);
+  }, [route, displayRoutePath, trimmedFromIdx]);
 
   /**
    * Severidade global do trânsito na rota.
@@ -1496,9 +1561,9 @@ export function NavigationFullScreenModal({
             }}
           >
             {/* Polilinha da rota (azul base) — só renderiza após routing responder. */}
-            {routePath.length > 0 ? (
+            {displayRoutePath.length > 0 ? (
               <>
-                <Polyline path={routePath} options={ROUTE_POLYLINE_OPTIONS} />
+                <Polyline path={displayRoutePath} options={ROUTE_POLYLINE_OPTIONS} />
                 {/* Overlays de trânsito por cima do azul: laranja para SLOW,
                     vermelho para TRAFFIC_JAM. Apenas presente quando a Routes
                     API responder com `speedReadingIntervals`. */}
