@@ -282,14 +282,21 @@ const DEFAULT_CENTER: Coord = { lat: -22.9, lng: -43.2 };
 const NAV_TILT_DEGREES = 67.5;
 
 /**
- * Nível de zoom usado em modo navegação activa. No Google Maps cada nível
- * inteiro dobra a escala. 20 corresponde a uma vista bem próxima da
- * viatura (~15 m de campo de visão em frente), com a silhueta 3D
- * destacada e detalhe forte do cruzamento seguinte — equivalente ao
- * dobro do zoom 19 anterior. Em preview (botão "Centralizar" fora de
- * navegação) usa-se 17, panorâmico.
+ * Níveis de zoom em modo navegação activa. No Google Maps cada nível
+ * inteiro dobra a escala visual.
+ *
+ * - **3D**: zoom 20 (~15 m de campo de visão em frente) — o ângulo
+ *   inclinado da câmara aproxima a perspectiva ao volante, beneficiando
+ *   de um zoom mais alto para destacar a viatura no asfalto.
+ * - **2D top-down**: zoom 19 (~30 m em frente, o dobro da área 3D).
+ *   Em vista cenital o motorista quer ver mais distância à frente para
+ *   antecipar curvas e cruzamentos; um zoom 1 nível abaixo do 3D dá
+ *   exactamente o dobro do campo de visão.
+ *
+ * Em preview (botão "Centralizar" fora de navegação) usa-se 17, panorâmico.
  */
-const NAV_ACTIVE_ZOOM = 20;
+const NAV_ZOOM_3D = 20;
+const NAV_ZOOM_2D = 19;
 const PREVIEW_RECENTER_ZOOM = 17;
 
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
@@ -1301,9 +1308,11 @@ export function NavigationFullScreenModal({
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
     if (!navInitializedRef.current) {
-      // Aproxima bem da viatura (zoom 20 ≈ "ao volante") com vista 2D
-      // por defeito. O 3D fica disponível via toggle manual.
-      mapInstance.setZoom(NAV_ACTIVE_ZOOM);
+      // Em 2D a câmara fica directamente acima da viatura — para
+      // compensar a perda de profundidade da vista cenital, aplicamos
+      // 1 nível de zoom abaixo (mais campo de visão à frente). Em 3D
+      // o ângulo inclinado já dá a noção de profundidade.
+      mapInstance.setZoom(view3D ? NAV_ZOOM_3D : NAV_ZOOM_2D);
       navInitializedRef.current = true;
     }
     if (userPanned) return;
@@ -1332,6 +1341,21 @@ export function NavigationFullScreenModal({
       // setTilt/setHeading requerem tile vector — ignora em raster.
     }
   }, [navigating, view3D, heading, mapInstance]);
+
+  // ---------------------------------------------------------------------------
+  // 6c-ter) Ajusta zoom sempre que o motorista alterna entre 2D e 3D em
+  //          modo navegação — 3D usa zoom mais alto (silhueta inclinada)
+  //          e 2D zoom mais baixo (mais distância à frente). Não dispara
+  //          a primeira vez que `navigating` fica true (essa é tratada
+  //          pelo efeito 6c acima); só em toggles posteriores de view3D.
+  // ---------------------------------------------------------------------------
+  const prevView3DRef = useRef(view3D);
+  useEffect(() => {
+    if (!navigating || !mapInstance) return;
+    if (prevView3DRef.current === view3D) return;
+    prevView3DRef.current = view3D;
+    mapInstance.setZoom(view3D ? NAV_ZOOM_3D : NAV_ZOOM_2D);
+  }, [navigating, view3D, mapInstance]);
 
   // ---------------------------------------------------------------------------
   // 6d) Volta a vista 2D (tilt 0, heading 0) quando o motorista clica em
@@ -2220,7 +2244,11 @@ export function NavigationFullScreenModal({
             if (mapInstance) {
               mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
               mapInstance.setZoom(
-                navigating ? NAV_ACTIVE_ZOOM : PREVIEW_RECENTER_ZOOM,
+                navigating
+                  ? view3D
+                    ? NAV_ZOOM_3D
+                    : NAV_ZOOM_2D
+                  : PREVIEW_RECENTER_ZOOM,
               );
               if (navigating && view3D) {
                 try {
