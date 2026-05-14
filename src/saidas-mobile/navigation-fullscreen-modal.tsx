@@ -37,8 +37,11 @@ import { createPortal } from "react-dom";
 
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
+import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
 import { useWatchUserLocation } from "../hooks/useWatchUserLocation";
+import { VehicleIcon } from "../components/vehicle-icon";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
+import { resolveVehicleType } from "../lib/vehicleTypeByPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
 import {
@@ -87,27 +90,6 @@ function formatRelativeTime(ms: number, now: number = Date.now()): string {
 /** Normaliza placa para comparação (trim + uppercase). */
 function normalizePlaca(p: string): string {
   return p.trim().toUpperCase();
-}
-
-/**
- * Determina a variante visual do ícone da viatura a partir do texto livre do
- * campo `viaturas` do registo. Heurística simples: se contém "ambul", "samu"
- * ou "uti" é uma ambulância; senão usa-se a silhueta genérica de carro.
- */
-function vehicleVariantFromViaturas(
-  viaturas: string | null | undefined,
-): "ambulance" | "car" {
-  const s = (viaturas ?? "").toLowerCase();
-  if (
-    s.includes("ambul") ||
-    s.includes("samu") ||
-    /\buti\b/.test(s) ||
-    /\busa\b/.test(s) || // Unidade de Suporte Avançado/Básico
-    /\busb\b/.test(s)
-  ) {
-    return "ambulance";
-  }
-  return "car";
 }
 
 /**
@@ -326,72 +308,6 @@ function AdvancedHTMLMarker({
   // div sozinho como filho do `AdvancedMarkerElement`).
   if (!containerRef.current) return null;
   return createPortal(children, containerRef.current);
-}
-
-// =============================================================================
-// Ícones de viatura (SVG inline) — usados no conteúdo de AdvancedHTMLMarker.
-// =============================================================================
-
-/**
- * Silhueta de carro/ambulância vista de cima. Single-color outline + body,
- * boa visibilidade em zoom 14-18. O `style` externo aplica `rotate(...)`
- * para alinhar com o `heading` do GPS.
- */
-function VehicleSvg({
-  variant,
-  size,
-}: {
-  variant: "ambulance" | "car";
-  size: number;
-}) {
-  const isAmbulance = variant === "ambulance";
-  return (
-    <svg
-      viewBox="0 0 40 60"
-      width={size}
-      height={(size * 60) / 40}
-      aria-hidden="true"
-    >
-      {/* Sombra suave por baixo */}
-      <ellipse cx="20" cy="55" rx="14" ry="3" fill="rgba(0,0,0,0.35)" />
-      {/* Corpo da viatura (rectângulo arredondado) */}
-      <rect
-        x="6"
-        y="6"
-        width="28"
-        height="46"
-        rx="6"
-        ry="6"
-        fill={isAmbulance ? "#ffffff" : "#2563eb"}
-        stroke={isAmbulance ? "#dc2626" : "#1d4ed8"}
-        strokeWidth="2.5"
-      />
-      {/* Para-brisas frontal */}
-      <path
-        d="M9 14 L31 14 L29 22 L11 22 Z"
-        fill={isAmbulance ? "#bfdbfe" : "#dbeafe"}
-        opacity="0.9"
-      />
-      {/* Para-brisas traseiro */}
-      <path
-        d="M11 38 L29 38 L31 46 L9 46 Z"
-        fill={isAmbulance ? "#bfdbfe" : "#dbeafe"}
-        opacity="0.7"
-      />
-      {/* Cruz médica (ambulância) ou faixa lateral (carro) */}
-      {isAmbulance ? (
-        <>
-          <rect x="17" y="26" width="6" height="10" fill="#dc2626" />
-          <rect x="13" y="28" width="14" height="6" fill="#dc2626" />
-        </>
-      ) : (
-        <rect x="6" y="28" width="28" height="4" fill="#1d4ed8" opacity="0.5" />
-      )}
-      {/* Faróis dianteiros */}
-      <circle cx="11" cy="10" r="1.5" fill="#fef3c7" />
-      <circle cx="29" cy="10" r="1.5" fill="#fef3c7" />
-    </svg>
-  );
 }
 
 /**
@@ -863,14 +779,20 @@ export function NavigationFullScreenModal({
   }, [route]);
 
   // ---------------------------------------------------------------------------
-  // 6) Variante visual da viatura do motorista — detectada a partir do texto
-  //    do campo `viaturas` do registo. Influencia o ícone SVG mostrado no
-  //    marcador `AdvancedHTMLMarker` (ambulância com cruz vermelha vs.
-  //    carro genérico azul).
+  // 6) Variante visual da viatura — resolvida primeiro pelo mapa configurado
+  //    na aba "Mobile — rastreamento (GPS)" (`vehicleTypeByPlaca`), com
+  //    fallback para heurística textual. Influencia o ícone SVG mostrado no
+  //    marcador `AdvancedHTMLMarker` (carro cinza, ambulância branca ou
+  //    camião cinza).
   // ---------------------------------------------------------------------------
-  const driverVehicleVariant = useMemo(
-    () => vehicleVariantFromViaturas(record.viaturas),
+  const vehicleTypeByPlaca = useVehicleTypeByPlaca();
+  const driverPlaca = useMemo(
+    () => primaryPlacaFromViaturasField(record.viaturas ?? ""),
     [record.viaturas],
+  );
+  const driverVehicleVariant = useMemo(
+    () => resolveVehicleType(driverPlaca, record.viaturas, vehicleTypeByPlaca),
+    [driverPlaca, record.viaturas, vehicleTypeByPlaca],
   );
 
   // ---------------------------------------------------------------------------
@@ -1185,15 +1107,17 @@ export function NavigationFullScreenModal({
                   }}
                   aria-hidden="true"
                 >
-                  <VehicleSvg variant={driverVehicleVariant} size={36} />
+                  <VehicleIcon variant={driverVehicleVariant} size={36} />
                 </div>
               </AdvancedHTMLMarker>
             ) : null}
 
-            {/* Pinos das outras viaturas — silhueta laranja + placa por cima.
+            {/* Pinos das outras viaturas — silhueta configurada (carro,
+                ambulância ou camião) + placa em badge por cima.
                 O clique abre uma `InfoWindow` com placa + timestamp. */}
             {otherPins.map((p) => {
               const key = `${p.placa}|${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+              const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca);
               return (
                 <AdvancedHTMLMarker
                   key={key}
@@ -1216,26 +1140,20 @@ export function NavigationFullScreenModal({
                     <span
                       style={{
                         background: "rgba(255,255,255,0.95)",
-                        color: "#7c2d12",
+                        color: "#0f172a",
                         fontSize: 10,
                         fontWeight: 700,
                         padding: "1px 5px",
                         borderRadius: 4,
                         whiteSpace: "nowrap",
-                        border: "1px solid #fb923c",
+                        border: "1px solid #475569",
                       }}
                     >
                       {p.placa}
                     </span>
-                    <div
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
-                        background: "#fb923c",
-                        border: "2px solid #c2410c",
-                      }}
-                    />
+                    {/* Silhueta da viatura (sem rotação — não temos heading
+                        das outras viaturas, mostramos sempre "para cima"). */}
+                    <VehicleIcon variant={variant} size={28} />
                   </div>
                 </AdvancedHTMLMarker>
               );

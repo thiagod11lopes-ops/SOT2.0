@@ -29,6 +29,8 @@ export const SOT_STATE_DOC = {
   alarmesConfig: "alarmesConfig",
   /** Intervalo (minutos) entre envios de GPS pelos motoristas no mobile — leitura/escrita em Configurações. */
   rastreamentoMotoristas: "rastreamentoMotoristas",
+  /** Mapa placa→tipo de viatura (car/ambulance/truck) usado para renderizar a silhueta certa no Google Maps. */
+  vehicleTypeByPlaca: "vehicleTypeByPlaca",
   /** Grelha Detalhe de Serviço (por mês), rodapés e cinzas de coluna — espelho em `localStorage`. */
   detalheServico: "detalheServico",
   /** Estado completo da aba Vistoria (responsabilidades, inspeções e pendências). */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
-import { useCatalogItems } from "../context/catalog-items-context";
+import { useCatalogItems, type CatalogItemsState } from "../context/catalog-items-context";
 import {
   loadDetalheServicoBundleFromIdb,
   normalizeDetalheServicoBundle,
@@ -58,6 +58,18 @@ import {
   persistRastreamentoMotoristasToLocalStorage,
   type RastreamentoMotoristasPayload,
 } from "../lib/driverTrackingConfig";
+import {
+  heuristicVehicleTypeFromText,
+  loadVehicleTypeByPlacaFromLocalStorage,
+  normalizePlacaKey,
+  normalizeVehicleTypeByPlacaPayload,
+  persistVehicleTypeByPlacaToLocalStorage,
+  VEHICLE_TYPE_LABEL,
+  VEHICLE_TYPES,
+  type VehicleType,
+  type VehicleTypeByPlaca,
+} from "../lib/vehicleTypeByPlaca";
+import { VehicleIcon } from "./vehicle-icon";
 import { clearAllDriverActiveLocationsOnServer, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
@@ -165,6 +177,99 @@ function filterDeparturesForSave(
   return { selected, skippedNoDate };
 }
 
+// ─── Editor placa→tipo de viatura ──────────────────────────────────────────
+// Componente isolado para manter o `SettingsPage` legível. Mostra todas as
+// placas cadastradas (administrativas + ambulâncias) em duas colunas, cada
+// uma com um selector de tipo (Carro / Ambulância / Caminhão) e preview SVG
+// da silhueta resultante.
+type VehicleTypeByPlacaEditorProps = {
+  catalog: CatalogItemsState;
+  value: VehicleTypeByPlaca;
+  onChange: (next: VehicleTypeByPlaca) => void;
+};
+
+function VehicleTypeByPlacaEditor({
+  catalog,
+  value,
+  onChange,
+}: VehicleTypeByPlacaEditorProps) {
+  const placas = useMemo(() => {
+    // Lista combinada admin + ambulâncias, ordenada alfabeticamente,
+    // anotada com a categoria de origem para sugerir um tipo por defeito.
+    const seen = new Set<string>();
+    type Row = { placa: string; defaultType: VehicleType };
+    const rows: Row[] = [];
+    for (const p of catalog.viaturasAdministrativas ?? []) {
+      const t = p.trim();
+      if (!t) continue;
+      const key = normalizePlacaKey(t);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ placa: t, defaultType: heuristicVehicleTypeFromText(t) });
+    }
+    for (const p of catalog.ambulancias ?? []) {
+      const t = p.trim();
+      if (!t) continue;
+      const key = normalizePlacaKey(t);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ placa: t, defaultType: "ambulance" });
+    }
+    rows.sort((a, b) => a.placa.localeCompare(b.placa, "pt-BR"));
+    return rows;
+  }, [catalog.viaturasAdministrativas, catalog.ambulancias]);
+
+  if (placas.length === 0) {
+    return (
+      <p className="mt-3 text-xs italic text-[hsl(var(--muted-foreground))]">
+        Nenhuma placa cadastrada ainda. Adiciona placas em <strong>Aba Listas → Viaturas</strong> e elas aparecerão aqui.
+      </p>
+    );
+  }
+
+  function setTypeForPlaca(placa: string, type: VehicleType) {
+    const key = normalizePlacaKey(placa);
+    if (!key) return;
+    onChange({ ...value, [key]: type });
+  }
+
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {placas.map(({ placa, defaultType }) => {
+        const key = normalizePlacaKey(placa);
+        const current = value[key] ?? defaultType;
+        return (
+          <div
+            key={key}
+            className="flex items-center gap-2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5"
+          >
+            <div className="shrink-0">
+              <VehicleIcon variant={current} size={26} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
+                {placa}
+              </p>
+              <select
+                value={current}
+                onChange={(e) => setTypeForPlaca(placa, e.target.value as VehicleType)}
+                className="mt-0.5 h-7 w-full rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-1 text-xs text-[hsl(var(--foreground))]"
+                aria-label={`Tipo de viatura para ${placa}`}
+              >
+                {VEHICLE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {VEHICLE_TYPE_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const { departures, mergeDeparturesFromBackup, clearAllDepartures } = useDepartures();
   const { items } = useCatalogItems();
@@ -210,6 +315,9 @@ export function SettingsPage() {
   const [mobileCredSenha, setMobileCredSenha] = useState("");
   const [rastreamentoMotoristas, setRastreamentoMotoristas] = useState<RastreamentoMotoristasPayload>(() =>
     loadRastreamentoMotoristasFromLocalStorage(),
+  );
+  const [vehicleTypeByPlaca, setVehicleTypeByPlaca] = useState<VehicleTypeByPlaca>(() =>
+    loadVehicleTypeByPlacaFromLocalStorage(),
   );
   const [clearDriverMapBusy, setClearDriverMapBusy] = useState(false);
 
@@ -324,6 +432,49 @@ export function SettingsPage() {
           );
         } catch (e) {
           console.error("[SOT] Firebase auth (rastreamentoMotoristas):", e);
+        }
+      })();
+    }
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOnline]);
+
+  // ─── Tipo de viatura por placa (espelho LS + Firestore) ────────────────────
+  useEffect(() => {
+    persistVehicleTypeByPlacaToLocalStorage(vehicleTypeByPlaca);
+  }, [vehicleTypeByPlaca]);
+
+  useEffect(() => {
+    if (!isOnline || !isFirebaseConfigured()) return;
+    const payload = normalizeVehicleTypeByPlacaPayload(vehicleTypeByPlaca);
+    void setSotStateDocWithRetry(SOT_STATE_DOC.vehicleTypeByPlaca, payload).catch((err) => {
+      console.error("[SOT] salvar vehicleTypeByPlaca no Firebase:", err);
+    });
+  }, [vehicleTypeByPlaca, isOnline]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    if (isOnline && isFirebaseConfigured()) {
+      void (async () => {
+        try {
+          await ensureFirebaseAuth();
+          if (cancelled) return;
+          unsub = subscribeSotStateDoc(
+            SOT_STATE_DOC.vehicleTypeByPlaca,
+            (payload) => {
+              if (cancelled) return;
+              if (payload == null) return;
+              const next = normalizeVehicleTypeByPlacaPayload(payload);
+              setVehicleTypeByPlaca(next);
+              persistVehicleTypeByPlacaToLocalStorage(next);
+            },
+            (err) => console.error("[SOT] Firestore vehicleTypeByPlaca (settings):", err),
+          );
+        } catch (e) {
+          console.error("[SOT] Firebase auth (vehicleTypeByPlaca):", e);
         }
       })();
     }
@@ -1428,6 +1579,29 @@ export function SettingsPage() {
                         (como no envio GPS no mobile).
                       </p>
                     ) : null}
+                  </div>
+
+                  {/* ─── Tipo de viatura por placa ───────────────────────────
+                       Para cada placa cadastrada (administrativa + ambulância),
+                       permite escolher entre Carro/Ambulância/Caminhão. O valor
+                       sincroniza no Firestore (`sot_state/vehicleTypeByPlaca`)
+                       e influencia o ícone mostrado no Google Maps de navegação
+                       quando o motorista inicia a saída com aquela placa. */}
+                  <div className="mt-6 border-t border-[hsl(var(--border))] pt-4">
+                    <p className="text-sm font-medium text-[hsl(var(--foreground))]">
+                      Tipo de viatura por placa (mapa de navegação)
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+                      Escolhe o desenho a usar no Google Maps quando o motorista iniciar uma saída com aquela placa.
+                      As 3 silhuetas disponíveis: <strong>Carro</strong> (cinza), <strong>Ambulância</strong>{" "}
+                      (branca com cruz vermelha) e <strong>Caminhão</strong> (cinza com baú). O valor sincroniza para
+                      todos os browsers e telemóveis autenticados no mesmo Firebase.
+                    </p>
+                    <VehicleTypeByPlacaEditor
+                      catalog={items}
+                      value={vehicleTypeByPlaca}
+                      onChange={setVehicleTypeByPlaca}
+                    />
                   </div>
                 </section>
               ) : null}
