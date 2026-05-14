@@ -296,8 +296,16 @@ const NAV_TILT_DEGREES = 67.5;
  * Em preview (botão "Centralizar" fora de navegação) usa-se 17, panorâmico.
  */
 const NAV_ZOOM_3D = 20;
-const NAV_ZOOM_2D = 19;
+const NAV_ZOOM_2D = 18;
 const PREVIEW_RECENTER_ZOOM = 17;
+
+/**
+ * Offset em graus de latitude para posicionar a viatura ligeiramente
+ * acima do centro da tela no modo de navegação 2D (vista cenital).
+ * Isso permite ver mais espaço à frente do veículo, evitando que o
+ * cartão de distância/tempo/chegada na base da tela o cubra.
+ */
+const NAV_2D_OFFSET_LAT_DEGREES = 0.0003;
 
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
 const MAP_OPTIONS: google.maps.MapOptions = {
@@ -317,7 +325,7 @@ const MAP_OPTIONS: google.maps.MapOptions = {
 const ROUTE_POLYLINE_OPTIONS: google.maps.PolylineOptions = {
   strokeColor: "#2563eb",
   strokeOpacity: 0.9,
-  strokeWeight: 6,
+  strokeWeight: 10,
   geodesic: false,
   clickable: false,
   zIndex: 5,
@@ -1316,7 +1324,10 @@ export function NavigationFullScreenModal({
       navInitializedRef.current = true;
     }
     if (userPanned) return;
-    mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
+    mapInstance.panTo({
+      lat: origin.lat + (view3D ? 0 : NAV_2D_OFFSET_LAT_DEGREES),
+      lng: origin.lng,
+    });
   }, [navigating, mapInstance, origin, userPanned]);
 
   // ---------------------------------------------------------------------------
@@ -1598,7 +1609,7 @@ export function NavigationFullScreenModal({
                     options={{
                       strokeColor: seg.color,
                       strokeOpacity: 0.95,
-                      strokeWeight: 6,
+                      strokeWeight: 10,
                       geodesic: false,
                       clickable: false,
                       zIndex: 6,
@@ -2242,7 +2253,10 @@ export function NavigationFullScreenModal({
           type="button"
           onClick={() => {
             if (mapInstance) {
-              mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
+              mapInstance.panTo({
+                lat: origin.lat + (navigating && !view3D ? NAV_2D_OFFSET_LAT_DEGREES : 0),
+                lng: origin.lng,
+              });
               mapInstance.setZoom(
                 navigating
                   ? view3D
