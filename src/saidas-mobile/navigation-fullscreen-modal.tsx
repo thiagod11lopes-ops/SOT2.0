@@ -833,30 +833,56 @@ export function NavigationFullScreenModal({
   }, [route, origin]);
 
   // ---------------------------------------------------------------------------
-  // 6c) Câmara segue o motorista em modo navegação activa.
-  //     - Primeira vez que entra em `navigating`: zoom 17 + panTo.
-  //     - Ticks seguintes do GPS: apenas panTo (zoom preservado, motorista
-  //       pode ajustar manualmente). Heading roda o mapa para "norte = frente".
+  // 6c) Câmara segue o motorista em modo navegação activa (modo 3D ao estilo
+  //     Google Maps / Waze: tilt 67.5° + rotação por heading + edifícios em
+  //     volume vector).
+  //     - Primeira vez que entra em `navigating`: zoom 17, tilt 67.5° + panTo.
+  //     - Ticks seguintes do GPS: panTo + setHeading (tilt preservado).
   //     - Se o motorista arrastou o mapa (`userPanned = true`), pausa o
   //       auto-follow até clicar em "Centralizar".
+  //     - O 3D só funciona com Map ID + tile Vetor (já configurado no
+  //       Cloud Console). Em mapas raster, setTilt é ignorado silenciosamente.
   // ---------------------------------------------------------------------------
+  const NAV_TILT_DEGREES = 67.5;
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
     if (!navInitializedRef.current) {
       mapInstance.setZoom(17);
+      // Inclina a câmara para vista 3D. setTilt aceita 0-67.5° em mapas
+      // vector com Map ID; outros são ignorados.
+      try {
+        mapInstance.setTilt(NAV_TILT_DEGREES);
+      } catch {
+        // ignora — sem Map ID ou tile raster
+      }
       navInitializedRef.current = true;
     }
     if (userPanned) return;
     mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
-    // Rotação opcional — só com heading válida (velocidade > 0,5 m/s).
+    // Rotação por heading — só com heading válida (velocidade > 0,5 m/s).
     if (heading !== null && Number.isFinite(heading)) {
       try {
         mapInstance.setHeading(heading);
       } catch {
-        // setHeading só funciona com tilt 0 ou mapas vector; ignora se falhar.
+        // setHeading requer tile vector; ignora se falhar.
       }
     }
   }, [navigating, mapInstance, origin, heading, userPanned]);
+
+  // ---------------------------------------------------------------------------
+  // 6d) Volta a vista 2D (tilt 0, heading 0) quando o motorista clica em
+  //     "Visão geral" ou fecha o modal. Sem isto, o mapa fica preso em 3D
+  //     mesmo no modo preview, dificultando ver a rota inteira.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (navigating || !mapInstance) return;
+    try {
+      mapInstance.setTilt(0);
+      mapInstance.setHeading(0);
+    } catch {
+      // ignora — mapa pode estar a ser desmontado
+    }
+  }, [navigating, mapInstance]);
 
   // ---------------------------------------------------------------------------
   // 7) Voz: anuncia a próxima manobra quando o motorista está a < 120 m do
@@ -1503,7 +1529,8 @@ export function NavigationFullScreenModal({
       {/* Botão "Centralizar" — circular com crosshair GPS, empilhado por
           cima do "Voltar" no canto inferior esquerdo. Sempre visível quando
           há posição. Acção: pan + zoom 17 + reactivar auto-follow (se
-          estiver em navegação). */}
+          estiver em navegação). Em navegação, restaura também o tilt 3D
+          e a rotação por heading. */}
       {origin ? (
         <button
           type="button"
@@ -1511,6 +1538,16 @@ export function NavigationFullScreenModal({
             if (mapInstance) {
               mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
               mapInstance.setZoom(17);
+              if (navigating) {
+                try {
+                  mapInstance.setTilt(NAV_TILT_DEGREES);
+                  if (heading !== null && Number.isFinite(heading)) {
+                    mapInstance.setHeading(heading);
+                  }
+                } catch {
+                  // ignora se mapa raster
+                }
+              }
             }
             setUserPanned(false);
           }}
