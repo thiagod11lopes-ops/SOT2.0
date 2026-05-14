@@ -37,6 +37,16 @@ export function normalizePlacaKey(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+/**
+ * Chave "frouxa" — só caracteres alfanuméricos em maiúsculas. Usada como
+ * fallback de comparação quando a placa configurada e a do registo diferem
+ * em pontuação (ex.: "RKK-9I27" vs "RKK 9I27" vs "RKK9I27"). Garante que
+ * uma diferença de formatação não impede o lookup.
+ */
+function looseKey(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 function isVehicleType(v: unknown): v is VehicleType {
   return v === "car" || v === "ambulance" || v === "truck";
 }
@@ -102,13 +112,19 @@ export function heuristicVehicleTypeFromText(text: string | null | undefined): V
 }
 
 /**
- * Resolve o tipo de viatura para uma placa de saída. Estratégia:
- *  1. Lookup directo no mapa configurado (chave normalizada).
- *  2. Fallback para heurística textual sobre a placa + viaturas livre.
+ * Resolve o tipo de viatura para uma placa de saída. Estratégia em cadeia
+ * (parar na 1ª que devolva resultado):
+ *  1. Lookup directo no mapa configurado (chave normalizada strict).
+ *  2. Lookup "frouxo" — só alfanuméricos — para tolerar diferenças de
+ *     hífen/espaço entre a placa configurada e a da saída.
+ *  3. Sub-string match: alguma placa configurada aparece dentro do
+ *     `viaturasText`? Cobre o caso em que o campo livre contém texto
+ *     adicional além da placa (ex.: "RKK-9I27 SAMU Tipo D").
+ *  4. Fallback para heurística textual ("ambul"/"samu"/"uti"/…).
  *
  * @param placa Placa principal extraída do campo viaturas (já trimmed).
  * @param viaturasText Texto completo do campo `viaturas` (todas as placas
- *   ou nomes), usado como input adicional para a heurística.
+ *   ou nomes), usado como input adicional para lookup substring + heurística.
  * @param map Estado actual do `vehicleTypeByPlaca`.
  */
 export function resolveVehicleType(
@@ -116,7 +132,32 @@ export function resolveVehicleType(
   viaturasText: string | null | undefined,
   map: VehicleTypeByPlaca,
 ): VehicleType {
+  // 1) Match directo (mais comum).
   const key = normalizePlacaKey(placa);
   if (key && map[key]) return map[key];
+
+  // 2) Match frouxo — só alfanuméricos.
+  if (placa) {
+    const looseLookup = looseKey(placa);
+    if (looseLookup) {
+      for (const mapKey of Object.keys(map)) {
+        if (looseKey(mapKey) === looseLookup) return map[mapKey];
+      }
+    }
+  }
+
+  // 3) Sub-string match contra o campo livre completo.
+  const text = (viaturasText ?? "").toUpperCase();
+  if (text) {
+    const textLoose = looseKey(text);
+    for (const mapKey of Object.keys(map)) {
+      if (!mapKey) continue;
+      if (text.includes(mapKey)) return map[mapKey];
+      const mkLoose = looseKey(mapKey);
+      if (mkLoose && textLoose.includes(mkLoose)) return map[mapKey];
+    }
+  }
+
+  // 4) Última hipótese — heurística textual.
   return heuristicVehicleTypeFromText(`${placa} ${viaturasText ?? ""}`);
 }

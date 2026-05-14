@@ -442,12 +442,19 @@ export function SettingsPage() {
   }, [isOnline]);
 
   // ─── Tipo de viatura por placa (espelho LS + Firestore) ────────────────────
+  // CRÍTICO: não permitir escrever ao Firestore antes do PRIMEIRO snapshot do
+  // subscribe chegar. Caso contrário, montar a página com state vazio ({})
+  // antes do snapshot ser lido sobrescreveria o documento existente no
+  // Firestore, apagando a configuração feita noutro dispositivo.
+  const vehicleTypeFirstSyncRef = useRef(false);
+
   useEffect(() => {
     persistVehicleTypeByPlacaToLocalStorage(vehicleTypeByPlaca);
   }, [vehicleTypeByPlaca]);
 
   useEffect(() => {
     if (!isOnline || !isFirebaseConfigured()) return;
+    if (!vehicleTypeFirstSyncRef.current) return; // aguarda 1.º snapshot
     const payload = normalizeVehicleTypeByPlacaPayload(vehicleTypeByPlaca);
     void setSotStateDocWithRetry(SOT_STATE_DOC.vehicleTypeByPlaca, payload).catch((err) => {
       console.error("[SOT] salvar vehicleTypeByPlaca no Firebase:", err);
@@ -466,6 +473,9 @@ export function SettingsPage() {
             SOT_STATE_DOC.vehicleTypeByPlaca,
             (payload) => {
               if (cancelled) return;
+              // Mesmo se payload for null (doc inexistente), libertamos a
+              // flag de sync para permitir a 1ª escrita do utilizador.
+              vehicleTypeFirstSyncRef.current = true;
               if (payload == null) return;
               const next = normalizeVehicleTypeByPlacaPayload(payload);
               setVehicleTypeByPlaca(next);
@@ -477,6 +487,10 @@ export function SettingsPage() {
           console.error("[SOT] Firebase auth (vehicleTypeByPlaca):", e);
         }
       })();
+    } else {
+      // Offline ou Firebase não configurado — sem sync remoto, libertamos
+      // a flag para que mudanças locais sejam persistidas (quando online).
+      vehicleTypeFirstSyncRef.current = true;
     }
     return () => {
       cancelled = true;

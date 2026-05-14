@@ -795,6 +795,40 @@ export function NavigationFullScreenModal({
     [driverPlaca, record.viaturas, vehicleTypeByPlaca],
   );
 
+  // Diagnóstico (apenas 1 vez ao abrir o modal) — ajuda a perceber se a
+  // viatura escolhida na configuração está a ser respeitada. Mostra no
+  // console: placa extraída, mapa configurado e variante resolvida.
+  const diagnosticLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      diagnosticLoggedRef.current = false;
+      return;
+    }
+    if (diagnosticLoggedRef.current) return;
+    diagnosticLoggedRef.current = true;
+    const mapEntries = Object.entries(vehicleTypeByPlaca);
+    console.log(
+      "[SOT] Tipo de viatura resolvido:",
+      JSON.stringify(
+        {
+          viaturasField: record.viaturas,
+          driverPlaca,
+          mapaConfigurado:
+            mapEntries.length === 0
+              ? "(vazio — nenhuma placa configurada ainda)"
+              : Object.fromEntries(mapEntries),
+          variantUsada: driverVehicleVariant,
+          fonte:
+            mapEntries.length > 0 && (driverPlaca || record.viaturas)
+              ? "lookup configurado ou fallback"
+              : "heurística textual",
+        },
+        null,
+        2,
+      ),
+    );
+  }, [open, record.viaturas, driverPlaca, vehicleTypeByPlaca, driverVehicleVariant]);
+
   // ---------------------------------------------------------------------------
   // 6b) Próxima manobra a apresentar — usado pela barra superior em modo
   //     navegação activa. Escolhe o passo cujo `start` está mais próximo do
