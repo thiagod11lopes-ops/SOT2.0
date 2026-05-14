@@ -310,6 +310,72 @@ function AdvancedHTMLMarker({
   return createPortal(children, containerRef.current);
 }
 
+// =============================================================================
+// DiagnosticBadge — badge flutuante para depurar a resolução do tipo de viatura
+// =============================================================================
+// Pequeno cartão no canto sup. esquerdo (acima do "Voltar") que mostra:
+//  - placa extraída
+//  - tamanho e chaves do mapa configurado
+//  - variante resolvida
+// Toque para minimizar/expandir. NÃO depende de console.
+// =============================================================================
+
+function DiagnosticBadge({
+  placa,
+  viaturas,
+  mapSize,
+  mapKeys,
+  variant,
+}: {
+  placa: string;
+  viaturas: string | null | undefined;
+  mapSize: number;
+  mapKeys: string[];
+  variant: "car" | "ambulance" | "truck";
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const variantPt =
+    variant === "ambulance" ? "Ambulância 🚑" : variant === "truck" ? "Caminhão 🚛" : "Carro 🚗";
+  const placaKeyExists = mapKeys.some(
+    (k) => k.toUpperCase() === (placa ?? "").trim().toUpperCase(),
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      className="absolute left-2 top-2 z-[100] max-w-[80%] rounded-md border border-amber-400 bg-amber-50/95 px-2 py-1 text-left text-[10px] leading-tight text-amber-950 shadow-md"
+      style={{
+        marginTop: "max(0.5rem, env(safe-area-inset-top))",
+        pointerEvents: "auto",
+      }}
+    >
+      {collapsed ? (
+        <span className="font-bold">🔎 Diag: {variantPt} ({placa || "—"})</span>
+      ) : (
+        <>
+          <div className="font-bold">🔎 Diagnóstico (toca para minimizar)</div>
+          <div>
+            <span className="font-semibold">viaturas:</span> {viaturas || "(vazio)"}
+          </div>
+          <div>
+            <span className="font-semibold">placa extraída:</span> {placa || "(vazio)"}
+          </div>
+          <div>
+            <span className="font-semibold">mapa configurado:</span> {mapSize} placa{mapSize === 1 ? "" : "s"}
+            {mapSize > 0 ? ` — [${mapKeys.slice(0, 5).join(", ")}${mapKeys.length > 5 ? ", ..." : ""}]` : ""}
+          </div>
+          <div>
+            <span className="font-semibold">match exact:</span> {placaKeyExists ? "SIM ✅" : "NÃO ❌"}
+          </div>
+          <div>
+            <span className="font-semibold">variante usada:</span> {variantPt}
+          </div>
+        </>
+      )}
+    </button>
+  );
+}
+
 /**
  * Devolve o SVG path de uma seta apropriada para a manobra OSRM. Cobre os
  * tipos mais comuns; o resto cai numa seta "em frente". Tamanho viewBox 24×24,
@@ -1031,6 +1097,18 @@ export function NavigationFullScreenModal({
 
   return (
     <div className="fixed inset-0 z-[2000] flex flex-col bg-[hsl(var(--background))]">
+      {/* Badge de diagnóstico (canto sup. esquerdo) — mostra a placa
+          detectada, o tamanho do mapa configurado e a variante usada.
+          Útil para diagnosticar "porque está a aparecer carro em vez de
+          ambulância?" sem precisar de abrir o console no telemóvel.
+          Toca no badge para o ocultar. */}
+      <DiagnosticBadge
+        placa={driverPlaca}
+        viaturas={record.viaturas}
+        mapSize={Object.keys(vehicleTypeByPlaca).length}
+        mapKeys={Object.keys(vehicleTypeByPlaca)}
+        variant={driverVehicleVariant}
+      />
       {/* Mapa em fundo, ocupa o resto do ecrã. */}
       <div
         className="absolute inset-0"
