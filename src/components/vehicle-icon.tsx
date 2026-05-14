@@ -87,8 +87,8 @@ function AmbulanceBody() {
       {/* Para-brisas traseiro. */}
       <path d="M11 38 L29 38 L31 46 L9 46 Z" fill="#bfdbfe" opacity="0.7" />
       {/* Cruz médica central. */}
-      <rect x="17" y="26" width="6" height="10" fill="#dc2626" />
-      <rect x="13" y="28" width="14" height="6" fill="#dc2626" />
+      <rect x="17" y="26" width="6" height="10" fill="#dc2626" className="ambulance-siren-flash" />
+      <rect x="13" y="28" width="14" height="6" fill="#dc2626" className="ambulance-siren-flash" />
       {/* Faróis dianteiros. */}
       <circle cx="11" cy="9" r="1.5" fill="#fef3c7" />
       <circle cx="29" cy="9" r="1.5" fill="#fef3c7" />

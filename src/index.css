@@ -223,6 +223,7 @@ body {
   line-height: 1.22;
 }
 
+/* Controlos da UI do "Chrome" (menu hambúrguer, toggle op. dia/noite) */
 [data-ui-chrome-visible="true"] :is(.home-dashboard-font-control, .home-dashboard-operational-toggle) {
   max-height: 12rem;
   opacity: 1;
@@ -290,6 +291,7 @@ body {
 
 .home-dashboard-motoristas-card :is(p:not(.home-dashboard-fluid-card-title), li, span) {
   font-size: calc(clamp(0.825rem, 0.48rem + 1.5cqi, 1.275rem) * var(--home-card-font-scale, 1) * 0.8);
+  line-height: 1.32;
 }
 
 /* Telão inferior: uma linha entra pela direita (100cqw), atravessa a faixa e sai por completo à esquerda
@@ -575,4 +577,22 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
 
 .sot-farewell-text {
   animation: sot-fade-out-text 2200ms ease-in forwards;
+}
+
+/* ===========================================================================
+ * Animação de "flash" da sirene da ambulância (cruz vermelha central).
+ * Alterna a opacidade do vermelho de 100% para 25% num loop rápido.
+ * =========================================================================== */
+@keyframes ambulance-siren-flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.ambulance-siren-flash {
+  animation: ambulance-siren-flash 0.8s linear infinite;
 }
