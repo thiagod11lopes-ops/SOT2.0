@@ -1557,9 +1557,17 @@ export function NavigationFullScreenModal({
   }, []);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
-    <div className="fixed inset-0 z-[2000] flex flex-col bg-[hsl(var(--background))]">
+  /**
+   * O modal não pode ficar dentro do `<article>` da lista (overflow-hidden +
+   * antecessores com scroll): nesses casos o `position:fixed` é recortado à
+   * caixa do cartão/lista — o mapa e os botões aparecem com “moldura” escura.
+   * Renderizar em `document.body` garante ecrã cheio real; `saidas-mobile-scope`
+   * repõe os tokens HSL definidos em `index.css` (fora da árvore do cartão).
+   */
+  return createPortal(
+    <div className="saidas-mobile-scope fixed inset-0 z-[2000] flex min-h-0 w-full min-w-0 flex-col bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
       {/* Mapa em fundo, ocupa o resto do ecrã. */}
       <div
         className="absolute inset-0"
@@ -2398,7 +2406,8 @@ export function NavigationFullScreenModal({
           tabIndex={0}
         />
       ) : null}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
