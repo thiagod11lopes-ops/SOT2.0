@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDepartures } from "../context/departures-context";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useScreenWakeLock } from "../hooks/useScreenWakeLock";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
@@ -616,9 +617,45 @@ export function NavigationFullScreenModal({
 
   /** Subscrição realtime à coleção `driver_active_locations` (outras viaturas). */
   const { pins: activePins } = useDriverActiveLocations(open);
+
+  /**
+   * Conjunto de placas cujas saídas estão **em curso** neste momento — i.e.
+   * KM saída preenchido, sem KM chegada/Hora chegada (nem rubricadas como
+   * "ficou na oficina"), e não canceladas. É a mesma regra do estado
+   * "Iniciada" do cartão (ver `departure-card.tsx`).
+   *
+   * Usado para esconder do mapa pinos de viaturas que já finalizaram a saída
+   * (ou que nunca a chegaram a iniciar) — o Firestore pode manter o doc
+   * `driver_active_locations` durante um curto intervalo após o motorista
+   * rubricar/concluir, ou enquanto o serviço de tracking ainda envia uma
+   * última posição. Aqui filtramos pelo estado real das saídas locais.
+   */
+  const { departures } = useDepartures();
+  const placasEmCursoNorm = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of departures) {
+      if (d.cancelada) continue;
+      const kmSaidaPreenchido = d.kmSaida.trim().length > 0;
+      if (!kmSaidaPreenchido) continue;
+      const kmChegadaPreenchido = d.kmChegada.trim().length > 0;
+      const chegadaPreenchido = d.chegada.trim().length > 0;
+      const ficouNaOficina = d.ficouNaOficina === true && d.rubrica.trim().length > 0;
+      const saidaFinalizada = (kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina;
+      if (saidaFinalizada) continue;
+      const placa = normalizePlaca(primaryPlacaFromViaturasField(d.viaturas));
+      if (placa) set.add(placa);
+    }
+    return set;
+  }, [departures]);
+
   const otherPins = useMemo(
-    () => activePins.filter((p) => normalizePlaca(p.placa) !== currentPlacaNorm),
-    [activePins, currentPlacaNorm],
+    () =>
+      activePins.filter((p) => {
+        const norm = normalizePlaca(p.placa);
+        if (norm === currentPlacaNorm) return false;
+        return placasEmCursoNorm.has(norm);
+      }),
+    [activePins, currentPlacaNorm, placasEmCursoNorm],
   );
   /** Pin actualmente seleccionado (mostra `InfoWindow` com a placa + timestamp). */
   const [selectedOtherPin, setSelectedOtherPin] = useState<string | null>(null);
