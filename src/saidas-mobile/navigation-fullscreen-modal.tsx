@@ -74,11 +74,141 @@ import {
  */
 const GMAPS_LIBRARIES: Libraries = ["geometry", "marker", "places"];
 
-/** Debounce dos pedidos de autocomplete (ms) — equilíbrio responsividade/quota. */
-const PLACES_DEBOUNCE_MS = 220;
+/**
+ * Debounce dos pedidos de autocomplete (ms). O app Google Maps responde
+ * a cada keystroke quase em tempo real — usamos 120 ms para feedback
+ * imediato sem martelar a quota.
+ */
+const PLACES_DEBOUNCE_MS = 120;
+
+/** Mínimo de caracteres antes de pedir sugestões (Google Maps app começa em 1). */
+const PLACES_MIN_CHARS = 1;
 
 /** Raio (m) à volta da posição do motorista para enviesar sugestões. */
 const PLACES_LOCATION_BIAS_RADIUS_M = 50_000;
+
+/**
+ * Mapeia categorias do Places para um SVG `<path d="...">` simples.
+ * Permite mostrar um ícone reconhecível à esquerda de cada sugestão,
+ * estilo Google Maps app. Tudo desenhado num viewBox 24×24 com stroke.
+ */
+const PLACE_TYPE_ICON: Record<string, { path: string; color: string }> = {
+  hospital: { path: "M12 6v12 M6 12h12", color: "#dc2626" },
+  doctor: { path: "M12 6v12 M6 12h12", color: "#dc2626" },
+  pharmacy: { path: "M12 6v12 M6 12h12", color: "#16a34a" },
+  health: { path: "M12 6v12 M6 12h12", color: "#dc2626" },
+  school: {
+    path: "M3 9l9-5 9 5-9 5-9-5z M7 11v5a5 3 0 0 0 10 0v-5",
+    color: "#0891b2",
+  },
+  university: {
+    path: "M3 9l9-5 9 5-9 5-9-5z M7 11v5a5 3 0 0 0 10 0v-5",
+    color: "#0891b2",
+  },
+  restaurant: {
+    path: "M6 4v16 M9 4v6a3 3 0 0 1-3 3 M15 4c-2 0-3 2-3 4s1 3 3 3v9",
+    color: "#ea580c",
+  },
+  cafe: {
+    path: "M6 4v16 M9 4v6a3 3 0 0 1-3 3 M15 4c-2 0-3 2-3 4s1 3 3 3v9",
+    color: "#ea580c",
+  },
+  food: {
+    path: "M6 4v16 M9 4v6a3 3 0 0 1-3 3 M15 4c-2 0-3 2-3 4s1 3 3 3v9",
+    color: "#ea580c",
+  },
+  bar: {
+    path: "M6 4v16 M9 4v6a3 3 0 0 1-3 3 M15 4c-2 0-3 2-3 4s1 3 3 3v9",
+    color: "#a21caf",
+  },
+  bakery: {
+    path: "M6 4v16 M9 4v6a3 3 0 0 1-3 3 M15 4c-2 0-3 2-3 4s1 3 3 3v9",
+    color: "#ca8a04",
+  },
+  store: {
+    path: "M3 8h18l-1 12H4z M3 8l2-4h14l2 4 M9 12v4 M15 12v4",
+    color: "#0ea5e9",
+  },
+  supermarket: {
+    path: "M3 8h18l-1 12H4z M3 8l2-4h14l2 4 M9 12v4 M15 12v4",
+    color: "#0ea5e9",
+  },
+  shopping_mall: {
+    path: "M3 8h18l-1 12H4z M3 8l2-4h14l2 4 M9 12v4 M15 12v4",
+    color: "#0ea5e9",
+  },
+  bank: { path: "M3 9l9-5 9 5 M5 9v9 M19 9v9 M3 18h18 M9 12v4 M15 12v4", color: "#475569" },
+  atm: { path: "M3 9l9-5 9 5 M5 9v9 M19 9v9 M3 18h18 M9 12v4 M15 12v4", color: "#475569" },
+  airport: {
+    path: "M2 12l8-2 4-7 2 0-2 8 6 1-1 2-7-1-2 5-2 0 0-5-5-1z",
+    color: "#0284c7",
+  },
+  bus_station: {
+    path: "M5 4h14v12H5z M5 16h14 M3 19v-2 M21 19v-2 M8 8h8 M7 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z M17 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+    color: "#16a34a",
+  },
+  transit_station: {
+    path: "M5 4h14v12H5z M5 16h14 M3 19v-2 M21 19v-2 M8 8h8 M7 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z M17 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+    color: "#16a34a",
+  },
+  train_station: {
+    path: "M5 4h14v12H5z M5 16h14 M3 19v-2 M21 19v-2 M8 8h8 M7 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z M17 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+    color: "#16a34a",
+  },
+  parking: {
+    path: "M5 4h14v16H5z M9 8v8 M9 8h4a2 2 0 1 1 0 4H9",
+    color: "#2563eb",
+  },
+  gas_station: {
+    path: "M5 20V6l3-2h6l3 2v14 M5 12h11 M19 8l2 2v8a2 2 0 0 1-2 2",
+    color: "#dc2626",
+  },
+  park: {
+    path: "M12 2l5 8H7z M12 10l4 6H8z M12 16v4 M9 20h6",
+    color: "#16a34a",
+  },
+  church: {
+    path: "M12 2v6 M9 6h6 M5 12l7-4 7 4 M5 12v8h14v-8",
+    color: "#7c3aed",
+  },
+  place_of_worship: {
+    path: "M12 2v6 M9 6h6 M5 12l7-4 7 4 M5 12v8h14v-8",
+    color: "#7c3aed",
+  },
+  police: {
+    path: "M12 2l8 3v6c0 5-4 9-8 11-4-2-8-6-8-11V5z",
+    color: "#1e40af",
+  },
+  government: {
+    path: "M3 9l9-5 9 5 M5 9v9 M19 9v9 M3 18h18 M9 12v4 M15 12v4",
+    color: "#475569",
+  },
+  lodging: {
+    path: "M3 18V6h18v12 M3 18h18 M3 12h12a3 3 0 0 0-3-3H3",
+    color: "#7c3aed",
+  },
+  gym: { path: "M3 12h18 M7 8v8 M17 8v8 M5 10v4 M19 10v4", color: "#ea580c" },
+};
+
+/** Devolve o ícone para a categoria mais específica que conhecemos. */
+function getPlaceTypeIcon(
+  types: readonly string[] | undefined,
+): { path: string; color: string } {
+  if (!types || types.length === 0) {
+    return { path: "M12 2C7 2 3 6 3 11c0 6 9 11 9 11s9-5 9-11c0-5-4-9-9-9z M12 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", color: "#64748b" };
+  }
+  for (const t of types) {
+    if (PLACE_TYPE_ICON[t]) return PLACE_TYPE_ICON[t];
+  }
+  return { path: "M12 2C7 2 3 6 3 11c0 6 9 11 9 11s9-5 9-11c0-5-4-9-9-9z M12 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", color: "#64748b" };
+}
+
+/** Formata uma distância em metros para "1,2 km" / "350 m". */
+function formatShortDistance(meters: number | null | undefined): string {
+  if (meters === null || meters === undefined || !Number.isFinite(meters)) return "";
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toLocaleString("pt-PT", { maximumFractionDigits: 1 })} km`;
+}
 
 /**
  * Mesmo `id` que o `GoogleMapComponent` reutilizável — `useJsApiLoader`
@@ -648,7 +778,7 @@ export function NavigationFullScreenModal({
       return;
     }
     const query = destinationInput.trim();
-    if (query.length < 3) {
+    if (query.length < PLACES_MIN_CHARS) {
       setPlaceSuggestions([]);
       setPlacesLoading(false);
       return;
@@ -658,17 +788,21 @@ export function NavigationFullScreenModal({
     let cancelled = false;
     setPlacesLoading(true);
     const timer = window.setTimeout(() => {
+      const refOrigin = originRef.current;
       const request: google.maps.places.AutocompletionRequest = {
         input: query,
         sessionToken: session,
         componentRestrictions: { country: "br" },
       };
-      const refOrigin = originRef.current;
       if (refOrigin) {
         request.locationBias = {
           center: { lat: refOrigin.lat, lng: refOrigin.lng },
           radius: PLACES_LOCATION_BIAS_RADIUS_M,
         };
+        // `origin` faz com que cada predição venha com `distance_meters`
+        // já preenchido — usado para mostrar a distância na sugestão,
+        // estilo Google Maps.
+        request.origin = new google.maps.LatLng(refOrigin.lat, refOrigin.lng);
       }
       service.getPlacePredictions(request, (predictions, status) => {
         if (cancelled) return;
@@ -677,6 +811,18 @@ export function NavigationFullScreenModal({
           status !== google.maps.places.PlacesServiceStatus.OK ||
           !predictions
         ) {
+          if (status === google.maps.places.PlacesServiceStatus.REQUEST_DENIED) {
+            console.warn(
+              "[SOT] Google Places API REQUEST_DENIED — verifique se 'Places API' está activada no Google Cloud Console para a chave VITE_GOOGLE_MAPS_API_KEY.",
+            );
+          } else if (
+            status !==
+              google.maps.places.PlacesServiceStatus.ZERO_RESULTS
+          ) {
+            console.warn(
+              `[SOT] Google Places retornou status inesperado: ${status}`,
+            );
+          }
           setPlaceSuggestions([]);
           return;
         }
@@ -1678,41 +1824,54 @@ export function NavigationFullScreenModal({
                       suggestion.description;
                     const secondary =
                       suggestion.structured_formatting?.secondary_text ?? "";
+                    const icon = getPlaceTypeIcon(suggestion.types);
+                    // `distance_meters` é preenchido pelo Places quando o
+                    // request inclui `origin`. Mostramos como sufixo
+                    // discreto à direita, estilo Google Maps app.
+                    const distM =
+                      typeof suggestion.distance_meters === "number"
+                        ? suggestion.distance_meters
+                        : null;
                     return (
                       <button
                         key={suggestion.place_id}
                         type="button"
                         onClick={() => handleSelectPlaceSuggestion(suggestion)}
-                        className="flex w-full items-start gap-3 px-3 py-2 text-left text-slate-900 transition active:bg-slate-100"
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-slate-900 transition active:bg-slate-100"
                       >
                         <span
-                          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100"
+                          style={{ color: icon.color }}
                           aria-hidden="true"
                         >
                           <svg
                             viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
+                            width="18"
+                            height="18"
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           >
-                            <path d="M12 22s-7-8.5-7-13a7 7 0 1 1 14 0c0 4.5-7 13-7 13z" />
-                            <circle cx="12" cy="9" r="2.5" />
+                            <path d={icon.path} />
                           </svg>
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
+                          <span className="block truncate text-[0.875rem] font-medium leading-tight">
                             {main}
                           </span>
                           {secondary ? (
-                            <span className="block truncate text-[0.7rem] text-slate-500">
+                            <span className="block truncate text-[0.7rem] leading-tight text-slate-500">
                               {secondary}
                             </span>
                           ) : null}
                         </span>
+                        {distM !== null ? (
+                          <span className="shrink-0 self-center whitespace-nowrap text-[0.7rem] font-medium text-slate-500">
+                            {formatShortDistance(distM)}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
