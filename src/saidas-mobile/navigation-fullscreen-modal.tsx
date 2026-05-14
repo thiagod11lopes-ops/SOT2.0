@@ -152,13 +152,14 @@ const DEFAULT_CENTER: Coord = { lat: -22.9, lng: -43.2 };
 const NAV_TILT_DEGREES = 67.5;
 
 /**
- * Nível de zoom usado em modo navegação activa. 19 corresponde a uma
- * vista "ao volante" estilo Google Maps / Waze (~30 m de campo de visão
- * em frente da viatura), suficientemente próximo para ver claramente o
- * cruzamento seguinte mas com algum contexto à volta. Em preview
- * (botão "Centralizar" fora de navegação) usa-se 17, mais panorâmico.
+ * Nível de zoom usado em modo navegação activa. No Google Maps cada nível
+ * inteiro dobra a escala. 20 corresponde a uma vista bem próxima da
+ * viatura (~15 m de campo de visão em frente), com a silhueta 3D
+ * destacada e detalhe forte do cruzamento seguinte — equivalente ao
+ * dobro do zoom 19 anterior. Em preview (botão "Centralizar" fora de
+ * navegação) usa-se 17, panorâmico.
  */
-const NAV_ACTIVE_ZOOM = 19;
+const NAV_ACTIVE_ZOOM = 20;
 const PREVIEW_RECENTER_ZOOM = 17;
 
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
