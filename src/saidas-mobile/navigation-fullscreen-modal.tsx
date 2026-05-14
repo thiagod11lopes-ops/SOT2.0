@@ -151,6 +151,16 @@ const DEFAULT_CENTER: Coord = { lat: -22.9, lng: -43.2 };
  */
 const NAV_TILT_DEGREES = 67.5;
 
+/**
+ * Nível de zoom usado em modo navegação activa. 19 corresponde a uma
+ * vista "ao volante" estilo Google Maps / Waze (~30 m de campo de visão
+ * em frente da viatura), suficientemente próximo para ver claramente o
+ * cruzamento seguinte mas com algum contexto à volta. Em preview
+ * (botão "Centralizar" fora de navegação) usa-se 17, mais panorâmico.
+ */
+const NAV_ACTIVE_ZOOM = 19;
+const PREVIEW_RECENTER_ZOOM = 17;
+
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
 const MAP_OPTIONS: google.maps.MapOptions = {
   streetViewControl: false,
@@ -1072,7 +1082,10 @@ export function NavigationFullScreenModal({
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
     if (!navInitializedRef.current) {
-      mapInstance.setZoom(17);
+      // Aproxima bem da viatura (zoom 19 ≈ vista ao volante estilo
+      // Google Maps / Waze) para o motorista ver o cruzamento seguinte
+      // com clareza e a silhueta 3D bem destacada.
+      mapInstance.setZoom(NAV_ACTIVE_ZOOM);
       // Inclina a câmara para vista 3D. setTilt aceita 0-67.5° em mapas
       // vector com Map ID; outros são ignorados.
       try {
@@ -1943,7 +1956,9 @@ export function NavigationFullScreenModal({
           onClick={() => {
             if (mapInstance) {
               mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
-              mapInstance.setZoom(17);
+              mapInstance.setZoom(
+                navigating ? NAV_ACTIVE_ZOOM : PREVIEW_RECENTER_ZOOM,
+              );
               if (navigating) {
                 try {
                   mapInstance.setTilt(NAV_TILT_DEGREES);
