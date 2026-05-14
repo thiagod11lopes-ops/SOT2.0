@@ -625,7 +625,14 @@ export function NavigationFullScreenModal({
    * o motorista (panTo + zoom alto) e mostramos a próxima manobra a destaque.
    */
   const [navigating, setNavigating] = useState(false);
-  /** `true` após a primeira centragem em modo navegação (para fazer zoom 17 só uma vez). */
+  /**
+   * `true` quando a câmara em modo navegação deve estar inclinada (vista 3D
+   * estilo Google Maps / Waze, com tilt 67.5° + heading do motorista). Por
+   * defeito **falso**: a navegação arranca em vista 2D top-down sobre a
+   * viatura. O botão "3D" acima do "Centralizar" alterna esta opção.
+   */
+  const [view3D, setView3D] = useState(false);
+  /** `true` após a primeira centragem em modo navegação (para fazer zoom só uma vez). */
   const navInitializedRef = useRef(false);
   /**
    * `true` quando o motorista arrasta o mapa em modo navegação — pausa o
@@ -1216,11 +1223,11 @@ export function NavigationFullScreenModal({
   }, [route, origin]);
 
   // ---------------------------------------------------------------------------
-  // 6c) Câmara segue o motorista em modo navegação activa (modo 3D ao estilo
-  //     Google Maps / Waze: tilt 67.5° + rotação por heading + edifícios em
-  //     volume vector).
-  //     - Primeira vez que entra em `navigating`: zoom 17, tilt 67.5° + panTo.
-  //     - Ticks seguintes do GPS: panTo + setHeading (tilt preservado).
+  // 6c) Câmara segue o motorista em modo navegação activa.
+  //     - Primeira vez que entra em `navigating`: zoom + panTo. Por defeito
+  //       arranca **2D top-down** (tilt 0) — o motorista activa o 3D
+  //       manualmente pelo botão "3D" acima do "Centralizar".
+  //     - Ticks seguintes do GPS: panTo + (se 3D) setHeading.
   //     - Se o motorista arrastou o mapa (`userPanned = true`), pausa o
   //       auto-follow até clicar em "Centralizar".
   //     - O 3D só funciona com Map ID + tile Vetor (já configurado no
@@ -1229,30 +1236,37 @@ export function NavigationFullScreenModal({
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
     if (!navInitializedRef.current) {
-      // Aproxima bem da viatura (zoom 19 ≈ vista ao volante estilo
-      // Google Maps / Waze) para o motorista ver o cruzamento seguinte
-      // com clareza e a silhueta 3D bem destacada.
+      // Aproxima bem da viatura (zoom 20 ≈ "ao volante") com vista 2D
+      // por defeito. O 3D fica disponível via toggle manual.
       mapInstance.setZoom(NAV_ACTIVE_ZOOM);
-      // Inclina a câmara para vista 3D. setTilt aceita 0-67.5° em mapas
-      // vector com Map ID; outros são ignorados.
-      try {
-        mapInstance.setTilt(NAV_TILT_DEGREES);
-      } catch {
-        // ignora — sem Map ID ou tile raster
-      }
       navInitializedRef.current = true;
     }
     if (userPanned) return;
     mapInstance.panTo({ lat: origin.lat, lng: origin.lng });
-    // Rotação por heading — só com heading válida (velocidade > 0,5 m/s).
-    if (heading !== null && Number.isFinite(heading)) {
-      try {
-        mapInstance.setHeading(heading);
-      } catch {
-        // setHeading requer tile vector; ignora se falhar.
+  }, [navigating, mapInstance, origin, userPanned]);
+
+  // ---------------------------------------------------------------------------
+  // 6c-bis) Aplica/remove tilt + heading sempre que `view3D` muda em modo
+  //          navegação, ou sempre que a heading muda em 3D. Separado do
+  //          efeito acima para não esfregar tilt/heading a cada tick GPS
+  //          em modo 2D (poupa renders e evita "shakes" visuais).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!navigating || !mapInstance) return;
+    try {
+      if (view3D) {
+        mapInstance.setTilt(NAV_TILT_DEGREES);
+        if (heading !== null && Number.isFinite(heading)) {
+          mapInstance.setHeading(heading);
+        }
+      } else {
+        mapInstance.setTilt(0);
+        mapInstance.setHeading(0);
       }
+    } catch {
+      // setTilt/setHeading requerem tile vector — ignora em raster.
     }
-  }, [navigating, mapInstance, origin, heading, userPanned]);
+  }, [navigating, view3D, heading, mapInstance]);
 
   // ---------------------------------------------------------------------------
   // 6d) Volta a vista 2D (tilt 0, heading 0) quando o motorista clica em
@@ -1334,6 +1348,7 @@ export function NavigationFullScreenModal({
     centeredOnFirstFixRef.current = false;
     navInitializedRef.current = false;
     setNavigating(false);
+    setView3D(false);
     setUserPanned(false);
     setStaticCenter(DEFAULT_CENTER);
     setStaticZoom(6);
@@ -1552,9 +1567,10 @@ export function NavigationFullScreenModal({
                     // mesmo ângulo que o mapa está inclinado; rotateZ
                     // alinha com o heading do GPS. Em preview (navigating
                     // = false), só rotateZ (rotação 2D simples).
-                    transform: navigating
-                      ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg) rotateZ(${heading ?? 0}deg)`
-                      : `rotate(${heading ?? 0}deg)`,
+                    transform:
+                      navigating && view3D
+                        ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg) rotateZ(${heading ?? 0}deg)`
+                        : `rotate(${heading ?? 0}deg)`,
                     transformOrigin: "center",
                     transition: "transform 200ms ease-out",
                     filter: "drop-shadow(0 4px 4px rgba(0,0,0,0.45))",
@@ -1616,9 +1632,10 @@ export function NavigationFullScreenModal({
                         "para cima" (no sentido do movimento da câmara). */}
                     <div
                       style={{
-                        transform: navigating
-                          ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg)`
-                          : "none",
+                        transform:
+                          navigating && view3D
+                            ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg)`
+                            : "none",
                         transformOrigin: "center top",
                         transition: "transform 200ms ease-out",
                       }}
@@ -2105,11 +2122,32 @@ export function NavigationFullScreenModal({
         </button>
       ) : null}
 
+      {/* Botão "3D" — toggle de vista inclinada (estilo Google Maps / Waze).
+          Empilhado acima do "Centralizar", à esquerda. Só faz sentido em
+          modo navegação activa (em preview o mapa fica em vista 2D). */}
+      {origin && navigating ? (
+        <button
+          type="button"
+          onClick={() => setView3D((v) => !v)}
+          className={`pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur active:scale-95 ${
+            view3D ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
+          }`}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.75rem)",
+          }}
+          aria-label={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
+          title={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
+          aria-pressed={view3D}
+        >
+          3D
+        </button>
+      ) : null}
+
       {/* Botão "Centralizar" — circular com crosshair GPS, empilhado por
           cima do "Voltar" no canto inferior esquerdo. Sempre visível quando
-          há posição. Acção: pan + zoom 17 + reactivar auto-follow (se
-          estiver em navegação). Em navegação, restaura também o tilt 3D
-          e a rotação por heading. */}
+          há posição. Acção: pan + zoom + reactivar auto-follow (se estiver
+          em navegação). Em navegação 3D, restaura também o tilt e o
+          heading; em 2D só faz pan + zoom (mantém tilt 0). */}
       {origin ? (
         <button
           type="button"
@@ -2119,7 +2157,7 @@ export function NavigationFullScreenModal({
               mapInstance.setZoom(
                 navigating ? NAV_ACTIVE_ZOOM : PREVIEW_RECENTER_ZOOM,
               );
-              if (navigating) {
+              if (navigating && view3D) {
                 try {
                   mapInstance.setTilt(NAV_TILT_DEGREES);
                   if (heading !== null && Number.isFinite(heading)) {
