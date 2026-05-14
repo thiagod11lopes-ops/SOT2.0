@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Map as MapIcon, X } from "lucide-react";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
+import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
 import { isFirebaseConfigured } from "../lib/firebase/config";
+import { resolveVehicleType, type VehicleTypeByPlaca } from "../lib/vehicleTypeByPlaca";
 import { Button } from "./ui/button";
+import { VehicleIcon } from "./vehicle-icon";
 
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -70,6 +74,10 @@ export function DesktopDriverLocationsMapProvider({
   );
   const canSync = Boolean(enabled && isFirebaseConfigured());
   const { pins, error, loading, lastUpdateAtMs, subscribed } = useDriverActiveLocations(canSync, snapshotRetryNonce);
+  // Mapa placa→tipo de viatura sincronizado entre dispositivos. As silhuetas
+  // dos pinos no mapa Leaflet seguem esta configuração (definida em
+  // Configurações → Mobile — rastreamento GPS).
+  const vehicleTypeByPlaca = useVehicleTypeByPlaca();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -181,6 +189,7 @@ export function DesktopDriverLocationsMapProvider({
             mapRef={mapRef}
             layerRef={layerRef}
             pins={pins}
+            vehicleTypeByPlaca={vehicleTypeByPlaca}
           />
         </>
       ) : null}
@@ -213,18 +222,57 @@ export function DesktopDriverLocationsMapHeaderButton() {
   );
 }
 
+/**
+ * Pré-renderiza as 3 silhuetas SVG para HTML estático em ordem de montagem
+ * do módulo. Reutilizar a mesma string por tipo é ~30× mais rápido do que
+ * chamar `renderToStaticMarkup` por pin a cada update.
+ */
+const VEHICLE_ICON_HTML = {
+  car: renderToStaticMarkup(<VehicleIcon variant="car" size={32} />),
+  ambulance: renderToStaticMarkup(<VehicleIcon variant="ambulance" size={32} />),
+  truck: renderToStaticMarkup(<VehicleIcon variant="truck" size={32} />),
+} as const;
+
+/**
+ * Cria um `L.divIcon` para uma viatura com a silhueta apropriada + badge da
+ * placa por cima. Tamanho fixo (32×48) — ancora no centro horizontal e na
+ * base vertical da viatura para que o pin "fique" exactamente sobre a
+ * coordenada GPS.
+ */
+function buildVehicleDivIcon(placa: string, variant: "car" | "ambulance" | "truck"): L.DivIcon {
+  const label = escapePopupHtml(placa);
+  const svgHtml = VEHICLE_ICON_HTML[variant];
+  // Total: badge (~16px) + gap 2 + silhueta (48px) = ~66 de altura.
+  const html = `
+    <div class="sot-driver-vehicle-marker">
+      <span class="sot-driver-vehicle-placa">${label}</span>
+      ${svgHtml}
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: "sot-driver-vehicle-divicon",
+    iconSize: [40, 70],
+    iconAnchor: [20, 60],
+    popupAnchor: [0, -56],
+    tooltipAnchor: [0, -56],
+  });
+}
+
 function MapLeafletHost({
   visible,
   containerRef,
   mapRef,
   layerRef,
   pins,
+  vehicleTypeByPlaca,
 }: {
   visible: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
   mapRef: React.RefObject<L.Map | null>;
   layerRef: React.RefObject<L.LayerGroup | null>;
   pins: { placa: string; lat: number; lng: number; lastUpdateAtMs: number | null }[];
+  vehicleTypeByPlaca: VehicleTypeByPlaca;
 }) {
   const prevPinCountRef = useRef<number | null>(null);
 
@@ -273,16 +321,12 @@ function MapLeafletHost({
 
     group.clearLayers();
 
-    const markerOpts: L.CircleMarkerOptions = {
-      radius: 10,
-      color: "#1d4ed8",
-      weight: 2,
-      fillColor: "#3b82f6",
-      fillOpacity: 0.85,
-    };
-
     for (const p of pins) {
-      const m = L.circleMarker([p.lat, p.lng], markerOpts);
+      // Resolve o tipo de viatura configurado na aba GPS (com fallback
+      // heurístico se a placa ainda não estiver configurada).
+      const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca);
+      const icon = buildVehicleDivIcon(p.placa, variant);
+      const m = L.marker([p.lat, p.lng], { icon, riseOnHover: true });
       const label = escapePopupHtml(p.placa);
       const popupHtml =
         p.lastUpdateAtMs !== null
@@ -291,12 +335,6 @@ function MapLeafletHost({
             )} <span style="opacity:0.7">(${escapePopupHtml(formatRelative(p.lastUpdateAtMs))})</span></span>`
           : `<strong>${label}</strong><br /><span style="font-size:11px;color:#888">Hora da última posição desconhecida.</span>`;
       m.bindPopup(popupHtml, { className: "sot-driver-map-popup" });
-      m.bindTooltip(p.placa, {
-        permanent: true,
-        direction: "top",
-        offset: [0, -8],
-        className: "sot-driver-map-placa-tooltip",
-      });
       m.addTo(group);
     }
 
@@ -322,7 +360,7 @@ function MapLeafletHost({
     }
 
     requestAnimationFrame(() => map.invalidateSize());
-  }, [visible, pins]);
+  }, [visible, pins, vehicleTypeByPlaca]);
 
   return null;
 }

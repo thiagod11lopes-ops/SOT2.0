@@ -489,6 +489,33 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
   color: hsl(var(--foreground));
 }
 
+/* DivIcon das viaturas no mapa Leaflet — silhueta SVG + badge da placa.
+ * O Leaflet por defeito aplica fundo branco aos divIcons; removemo-lo aqui
+ * para deixar a sombra/silhueta integrarem-se no mapa. */
+.sot-driver-vehicle-divicon {
+  background: transparent;
+  border: none;
+}
+.sot-driver-vehicle-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  pointer-events: auto;
+}
+.sot-driver-vehicle-placa {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  border: 1px solid #475569;
+  line-height: 1.2;
+}
+
 /* ===========================================================================
  * Animação de "tchau" ao entrar em modo Segundo plano
  * O fundo escurece gradualmente de transparente até preto absoluto enquanto
