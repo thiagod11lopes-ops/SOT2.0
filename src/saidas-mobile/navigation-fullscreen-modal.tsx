@@ -1871,7 +1871,7 @@ export function NavigationFullScreenModal({
           setScreenLocked(true);
         }}
         className="pointer-events-auto absolute left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
-        style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
         aria-label="Desligar a tela (poupa brilho/bateria — toque duas vezes para voltar)"
         title="Desligar tela"
       >
@@ -1896,7 +1896,7 @@ export function NavigationFullScreenModal({
       {otherPins.length > 0 ? (
         <div
           className="pointer-events-none absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg shadow-orange-900/40 backdrop-blur"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)" }}
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
           role="status"
           aria-label={`${otherPins.length} ${
             otherPins.length === 1 ? "outra viatura" : "outras viaturas"
