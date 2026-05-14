@@ -67,8 +67,18 @@ import {
  * - `marker` — `google.maps.marker.AdvancedMarkerElement` (marcadores HTML
  *   modernos com rotação por CSS, qualidade visual superior, e que substitui
  *   o `google.maps.Marker` clássico que está em depreciação).
+ * - `places` — `AutocompleteService` + `PlacesService` para sugestões de
+ *   endereço em tempo real na barra de endereço do navegador (estilo
+ *   app Google Maps). Cobrado por sessão: a `AutocompleteSessionToken`
+ *   agrupa todos os keystrokes + 1 `getDetails` num único billable event.
  */
-const GMAPS_LIBRARIES: Libraries = ["geometry", "marker"];
+const GMAPS_LIBRARIES: Libraries = ["geometry", "marker", "places"];
+
+/** Debounce dos pedidos de autocomplete (ms) — equilíbrio responsividade/quota. */
+const PLACES_DEBOUNCE_MS = 220;
+
+/** Raio (m) à volta da posição do motorista para enviesar sugestões. */
+const PLACES_LOCATION_BIAS_RADIUS_M = 50_000;
 
 /**
  * Mesmo `id` que o `GoogleMapComponent` reutilizável — `useJsApiLoader`
@@ -546,6 +556,183 @@ export function NavigationFullScreenModal({
     setDestinationQuery(q);
     setDestinationInput(q);
   }, [open, record]);
+
+  // ─── Autocomplete Google Places ──────────────────────────────────────────
+  /**
+   * Sugestões devolvidas pelo `AutocompleteService` a cada keystroke (com
+   * debounce). Vazio quando não há query, quando o utilizador acabou de
+   * escolher uma sugestão, ou quando o input está em modo "valor inicial
+   * vindo do registo" (não foi tocado pelo motorista).
+   */
+  const [placeSuggestions, setPlaceSuggestions] = useState<
+    google.maps.places.AutocompletePrediction[]
+  >([]);
+  /** `true` enquanto há um pedido de autocomplete pendente. */
+  const [placesLoading, setPlacesLoading] = useState(false);
+  /**
+   * Token de sessão Places — agrupa todos os keystrokes + 1 `getDetails`
+   * num único evento facturável. Refresca quando o utilizador escolhe um
+   * lugar (e portanto inicia nova "sessão" de pesquisa).
+   */
+  const placesSessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
+  /** Instância do `AutocompleteService` — criada uma vez quando o script carrega. */
+  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  /**
+   * `PlacesService` — precisa de um `HTMLDivElement` ou `google.maps.Map`
+   * como argumento. Reutilizamos o `mapInstance` quando este estiver
+   * disponível; caso contrário, criamos um div invisível só para o serviço.
+   */
+  const placesServiceDivRef = useRef<HTMLDivElement | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  /**
+   * Suprime o próximo debounce sempre que o input for actualizado de forma
+   * programática (escolha de sugestão, sincronização inicial com o registo).
+   * Sem isto, escolher uma sugestão dispararia novo `getPlacePredictions` a
+   * partir do texto canónico da própria sugestão.
+   */
+  const suppressNextPlacesFetchRef = useRef(false);
+
+  // Inicializa os serviços Places quando o script Maps acaba de carregar.
+  useEffect(() => {
+    if (!gmapsLoaded || !open) return;
+    if (typeof google === "undefined" || !google.maps.places) return;
+    if (!autocompleteServiceRef.current) {
+      autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
+    }
+    if (!placesSessionTokenRef.current) {
+      placesSessionTokenRef.current = new google.maps.places.AutocompleteSessionToken();
+    }
+  }, [gmapsLoaded, open]);
+
+  // Cria/recria o PlacesService assim que tivermos uma instância do mapa.
+  useEffect(() => {
+    if (!gmapsLoaded) return;
+    if (typeof google === "undefined" || !google.maps.places) return;
+    if (mapInstance) {
+      placesServiceRef.current = new google.maps.places.PlacesService(mapInstance);
+    } else if (placesServiceDivRef.current) {
+      placesServiceRef.current = new google.maps.places.PlacesService(
+        placesServiceDivRef.current,
+      );
+    }
+  }, [gmapsLoaded, mapInstance]);
+
+  // Sincroniza programaticamente `destinationInput` quando muda o registo (open
+  // useEffect acima) — neste caso suprimimos o próximo fetch de sugestões.
+  useEffect(() => {
+    if (!open) return;
+    suppressNextPlacesFetchRef.current = true;
+  }, [open, record]);
+
+  // Debounce + pedido de sugestões a cada keystroke. Enviesa pela posição
+  // actual do motorista (raio 50 km) e restringe ao Brasil para evitar
+  // resultados de outros países com mesmo nome.
+  useEffect(() => {
+    if (!open) return;
+    if (!autocompleteServiceRef.current) return;
+    // Sintonização programática (escolha de sugestão / sync inicial) —
+    // não dispara novo fetch.
+    if (suppressNextPlacesFetchRef.current) {
+      suppressNextPlacesFetchRef.current = false;
+      return;
+    }
+    const query = destinationInput.trim();
+    if (query.length < 3) {
+      setPlaceSuggestions([]);
+      setPlacesLoading(false);
+      return;
+    }
+    const service = autocompleteServiceRef.current;
+    const session = placesSessionTokenRef.current ?? undefined;
+    let cancelled = false;
+    setPlacesLoading(true);
+    const timer = window.setTimeout(() => {
+      const request: google.maps.places.AutocompletionRequest = {
+        input: query,
+        sessionToken: session,
+        componentRestrictions: { country: "br" },
+      };
+      const refOrigin = originRef.current;
+      if (refOrigin) {
+        request.locationBias = {
+          center: { lat: refOrigin.lat, lng: refOrigin.lng },
+          radius: PLACES_LOCATION_BIAS_RADIUS_M,
+        };
+      }
+      service.getPlacePredictions(request, (predictions, status) => {
+        if (cancelled) return;
+        setPlacesLoading(false);
+        if (
+          status !== google.maps.places.PlacesServiceStatus.OK ||
+          !predictions
+        ) {
+          setPlaceSuggestions([]);
+          return;
+        }
+        setPlaceSuggestions(predictions);
+      });
+    }, PLACES_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [destinationInput, open]);
+
+  /**
+   * Quando o motorista toca numa sugestão Places, obtemos coordenadas via
+   * `getDetails` (cobrado dentro da mesma sessão de autocomplete), e
+   * usamos directamente para o cálculo de rota — sem passar pelo
+   * Nominatim. Refresca o session token para a próxima pesquisa.
+   */
+  const handleSelectPlaceSuggestion = useCallback(
+    (prediction: google.maps.places.AutocompletePrediction) => {
+      const service = placesServiceRef.current;
+      const session = placesSessionTokenRef.current ?? undefined;
+      if (!service) return;
+      // Actualiza o input para o texto canónico imediatamente, para feedback.
+      const label =
+        prediction.structured_formatting?.main_text ?? prediction.description;
+      suppressNextPlacesFetchRef.current = true;
+      setDestinationInput(label);
+      setPlaceSuggestions([]);
+      setPlacesLoading(true);
+      service.getDetails(
+        {
+          placeId: prediction.place_id,
+          fields: ["geometry", "name", "formatted_address"],
+          sessionToken: session,
+        },
+        (place, status) => {
+          setPlacesLoading(false);
+          // Refresca o token — uma sessão Places termina ao chamar getDetails.
+          placesSessionTokenRef.current =
+            new google.maps.places.AutocompleteSessionToken();
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !place?.geometry?.location
+          ) {
+            setError("Não foi possível obter a localização desse endereço.");
+            return;
+          }
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          const displayName =
+            place.formatted_address ?? place.name ?? prediction.description;
+          const shortLabel = place.name ?? label;
+          setError(null);
+          // Salta o geocoding (já temos coords) — define `destination`
+          // directamente e dispara o efeito de rota.
+          setRoute(null);
+          routingStartedRef.current = false;
+          routeFittedRef.current = false;
+          spokenStepIdxRef.current = -1;
+          setDestinationQuery(displayName);
+          setDestination({ lat, lng, displayName, shortLabel });
+        },
+      );
+    },
+    [],
+  );
 
   // ---------------------------------------------------------------------------
   // 1) Sincronizar `origin` + `heading` a partir do hook GPS.
@@ -1445,7 +1632,9 @@ export function NavigationFullScreenModal({
                   enterKeyHint="search"
                 />
                 {destinationInput.trim() &&
-                destinationInput.trim() !== destinationQuery ? (
+                destinationInput.trim() !== destinationQuery &&
+                placeSuggestions.length === 0 &&
+                !placesLoading ? (
                   <button
                     type="submit"
                     className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-sm active:bg-blue-700"
@@ -1454,7 +1643,71 @@ export function NavigationFullScreenModal({
                   </button>
                 ) : null}
               </form>
+
+              {/* Sugestões Google Places (estilo Maps): aparecem assim que
+                  o motorista digita ≥ 3 caracteres. Tocar numa sugestão
+                  define o destino e dispara o cálculo de rota. */}
+              {placesLoading || placeSuggestions.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto border-t border-slate-200">
+                  {placesLoading && placeSuggestions.length === 0 ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500">
+                      <span
+                        className="block h-3 w-3 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600"
+                        aria-hidden="true"
+                      />
+                      A procurar…
+                    </div>
+                  ) : null}
+                  {placeSuggestions.map((suggestion) => {
+                    const main =
+                      suggestion.structured_formatting?.main_text ??
+                      suggestion.description;
+                    const secondary =
+                      suggestion.structured_formatting?.secondary_text ?? "";
+                    return (
+                      <button
+                        key={suggestion.place_id}
+                        type="button"
+                        onClick={() => handleSelectPlaceSuggestion(suggestion)}
+                        className="flex w-full items-start gap-3 px-3 py-2 text-left text-slate-900 transition active:bg-slate-100"
+                      >
+                        <span
+                          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400"
+                          aria-hidden="true"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 22s-7-8.5-7-13a7 7 0 1 1 14 0c0 4.5-7 13-7 13z" />
+                            <circle cx="12" cy="9" r="2.5" />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {main}
+                          </span>
+                          {secondary ? (
+                            <span className="block truncate text-[0.7rem] text-slate-500">
+                              {secondary}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
+            {/* Div invisível usado como host do `PlacesService` antes do
+                mapa estar montado. */}
+            <div ref={placesServiceDivRef} style={{ display: "none" }} />
             <button
               type="button"
               onClick={() => setVoiceEnabled((v) => !v)}
