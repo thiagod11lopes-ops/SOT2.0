@@ -61,10 +61,6 @@ export function DepartureCard({
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  /** Quando true, o modal de navegação abre já em "tela trancada" (modo segundo plano). */
-  const [navigationStartLocked, setNavigationStartLocked] = useState(false);
-  /** Modal de escolha "Acompanhar trajeto" vs "Segundo plano" após Iniciar Saída. */
-  const [chooseModeOpen, setChooseModeOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -227,7 +223,7 @@ export function DepartureCard({
     try {
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
       setOpen(false);
-      setChooseModeOpen(true);
+      setNavigationOpen(true);
     } catch (e) {
       if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
         window.alert(e.message);
@@ -502,7 +498,6 @@ export function DepartureCard({
               value={record.bairro}
               onCommit={(v) => applyAmbPatch({ bairro: v })}
               disabled={!editavel}
-              autocompleteAddress
             />
             <div className="col-span-1 flex items-end gap-2">
               <div className="min-w-0 flex-1">
@@ -653,7 +648,6 @@ export function DepartureCard({
                 value={record.bairro}
                 onCommit={(v) => applyAdminCadastroPatch({ bairro: v })}
                 disabled={!editavel || !updateDeparture}
-                autocompleteAddress
               />
             </div>
             <div className="col-span-1 flex items-end gap-2">
@@ -866,68 +860,11 @@ export function DepartureCard({
         </div>
       ) : null}
 
-      {/* Modal de escolha após Iniciar Saída: acompanhar trajeto no mapa ou ir directo
-          para segundo plano (tela 100 % preta + voz das manobras a guiar).
-          Centralizado verticalmente. */}
-      {chooseModeOpen ? (
-        <div
-          className="pointer-events-auto fixed inset-0 z-[600] flex items-center justify-center bg-black/55 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sot-saida-choose-mode-title"
-        >
-          <div className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
-            <h2
-              id="sot-saida-choose-mode-title"
-              className="mb-1 text-lg font-bold text-[hsl(var(--foreground))]"
-            >
-              Como quer iniciar a saída?
-            </h2>
-            <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-              O rastreamento de localização já foi iniciado. Escolha como acompanhar a viagem.
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                className="h-12 w-full rounded-xl bg-emerald-600 text-base font-bold uppercase tracking-wider text-white hover:bg-emerald-700"
-                onClick={() => {
-                  setNavigationStartLocked(false);
-                  setChooseModeOpen(false);
-                  setNavigationOpen(true);
-                }}
-              >
-                Acompanhar trajeto
-              </Button>
-              <Button
-                variant="outline"
-                className="h-12 w-full rounded-xl border-slate-900 bg-slate-900 text-base font-bold uppercase tracking-wider text-white hover:bg-slate-800"
-                onClick={() => {
-                  setNavigationStartLocked(true);
-                  setChooseModeOpen(false);
-                  setNavigationOpen(true);
-                }}
-              >
-                Segundo plano
-              </Button>
-              <p className="mt-1 text-[0.7rem] leading-snug text-[hsl(var(--muted-foreground))]">
-                <span className="font-semibold">Acompanhar trajeto:</span> mapa com rota,
-                distância, tempo e voz a guiar.
-                <br />
-                <span className="font-semibold">Segundo plano:</span> tela 100 % preta — só a
-                voz das manobras a guiar (poupa bateria). Toque duas vezes na tela para ver o
-                mapa.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <NavigationFullScreenModal
         open={navigationOpen}
         record={record}
-        initialScreenLocked={navigationStartLocked}
         onClose={() => {
           setNavigationOpen(false);
-          setNavigationStartLocked(false);
         }}
       />
     </article>
