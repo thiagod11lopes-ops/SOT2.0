@@ -70,7 +70,12 @@ import {
   type VehicleTypeByPlaca,
 } from "../lib/vehicleTypeByPlaca";
 import { VehicleIcon } from "./vehicle-icon";
-import { clearAllDriverActiveLocationsOnServer, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import {
+  clearAllDriverActiveLocationsOnServer,
+  clearDriverActiveLocation,
+  resolveDriverLocationPostUrl,
+} from "../lib/driverLocationPost";
+import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { DesktopDriverLocationsMapHeaderButton } from "./desktop-driver-locations-map";
@@ -347,6 +352,30 @@ export function SettingsPage() {
     loadVehicleTypeByPlacaFromLocalStorage(),
   );
   const [clearDriverMapBusy, setClearDriverMapBusy] = useState(false);
+  /**
+   * Estado da remoção manual de **uma** placa do mapa (select + botão dentro
+   * da secção «Mobile — rastreamento (GPS)»). `placaParaExcluirDoMapa` é o
+   * valor seleccionado no `<select>`; `excluirPlacaDoMapaBusy` bloqueia o
+   * botão durante a chamada à Cloud Function de remoção.
+   */
+  const [placaParaExcluirDoMapa, setPlacaParaExcluirDoMapa] = useState("");
+  const [excluirPlacaDoMapaBusy, setExcluirPlacaDoMapaBusy] = useState(false);
+  /**
+   * Lista em tempo real (Firestore `onSnapshot`) das placas actualmente
+   * presentes no mapa. Só subscreve enquanto a secção está aberta para
+   * evitar listeners desnecessários nas outras secções.
+   */
+  const { pins: driverActivePins } = useDriverActiveLocations(
+    activeSectionId === "settings-rastreamento-gps" && isFirebaseConfigured(),
+  );
+  const placasNoMapaOrdenadas = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of driverActivePins) {
+      const t = p.placa.trim();
+      if (t) set.add(t);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [driverActivePins]);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
@@ -807,6 +836,46 @@ export function SettingsPage() {
   function handleRemoveMobileMotoristaCred(motorista: string) {
     const next = removeMobileMotoristaCredential(motorista);
     setMobileMotoristaCreds(next);
+  }
+
+  /**
+   * Remove **uma** placa específica da coleção `driver_active_locations`
+   * via a mesma Cloud Function usada pelo «Iniciar saída» (corpo
+   * `{ clear: true, placa }`). É a versão manual do que o cartão já faz
+   * automaticamente ao rubricar a saída no mobile — útil para limpar
+   * pinos órfãos sem apagar tudo.
+   */
+  async function handleExcluirPlacaDoMapa() {
+    const placa = placaParaExcluirDoMapa.trim();
+    if (!placa) {
+      window.alert("Selecione a viatura a remover do mapa.");
+      return;
+    }
+    if (!isFirebaseConfigured() || !resolveDriverLocationPostUrl()) {
+      window.alert(
+        "Firebase ou URL da função de localização não estão disponíveis. Defina o projeto (VITE_FIREBASE_*) e, em produção, VITE_DRIVER_LOCATION_POST_URL se usar Cloud Run.",
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Remover a viatura ${placa} do mapa em tempo real? Se essa viatura ainda tiver GPS activo, voltará a aparecer no próximo envio de coordenadas.`,
+      )
+    ) {
+      return;
+    }
+    setExcluirPlacaDoMapaBusy(true);
+    try {
+      await clearDriverActiveLocation(placa);
+      setPlacaParaExcluirDoMapa("");
+      window.alert(
+        `Viatura ${placa} removida do mapa. A actualização propaga em tempo real para todos os browsers ligados ao Firebase.`,
+      );
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExcluirPlacaDoMapaBusy(false);
+    }
   }
 
   async function handleLimparTodasLocalizacoesMapa() {
@@ -1596,6 +1665,57 @@ export function SettingsPage() {
                         Abre o mapa com as posições enviadas pelos motoristas (placa junto a cada marcador).
                       </p>
                       <DesktopDriverLocationsMapHeaderButton />
+                    </div>
+                    <div className="mt-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-3">
+                      <p className="text-sm font-medium text-[hsl(var(--foreground))]">
+                        Excluir uma viatura específica do mapa
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                        Escolhe a placa que queres retirar do mapa em tempo real (ex.: pino órfão de uma saída já finalizada).
+                        A lista mostra apenas as placas com posição activa neste momento.
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-end gap-2">
+                        <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+                          <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Viatura</span>
+                          <select
+                            value={placaParaExcluirDoMapa}
+                            onChange={(e) => setPlacaParaExcluirDoMapa(e.target.value)}
+                            disabled={
+                              !isFirebaseConfigured() ||
+                              resolveDriverLocationPostUrl() === null ||
+                              excluirPlacaDoMapaBusy ||
+                              placasNoMapaOrdenadas.length === 0
+                            }
+                            className="h-10 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))] disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Selecionar viatura a remover do mapa"
+                          >
+                            <option value="">
+                              {placasNoMapaOrdenadas.length === 0
+                                ? "— Nenhuma viatura no mapa —"
+                                : "— Selecionar —"}
+                            </option>
+                            {placasNoMapaOrdenadas.map((placa) => (
+                              <option key={placa} value={placa}>
+                                {placa}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 border-red-400/80 text-red-800 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40"
+                          disabled={
+                            !isFirebaseConfigured() ||
+                            resolveDriverLocationPostUrl() === null ||
+                            excluirPlacaDoMapaBusy ||
+                            !placaParaExcluirDoMapa
+                          }
+                          onClick={() => void handleExcluirPlacaDoMapa()}
+                        >
+                          {excluirPlacaDoMapaBusy ? "A remover…" : "Excluir do mapa"}
+                        </Button>
+                      </div>
                     </div>
                     <p className="mt-4 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
                       Apaga no Firestore todas as entradas da coleção usada pelo mapa. Útil para limpar posições antigas ou
