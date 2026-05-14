@@ -516,7 +516,32 @@ export function NavigationFullScreenModal({
     return () => window.clearTimeout(t);
   }, [open, initialScreenLocked]);
 
-  const destinationQuery = useMemo(() => buildDestinationQuery(record), [record]);
+  /**
+   * Texto activo do destino — começa por ser a string composta a partir do
+   * registo (hospital/bairro/cidade) e pode ser sobrescrita pelo motorista
+   * directamente na barra de endereço do topo, ao estilo Google Maps.
+   * Mudanças em `destinationQuery` disparam novo geocoding + nova rota.
+   */
+  const [destinationQuery, setDestinationQuery] = useState<string>(() =>
+    buildDestinationQuery(record),
+  );
+  /**
+   * Valor do `<input>` editável na barra de endereço — espelha `destinationQuery`
+   * mas pode ser editado livremente; só vai para `destinationQuery` quando o
+   * motorista submete (Enter ou botão Aplicar).
+   */
+  const [destinationInput, setDestinationInput] = useState<string>(() =>
+    buildDestinationQuery(record),
+  );
+
+  // Sempre que o modal abre (ou o registo muda enquanto o modal está aberto),
+  // recoloca o texto do destino na barra de endereço a partir do registo.
+  useEffect(() => {
+    if (!open) return;
+    const q = buildDestinationQuery(record);
+    setDestinationQuery(q);
+    setDestinationInput(q);
+  }, [open, record]);
 
   // ---------------------------------------------------------------------------
   // 1) Sincronizar `origin` + `heading` a partir do hook GPS.
@@ -1027,6 +1052,30 @@ export function NavigationFullScreenModal({
     }
   }
 
+  /**
+   * Aplica o destino digitado na barra de endereço:
+   *  1. Valida que o texto não está vazio nem é igual ao actual.
+   *  2. Limpa o `destination` geocodificado e a `route` calculada.
+   *  3. Repõe os refs de routing para o efeito de geocoding voltar a correr.
+   *  4. Actualiza `destinationQuery` (dispara o efeito de geocoding).
+   *
+   * Os efeitos existentes encarregam-se de: geocodificar o novo texto,
+   * pedir uma nova rota a OSRM/Google Routes, e fazer `fitBounds` ao novo
+   * trajeto. O motorista pode então tocar "Iniciar" para começar a navegar.
+   */
+  const handleSubmitDestination = useCallback(() => {
+    const next = destinationInput.trim();
+    if (!next) return;
+    if (next === destinationQuery) return;
+    setDestination(null);
+    setRoute(null);
+    setError(null);
+    routingStartedRef.current = false;
+    routeFittedRef.current = false;
+    spokenStepIdxRef.current = -1;
+    setDestinationQuery(next);
+  }, [destinationInput, destinationQuery]);
+
   /** Handler do `onLoad` do `<GoogleMap>` — guarda a instância para `fitBounds`. */
   const handleMapLoad = useCallback((map: google.maps.Map) => {
     setMapInstance(map);
@@ -1325,20 +1374,86 @@ export function NavigationFullScreenModal({
         </div>
       ) : (
         <div
-          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 bg-gradient-to-b from-black/55 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white"
+          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-2 bg-gradient-to-b from-black/45 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white"
           style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
         >
+          {/* Barra de endereço estilo Google Maps: "Seu local" (origem fixa)
+              em cima + campo editável de destino em baixo. Submeter o campo
+              (Enter ou botão "Aplicar") limpa a rota actual e dispara novo
+              geocoding + cálculo de rota. Permite ao motorista refinar o
+              destino sem fechar o navegador. */}
           <div className="pointer-events-auto flex items-start gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs uppercase tracking-wider text-white/80">Destino</p>
-              <p className="truncate text-sm font-semibold leading-tight">
-                {destination?.displayName ?? destinationQuery ?? "—"}
-              </p>
+            <div className="min-w-0 flex-1 rounded-2xl bg-white text-slate-900 shadow-lg ring-1 ring-black/5">
+              {/* Linha "Seu local" — origem (read-only). */}
+              <div className="flex items-center gap-3 px-3 py-2">
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <span className="block h-3 w-3 rounded-full bg-blue-600 ring-[3px] ring-blue-100" />
+                </span>
+                <span className="truncate text-sm font-medium text-slate-700">
+                  Seu local
+                </span>
+              </div>
+
+              {/* Divisória pontilhada vertical (estilo Google Maps). */}
+              <div
+                aria-hidden="true"
+                className="ml-[1.0625rem] flex flex-col items-start gap-[3px] pb-0.5"
+              >
+                <span className="block h-[3px] w-[3px] rounded-full bg-slate-300" />
+                <span className="block h-[3px] w-[3px] rounded-full bg-slate-300" />
+              </div>
+
+              {/* Campo editável do destino — submete com Enter ou "Aplicar". */}
+              <form
+                className="flex items-center gap-3 px-3 py-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmitDestination();
+                }}
+              >
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 32" width="14" height="18">
+                    <path
+                      d="M12 0 C5 0 0 5 0 12 C0 20 12 32 12 32 C12 32 24 20 24 12 C24 5 19 0 12 0 Z"
+                      fill="#dc2626"
+                    />
+                    <circle cx="12" cy="12" r="4" fill="#ffffff" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  value={destinationInput}
+                  onChange={(e) => setDestinationInput(e.target.value)}
+                  placeholder="Destino"
+                  aria-label="Destino"
+                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  enterKeyHint="search"
+                />
+                {destinationInput.trim() &&
+                destinationInput.trim() !== destinationQuery ? (
+                  <button
+                    type="submit"
+                    className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-sm active:bg-blue-700"
+                  >
+                    Aplicar
+                  </button>
+                ) : null}
+              </form>
             </div>
             <button
               type="button"
               onClick={() => setVoiceEnabled((v) => !v)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow ring-1 ring-black/5"
               aria-label={voiceEnabled ? "Desligar voz" : "Ligar voz"}
               title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
             >
