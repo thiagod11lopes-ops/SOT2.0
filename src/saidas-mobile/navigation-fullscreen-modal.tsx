@@ -234,18 +234,21 @@ function normalizePlaca(p: string): string {
 }
 
 /**
- * Constrói a query de geocoding inicial a partir dos campos *estruturados*
- * do registo. Combina apenas `hospitalDestino` e `cidade` — o campo
- * "Destino" do formulário (record.bairro) é texto livre digitado pelo
- * motorista para fins de relatório e **não** é propagado para a barra de
- * endereço do navegador (esta é uma entrada independente que o motorista
- * pode preencher/editar dentro do próprio mapa).
+ * Constrói a query de geocoding inicial a partir dos campos do registo.
+ * - **Ambulância**: `hospitalDestino` + `cidade` (igual ao cadastro).
+ * - **Administrativa**: campo «Destino» (`bairro`) + `cidade` — o mesmo texto
+ *   que o motorista vê no cartão, para o mapa abrir com o mesmo tipo de
+ *   pré-preenchimento e rota que na aba Ambulância.
  */
 function buildDestinationQuery(record: DepartureRecord): string {
-  const partes = [record.hospitalDestino, record.cidade]
+  const partes =
+    record.tipo === "Administrativa"
+      ? [record.bairro, record.cidade]
+      : [record.hospitalDestino, record.cidade];
+  return partes
     .map((s) => (s || "").trim())
-    .filter((s) => s.length > 0 && s !== "—");
-  return partes.join(", ");
+    .filter((s) => s.length > 0 && s !== "—")
+    .join(", ");
 }
 
 type Coord = { lat: number; lng: number };
