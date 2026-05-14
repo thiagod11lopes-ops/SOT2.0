@@ -128,6 +128,15 @@ const MAP_CONTAINER_STYLE: React.CSSProperties = {
 /** Centro inicial enquanto o GPS ainda não fixou — Rio de Janeiro, BR. */
 const DEFAULT_CENTER: Coord = { lat: -22.9, lng: -43.2 };
 
+/**
+ * Inclinação da câmara (em graus) usada em modo navegação activa.
+ * 67.5° é o máximo permitido pelo Google Maps JS API em mapas vector
+ * (com Map ID). A mesma constante é usada para inclinar as silhuetas
+ * das viaturas via `perspective(...) rotateX(...)`, fazendo com que os
+ * carros "deitem-se" sobre o asfalto e combinem com a vista 3D.
+ */
+const NAV_TILT_DEGREES = 67.5;
+
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
 const MAP_OPTIONS: google.maps.MapOptions = {
   streetViewControl: false,
@@ -843,7 +852,6 @@ export function NavigationFullScreenModal({
   //     - O 3D só funciona com Map ID + tile Vetor (já configurado no
   //       Cloud Console). Em mapas raster, setTilt é ignorado silenciosamente.
   // ---------------------------------------------------------------------------
-  const NAV_TILT_DEGREES = 67.5;
   useEffect(() => {
     if (!navigating || !mapInstance || !origin) return;
     if (!navInitializedRef.current) {
@@ -1131,19 +1139,28 @@ export function NavigationFullScreenModal({
             ) : null}
 
             {/* Marcador do motorista — silhueta de viatura rotacionada pelo
-                heading do GPS. Multi-cor (corpo + para-brisas + faróis). */}
+                heading do GPS. Em modo navegação, aplica perspectiva 3D
+                (rotateX igual ao tilt do mapa) para a silhueta deitar-se no
+                asfalto e combinar com a vista 3D. Em modo preview, fica
+                plana (top-down). */}
             {origin ? (
               <AdvancedHTMLMarker position={origin} zIndex={30}>
                 <div
                   style={{
-                    transform: `rotate(${heading ?? 0}deg)`,
+                    // perspective dá profundidade; rotateX deita o SVG no
+                    // mesmo ângulo que o mapa está inclinado; rotateZ
+                    // alinha com o heading do GPS. Em preview (navigating
+                    // = false), só rotateZ (rotação 2D simples).
+                    transform: navigating
+                      ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg) rotateZ(${heading ?? 0}deg)`
+                      : `rotate(${heading ?? 0}deg)`,
                     transformOrigin: "center",
                     transition: "transform 200ms ease-out",
-                    filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
+                    filter: "drop-shadow(0 4px 4px rgba(0,0,0,0.45))",
                   }}
                   aria-hidden="true"
                 >
-                  <VehicleIcon variant={driverVehicleVariant} size={36} />
+                  <VehicleIcon variant={driverVehicleVariant} size={42} />
                 </div>
               </AdvancedHTMLMarker>
             ) : null}
@@ -1192,9 +1209,21 @@ export function NavigationFullScreenModal({
                     >
                       {p.placa}
                     </span>
-                    {/* Silhueta da viatura (sem rotação — não temos heading
-                        das outras viaturas, mostramos sempre "para cima"). */}
-                    <VehicleIcon variant={variant} size={28} />
+                    {/* Silhueta da viatura — em modo navegação activa,
+                        deita-se com o tilt do mapa (perspective 3D).
+                        Sem heading das outras viaturas, mostra sempre
+                        "para cima" (no sentido do movimento da câmara). */}
+                    <div
+                      style={{
+                        transform: navigating
+                          ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg)`
+                          : "none",
+                        transformOrigin: "center top",
+                        transition: "transform 200ms ease-out",
+                      }}
+                    >
+                      <VehicleIcon variant={variant} size={28} />
+                    </div>
                   </div>
                 </AdvancedHTMLMarker>
               );
