@@ -94,11 +94,15 @@ function normalizePlaca(p: string): string {
 }
 
 /**
- * Constrói a query de geocoding a partir dos campos do registo.
- * Combina hospital, bairro e cidade — qualquer que esteja preenchido.
+ * Constrói a query de geocoding inicial a partir dos campos *estruturados*
+ * do registo. Combina apenas `hospitalDestino` e `cidade` — o campo
+ * "Destino" do formulário (record.bairro) é texto livre digitado pelo
+ * motorista para fins de relatório e **não** é propagado para a barra de
+ * endereço do navegador (esta é uma entrada independente que o motorista
+ * pode preencher/editar dentro do próprio mapa).
  */
 function buildDestinationQuery(record: DepartureRecord): string {
-  const partes = [record.hospitalDestino, record.bairro, record.cidade]
+  const partes = [record.hospitalDestino, record.cidade]
     .map((s) => (s || "").trim())
     .filter((s) => s.length > 0 && s !== "—");
   return partes.join(", ");
@@ -631,10 +635,11 @@ export function NavigationFullScreenModal({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
+    // Sem destino ainda — o motorista tem de digitar na barra de endereço
+    // no topo do mapa. Limpa loading/erro e espera nova submissão.
     if (!destinationQuery) {
-      setError(
-        "Esta saída não tem destino preenchido (hospital/bairro/cidade). Preencha antes de navegar.",
-      );
+      setLoading("");
+      setError(null);
       return;
     }
     if (!hasOrigin) return;
@@ -1539,7 +1544,11 @@ export function NavigationFullScreenModal({
                 {loading === "locating" && "A localizar-se…"}
                 {loading === "geocoding" && "A procurar destino…"}
                 {loading === "routing" && "A calcular rota…"}
-                {!loading && (error ?? "A preparar navegação…")}
+                {!loading &&
+                  (error ??
+                    (destinationQuery
+                      ? "A preparar navegação…"
+                      : "Digite o destino na barra acima para calcular a rota."))}
                 {origin && destination ? " · * distância em linha recta" : null}
               </p>
               {error && !loading && origin && destination ? (
