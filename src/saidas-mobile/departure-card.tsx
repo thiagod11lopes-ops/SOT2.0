@@ -33,31 +33,88 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
-/** Mão a acenar («tchau») — formas simples (rect/ellipse) para Safari não falhar o SVG. */
-function IconMaoTchau({ className }: { className?: string }) {
+/**
+ * Mão em perspectiva (palma + dedos) com pele em gradiente — animação de aceno no elemento pai.
+ * `useId` evita colisão de ids de gradiente se vários cartões montarem o overlay.
+ */
+function BoaViagemMaoRealista() {
+  const rid = useId().replace(/:/g, "");
+  const skin = `sot-hand-skin-${rid}`;
+  const skinDeep = `sot-hand-deep-${rid}`;
+  const sleeve = `sot-hand-sleeve-${rid}`;
+  const sh = `sot-hand-sh-${rid}`;
+
   return (
     <svg
-      className={className}
-      viewBox="0 0 64 64"
+      width="132"
+      height="148"
+      viewBox="0 0 110 130"
+      className="overflow-visible"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <title>Mão a dizer tchau</title>
-      {/* Manga */}
-      <rect x="4" y="42" width="20" height="18" rx="4" fill="#64748b" />
-      <rect x="10" y="38" width="8" height="8" rx="2" fill="#475569" />
-      {/* Palma (amarelo tipo emoji 👋) */}
-      <ellipse cx="38" cy="40" rx="20" ry="18" fill="#fbbf24" />
-      <ellipse cx="38" cy="40" rx="17" ry="15" fill="#fcd34d" />
-      {/* Polegar */}
-      <ellipse cx="14" cy="36" rx="9" ry="7" fill="#fcd34d" transform="rotate(-35 14 36)" />
-      {/* Dedos em linha, espaçados */}
-      <rect x="22" y="6" width="7" height="22" rx="3.5" fill="#fcd34d" />
-      <rect x="31" y="2" width="7" height="26" rx="3.5" fill="#fbbf24" />
-      <rect x="40" y="4" width="7" height="24" rx="3.5" fill="#fcd34d" />
-      <rect x="49" y="10" width="6" height="18" rx="3" fill="#fbbf24" />
-      {/* Contorno suave palma */}
-      <ellipse cx="38" cy="43" rx="14" ry="10" fill="#f59e0b" opacity="0.2" />
+      <title>Mão a acenar</title>
+      <defs>
+        <linearGradient id={skin} x1="24" y1="18" x2="86" y2="96" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f8e0d8" />
+          <stop offset="0.4" stopColor="#e8c4b2" />
+          <stop offset="1" stopColor="#c99a83" />
+        </linearGradient>
+        <radialGradient id={skinDeep} cx="55" cy="72" r="38" gradientUnits="userSpaceOnUse">
+          <stop offset="0.55" stopColor="#a57562" stopOpacity="0" />
+          <stop offset="1" stopColor="#7a4d40" stopOpacity="0.42" />
+        </radialGradient>
+        <linearGradient id={sleeve} x1="34" y1="98" x2="76" y2="126" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#6b7c94" />
+          <stop offset="1" stopColor="#3e4a5c" />
+        </linearGradient>
+        <filter id={sh} x="-20%" y="-18%" width="140%" height="145%" colorInterpolationFilters="sRGB">
+          <feDropShadow dx="0" dy="4" stdDeviation="3.2" floodOpacity="0.4" />
+        </filter>
+      </defs>
+      <g filter={`url(#${sh})`}>
+        <path
+          fill={`url(#${sleeve})`}
+          d="M24 100c0-5 4-9 9-9h44c5 0 9 4 9 9v20c0 5-4 9-9 9H33c-5 0-9-4-9-9v-20z"
+        />
+        <path fill="#2d3a4a" d="M30 99h50v16H30z" opacity="0.92" />
+        {/* Palma */}
+        <path
+          fill={`url(#${skin})`}
+          d="M26 90c3-32 22-46 48-42s34 18 36 40c1 16-8 28-22 34-12 5-34 5-48-1-16-7-16-22-14-31z"
+        />
+        <path fill={`url(#${skinDeep})`} d="M30 72c10-10 26-15 42-12s30 12 34 28c-6 10-20 18-40 16-18-2-32-12-36-32z" />
+        {/* Polegar */}
+        <path
+          fill={`url(#${skin})`}
+          d="M22 74c-10-18-7-32 10-38 7-2 14 4 16 14l5 18c-6 12-18 18-28 15-8-2-12-6-3-9z"
+        />
+        {/* Dedos — curvas afuniladas */}
+        <path
+          fill={`url(#${skin})`}
+          d="M38 52c1-24 6-36 12-38s11 10 11 32l-1 22c-1 8-8 11-14 8s-10-14-8-24z"
+        />
+        <path
+          fill={`url(#${skin})`}
+          d="M50 46c2-28 9-40 16-40s9 16 8 38l-2 24c-1 8-8 12-15 9s-9-16-7-31z"
+        />
+        <path
+          fill={`url(#${skin})`}
+          d="M64 48c3-26 11-36 17-34s8 20 5 36l-5 22c-2 8-10 10-16 5-7-6-6-22-1-29z"
+        />
+        <path
+          fill={`url(#${skin})`}
+          d="M78 54c5-22 14-30 20-25s6 22 1 36l-7 18c-3 7-10 7-14 2s-4-19 0-31z"
+        />
+        {/* Sutileza junta dos dedos */}
+        <path
+          stroke="#9a6b5c"
+          strokeOpacity="0.22"
+          strokeWidth="0.6"
+          fill="none"
+          d="M44 56c2 8 1 18-2 24 M56 52c2 10 0 22-3 28 M70 54c1 10-2 22-4 26"
+        />
+      </g>
     </svg>
   );
 }
@@ -910,8 +967,21 @@ export function DepartureCard({
               100% { background-position: 200% 50%; }
             }
             @keyframes sot-boa-viagem-wave {
-              0%, 100% { transform: rotate(-10deg); }
-              50% { transform: rotate(22deg); }
+              0% { transform: rotate(0deg) translateY(0); }
+              15% { transform: rotate(20deg) translateY(-3px); }
+              32% { transform: rotate(-14deg) translateY(2px); }
+              48% { transform: rotate(24deg) translateY(-4px); }
+              64% { transform: rotate(-10deg) translateY(1px); }
+              80% { transform: rotate(16deg) translateY(-2px); }
+              100% { transform: rotate(0deg) translateY(0); }
+            }
+            @keyframes sot-boa-viagem-hand-glow {
+              0%, 100% { opacity: 0.35; transform: translate(-50%, 0) scale(1); }
+              50% { opacity: 0.75; transform: translate(-50%, 0) scale(1.06); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .sot-boa-viagem-hand-motion { animation: none !important; }
+              .sot-boa-viagem-glow-ring { animation: none !important; opacity: 0.45 !important; }
             }
           `}</style>
           <div
@@ -936,15 +1006,22 @@ export function DepartureCard({
                 aria-hidden
               />
               <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
-                <div
-                  className="mx-auto mb-4 flex min-h-[7rem] items-end justify-center pt-1"
-                  style={{
-                    animation: "sot-boa-viagem-wave 0.75s ease-in-out infinite",
-                    transformOrigin: "30% 92%",
-                  }}
-                >
-                  <div className="rounded-2xl border border-amber-200/35 bg-gradient-to-b from-amber-500/25 to-slate-950/60 p-3 shadow-lg ring-1 ring-amber-400/30">
-                    <IconMaoTchau className="h-24 w-24 drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]" />
+                <div className="relative mx-auto mb-5 flex h-[9.5rem] items-end justify-center">
+                  <div
+                    className="sot-boa-viagem-glow-ring pointer-events-none absolute bottom-7 left-1/2 h-32 w-32 rounded-full border border-cyan-300/25 bg-gradient-to-t from-cyan-400/15 via-white/5 to-transparent shadow-[0_0_48px_rgba(34,211,238,0.18)]"
+                    style={{
+                      animation: "sot-boa-viagem-hand-glow 2.2s ease-in-out infinite",
+                    }}
+                    aria-hidden
+                  />
+                  <div
+                    className="sot-boa-viagem-hand-motion relative z-[1] -mb-1"
+                    style={{
+                      animation: "sot-boa-viagem-wave 1.2s cubic-bezier(0.42, 0, 0.58, 1) infinite",
+                      transformOrigin: "55% 88%",
+                    }}
+                  >
+                    <BoaViagemMaoRealista />
                   </div>
                 </div>
                 <h2
