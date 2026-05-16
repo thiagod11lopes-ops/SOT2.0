@@ -78,42 +78,43 @@ function BoaViagemMaoRealista() {
           d="M24 100c0-5 4-9 9-9h44c5 0 9 4 9 9v20c0 5-4 9-9 9H33c-5 0-9-4-9-9v-20z"
         />
         <path fill="#2d3a4a" d="M30 99h50v16H30z" opacity="0.92" />
-        {/* Palma */}
         <path
           fill={`url(#${skin})`}
           d="M26 90c3-32 22-46 48-42s34 18 36 40c1 16-8 28-22 34-12 5-34 5-48-1-16-7-16-22-14-31z"
         />
         <path fill={`url(#${skinDeep})`} d="M30 72c10-10 26-15 42-12s30 12 34 28c-6 10-20 18-40 16-18-2-32-12-36-32z" />
-        {/* Polegar */}
         <path
           fill={`url(#${skin})`}
           d="M22 74c-10-18-7-32 10-38 7-2 14 4 16 14l5 18c-6 12-18 18-28 15-8-2-12-6-3-9z"
         />
-        {/* Dedos — curvas afuniladas */}
-        <path
-          fill={`url(#${skin})`}
-          d="M38 52c1-24 6-36 12-38s11 10 11 32l-1 22c-1 8-8 11-14 8s-10-14-8-24z"
-        />
-        <path
-          fill={`url(#${skin})`}
-          d="M50 46c2-28 9-40 16-40s9 16 8 38l-2 24c-1 8-8 12-15 9s-9-16-7-31z"
-        />
-        <path
-          fill={`url(#${skin})`}
-          d="M64 48c3-26 11-36 17-34s8 20 5 36l-5 22c-2 8-10 10-16 5-7-6-6-22-1-29z"
-        />
-        <path
-          fill={`url(#${skin})`}
-          d="M78 54c5-22 14-30 20-25s6 22 1 36l-7 18c-3 7-10 7-14 2s-4-19 0-31z"
-        />
-        {/* Sutileza junta dos dedos */}
-        <path
-          stroke="#9a6b5c"
-          strokeOpacity="0.22"
-          strokeWidth="0.6"
-          fill="none"
-          d="M44 56c2 8 1 18-2 24 M56 52c2 10 0 22-3 28 M70 54c1 10-2 22-4 26"
-        />
+        <g
+          className="sot-bv-fingers-anim"
+          style={{ transformOrigin: "55px 78px", transformBox: "fill-box" as const }}
+        >
+          <path
+            fill={`url(#${skin})`}
+            d="M38 52c1-24 6-36 12-38s11 10 11 32l-1 22c-1 8-8 11-14 8s-10-14-8-24z"
+          />
+          <path
+            fill={`url(#${skin})`}
+            d="M50 46c2-28 9-40 16-40s9 16 8 38l-2 24c-1 8-8 12-15 9s-9-16-7-31z"
+          />
+          <path
+            fill={`url(#${skin})`}
+            d="M64 48c3-26 11-36 17-34s8 20 5 36l-5 22c-2 8-10 10-16 5-7-6-6-22-1-29z"
+          />
+          <path
+            fill={`url(#${skin})`}
+            d="M78 54c5-22 14-30 20-25s6 22 1 36l-7 18c-3 7-10 7-14 2s-4-19 0-31z"
+          />
+          <path
+            stroke="#9a6b5c"
+            strokeOpacity="0.22"
+            strokeWidth="0.6"
+            fill="none"
+            d="M44 56c2 8 1 18-2 24 M56 52c2 10 0 22-3 28 M70 54c1 10-2 22-4 26"
+          />
+        </g>
       </g>
     </svg>
   );
@@ -959,29 +960,52 @@ export function DepartureCard({
               to { opacity: 1; }
             }
             @keyframes sot-boa-viagem-card {
-              from { opacity: 0; transform: scale(0.9) translateY(1.25rem) rotateX(8deg); }
+              from { opacity: 0; transform: scale(0.88) translateY(1.5rem) rotateX(12deg); }
               to { opacity: 1; transform: scale(1) translateY(0) rotateX(0deg); }
+            }
+            @keyframes sot-bv-border-flow {
+              0% { background-position: 0% 40%; }
+              100% { background-position: 100% 60%; }
             }
             @keyframes sot-boa-viagem-shine {
               0% { background-position: 0% 50%; }
               100% { background-position: 200% 50%; }
             }
-            @keyframes sot-boa-viagem-wave {
-              0% { transform: rotate(0deg) translateY(0); }
-              15% { transform: rotate(20deg) translateY(-3px); }
-              32% { transform: rotate(-14deg) translateY(2px); }
-              48% { transform: rotate(24deg) translateY(-4px); }
-              64% { transform: rotate(-10deg) translateY(1px); }
-              80% { transform: rotate(16deg) translateY(-2px); }
-              100% { transform: rotate(0deg) translateY(0); }
+            @keyframes sot-bv-aurora {
+              0%, 100% { transform: translate(-10%, 0) scale(1); opacity: 0.5; }
+              50% { transform: translate(12%, -8%) scale(1.12); opacity: 0.85; }
             }
-            @keyframes sot-boa-viagem-hand-glow {
-              0%, 100% { opacity: 0.35; transform: translate(-50%, 0) scale(1); }
-              50% { opacity: 0.75; transform: translate(-50%, 0) scale(1.06); }
+            @keyframes sot-bv-pulse-ring {
+              0%, 100% { opacity: 0.35; transform: translate(-50%, 0) scale(1); filter: blur(0px); }
+              50% { opacity: 0.9; transform: translate(-50%, 0) scale(1.12); filter: blur(0.5px); }
+            }
+            /* Aceno em 3D: deslocamento no espaço + rotações — perceptivelmente diferente do simples rotate 2D. */
+            @keyframes sot-bv-hand-3d-wave {
+              0%   { transform: perspective(500px) translate3d(-10px, 0, 0) rotateY(-14deg) rotateZ(-6deg); }
+              18%  { transform: perspective(500px) translate3d(12px, -6px, 14px) rotateY(12deg) rotateZ(20deg); }
+              36%  { transform: perspective(500px) translate3d(-8px, 4px, 0) rotateY(-10deg) rotateZ(-14deg); }
+              54%  { transform: perspective(500px) translate3d(14px, -4px, 10px) rotateY(16deg) rotateZ(22deg); }
+              72%  { transform: perspective(500px) translate3d(-12px, 2px, 4px) rotateY(-12deg) rotateZ(-8deg); }
+              100% { transform: perspective(500px) translate3d(-10px, 0, 0) rotateY(-14deg) rotateZ(-6deg); }
+            }
+            @keyframes sot-bv-fingers {
+              0%, 100% { transform: rotate(0deg); }
+              50% { transform: rotate(8deg); }
+            }
+            .sot-bv-fingers-anim {
+              animation: sot-bv-fingers 0.55s ease-in-out 0.12s infinite;
+            }
+            @keyframes sot-bv-scene-enter {
+              from { opacity: 0; filter: blur(10px); transform: scale(0.82); }
+              to { opacity: 1; filter: blur(0); transform: scale(1); }
             }
             @media (prefers-reduced-motion: reduce) {
-              .sot-boa-viagem-hand-motion { animation: none !important; }
-              .sot-boa-viagem-glow-ring { animation: none !important; opacity: 0.45 !important; }
+              .sot-bv-hand-3d { animation: none !important; transform: none !important; }
+              .sot-bv-fingers-anim { animation: none !important; }
+              .sot-bv-pulse-ring { animation: none !important; opacity: 0.5 !important; }
+              .sot-bv-aurora-blob { animation: none !important; }
+              .sot-bv-border-aurora { animation: none !important; }
+              .sot-bv-scene-enter { animation: none !important; opacity: 1 !important; filter: none !important; }
             }
           `}</style>
           <div
@@ -993,35 +1017,61 @@ export function DepartureCard({
             onClick={() => setBoaViagemOpen(false)}
           >
             <div
-              className="relative w-full max-w-sm overflow-hidden rounded-[2rem] border border-white/15 bg-gradient-to-b from-white/[0.12] to-white/[0.04] p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.06) inset,0_25px_80px_-20px_rgba(99,102,241,0.55)]"
-              style={{ animation: "sot-boa-viagem-card 0.55s cubic-bezier(0.22, 1, 0.36, 1) both" }}
+              className="relative w-full max-w-sm"
+              style={{ animation: "sot-boa-viagem-card 0.6s cubic-bezier(0.2, 0.9, 0.32, 1) both" }}
               onClick={(e) => e.stopPropagation()}
             >
               <div
-                className="pointer-events-none absolute -left-1/4 -top-1/2 h-[120%] w-[70%] rounded-full bg-cyan-400/25 blur-[60px]"
+                className="sot-bv-border-aurora rounded-[2.1rem] p-[2.5px] shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_28px_90px_-24px_rgba(99,102,241,0.55)]"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(130deg, #22d3ee, #6366f1, #c026d3, #06b6d4, #a855f7, #22d3ee)",
+                  backgroundSize: "380% 380%",
+                  animation: "sot-bv-border-flow 5s linear infinite",
+                }}
+              >
+                <div className="relative overflow-hidden rounded-[1.95rem] border border-white/12 bg-gradient-to-b from-slate-950/95 via-slate-900/92 to-slate-950/98 p-1">
+              <div
+                className="sot-bv-aurora-blob pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-gradient-to-tr from-fuchsia-500/40 via-cyan-400/30 to-transparent blur-3xl"
+                style={{ animation: "sot-bv-aurora 6s ease-in-out infinite" }}
                 aria-hidden
               />
               <div
-                className="pointer-events-none absolute -bottom-1/3 -right-1/4 h-[90%] w-[65%] rounded-full bg-fuchsia-500/20 blur-[55px]"
+                className="pointer-events-none absolute -left-1/4 -top-1/2 h-[120%] w-[70%] rounded-full bg-cyan-400/20 blur-[60px]"
                 aria-hidden
               />
-              <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
-                <div className="relative mx-auto mb-5 flex h-[9.5rem] items-end justify-center">
+              <div
+                className="pointer-events-none absolute -bottom-1/3 -right-1/4 h-[90%] w-[65%] rounded-full bg-fuchsia-500/15 blur-[55px]"
+                aria-hidden
+              />
+              <div className="relative rounded-[1.85rem] bg-slate-950/35 px-8 py-10 text-center">
+                <div
+                  className="relative mx-auto mb-5 flex h-[10rem] items-end justify-center"
+                  style={{ perspective: "900px" }}
+                >
                   <div
-                    className="sot-boa-viagem-glow-ring pointer-events-none absolute bottom-7 left-1/2 h-32 w-32 rounded-full border border-cyan-300/25 bg-gradient-to-t from-cyan-400/15 via-white/5 to-transparent shadow-[0_0_48px_rgba(34,211,238,0.18)]"
+                    className="sot-bv-pulse-ring pointer-events-none absolute bottom-6 left-1/2 h-36 w-36 rounded-full border-2 border-cyan-200/30 bg-gradient-to-t from-cyan-400/20 via-white/10 to-transparent shadow-[0_0_56px_rgba(34,211,238,0.25)]"
                     style={{
-                      animation: "sot-boa-viagem-hand-glow 2.2s ease-in-out infinite",
+                      animation: "sot-bv-pulse-ring 2.4s ease-in-out infinite",
                     }}
                     aria-hidden
                   />
                   <div
-                    className="sot-boa-viagem-hand-motion relative z-[1] -mb-1"
+                    className="sot-bv-scene-enter relative z-[1] -mb-1"
                     style={{
-                      animation: "sot-boa-viagem-wave 1.2s cubic-bezier(0.42, 0, 0.58, 1) infinite",
-                      transformOrigin: "55% 88%",
+                      animation: "sot-bv-scene-enter 0.65s cubic-bezier(0.25, 0.9, 0.35, 1.15) both",
                     }}
                   >
-                    <BoaViagemMaoRealista />
+                    <div
+                      className="sot-bv-hand-3d will-change-transform"
+                      style={{
+                        animation:
+                          "sot-bv-hand-3d-wave 1.75s cubic-bezier(0.45, 0, 0.2, 1) infinite",
+                        transformStyle: "preserve-3d" as const,
+                      }}
+                    >
+                      <BoaViagemMaoRealista />
+                    </div>
                   </div>
                 </div>
                 <h2
@@ -1036,6 +1086,8 @@ export function DepartureCard({
                 </p>
                 <div className="mt-8 h-px w-full bg-gradient-to-r from-transparent via-white/25 to-transparent" />
                 <p className="mt-4 text-[0.7rem] uppercase tracking-[0.2em] text-white/35">Toque fora para fechar</p>
+              </div>
+                </div>
               </div>
             </div>
           </div>
