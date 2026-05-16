@@ -725,6 +725,19 @@ function MapLeafletHost({
       { className: "sot-driver-map-popup" },
     );
 
+    const oficinaPos = oficinaLatLngRef.current;
+    const oficinaIcon = buildOficinaDivIcon();
+    const oficinaMarker = L.marker(oficinaPos, {
+      icon: oficinaIcon,
+      zIndexOffset: 435,
+      draggable: true,
+      autoPan: true,
+    }).addTo(map);
+    oficinaMarker.bindPopup(
+      '<strong>OFICINA</strong><br /><span style="font-size:11px">Marcador independente — arraste para posicionar (guardado neste computador).</span>',
+      { className: "sot-driver-map-popup" },
+    );
+
     hospitalMarker.on("dragend", () => {
       const ll = hospitalMarker.getLatLng();
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
@@ -744,6 +757,13 @@ function MapLeafletHost({
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
       dn1LatLngRef.current = tuple;
       persistDn1LatLng(tuple);
+    });
+
+    oficinaMarker.on("dragend", () => {
+      const ll = oficinaMarker.getLatLng();
+      const tuple: L.LatLngTuple = [ll.lat, ll.lng];
+      oficinaLatLngRef.current = tuple;
+      persistOficinaLatLng(tuple);
     });
 
     mapRef.current = map;
@@ -825,6 +845,7 @@ function MapLeafletHost({
             bounds.extend(crossPin);
             bounds.extend(fuelLatLngRef.current);
             bounds.extend(dn1LatLngRef.current);
+            bounds.extend(oficinaLatLngRef.current);
           }
           map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
         } catch {
@@ -841,6 +862,7 @@ function MapLeafletHost({
               crossPin,
               fuelLatLngRef.current,
               dn1LatLngRef.current,
+              oficinaLatLngRef.current,
             ]);
             map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
           } catch {
