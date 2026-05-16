@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
+import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature, Sparkles } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
@@ -30,7 +30,6 @@ import {
 } from "../lib/motoristaActiveAssignment";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
-import { NavigationFullScreenModal } from "./navigation-fullscreen-modal";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
@@ -60,7 +59,7 @@ export function DepartureCard({
 }) {
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [boaViagemOpen, setBoaViagemOpen] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -223,7 +222,7 @@ export function DepartureCard({
     try {
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
       setOpen(false);
-      setNavigationOpen(true);
+      setBoaViagemOpen(true);
     } catch (e) {
       if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
         window.alert(e.message);
@@ -281,6 +280,12 @@ export function DepartureCard({
     });
     return () => window.cancelAnimationFrame(id);
   }, [open]);
+
+  useEffect(() => {
+    if (!boaViagemOpen) return;
+    const t = window.setTimeout(() => setBoaViagemOpen(false), 3200);
+    return () => window.clearTimeout(t);
+  }, [boaViagemOpen]);
 
   return (
     <article
@@ -860,13 +865,71 @@ export function DepartureCard({
         </div>
       ) : null}
 
-      <NavigationFullScreenModal
-        open={navigationOpen}
-        record={record}
-        onClose={() => {
-          setNavigationOpen(false);
-        }}
-      />
+      {boaViagemOpen ? (
+        <>
+          <style>{`
+            @keyframes sot-boa-viagem-backdrop {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes sot-boa-viagem-card {
+              from { opacity: 0; transform: scale(0.9) translateY(1.25rem) rotateX(8deg); }
+              to { opacity: 1; transform: scale(1) translateY(0) rotateX(0deg); }
+            }
+            @keyframes sot-boa-viagem-shine {
+              0% { background-position: 0% 50%; }
+              100% { background-position: 200% 50%; }
+            }
+            @keyframes sot-boa-viagem-float {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-6px); }
+            }
+          `}</style>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sot-boa-viagem-title"
+            className="fixed inset-0 z-[580] flex items-center justify-center bg-gradient-to-br from-slate-950/80 via-indigo-950/75 to-violet-950/80 p-5 backdrop-blur-[20px]"
+            style={{ animation: "sot-boa-viagem-backdrop 0.45s ease-out both" }}
+            onClick={() => setBoaViagemOpen(false)}
+          >
+            <div
+              className="relative w-full max-w-sm overflow-hidden rounded-[2rem] border border-white/15 bg-gradient-to-b from-white/[0.12] to-white/[0.04] p-1 shadow-[0_0_0_1px_rgba(255,255,255,0.06) inset,0_25px_80px_-20px_rgba(99,102,241,0.55)]"
+              style={{ animation: "sot-boa-viagem-card 0.55s cubic-bezier(0.22, 1, 0.36, 1) both" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="pointer-events-none absolute -left-1/4 -top-1/2 h-[120%] w-[70%] rounded-full bg-cyan-400/25 blur-[60px]"
+                aria-hidden
+              />
+              <div
+                className="pointer-events-none absolute -bottom-1/3 -right-1/4 h-[90%] w-[65%] rounded-full bg-fuchsia-500/20 blur-[55px]"
+                aria-hidden
+              />
+              <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
+                <div
+                  className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-cyan-400/30 to-violet-500/35 shadow-lg"
+                  style={{ animation: "sot-boa-viagem-float 2.2s ease-in-out infinite" }}
+                >
+                  <Sparkles className="h-7 w-7 text-cyan-100" strokeWidth={1.75} aria-hidden />
+                </div>
+                <h2
+                  id="sot-boa-viagem-title"
+                  className="mb-2 bg-gradient-to-r from-cyan-100 via-white to-fuchsia-100 bg-[length:200%_auto] bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-[2.75rem]"
+                  style={{ animation: "sot-boa-viagem-shine 2.5s ease-in-out infinite alternate" }}
+                >
+                  BOA VIAGEM
+                </h2>
+                <p className="text-sm font-medium text-white/55">
+                  Rastreamento activo · conduza em segurança
+                </p>
+                <div className="mt-8 h-px w-full bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+                <p className="mt-4 text-[0.7rem] uppercase tracking-[0.2em] text-white/35">Toque fora para fechar</p>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
     </article>
   );
 }

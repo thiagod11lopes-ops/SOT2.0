@@ -1,6 +1,8 @@
 /**
  * Estado global simples para sinalizar quando o motorista está em "modo
- * navegação" (o `NavigationFullScreenModal` está aberto em ecrã cheio).
+ * navegação" em ecrã cheio (`NavigationFullScreenModal`). O fluxo normal
+ * de "Iniciar Saída" já não abre esse modal — mantém-se o hook para o
+ * componente de navegação caso volte a ser usado ou acedido por outro caminho.
  *
  * O `SaidasLayout` subscreve este estado para esconder a barra superior
  * (Detalhe de Serviço, Vistoria, Escala do Pão, Vistoria Administrativa,
