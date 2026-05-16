@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Fuel, Map as MapIcon, X } from "lucide-react";
+import { Map as MapIcon, X } from "lucide-react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
@@ -55,44 +55,6 @@ function persistLinsCrossLatLng(ll: L.LatLngTuple): void {
   try {
     localStorage.setItem(
       LINS_CROSS_POSITION_LS_KEY,
-      JSON.stringify({ lat: ll[0], lng: ll[1], updatedAt: Date.now() }),
-    );
-  } catch {
-    /* quota / modo privado */
-  }
-}
-
-const FUEL_STATION_POSITION_LS_KEY = "sot-driver-map-fuel-latlng-v1";
-
-function loadSavedFuelLatLng(): L.LatLngTuple | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(FUEL_STATION_POSITION_LS_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as { lat?: unknown; lng?: unknown };
-    const lat = Number(o.lat);
-    const lng = Number(o.lng);
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
-      return null;
-    }
-    return [lat, lng];
-  } catch {
-    return null;
-  }
-}
-
-function persistFuelLatLng(ll: L.LatLngTuple): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(
-      FUEL_STATION_POSITION_LS_KEY,
       JSON.stringify({ lat: ll[0], lng: ll[1], updatedAt: Date.now() }),
     );
   } catch {
@@ -196,33 +158,18 @@ function distanciaKmApprox(a: L.LatLngTuple, b: L.LatLngTuple): number {
 }
 
 /**
- * Posição inicial do posto quando ainda não há valor em `localStorage`
- * (~40 m a sudoeste da cruz guardada / padrão).
+ * Posição inicial de «1° DN» quando não há `localStorage`
+ * (equivalente ao antigo Fuel+cruz, mantendo o mapa parecido sem o ícone Fuel).
  */
-const DEFAULT_FUEL_OFFSET_FROM_CROSS_LAT = -0.0001;
-const DEFAULT_FUEL_OFFSET_FROM_CROSS_LNG = 0.00022;
+const DEFAULT_DN1_OFFSET_FROM_CROSS_LAT = -0.0001;
+const DEFAULT_DN1_OFFSET_FROM_CROSS_LNG = 0.0004;
 
-function defaultFuelLatLngBesideCross(cross: L.LatLngTuple): L.LatLngTuple {
-  return [cross[0] + DEFAULT_FUEL_OFFSET_FROM_CROSS_LAT, cross[1] + DEFAULT_FUEL_OFFSET_FROM_CROSS_LNG];
-}
-
-function initialFuelLatLngForMap(): L.LatLngTuple {
-  const saved = loadSavedFuelLatLng();
-  if (saved) return saved;
-  const cross = loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG;
-  return defaultFuelLatLngBesideCross(cross);
-}
-
-/** Posição inicial de «1° DN» quando não há `localStorage` (~20 m a leste do posto Fuel inicial). */
-const DEFAULT_DN1_OFFSET_FROM_FUEL_LAT = 0;
-const DEFAULT_DN1_OFFSET_FROM_FUEL_LNG = 0.00018;
-
-function initialDn1LatLngForMap(fuelInitial: L.LatLngTuple): L.LatLngTuple {
+function initialDn1LatLngForMap(crossInitial: L.LatLngTuple): L.LatLngTuple {
   const saved = loadSavedDn1LatLng();
   if (saved) return saved;
   return [
-    fuelInitial[0] + DEFAULT_DN1_OFFSET_FROM_FUEL_LAT,
-    fuelInitial[1] + DEFAULT_DN1_OFFSET_FROM_FUEL_LNG,
+    crossInitial[0] + DEFAULT_DN1_OFFSET_FROM_CROSS_LAT,
+    crossInitial[1] + DEFAULT_DN1_OFFSET_FROM_CROSS_LNG,
   ];
 }
 
@@ -246,9 +193,13 @@ const HOSPITAL_CROSS_STYLE_ID = "sot-driver-hnmd-cross-styles";
  * do bundle falhar ou o leaflet sobrescrever classes.
  */
 function ensureHospitalCrossStylesInDocument(): void {
-  if (typeof document === "undefined" || document.getElementById(HOSPITAL_CROSS_STYLE_ID)) return;
-  const el = document.createElement("style");
-  el.id = HOSPITAL_CROSS_STYLE_ID;
+  if (typeof document === "undefined") return;
+  let el = document.getElementById(HOSPITAL_CROSS_STYLE_ID);
+  if (!el) {
+    el = document.createElement("style");
+    el.id = HOSPITAL_CROSS_STYLE_ID;
+    document.head.appendChild(el);
+  }
   el.textContent = `
 @keyframes sot-hnmd-cross-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.2; } }
 .leaflet-marker-icon.sot-driver-hnmd-cross-divicon {
@@ -266,23 +217,6 @@ function ensureHospitalCrossStylesInDocument(): void {
   animation: sot-hnmd-cross-blink 1s step-end infinite;
 }
 .sot-driver-hnmd-cross-svg { display: block; }
-@media (prefers-reduced-motion: reduce) {
-  .sot-driver-hnmd-cross-wrap { animation: none !important; opacity: 1 !important; }
-}
-.leaflet-marker-icon.sot-driver-fuel-divicon {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-.sot-driver-fuel-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
-}
-.sot-driver-fuel-wrap svg { display: block; }
 .leaflet-marker-icon.sot-driver-1dn-divicon {
   background: transparent !important;
   border: none !important;
@@ -294,6 +228,7 @@ function ensureHospitalCrossStylesInDocument(): void {
   justify-content: center;
   padding: 2px 6px;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+  animation: sot-hnmd-cross-blink 1s step-end infinite;
 }
 .sot-driver-1dn-label {
   color: #2563eb;
@@ -312,14 +247,19 @@ function ensureHospitalCrossStylesInDocument(): void {
   justify-content: center;
   padding: 2px 6px;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+  animation: sot-hnmd-cross-blink 1s step-end infinite;
 }
 .sot-driver-oficina-label {
   color: #dc2626;
   font: 700 11px/1.1 system-ui, "Segoe UI", sans-serif;
   white-space: nowrap;
   letter-spacing: 0.02em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sot-driver-hnmd-cross-wrap,
+  .sot-driver-1dn-wrap,
+  .sot-driver-oficina-wrap { animation: none !important; opacity: 1 !important; }
 }`;
-  document.head.appendChild(el);
 }
 
 function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
@@ -328,23 +268,6 @@ function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
     className: "sot-driver-hnmd-cross-divicon",
     iconSize: [32, 32],
     iconAnchor: [16, 16],
-    popupAnchor: [0, -12],
-  });
-}
-
-/** Posto: só o ícone Lucide `Fuel` (azul). */
-const FUEL_ICON_HTML = renderToStaticMarkup(
-  <div className="sot-driver-fuel-wrap" title="Posto de combustível">
-    <Fuel size={26} color="#2563eb" strokeWidth={2.25} aria-hidden />
-  </div>,
-);
-
-function buildFuelStationDivIcon(): L.DivIcon {
-  return L.divIcon({
-    html: FUEL_ICON_HTML,
-    className: "sot-driver-fuel-divicon",
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
     popupAnchor: [0, -12],
   });
 }
@@ -653,15 +576,12 @@ function MapLeafletHost({
   const linsCrossLatLngRef = useRef<L.LatLngTuple>(
     loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG,
   );
-  const mapLandmarkSeedRef = useRef<{ fuel: L.LatLngTuple; dn1: L.LatLngTuple; oficina: L.LatLngTuple } | null>(
-    null,
-  );
+  const mapLandmarkSeedRef = useRef<{ dn1: L.LatLngTuple; oficina: L.LatLngTuple } | null>(null);
   if (mapLandmarkSeedRef.current === null) {
-    const fuel = initialFuelLatLngForMap();
-    const dn1 = initialDn1LatLngForMap(fuel);
-    mapLandmarkSeedRef.current = { fuel, dn1, oficina: initialOficinaLatLngForMap(dn1) };
+    const crossForDefaults = loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG;
+    const dn1 = initialDn1LatLngForMap(crossForDefaults);
+    mapLandmarkSeedRef.current = { dn1, oficina: initialOficinaLatLngForMap(dn1) };
   }
-  const fuelLatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.fuel);
   const dn1LatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.dn1);
   const oficinaLatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.oficina);
 
@@ -699,24 +619,11 @@ function MapLeafletHost({
       },
     );
 
-    const fuelStationPos = fuelLatLngRef.current;
-    const fuelIcon = buildFuelStationDivIcon();
-    const fuelStationMarker = L.marker(fuelStationPos, {
-      icon: fuelIcon,
-      zIndexOffset: 445,
-      draggable: true,
-      autoPan: true,
-    }).addTo(map);
-    fuelStationMarker.bindPopup(
-      '<strong>Posto de combustível</strong><br /><span style="font-size:11px">Ícone Fuel — arraste para posicionar o posto (guardado neste computador).</span>',
-      { className: "sot-driver-map-popup" },
-    );
-
     const dn1Pos = dn1LatLngRef.current;
     const dn1Icon = buildDn1DivIcon();
     const dn1Marker = L.marker(dn1Pos, {
       icon: dn1Icon,
-      zIndexOffset: 440,
+      zIndexOffset: 445,
       draggable: true,
       autoPan: true,
     }).addTo(map);
@@ -729,7 +636,7 @@ function MapLeafletHost({
     const oficinaIcon = buildOficinaDivIcon();
     const oficinaMarker = L.marker(oficinaPos, {
       icon: oficinaIcon,
-      zIndexOffset: 435,
+      zIndexOffset: 440,
       draggable: true,
       autoPan: true,
     }).addTo(map);
@@ -743,13 +650,6 @@ function MapLeafletHost({
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
       linsCrossLatLngRef.current = tuple;
       persistLinsCrossLatLng(tuple);
-    });
-
-    fuelStationMarker.on("dragend", () => {
-      const ll = fuelStationMarker.getLatLng();
-      const tuple: L.LatLngTuple = [ll.lat, ll.lng];
-      fuelLatLngRef.current = tuple;
-      persistFuelLatLng(tuple);
     });
 
     dn1Marker.on("dragend", () => {
@@ -843,7 +743,6 @@ function MapLeafletHost({
           const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
           if (algumPinoPertoDoHospital) {
             bounds.extend(crossPin);
-            bounds.extend(fuelLatLngRef.current);
             bounds.extend(dn1LatLngRef.current);
             bounds.extend(oficinaLatLngRef.current);
           }
@@ -860,7 +759,6 @@ function MapLeafletHost({
             const b = L.latLngBounds([
               [p0.lat, p0.lng] as L.LatLngTuple,
               crossPin,
-              fuelLatLngRef.current,
               dn1LatLngRef.current,
               oficinaLatLngRef.current,
             ]);
