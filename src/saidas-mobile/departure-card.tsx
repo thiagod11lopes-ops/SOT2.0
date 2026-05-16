@@ -33,90 +33,6 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
-/**
- * Mão em «perfil» (vista lateral, polegar à frente) — formato distinto da palma de frente.
- * O grupo `.sot-bv-fingers-anim` aplica micro-movimento à silhueta acima do pulso.
- */
-function BoaViagemMaoRealista() {
-  const rid = useId().replace(/:/g, "");
-  const skin = `sot-hand-skin-${rid}`;
-  const skinDeep = `sot-hand-deep-${rid}`;
-  const sleeve = `sot-hand-sleeve-${rid}`;
-  const sh = `sot-hand-sh-${rid}`;
-
-  return (
-    <svg
-      width="128"
-      height="142"
-      viewBox="0 0 125 130"
-      className="overflow-visible"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <title>Mão a acenar (vista lateral)</title>
-      <defs>
-        <linearGradient id={skin} x1="18" y1="22" x2="108" y2="98" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#fceee6" />
-          <stop offset="0.45" stopColor="#e6bcaa" />
-          <stop offset="1" stopColor="#bf8b75" />
-        </linearGradient>
-        <radialGradient id={skinDeep} cx="74" cy="56" r="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0.5" stopColor="#8f5e4d" stopOpacity="0" />
-          <stop offset="1" stopColor="#6b3d34" stopOpacity="0.38" />
-        </radialGradient>
-        <linearGradient id={sleeve} x1="36" y1="98" x2="84" y2="126" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#647896" />
-          <stop offset="1" stopColor="#3d4a5e" />
-        </linearGradient>
-        <filter id={sh} x="-22%" y="-20%" width="150%" height="150%" colorInterpolationFilters="sRGB">
-          <feDropShadow dx="0" dy="5" stdDeviation="3.5" floodOpacity="0.38" />
-        </filter>
-      </defs>
-      <g filter={`url(#${sh})`}>
-        <path
-          fill={`url(#${sleeve})`}
-          d="M34 98h52a8 8 0 0 1 8 8v17a8 8 0 0 1-8 8H34a8 8 0 0 1-8-8v-17a8 8 0 0 1 8-8z"
-        />
-        <path fill="#2a3444" d="M38 99h44v14H38z" opacity="0.9" />
-        <g
-          className="sot-bv-fingers-anim"
-          style={{ transformOrigin: "52px 98px", transformBox: "fill-box" as const }}
-        >
-          {/* Perfil: dorso + dedos em arco (silhueta contínua) */}
-          <path
-            fill={`url(#${skin})`}
-            d="M46 96
-               L44 78
-               C42 52 54 36 72 32
-               C90 28 102 38 104 54
-               C108 40 118 36 122 46
-               C126 56 118 66 108 64
-               L100 66
-               C104 54 118 50 122 62
-               C126 74 112 80 100 76
-               L92 78
-               C86 92 66 98 52 96
-               Z"
-          />
-          {/* Polegar (lado da palma) */}
-          <path
-            fill={`url(#${skin})`}
-            d="M42 84
-               C26 76 22 56 34 44
-               C44 36 56 48 54 64
-               C52 74 48 82 42 84
-               Z"
-          />
-          <path
-            fill={`url(#${skinDeep})`}
-            d="M52 72 C64 58 86 52 100 58 C102 70 88 80 68 82 C58 82 54 78 52 72 Z"
-          />
-        </g>
-      </g>
-    </svg>
-  );
-}
-
 export function DepartureCard({
   record,
   onPatchKm,
@@ -972,37 +888,9 @@ export function DepartureCard({
               0%, 100% { transform: translate(-10%, 0) scale(1); opacity: 0.5; }
               50% { transform: translate(12%, -8%) scale(1.12); opacity: 0.85; }
             }
-            @keyframes sot-bv-pulse-ring {
-              0%, 100% { opacity: 0.35; transform: translate(-50%, 0) scale(1); filter: blur(0px); }
-              50% { opacity: 0.9; transform: translate(-50%, 0) scale(1.12); filter: blur(0.5px); }
-            }
-            /* Aceno em 3D: deslocamento no espaço + rotações — perceptivelmente diferente do simples rotate 2D. */
-            @keyframes sot-bv-hand-3d-wave {
-              0%   { transform: perspective(500px) translate3d(-10px, 0, 0) rotateY(-14deg) rotateZ(-6deg); }
-              18%  { transform: perspective(500px) translate3d(12px, -6px, 14px) rotateY(12deg) rotateZ(20deg); }
-              36%  { transform: perspective(500px) translate3d(-8px, 4px, 0) rotateY(-10deg) rotateZ(-14deg); }
-              54%  { transform: perspective(500px) translate3d(14px, -4px, 10px) rotateY(16deg) rotateZ(22deg); }
-              72%  { transform: perspective(500px) translate3d(-12px, 2px, 4px) rotateY(-12deg) rotateZ(-8deg); }
-              100% { transform: perspective(500px) translate3d(-10px, 0, 0) rotateY(-14deg) rotateZ(-6deg); }
-            }
-            @keyframes sot-bv-fingers {
-              0%, 100% { transform: rotate(0deg); }
-              50% { transform: rotate(8deg); }
-            }
-            .sot-bv-fingers-anim {
-              animation: sot-bv-fingers 0.55s ease-in-out 0.12s infinite;
-            }
-            @keyframes sot-bv-scene-enter {
-              from { opacity: 0; filter: blur(10px); transform: scale(0.82); }
-              to { opacity: 1; filter: blur(0); transform: scale(1); }
-            }
             @media (prefers-reduced-motion: reduce) {
-              .sot-bv-hand-3d { animation: none !important; transform: none !important; }
-              .sot-bv-fingers-anim { animation: none !important; }
-              .sot-bv-pulse-ring { animation: none !important; opacity: 0.5 !important; }
               .sot-bv-aurora-blob { animation: none !important; }
               .sot-bv-border-aurora { animation: none !important; }
-              .sot-bv-scene-enter { animation: none !important; opacity: 1 !important; filter: none !important; }
             }
           `}</style>
           <div
@@ -1042,35 +930,6 @@ export function DepartureCard({
                 aria-hidden
               />
               <div className="relative rounded-[1.85rem] bg-slate-950/35 px-8 py-10 text-center">
-                <div
-                  className="relative mx-auto mb-5 flex h-[10rem] items-end justify-center"
-                  style={{ perspective: "900px" }}
-                >
-                  <div
-                    className="sot-bv-pulse-ring pointer-events-none absolute bottom-6 left-1/2 h-36 w-36 rounded-full border-2 border-cyan-200/30 bg-gradient-to-t from-cyan-400/20 via-white/10 to-transparent shadow-[0_0_56px_rgba(34,211,238,0.25)]"
-                    style={{
-                      animation: "sot-bv-pulse-ring 2.4s ease-in-out infinite",
-                    }}
-                    aria-hidden
-                  />
-                  <div
-                    className="sot-bv-scene-enter relative z-[1] -mb-1"
-                    style={{
-                      animation: "sot-bv-scene-enter 0.65s cubic-bezier(0.25, 0.9, 0.35, 1.15) both",
-                    }}
-                  >
-                    <div
-                      className="sot-bv-hand-3d will-change-transform"
-                      style={{
-                        animation:
-                          "sot-bv-hand-3d-wave 1.75s cubic-bezier(0.45, 0, 0.2, 1) infinite",
-                        transformStyle: "preserve-3d" as const,
-                      }}
-                    >
-                      <BoaViagemMaoRealista />
-                    </div>
-                  </div>
-                </div>
                 <h2
                   id="sot-boa-viagem-title"
                   className="mb-2 bg-gradient-to-r from-cyan-100 via-white to-fuchsia-100 bg-[length:200%_auto] bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-[2.75rem]"
