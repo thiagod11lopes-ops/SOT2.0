@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature, Sparkles } from "lucide-react";
+import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
@@ -32,6 +32,47 @@ import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
+
+/** Silhueta estilizada: farda azul-marinho e gorro branco, em continência. */
+function IconMarinhaContinencia({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 72 96"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <title>Marinheiro em continência</title>
+      {/* Gorro branco típico */}
+      <path fill="#f1f5f9" d="M18 12h36l-2 9H20l-2-9z" />
+      <ellipse cx="36" cy="14" rx="17" ry="5.5" fill="#e2e8f0" />
+      <rect x="22" y="7" width="28" height="6" rx="2" fill="#f8fafc" />
+      {/* Rosto */}
+      <ellipse cx="36" cy="30" rx="10" ry="11" fill="#deb896" />
+      {/* Pescoço */}
+      <rect x="31" y="38" width="10" height="6" rx="2" fill="#deb896" />
+      {/* Blusa azul marinho */}
+      <path fill="#1e3a8a" d="M20 44h32l-4 38H24l-4-38z" />
+      {/* Gola branca */}
+      <path fill="#fff" d="M26 42l10 7 10-7v4l-10 9-10-9v-4z" />
+      {/* Braço ao corpo (lado esquerdo da figura) */}
+      <path fill="#1e3a8a" d="M16 46l-6 28h8l6-28z" />
+      {/* Manga + antebraço em continência */}
+      <path
+        fill="#1e3a8a"
+        d="M48 44c10-1 14 8 8 16l-7-2c3-4 0-9-5-8l4-6z"
+      />
+      <path fill="#1e3a8a" d="M52 36 L62 18 L66 21 L58 40 Z" />
+      {/* Mão junto à testa */}
+      <ellipse cx="64" cy="19" rx="4" ry="3" fill="#deb896" transform="rotate(-22 64 19)" />
+      {/* Insígnia / faixa dourada */}
+      <rect x="26" y="58" width="20" height="3" rx="1" fill="#b45309" opacity="0.95" />
+      {/* Calça */}
+      <path fill="#172554" d="M24 80h24v14H24z" />
+      <line x1="36" y1="80" x2="36" y2="94" stroke="#0f172a" strokeWidth="1.2" />
+    </svg>
+  );
+}
 
 export function DepartureCard({
   record,
@@ -283,7 +324,7 @@ export function DepartureCard({
 
   useEffect(() => {
     if (!boaViagemOpen) return;
-    const t = window.setTimeout(() => setBoaViagemOpen(false), 3200);
+    const t = window.setTimeout(() => setBoaViagemOpen(false), 4000);
     return () => window.clearTimeout(t);
   }, [boaViagemOpen]);
 
@@ -880,9 +921,9 @@ export function DepartureCard({
               0% { background-position: 0% 50%; }
               100% { background-position: 200% 50%; }
             }
-            @keyframes sot-boa-viagem-float {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-6px); }
+            @keyframes sot-boa-viagem-salute {
+              0%, 100% { transform: translateY(0) rotate(-1deg); }
+              50% { transform: translateY(-4px) rotate(1deg); }
             }
           `}</style>
           <div
@@ -908,10 +949,12 @@ export function DepartureCard({
               />
               <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
                 <div
-                  className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-cyan-400/30 to-violet-500/35 shadow-lg"
-                  style={{ animation: "sot-boa-viagem-float 2.2s ease-in-out infinite" }}
+                  className="mx-auto mb-4 flex h-[5.75rem] items-end justify-center"
+                  style={{ animation: "sot-boa-viagem-salute 2.4s ease-in-out infinite" }}
                 >
-                  <Sparkles className="h-7 w-7 text-cyan-100" strokeWidth={1.75} aria-hidden />
+                  <div className="rounded-2xl border border-white/25 bg-gradient-to-b from-[#1e3a8a]/45 to-slate-950/55 p-2.5 shadow-lg ring-1 ring-cyan-400/20">
+                    <IconMarinhaContinencia className="h-[5.25rem] w-16 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]" />
+                  </div>
                 </div>
                 <h2
                   id="sot-boa-viagem-title"
