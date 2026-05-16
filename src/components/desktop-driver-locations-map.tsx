@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -18,8 +18,70 @@ import { VehicleIcon } from "./vehicle-icon";
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-const BR_VIEW: L.LatLngExpression = [-14.2, -51.9];
-const BR_ZOOM_EMPTY = 5;
+/** Hospital Naval Marcílio Dias (RJ) — cruz vermelha de referência no mapa de viaturas. */
+const HOSPITAL_MARCILIO_DIAS_LATLNG: L.LatLngTuple = [-22.9025, -43.2789];
+
+/** HTML estático do ícone (cruz médica vermelha em SVG). */
+const HOSPITAL_MARCILIO_DIAS_DIVICON_HTML = `
+  <div class="sot-driver-hnmd-cross-wrap" title="Hospital Naval Marcílio Dias">
+    <svg class="sot-driver-hnmd-cross-svg" width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="11" y="4" width="6" height="20" fill="#dc2626" rx="1.5" />
+      <rect x="4" y="11" width="20" height="6" fill="#dc2626" rx="1.5" />
+    </svg>
+  </div>
+`;
+
+/** Se alguma viatura estiver a menos disto (km) do HNMD, o mapa inclui a cruz no enquadramento. */
+const KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO = 90;
+
+function distanciaKmApprox(a: L.LatLngTuple, b: L.LatLngTuple): number {
+  const dLat = (a[0] - b[0]) * 111;
+  const dLng = (a[1] - b[1]) * 111 * Math.cos((a[0] * Math.PI) / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+const HOSPITAL_CROSS_STYLE_ID = "sot-driver-hnmd-cross-styles";
+
+/**
+ * Injeta animação e estilo do DivIcon — garante cruz visível mesmo se o CSS
+ * do bundle falhar ou o leaflet sobrescrever classes.
+ */
+function ensureHospitalCrossStylesInDocument(): void {
+  if (typeof document === "undefined" || document.getElementById(HOSPITAL_CROSS_STYLE_ID)) return;
+  const el = document.createElement("style");
+  el.id = HOSPITAL_CROSS_STYLE_ID;
+  el.textContent = `
+@keyframes sot-hnmd-cross-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.2; } }
+.leaflet-marker-icon.sot-driver-hnmd-cross-divicon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sot-driver-hnmd-cross-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45));
+  animation: sot-hnmd-cross-blink 1s step-end infinite;
+}
+.sot-driver-hnmd-cross-svg { display: block; }
+@media (prefers-reduced-motion: reduce) {
+  .sot-driver-hnmd-cross-wrap { animation: none !important; opacity: 1 !important; }
+}`;
+  document.head.appendChild(el);
+}
+
+function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
+  return L.divIcon({
+    html: HOSPITAL_MARCILIO_DIAS_DIVICON_HTML,
+    className: "sot-driver-hnmd-cross-divicon",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -12],
+  });
+}
 
 function escapePopupHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/>/g, "&gt;");
@@ -295,11 +357,13 @@ function MapLeafletHost({
     if (!visible) prevPinCountRef.current = null;
   }, [visible]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!visible || !containerRef.current) return;
 
+    ensureHospitalCrossStylesInDocument();
+
     const el = containerRef.current;
-    const map = L.map(el, { zoomControl: true }).setView(BR_VIEW, BR_ZOOM_EMPTY);
+    const map = L.map(el, { zoomControl: true }).setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
 
     L.tileLayer(OSM_TILE, {
       maxZoom: 19,
@@ -308,18 +372,42 @@ function MapLeafletHost({
 
     const group = L.layerGroup().addTo(map);
 
+    const hospitalIcon = buildHospitalMarcilioDiasDivIcon();
+    const hospitalMarker = L.marker(HOSPITAL_MARCILIO_DIAS_LATLNG, {
+      icon: hospitalIcon,
+      zIndexOffset: 450,
+    }).addTo(map);
+    hospitalMarker.bindPopup("<strong>Hospital Naval Marcílio Dias (HNMD)</strong>", {
+      className: "sot-driver-map-popup",
+    });
+
     mapRef.current = map;
     layerRef.current = group;
 
-    const rafId = requestAnimationFrame(() => {
+    const kick = () => {
       map.invalidateSize();
-      requestAnimationFrame(() => map.invalidateSize());
+      void map.getContainer().offsetHeight;
+    };
+    kick();
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      kick();
+      inner = requestAnimationFrame(() => {
+        kick();
+        map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+      });
     });
-    const tmo = window.setTimeout(() => map.invalidateSize(), 320);
+    const t320 = window.setTimeout(kick, 320);
+    const t600 = window.setTimeout(() => {
+      kick();
+      map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+    }, 600);
 
     return () => {
-      cancelAnimationFrame(rafId);
-      window.clearTimeout(tmo);
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+      window.clearTimeout(t320);
+      window.clearTimeout(t600);
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
@@ -359,18 +447,40 @@ function MapLeafletHost({
     /** Só reposiciona zoom/canvas quando mudou o número de viaturas (evita saltos a cada actualização GPS). */
     const shouldResetView = prev === null || prev !== n;
 
+    const algumPinoPertoDoHospital = pins.some(
+      (p) => distanciaKmApprox([p.lat, p.lng], HOSPITAL_MARCILIO_DIAS_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO,
+    );
+
     if (shouldResetView) {
       if (n >= 2) {
         try {
           const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
+          if (algumPinoPertoDoHospital) {
+            bounds.extend(HOSPITAL_MARCILIO_DIAS_LATLNG);
+          }
           map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
         } catch {
-          map.setView(BR_VIEW, BR_ZOOM_EMPTY);
+          map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
         }
       } else if (n === 1) {
-        map.setView([pins[0].lat, pins[0].lng], 14);
+        const p0 = pins[0];
+        if (
+          distanciaKmApprox([p0.lat, p0.lng], HOSPITAL_MARCILIO_DIAS_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO
+        ) {
+          try {
+            const b = L.latLngBounds([
+              [p0.lat, p0.lng] as L.LatLngTuple,
+              HOSPITAL_MARCILIO_DIAS_LATLNG,
+            ]);
+            map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
+          } catch {
+            map.setView([p0.lat, p0.lng], 14);
+          }
+        } else {
+          map.setView([p0.lat, p0.lng], 14);
+        }
       } else {
-        map.setView(BR_VIEW, BR_ZOOM_EMPTY);
+        map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
       }
     }
 

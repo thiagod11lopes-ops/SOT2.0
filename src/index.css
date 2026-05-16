@@ -518,6 +518,39 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
   line-height: 1.2;
 }
 
+/* Cruz vermelha (HNMD) — mapa de localização das viaturas (Leaflet) */
+.leaflet-marker-icon.sot-driver-hnmd-cross-divicon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sot-driver-hnmd-cross-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  animation: sot-hnmd-cross-blink 1s step-end infinite;
+}
+.sot-driver-hnmd-cross-svg {
+  display: block;
+}
+@keyframes sot-hnmd-cross-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.22;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sot-driver-hnmd-cross-wrap {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* ===========================================================================
  * Animação de "tchau" ao entrar em modo Segundo plano
  * O fundo escurece gradualmente de transparente até preto absoluto enquanto
