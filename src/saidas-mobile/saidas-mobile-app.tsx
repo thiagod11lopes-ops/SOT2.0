@@ -14,6 +14,19 @@ export function SaidasMobileApp() {
     /** Garante que o SW (definido em public/sw-mobile-push.js) é registado mesmo sem push subscription, para que o navegador trate este shell como PWA instalável. */
     void ensureMobilePushServiceWorkerRegistered();
   }, []);
+  useEffect(() => {
+    /** iOS/Safari: ao voltar ao ecrã, volta a pedir actualização do SW e evita ficar preso a assets antigos quando o servidor já tem build novo. */
+    const onForeground = () => {
+      if (document.visibilityState !== "visible") return;
+      void ensureMobilePushServiceWorkerRegistered();
+    };
+    document.addEventListener("visibilitychange", onForeground);
+    window.addEventListener("pageshow", onForeground);
+    return () => {
+      document.removeEventListener("visibilitychange", onForeground);
+      window.removeEventListener("pageshow", onForeground);
+    };
+  }, []);
 
   return (
     <MobileLoadingOverlayProvider>

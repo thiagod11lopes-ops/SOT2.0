@@ -4,7 +4,7 @@ export type LocalAlarmNotificationOptions = {
   requireInteraction?: boolean;
 };
 
-const MOBILE_SW_URL = "/sw-mobile-push.js";
+export const MOBILE_PUSH_SW_URL = "/sw-mobile-push.js";
 
 function base64UrlToArrayBuffer(base64Url: string): ArrayBuffer {
   const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
@@ -26,9 +26,13 @@ export function isServiceWorkerSupported(): boolean {
 export async function ensureMobilePushServiceWorkerRegistered(): Promise<ServiceWorkerRegistration | null> {
   if (!isServiceWorkerSupported()) return null;
   try {
-    const existing = await navigator.serviceWorker.getRegistration(MOBILE_SW_URL);
-    if (existing) return existing;
-    return await navigator.serviceWorker.register(MOBILE_SW_URL, { scope: "/" });
+    /** `updateViaCache: 'none'` — ao procurar nova versão do SW, não usar cache HTTP (útil no iOS/Safari). */
+    const registration = await navigator.serviceWorker.register(MOBILE_PUSH_SW_URL, {
+      scope: "/",
+      updateViaCache: "none",
+    });
+    void registration.update();
+    return registration;
   } catch {
     return null;
   }
