@@ -18,12 +18,15 @@ import { VehicleIcon } from "./vehicle-icon";
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-/** Hospital Naval Marcílio Dias (RJ) — cruz vermelha de referência no mapa de viaturas. */
-const HOSPITAL_MARCILIO_DIAS_LATLNG: L.LatLngTuple = [-22.9025, -43.2789];
+/**
+ * Bairro Lins de Vasconcelos (RJ) — coordenadas no eixo urbano principal
+ * (referência à Rua Lins de Vasconcelos). O Hospital Naval Marcílio Dias fica neste bairro.
+ */
+const LINS_DE_VASCONCELOS_CRUZ_LATLNG: L.LatLngTuple = [-22.90858, -43.27967];
 
 /** HTML estático do ícone (cruz médica vermelha em SVG). */
 const HOSPITAL_MARCILIO_DIAS_DIVICON_HTML = `
-  <div class="sot-driver-hnmd-cross-wrap" title="Hospital Naval Marcílio Dias">
+  <div class="sot-driver-hnmd-cross-wrap" title="Lins de Vasconcelos · HNMD">
     <svg class="sot-driver-hnmd-cross-svg" width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <rect x="11" y="4" width="6" height="20" fill="#dc2626" rx="1.5" />
       <rect x="4" y="11" width="20" height="6" fill="#dc2626" rx="1.5" />
@@ -363,7 +366,7 @@ function MapLeafletHost({
     ensureHospitalCrossStylesInDocument();
 
     const el = containerRef.current;
-    const map = L.map(el, { zoomControl: true }).setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+    const map = L.map(el, { zoomControl: true }).setView(LINS_DE_VASCONCELOS_CRUZ_LATLNG, 14);
 
     L.tileLayer(OSM_TILE, {
       maxZoom: 19,
@@ -373,13 +376,16 @@ function MapLeafletHost({
     const group = L.layerGroup().addTo(map);
 
     const hospitalIcon = buildHospitalMarcilioDiasDivIcon();
-    const hospitalMarker = L.marker(HOSPITAL_MARCILIO_DIAS_LATLNG, {
+    const hospitalMarker = L.marker(LINS_DE_VASCONCELOS_CRUZ_LATLNG, {
       icon: hospitalIcon,
       zIndexOffset: 450,
     }).addTo(map);
-    hospitalMarker.bindPopup("<strong>Hospital Naval Marcílio Dias (HNMD)</strong>", {
-      className: "sot-driver-map-popup",
-    });
+    hospitalMarker.bindPopup(
+      '<strong>Lins de Vasconcelos</strong><br /><span style="font-size:11px">Hospital Naval Marcílio Dias (HNMD)</span>',
+      {
+        className: "sot-driver-map-popup",
+      },
+    );
 
     mapRef.current = map;
     layerRef.current = group;
@@ -394,13 +400,13 @@ function MapLeafletHost({
       kick();
       inner = requestAnimationFrame(() => {
         kick();
-        map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+        map.setView(LINS_DE_VASCONCELOS_CRUZ_LATLNG, 14);
       });
     });
     const t320 = window.setTimeout(kick, 320);
     const t600 = window.setTimeout(() => {
       kick();
-      map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+      map.setView(LINS_DE_VASCONCELOS_CRUZ_LATLNG, 14);
     }, 600);
 
     return () => {
@@ -448,7 +454,7 @@ function MapLeafletHost({
     const shouldResetView = prev === null || prev !== n;
 
     const algumPinoPertoDoHospital = pins.some(
-      (p) => distanciaKmApprox([p.lat, p.lng], HOSPITAL_MARCILIO_DIAS_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO,
+      (p) => distanciaKmApprox([p.lat, p.lng], LINS_DE_VASCONCELOS_CRUZ_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO,
     );
 
     if (shouldResetView) {
@@ -456,21 +462,21 @@ function MapLeafletHost({
         try {
           const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
           if (algumPinoPertoDoHospital) {
-            bounds.extend(HOSPITAL_MARCILIO_DIAS_LATLNG);
+            bounds.extend(LINS_DE_VASCONCELOS_CRUZ_LATLNG);
           }
           map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
         } catch {
-          map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+          map.setView(LINS_DE_VASCONCELOS_CRUZ_LATLNG, 14);
         }
       } else if (n === 1) {
         const p0 = pins[0];
         if (
-          distanciaKmApprox([p0.lat, p0.lng], HOSPITAL_MARCILIO_DIAS_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO
+          distanciaKmApprox([p0.lat, p0.lng], LINS_DE_VASCONCELOS_CRUZ_LATLNG) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO
         ) {
           try {
             const b = L.latLngBounds([
               [p0.lat, p0.lng] as L.LatLngTuple,
-              HOSPITAL_MARCILIO_DIAS_LATLNG,
+              LINS_DE_VASCONCELOS_CRUZ_LATLNG,
             ]);
             map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
           } catch {
@@ -480,7 +486,7 @@ function MapLeafletHost({
           map.setView([p0.lat, p0.lng], 14);
         }
       } else {
-        map.setView(HOSPITAL_MARCILIO_DIAS_LATLNG, 14);
+        map.setView(LINS_DE_VASCONCELOS_CRUZ_LATLNG, 14);
       }
     }
 
