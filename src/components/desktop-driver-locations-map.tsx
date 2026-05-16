@@ -172,15 +172,28 @@ function ensureHospitalCrossStylesInDocument(): void {
   border: none !important;
   box-shadow: none !important;
 }
+.sot-driver-fuel-marker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
 .sot-driver-fuel-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
 }
-.sot-driver-fuel-wrap svg { display: block; }`;
+.sot-driver-fuel-wrap svg { display: block; }
+.sot-driver-fuel-dn-label {
+  color: #2563eb;
+  font: 700 11px/1.1 system-ui, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}`;
   document.head.appendChild(el);
 }
 
@@ -194,10 +207,13 @@ function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
   });
 }
 
-/** Lucide `Fuel` — pré-renderizado uma vez (mesmo padrão que `VEHICLE_ICON_HTML`). */
+/** Marcador do posto: Lucide `Fuel` + rótulo «1°DN» (azul). */
 const FUEL_ICON_HTML = renderToStaticMarkup(
-  <div className="sot-driver-fuel-wrap" title="Posto de combustível">
-    <Fuel size={26} color="#2563eb" strokeWidth={2.25} aria-hidden />
+  <div className="sot-driver-fuel-marker" title="Posto de combustível · 1°DN">
+    <div className="sot-driver-fuel-wrap">
+      <Fuel size={26} color="#2563eb" strokeWidth={2.25} aria-hidden />
+    </div>
+    <span className="sot-driver-fuel-dn-label">1°DN</span>
   </div>,
 );
 
@@ -205,9 +221,9 @@ function buildFuelStationDivIcon(): L.DivIcon {
   return L.divIcon({
     html: FUEL_ICON_HTML,
     className: "sot-driver-fuel-divicon",
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -12],
+    iconSize: [82, 28],
+    iconAnchor: [41, 14],
+    popupAnchor: [0, -14],
   });
 }
 
