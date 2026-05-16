@@ -72,6 +72,15 @@ const HOSPITAL_MARCILIO_DIAS_DIVICON_HTML = `
   </div>
 `;
 
+/** Posto de combustível (referência) — azul, sem animação de piscar. */
+const FUEL_STATION_DIVICON_HTML = `
+  <div class="sot-driver-fuel-wrap" title="Posto de combustível (referência)">
+    <svg class="sot-driver-fuel-svg" width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fill="#2563eb" d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33a2.5 2.5 0 0 0 2.5 2.5c.36 0 .71-.08 1.04-.21l.77 1.94-1.74.87-.01-.01c-.36.5-.96.82-1.64.82-1.1 0-2-.9-2-2V9.56l-8-2v11h8v-2h-6v-4h6v-3.5c0-1.1.9-2 2-2H21v10h2V9.56c0-1.1-.9-2-2-2h-1.23z"/>
+    </svg>
+  </div>
+`;
+
 /** Se alguma viatura estiver a menos disto (km) do HNMD, o mapa inclui a cruz no enquadramento. */
 const KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO = 90;
 
@@ -79,6 +88,14 @@ function distanciaKmApprox(a: L.LatLngTuple, b: L.LatLngTuple): number {
   const dLat = (a[0] - b[0]) * 111;
   const dLng = (a[1] - b[1]) * 111 * Math.cos((a[0] * Math.PI) / 180);
   return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+/** Deslocamento geográfico do posto em relação à cruz (~40 m a sudoeste, visível “ao lado”). */
+const FUEL_STATION_OFFSET_FROM_CROSS_LAT = -0.0001;
+const FUEL_STATION_OFFSET_FROM_CROSS_LNG = 0.00022;
+
+function fuelStationLatLngBesideCross(cross: L.LatLngTuple): L.LatLngTuple {
+  return [cross[0] + FUEL_STATION_OFFSET_FROM_CROSS_LAT, cross[1] + FUEL_STATION_OFFSET_FROM_CROSS_LNG];
 }
 
 const HOSPITAL_CROSS_STYLE_ID = "sot-driver-hnmd-cross-styles";
@@ -110,7 +127,21 @@ function ensureHospitalCrossStylesInDocument(): void {
 .sot-driver-hnmd-cross-svg { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .sot-driver-hnmd-cross-wrap { animation: none !important; opacity: 1 !important; }
-}`;
+}
+.leaflet-marker-icon.sot-driver-fuel-divicon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sot-driver-fuel-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+.sot-driver-fuel-svg { display: block; }`;
   document.head.appendChild(el);
 }
 
@@ -120,6 +151,16 @@ function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
     className: "sot-driver-hnmd-cross-divicon",
     iconSize: [32, 32],
     iconAnchor: [16, 16],
+    popupAnchor: [0, -12],
+  });
+}
+
+function buildFuelStationDivIcon(): L.DivIcon {
+  return L.divIcon({
+    html: FUEL_STATION_DIVICON_HTML,
+    className: "sot-driver-fuel-divicon",
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
     popupAnchor: [0, -12],
   });
 }
@@ -430,11 +471,25 @@ function MapLeafletHost({
         className: "sot-driver-map-popup",
       },
     );
+
+    const fuelStationPos = fuelStationLatLngBesideCross(crossPos);
+    const fuelIcon = buildFuelStationDivIcon();
+    const fuelStationMarker = L.marker(fuelStationPos, {
+      icon: fuelIcon,
+      zIndexOffset: 445,
+      draggable: false,
+    }).addTo(map);
+    fuelStationMarker.bindPopup(
+      '<strong>Posto de combustível</strong><br /><span style="font-size:11px">Referência fixa ao lado da cruz do HNMD (ícone estático)</span>',
+      { className: "sot-driver-map-popup" },
+    );
+
     hospitalMarker.on("dragend", () => {
       const ll = hospitalMarker.getLatLng();
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
       linsCrossLatLngRef.current = tuple;
       persistLinsCrossLatLng(tuple);
+      fuelStationMarker.setLatLng(fuelStationLatLngBesideCross(tuple));
     });
 
     mapRef.current = map;
@@ -514,6 +569,7 @@ function MapLeafletHost({
           const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
           if (algumPinoPertoDoHospital) {
             bounds.extend(crossPin);
+            bounds.extend(fuelStationLatLngBesideCross(crossPin));
           }
           map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
         } catch {
@@ -528,6 +584,7 @@ function MapLeafletHost({
             const b = L.latLngBounds([
               [p0.lat, p0.lng] as L.LatLngTuple,
               crossPin,
+              fuelStationLatLngBesideCross(crossPin),
             ]);
             map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
           } catch {
