@@ -897,7 +897,7 @@ export function DepartureCard({
             role="dialog"
             aria-modal="true"
             aria-labelledby="sot-boa-viagem-title"
-            className="fixed inset-0 z-[580] flex items-center justify-center bg-gradient-to-br from-slate-950/80 via-slate-900/75 to-blue-950/80 p-5 backdrop-blur-[20px]"
+            className="fixed inset-0 z-[580] flex items-center justify-center bg-gradient-to-br from-slate-950/80 via-slate-900/75 to-emerald-950/80 p-5 backdrop-blur-[20px]"
             style={{ animation: "sot-boa-viagem-backdrop 0.45s ease-out both" }}
             onClick={() => setBoaViagemOpen(false)}
           >
@@ -907,32 +907,32 @@ export function DepartureCard({
               onClick={(e) => e.stopPropagation()}
             >
               <div
-                className="sot-bv-border-aurora rounded-[2.1rem] p-[2.5px] shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_28px_90px_-24px_rgba(37,99,235,0.5)]"
+                className="sot-bv-border-aurora rounded-[2.1rem] p-[2.5px] shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_28px_90px_-24px_rgba(16,185,129,0.5)]"
                 style={{
                   backgroundImage:
-                    "linear-gradient(130deg, #22d3ee, #38bdf8, #3b82f6, #2563eb, #0ea5e9, #22d3ee)",
+                    "linear-gradient(130deg, #6ee7b7, #34d399, #10b981, #059669, #4ade80, #6ee7b7)",
                   backgroundSize: "380% 380%",
                   animation: "sot-bv-border-flow 5s linear infinite",
                 }}
               >
                 <div className="relative overflow-hidden rounded-[1.95rem] border border-white/12 bg-gradient-to-b from-slate-950/95 via-slate-900/92 to-slate-950/98 p-1">
               <div
-                className="sot-bv-aurora-blob pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-gradient-to-tr from-sky-500/40 via-cyan-400/30 to-transparent blur-3xl"
+                className="sot-bv-aurora-blob pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-gradient-to-tr from-emerald-500/40 via-green-400/30 to-transparent blur-3xl"
                 style={{ animation: "sot-bv-aurora 6s ease-in-out infinite" }}
                 aria-hidden
               />
               <div
-                className="pointer-events-none absolute -left-1/4 -top-1/2 h-[120%] w-[70%] rounded-full bg-cyan-400/20 blur-[60px]"
+                className="pointer-events-none absolute -left-1/4 -top-1/2 h-[120%] w-[70%] rounded-full bg-emerald-400/20 blur-[60px]"
                 aria-hidden
               />
               <div
-                className="pointer-events-none absolute -bottom-1/3 -right-1/4 h-[90%] w-[65%] rounded-full bg-blue-500/15 blur-[55px]"
+                className="pointer-events-none absolute -bottom-1/3 -right-1/4 h-[90%] w-[65%] rounded-full bg-green-600/15 blur-[55px]"
                 aria-hidden
               />
               <div className="relative rounded-[1.85rem] bg-slate-950/35 px-8 py-10 text-center">
                 <h2
                   id="sot-boa-viagem-title"
-                  className="mb-2 bg-gradient-to-r from-cyan-100 via-white to-sky-200 bg-[length:200%_auto] bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-[2.75rem]"
+                  className="mb-2 bg-gradient-to-r from-emerald-100 via-white to-green-200 bg-[length:200%_auto] bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-[2.75rem]"
                   style={{ animation: "sot-boa-viagem-shine 2.5s ease-in-out infinite alternate" }}
                 >
                   BOA VIAGEM
