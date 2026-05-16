@@ -100,6 +100,44 @@ function persistFuelLatLng(ll: L.LatLngTuple): void {
   }
 }
 
+const DN1_POSITION_LS_KEY = "sot-driver-map-1dn-latlng-v1";
+
+function loadSavedDn1LatLng(): L.LatLngTuple | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(DN1_POSITION_LS_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as { lat?: unknown; lng?: unknown };
+    const lat = Number(o.lat);
+    const lng = Number(o.lng);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
+    }
+    return [lat, lng];
+  } catch {
+    return null;
+  }
+}
+
+function persistDn1LatLng(ll: L.LatLngTuple): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      DN1_POSITION_LS_KEY,
+      JSON.stringify({ lat: ll[0], lng: ll[1], updatedAt: Date.now() }),
+    );
+  } catch {
+    /* quota / modo privado */
+  }
+}
+
 /** HTML estático do ícone (cruz médica vermelha em SVG). */
 const HOSPITAL_MARCILIO_DIAS_DIVICON_HTML = `
   <div class="sot-driver-hnmd-cross-wrap" title="Lins de Vasconcelos · HNMD">
@@ -137,6 +175,19 @@ function initialFuelLatLngForMap(): L.LatLngTuple {
   return defaultFuelLatLngBesideCross(cross);
 }
 
+/** Posição inicial de «1° DN» quando não há `localStorage` (~20 m a leste do posto Fuel inicial). */
+const DEFAULT_DN1_OFFSET_FROM_FUEL_LAT = 0;
+const DEFAULT_DN1_OFFSET_FROM_FUEL_LNG = 0.00018;
+
+function initialDn1LatLngForMap(fuelInitial: L.LatLngTuple): L.LatLngTuple {
+  const saved = loadSavedDn1LatLng();
+  if (saved) return saved;
+  return [
+    fuelInitial[0] + DEFAULT_DN1_OFFSET_FROM_FUEL_LAT,
+    fuelInitial[1] + DEFAULT_DN1_OFFSET_FROM_FUEL_LNG,
+  ];
+}
+
 const HOSPITAL_CROSS_STYLE_ID = "sot-driver-hnmd-cross-styles";
 
 /**
@@ -172,23 +223,28 @@ function ensureHospitalCrossStylesInDocument(): void {
   border: none !important;
   box-shadow: none !important;
 }
-.sot-driver-fuel-marker {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
-}
 .sot-driver-fuel-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
 }
 .sot-driver-fuel-wrap svg { display: block; }
-.sot-driver-fuel-dn-label {
+.leaflet-marker-icon.sot-driver-1dn-divicon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sot-driver-1dn-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+}
+.sot-driver-1dn-label {
   color: #2563eb;
   font: 700 11px/1.1 system-ui, "Segoe UI", sans-serif;
   white-space: nowrap;
@@ -207,13 +263,10 @@ function buildHospitalMarcilioDiasDivIcon(): L.DivIcon {
   });
 }
 
-/** Marcador do posto: Lucide `Fuel` + rótulo «1°DN» (azul). */
+/** Posto: só o ícone Lucide `Fuel` (azul). */
 const FUEL_ICON_HTML = renderToStaticMarkup(
-  <div className="sot-driver-fuel-marker" title="Posto de combustível · 1°DN">
-    <div className="sot-driver-fuel-wrap">
-      <Fuel size={26} color="#2563eb" strokeWidth={2.25} aria-hidden />
-    </div>
-    <span className="sot-driver-fuel-dn-label">1°DN</span>
+  <div className="sot-driver-fuel-wrap" title="Posto de combustível">
+    <Fuel size={26} color="#2563eb" strokeWidth={2.25} aria-hidden />
   </div>,
 );
 
@@ -221,9 +274,25 @@ function buildFuelStationDivIcon(): L.DivIcon {
   return L.divIcon({
     html: FUEL_ICON_HTML,
     className: "sot-driver-fuel-divicon",
-    iconSize: [82, 28],
-    iconAnchor: [41, 14],
-    popupAnchor: [0, -14],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -12],
+  });
+}
+
+const DN1_ICON_HTML = renderToStaticMarkup(
+  <div className="sot-driver-1dn-wrap" title="1° DN">
+    <span className="sot-driver-1dn-label">1° DN</span>
+  </div>,
+);
+
+function buildDn1DivIcon(): L.DivIcon {
+  return L.divIcon({
+    html: DN1_ICON_HTML,
+    className: "sot-driver-1dn-divicon",
+    iconSize: [52, 22],
+    iconAnchor: [26, 11],
+    popupAnchor: [0, -10],
   });
 }
 
@@ -499,7 +568,13 @@ function MapLeafletHost({
   const linsCrossLatLngRef = useRef<L.LatLngTuple>(
     loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG,
   );
-  const fuelLatLngRef = useRef<L.LatLngTuple>(initialFuelLatLngForMap());
+  const mapLandmarkSeedRef = useRef<{ fuel: L.LatLngTuple; dn1: L.LatLngTuple } | null>(null);
+  if (mapLandmarkSeedRef.current === null) {
+    const fuel = initialFuelLatLngForMap();
+    mapLandmarkSeedRef.current = { fuel, dn1: initialDn1LatLngForMap(fuel) };
+  }
+  const fuelLatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.fuel);
+  const dn1LatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.dn1);
 
   useEffect(() => {
     if (!visible) prevPinCountRef.current = null;
@@ -548,6 +623,19 @@ function MapLeafletHost({
       { className: "sot-driver-map-popup" },
     );
 
+    const dn1Pos = dn1LatLngRef.current;
+    const dn1Icon = buildDn1DivIcon();
+    const dn1Marker = L.marker(dn1Pos, {
+      icon: dn1Icon,
+      zIndexOffset: 440,
+      draggable: true,
+      autoPan: true,
+    }).addTo(map);
+    dn1Marker.bindPopup(
+      '<strong>1° DN</strong><br /><span style="font-size:11px">Marcador independente — arraste para posicionar (guardado neste computador).</span>',
+      { className: "sot-driver-map-popup" },
+    );
+
     hospitalMarker.on("dragend", () => {
       const ll = hospitalMarker.getLatLng();
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
@@ -560,6 +648,13 @@ function MapLeafletHost({
       const tuple: L.LatLngTuple = [ll.lat, ll.lng];
       fuelLatLngRef.current = tuple;
       persistFuelLatLng(tuple);
+    });
+
+    dn1Marker.on("dragend", () => {
+      const ll = dn1Marker.getLatLng();
+      const tuple: L.LatLngTuple = [ll.lat, ll.lng];
+      dn1LatLngRef.current = tuple;
+      persistDn1LatLng(tuple);
     });
 
     mapRef.current = map;
@@ -640,6 +735,7 @@ function MapLeafletHost({
           if (algumPinoPertoDoHospital) {
             bounds.extend(crossPin);
             bounds.extend(fuelLatLngRef.current);
+            bounds.extend(dn1LatLngRef.current);
           }
           map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
         } catch {
@@ -655,6 +751,7 @@ function MapLeafletHost({
               [p0.lat, p0.lng] as L.LatLngTuple,
               crossPin,
               fuelLatLngRef.current,
+              dn1LatLngRef.current,
             ]);
             map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
           } catch {
