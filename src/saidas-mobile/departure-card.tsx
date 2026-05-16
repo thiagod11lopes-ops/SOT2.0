@@ -33,43 +33,47 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
-/** Silhueta estilizada: farda azul-marinho e gorro branco, em continência. */
-function IconMarinhaContinencia({ className }: { className?: string }) {
+/** Mão em gesto de despedida / «tchau» para o overlay BOA VIAGEM. */
+function IconMaoTchau({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      viewBox="0 0 72 96"
+      viewBox="0 0 100 100"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <title>Marinheiro em continência</title>
-      {/* Gorro branco típico */}
-      <path fill="#f1f5f9" d="M18 12h36l-2 9H20l-2-9z" />
-      <ellipse cx="36" cy="14" rx="17" ry="5.5" fill="#e2e8f0" />
-      <rect x="22" y="7" width="28" height="6" rx="2" fill="#f8fafc" />
-      {/* Rosto */}
-      <ellipse cx="36" cy="30" rx="10" ry="11" fill="#deb896" />
-      {/* Pescoço */}
-      <rect x="31" y="38" width="10" height="6" rx="2" fill="#deb896" />
-      {/* Blusa azul marinho */}
-      <path fill="#1e3a8a" d="M20 44h32l-4 38H24l-4-38z" />
-      {/* Gola branca */}
-      <path fill="#fff" d="M26 42l10 7 10-7v4l-10 9-10-9v-4z" />
-      {/* Braço ao corpo (lado esquerdo da figura) */}
-      <path fill="#1e3a8a" d="M16 46l-6 28h8l6-28z" />
-      {/* Manga + antebraço em continência */}
+      <title>Mão a dizer tchau</title>
+      {/* Manga */}
       <path
-        fill="#1e3a8a"
-        d="M48 44c10-1 14 8 8 16l-7-2c3-4 0-9-5-8l4-6z"
+        fill="#64748b"
+        d="M4 78v22h34l6-32-26-10-14 16z"
       />
-      <path fill="#1e3a8a" d="M52 36 L62 18 L66 21 L58 40 Z" />
-      {/* Mão junto à testa */}
-      <ellipse cx="64" cy="19" rx="4" ry="3" fill="#deb896" transform="rotate(-22 64 19)" />
-      {/* Insígnia / faixa dourada */}
-      <rect x="26" y="58" width="20" height="3" rx="1" fill="#b45309" opacity="0.95" />
-      {/* Calça */}
-      <path fill="#172554" d="M24 80h24v14H24z" />
-      <line x1="36" y1="80" x2="36" y2="94" stroke="#0f172a" strokeWidth="1.2" />
+      {/* Palma */}
+      <ellipse cx="56" cy="62" rx="24" ry="22" fill="#eab388" />
+      {/* Polegar */}
+      <ellipse cx="32" cy="56" rx="12" ry="15" fill="#eab388" transform="rotate(-28 32 56)" />
+      {/* Indicador */}
+      <path
+        fill="#eab388"
+        d="M38 28c0-8 6-14 12-12 5 1 8 7 8 14v26c0 4-3 8-8 8s-12-4-12-10V28z"
+      />
+      {/* Médio */}
+      <path
+        fill="#eab388"
+        d="M52 18c0-9 6-16 13-14 6 1 9 8 9 16v36c0 5-4 9-9 9s-13-5-13-12V18z"
+      />
+      {/* Anelar */}
+      <path
+        fill="#eab388"
+        d="M68 24c0-8 5-13 11-12 5 1 8 6 8 13v30c0 4-3 7-8 7s-11-4-11-9V24z"
+      />
+      {/* Mínimo */}
+      <path
+        fill="#eab388"
+        d="M82 34c0-7 4-12 9-11 4 1 7 5 7 11v22c0 3-3 6-7 6s-9-3-9-8V34z"
+      />
+      {/* Sombra suave na palma */}
+      <ellipse cx="60" cy="68" rx="12" ry="8" fill="#d4a574" opacity="0.35" />
     </svg>
   );
 }
@@ -921,9 +925,9 @@ export function DepartureCard({
               0% { background-position: 0% 50%; }
               100% { background-position: 200% 50%; }
             }
-            @keyframes sot-boa-viagem-salute {
-              0%, 100% { transform: translateY(0) rotate(-1deg); }
-              50% { transform: translateY(-4px) rotate(1deg); }
+            @keyframes sot-boa-viagem-wave {
+              0%, 100% { transform: rotate(-10deg); }
+              50% { transform: rotate(22deg); }
             }
           `}</style>
           <div
@@ -950,10 +954,13 @@ export function DepartureCard({
               <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
                 <div
                   className="mx-auto mb-4 flex h-[5.75rem] items-end justify-center"
-                  style={{ animation: "sot-boa-viagem-salute 2.4s ease-in-out infinite" }}
+                  style={{
+                    animation: "sot-boa-viagem-wave 0.75s ease-in-out infinite",
+                    transformOrigin: "30% 92%",
+                  }}
                 >
-                  <div className="rounded-2xl border border-white/25 bg-gradient-to-b from-[#1e3a8a]/45 to-slate-950/55 p-2.5 shadow-lg ring-1 ring-cyan-400/20">
-                    <IconMarinhaContinencia className="h-[5.25rem] w-16 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]" />
+                  <div className="rounded-2xl border border-white/25 bg-gradient-to-b from-slate-500/35 to-slate-950/55 p-2.5 shadow-lg ring-1 ring-cyan-400/20">
+                    <IconMaoTchau className="h-[5.25rem] w-20 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]" />
                   </div>
                 </div>
                 <h2
