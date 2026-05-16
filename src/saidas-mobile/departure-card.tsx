@@ -33,47 +33,31 @@ import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
 
-/** Mão em gesto de despedida / «tchau» para o overlay BOA VIAGEM. */
+/** Mão a acenar («tchau») — formas simples (rect/ellipse) para Safari não falhar o SVG. */
 function IconMaoTchau({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      viewBox="0 0 100 100"
+      viewBox="0 0 64 64"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
       <title>Mão a dizer tchau</title>
       {/* Manga */}
-      <path
-        fill="#64748b"
-        d="M4 78v22h34l6-32-26-10-14 16z"
-      />
-      {/* Palma */}
-      <ellipse cx="56" cy="62" rx="24" ry="22" fill="#eab388" />
+      <rect x="4" y="42" width="20" height="18" rx="4" fill="#64748b" />
+      <rect x="10" y="38" width="8" height="8" rx="2" fill="#475569" />
+      {/* Palma (amarelo tipo emoji 👋) */}
+      <ellipse cx="38" cy="40" rx="20" ry="18" fill="#fbbf24" />
+      <ellipse cx="38" cy="40" rx="17" ry="15" fill="#fcd34d" />
       {/* Polegar */}
-      <ellipse cx="32" cy="56" rx="12" ry="15" fill="#eab388" transform="rotate(-28 32 56)" />
-      {/* Indicador */}
-      <path
-        fill="#eab388"
-        d="M38 28c0-8 6-14 12-12 5 1 8 7 8 14v26c0 4-3 8-8 8s-12-4-12-10V28z"
-      />
-      {/* Médio */}
-      <path
-        fill="#eab388"
-        d="M52 18c0-9 6-16 13-14 6 1 9 8 9 16v36c0 5-4 9-9 9s-13-5-13-12V18z"
-      />
-      {/* Anelar */}
-      <path
-        fill="#eab388"
-        d="M68 24c0-8 5-13 11-12 5 1 8 6 8 13v30c0 4-3 7-8 7s-11-4-11-9V24z"
-      />
-      {/* Mínimo */}
-      <path
-        fill="#eab388"
-        d="M82 34c0-7 4-12 9-11 4 1 7 5 7 11v22c0 3-3 6-7 6s-9-3-9-8V34z"
-      />
-      {/* Sombra suave na palma */}
-      <ellipse cx="60" cy="68" rx="12" ry="8" fill="#d4a574" opacity="0.35" />
+      <ellipse cx="14" cy="36" rx="9" ry="7" fill="#fcd34d" transform="rotate(-35 14 36)" />
+      {/* Dedos em linha, espaçados */}
+      <rect x="22" y="6" width="7" height="22" rx="3.5" fill="#fcd34d" />
+      <rect x="31" y="2" width="7" height="26" rx="3.5" fill="#fbbf24" />
+      <rect x="40" y="4" width="7" height="24" rx="3.5" fill="#fcd34d" />
+      <rect x="49" y="10" width="6" height="18" rx="3" fill="#fbbf24" />
+      {/* Contorno suave palma */}
+      <ellipse cx="38" cy="43" rx="14" ry="10" fill="#f59e0b" opacity="0.2" />
     </svg>
   );
 }
@@ -953,14 +937,14 @@ export function DepartureCard({
               />
               <div className="relative rounded-[1.85rem] bg-slate-950/40 px-8 py-10 text-center">
                 <div
-                  className="mx-auto mb-4 flex h-[5.75rem] items-end justify-center"
+                  className="mx-auto mb-4 flex min-h-[7rem] items-end justify-center pt-1"
                   style={{
                     animation: "sot-boa-viagem-wave 0.75s ease-in-out infinite",
                     transformOrigin: "30% 92%",
                   }}
                 >
-                  <div className="rounded-2xl border border-white/25 bg-gradient-to-b from-slate-500/35 to-slate-950/55 p-2.5 shadow-lg ring-1 ring-cyan-400/20">
-                    <IconMaoTchau className="h-[5.25rem] w-20 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]" />
+                  <div className="rounded-2xl border border-amber-200/35 bg-gradient-to-b from-amber-500/25 to-slate-950/60 p-3 shadow-lg ring-1 ring-amber-400/30">
+                    <IconMaoTchau className="h-24 w-24 drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]" />
                   </div>
                 </div>
                 <h2
