@@ -138,6 +138,44 @@ function persistDn1LatLng(ll: L.LatLngTuple): void {
   }
 }
 
+const OFICINA_POSITION_LS_KEY = "sot-driver-map-oficina-latlng-v1";
+
+function loadSavedOficinaLatLng(): L.LatLngTuple | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(OFICINA_POSITION_LS_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as { lat?: unknown; lng?: unknown };
+    const lat = Number(o.lat);
+    const lng = Number(o.lng);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
+    }
+    return [lat, lng];
+  } catch {
+    return null;
+  }
+}
+
+function persistOficinaLatLng(ll: L.LatLngTuple): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      OFICINA_POSITION_LS_KEY,
+      JSON.stringify({ lat: ll[0], lng: ll[1], updatedAt: Date.now() }),
+    );
+  } catch {
+    /* quota / modo privado */
+  }
+}
+
 /** HTML estático do ícone (cruz médica vermelha em SVG). */
 const HOSPITAL_MARCILIO_DIAS_DIVICON_HTML = `
   <div class="sot-driver-hnmd-cross-wrap" title="Lins de Vasconcelos · HNMD">
@@ -185,6 +223,19 @@ function initialDn1LatLngForMap(fuelInitial: L.LatLngTuple): L.LatLngTuple {
   return [
     fuelInitial[0] + DEFAULT_DN1_OFFSET_FROM_FUEL_LAT,
     fuelInitial[1] + DEFAULT_DN1_OFFSET_FROM_FUEL_LNG,
+  ];
+}
+
+/** Posição inicial de «OFICINA» quando não há `localStorage` (~deslocado do «1° DN» inicial). */
+const DEFAULT_OFICINA_OFFSET_FROM_DN1_LAT = -0.0001;
+const DEFAULT_OFICINA_OFFSET_FROM_DN1_LNG = 0.00016;
+
+function initialOficinaLatLngForMap(dn1Initial: L.LatLngTuple): L.LatLngTuple {
+  const saved = loadSavedOficinaLatLng();
+  if (saved) return saved;
+  return [
+    dn1Initial[0] + DEFAULT_OFICINA_OFFSET_FROM_DN1_LAT,
+    dn1Initial[1] + DEFAULT_OFICINA_OFFSET_FROM_DN1_LNG,
   ];
 }
 
@@ -249,6 +300,24 @@ function ensureHospitalCrossStylesInDocument(): void {
   font: 700 11px/1.1 system-ui, "Segoe UI", sans-serif;
   white-space: nowrap;
   letter-spacing: -0.02em;
+}
+.leaflet-marker-icon.sot-driver-oficina-divicon {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.sot-driver-oficina-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+}
+.sot-driver-oficina-label {
+  color: #dc2626;
+  font: 700 11px/1.1 system-ui, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
 }`;
   document.head.appendChild(el);
 }
@@ -292,6 +361,22 @@ function buildDn1DivIcon(): L.DivIcon {
     className: "sot-driver-1dn-divicon",
     iconSize: [52, 22],
     iconAnchor: [26, 11],
+    popupAnchor: [0, -10],
+  });
+}
+
+const OFICINA_ICON_HTML = renderToStaticMarkup(
+  <div className="sot-driver-oficina-wrap" title="Oficina">
+    <span className="sot-driver-oficina-label">OFICINA</span>
+  </div>,
+);
+
+function buildOficinaDivIcon(): L.DivIcon {
+  return L.divIcon({
+    html: OFICINA_ICON_HTML,
+    className: "sot-driver-oficina-divicon",
+    iconSize: [72, 22],
+    iconAnchor: [36, 11],
     popupAnchor: [0, -10],
   });
 }
@@ -568,13 +653,17 @@ function MapLeafletHost({
   const linsCrossLatLngRef = useRef<L.LatLngTuple>(
     loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG,
   );
-  const mapLandmarkSeedRef = useRef<{ fuel: L.LatLngTuple; dn1: L.LatLngTuple } | null>(null);
+  const mapLandmarkSeedRef = useRef<{ fuel: L.LatLngTuple; dn1: L.LatLngTuple; oficina: L.LatLngTuple } | null>(
+    null,
+  );
   if (mapLandmarkSeedRef.current === null) {
     const fuel = initialFuelLatLngForMap();
-    mapLandmarkSeedRef.current = { fuel, dn1: initialDn1LatLngForMap(fuel) };
+    const dn1 = initialDn1LatLngForMap(fuel);
+    mapLandmarkSeedRef.current = { fuel, dn1, oficina: initialOficinaLatLngForMap(dn1) };
   }
   const fuelLatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.fuel);
   const dn1LatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.dn1);
+  const oficinaLatLngRef = useRef<L.LatLngTuple>(mapLandmarkSeedRef.current.oficina);
 
   useEffect(() => {
     if (!visible) prevPinCountRef.current = null;
