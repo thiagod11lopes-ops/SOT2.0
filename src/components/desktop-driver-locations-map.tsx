@@ -692,14 +692,10 @@ function MapLeafletHost({
       kick();
       inner = requestAnimationFrame(() => {
         kick();
-        map.setView(linsCrossLatLngRef.current, 14);
       });
     });
     const t320 = window.setTimeout(kick, 320);
-    const t600 = window.setTimeout(() => {
-      kick();
-      map.setView(linsCrossLatLngRef.current, 14);
-    }, 600);
+    const t600 = window.setTimeout(kick, 600);
 
     return () => {
       cancelAnimationFrame(outer);
@@ -742,15 +738,19 @@ function MapLeafletHost({
     const n = pins.length;
     const prev = prevPinCountRef.current;
     prevPinCountRef.current = n;
-    /** Só reposiciona zoom/canvas quando mudou o número de viaturas (evita saltos a cada actualização GPS). */
+    /** Abrir o modal ou mudar quantidade de viaturas → voltamos a enquadrar tudo (GPS só move marcadores). */
     const shouldResetView = prev === null || prev !== n;
 
     const crossPin = linsCrossLatLngRef.current;
-    const algumPinoPertoDoHospital = pins.some(
-      (p) => distanciaKmApprox([p.lat, p.lng], crossPin) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO,
-    );
 
-    if (shouldResetView) {
+    function applyFitBoundsForAllPins(): void {
+      map.invalidateSize();
+      void map.getContainer().offsetHeight;
+
+      const algumPinoPertoDoHospital = pins.some(
+        (p) => distanciaKmApprox([p.lat, p.lng], crossPin) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO,
+      );
+
       if (n >= 2) {
         try {
           const bounds = L.latLngBounds(pins.map((p) => [p.lat, p.lng] as L.LatLngTuple));
@@ -759,35 +759,44 @@ function MapLeafletHost({
             bounds.extend(dn1LatLngRef.current);
             bounds.extend(oficinaLatLngRef.current);
           }
-          map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
+          map.fitBounds(bounds, { padding: [64, 64], maxZoom: 15 });
         } catch {
           map.setView(linsCrossLatLngRef.current, 14);
         }
-      } else if (n === 1) {
-        const p0 = pins[0];
-        if (
-          distanciaKmApprox([p0.lat, p0.lng], crossPin) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO
-        ) {
-          try {
-            const b = L.latLngBounds([
-              [p0.lat, p0.lng] as L.LatLngTuple,
-              crossPin,
-              dn1LatLngRef.current,
-              oficinaLatLngRef.current,
-            ]);
-            map.fitBounds(b, { padding: [52, 52], maxZoom: 16 });
-          } catch {
-            map.setView([p0.lat, p0.lng], 14);
-          }
-        } else {
-          map.setView([p0.lat, p0.lng], 14);
-        }
-      } else {
-        map.setView(linsCrossLatLngRef.current, 14);
+        return;
       }
+      if (n === 1) {
+        const p0 = pins[0];
+        const v: L.LatLngTuple = [p0.lat, p0.lng];
+        try {
+          if (
+            distanciaKmApprox(v, crossPin) <= KM_MAX_PARA_INCLUIR_HNMD_NO_ENQUADRAMENTO
+          ) {
+            const b = L.latLngBounds([v, crossPin, dn1LatLngRef.current, oficinaLatLngRef.current]);
+            map.fitBounds(b, { padding: [56, 56], maxZoom: 16 });
+          } else {
+            map.fitBounds(L.latLngBounds(v, v), { padding: [72, 72], maxZoom: 15 });
+          }
+        } catch {
+          map.setView(v, 14);
+        }
+        return;
+      }
+      map.setView(linsCrossLatLngRef.current, 14);
+    }
+
+    let refitTimer: ReturnType<typeof window.setTimeout> | undefined;
+    if (shouldResetView) {
+      applyFitBoundsForAllPins();
+      /** Modal acaba de medir o painel — segundo enquadramento garante todas as viaturas visíveis. */
+      refitTimer = window.setTimeout(() => applyFitBoundsForAllPins(), 450);
     }
 
     requestAnimationFrame(() => map.invalidateSize());
+
+    return () => {
+      if (refitTimer !== undefined) window.clearTimeout(refitTimer);
+    };
   }, [visible, pins, vehicleTypeByPlaca, catalogHint]);
 
   return null;
