@@ -1,11 +1,13 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Map as MapIcon, X } from "lucide-react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDepartures } from "../context/departures-context";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
+import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import {
   resolveVehicleType,
@@ -361,7 +363,18 @@ export function DesktopDriverLocationsMapProvider({
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const canSync = Boolean(enabled && isFirebaseConfigured());
-  const { pins, error, loading, lastUpdateAtMs, subscribed } = useDriverActiveLocations(canSync, snapshotRetryNonce);
+  const { pins, error, loading, subscribed } = useDriverActiveLocations(canSync, snapshotRetryNonce);
+  const { departures } = useDepartures();
+  /** Só saídas «Iniciada» (em curso); docs órfãos no Firestore deixam de aparecer após finalizar ou excluir. */
+  const pinsVisiveis = useMemo(() => filterDriverLocationPinsPorSaidaIniciada(pins, departures), [pins, departures]);
+  const lastUpdatePinsVisiveisMs = useMemo(() => {
+    let maxTs = 0;
+    for (const p of pinsVisiveis) {
+      const t = p.lastUpdateAtMs;
+      if (t !== null && t > maxTs) maxTs = t;
+    }
+    return maxTs > 0 ? maxTs : null;
+  }, [pinsVisiveis]);
   // Mapa placa→tipo de viatura sincronizado entre dispositivos. As silhuetas
   // dos pinos no mapa Leaflet seguem esta configuração (definida em
   // Configurações → Mobile — rastreamento GPS).
@@ -390,16 +403,16 @@ export function DesktopDriverLocationsMapProvider({
   }, []);
 
   const countLabel =
-    pins.length === 0
+    pinsVisiveis.length === 0
       ? "nenhuma viatura com posição"
-      : pins.length === 1
+      : pinsVisiveis.length === 1
         ? "1 viatura em tempo real"
-        : `${pins.length} viaturas em tempo real`;
+        : `${pinsVisiveis.length} viaturas em tempo real`;
 
   const uiValue: DriverLocationsMapUi | null = canSync
     ? {
         open: () => setOpen(true),
-        pinsCount: pins.length,
+        pinsCount: pinsVisiveis.length,
         countLabel,
       }
     : null;
@@ -422,8 +435,8 @@ export function DesktopDriverLocationsMapProvider({
                     Localização das viaturas
                   </h2>
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    {lastUpdateAtMs
-                      ? `Última atualização Firebase: ${formatHmSs(lastUpdateAtMs)} · placa sempre visível junto ao marcador`
+                    {lastUpdatePinsVisiveisMs
+                      ? `Última atualização Firebase: ${formatHmSs(lastUpdatePinsVisiveisMs)} · placa sempre visível junto ao marcador`
                       : subscribed
                         ? "OpenStreetMap · a aguardar posições…"
                         : "OpenStreetMap · a ligar ao Firebase…"}
@@ -469,7 +482,7 @@ export function DesktopDriverLocationsMapProvider({
                     </Button>
                   </div>
                 ) : null}
-                {!loading && !error && pins.length === 0 ? (
+                {!loading && !error && pinsVisiveis.length === 0 ? (
                   <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))]/95 px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] shadow">
                     Nenhuma viatura com posição ativa no momento.
                   </div>
@@ -483,7 +496,7 @@ export function DesktopDriverLocationsMapProvider({
             containerRef={containerRef}
             mapRef={mapRef}
             layerRef={layerRef}
-            pins={pins}
+            pins={pinsVisiveis}
             vehicleTypeByPlaca={vehicleTypeByPlaca}
             catalogHint={catalogHint}
           />

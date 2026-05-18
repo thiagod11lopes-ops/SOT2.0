@@ -47,6 +47,10 @@ import { resolveVehicleType } from "../lib/vehicleTypeByPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
 import {
+  buildPlacaKeysComSaidaIniciada,
+  normalizePlacaKeyDriverMap,
+} from "../lib/departureDriverMapFilter";
+import {
   type DrivingRoute,
   type GeocodeResult,
   type RouteStep,
@@ -227,11 +231,6 @@ function formatRelativeTime(ms: number, now: number = Date.now()): string {
   if (hr < 24) return `há ${hr} h`;
   const days = Math.floor(hr / 24);
   return days === 1 ? "há 1 dia" : `há ${days} dias`;
-}
-
-/** Normaliza placa para comparação (trim + uppercase). */
-function normalizePlaca(p: string): string {
-  return p.trim().toUpperCase();
 }
 
 /**
@@ -611,7 +610,7 @@ export function NavigationFullScreenModal({
 
   /** Placa **do motorista actual** — filtrada da lista de outras viaturas. */
   const currentPlacaNorm = useMemo(
-    () => normalizePlaca(primaryPlacaFromViaturasField(record.viaturas)),
+    () => normalizePlacaKeyDriverMap(primaryPlacaFromViaturasField(record.viaturas)),
     [record.viaturas],
   );
 
@@ -631,27 +630,12 @@ export function NavigationFullScreenModal({
    * última posição. Aqui filtramos pelo estado real das saídas locais.
    */
   const { departures } = useDepartures();
-  const placasEmCursoNorm = useMemo(() => {
-    const set = new Set<string>();
-    for (const d of departures) {
-      if (d.cancelada) continue;
-      const kmSaidaPreenchido = d.kmSaida.trim().length > 0;
-      if (!kmSaidaPreenchido) continue;
-      const kmChegadaPreenchido = d.kmChegada.trim().length > 0;
-      const chegadaPreenchido = d.chegada.trim().length > 0;
-      const ficouNaOficina = d.ficouNaOficina === true && d.rubrica.trim().length > 0;
-      const saidaFinalizada = (kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina;
-      if (saidaFinalizada) continue;
-      const placa = normalizePlaca(primaryPlacaFromViaturasField(d.viaturas));
-      if (placa) set.add(placa);
-    }
-    return set;
-  }, [departures]);
+  const placasEmCursoNorm = useMemo(() => buildPlacaKeysComSaidaIniciada(departures), [departures]);
 
   const otherPins = useMemo(
     () =>
       activePins.filter((p) => {
-        const norm = normalizePlaca(p.placa);
+        const norm = normalizePlacaKeyDriverMap(p.placa);
         if (norm === currentPlacaNorm) return false;
         return placasEmCursoNorm.has(norm);
       }),

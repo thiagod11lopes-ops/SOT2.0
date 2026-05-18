@@ -126,7 +126,13 @@ export function DepartureCard({
     stopMobileDriverTrackingSessionIfMatches(record.id);
     const motorista = loadActiveMobileMotorista();
     if (motorista) void clearMotoristaActiveAssignmentIfDeparture(motorista, record.id);
-  }, [saidaFinalizada, record.id]);
+    const placa = primaryPlacaFromViaturasField(record.viaturas);
+    if (placa && resolveDriverLocationPostUrl()) {
+      void clearDriverActiveLocation(placa).catch((e) =>
+        console.warn("[SOT mobile] clearDriverActiveLocation (saída finalizada):", e),
+      );
+    }
+  }, [saidaFinalizada, record.id, record.viaturas]);
 
   /**
    * Re-escreve a atribuição `motorista_active_assignments` no Firestore sempre que esta saída
