@@ -365,7 +365,7 @@ export function DesktopDriverLocationsMapProvider({
   const canSync = Boolean(enabled && isFirebaseConfigured());
   const { pins, error, loading, subscribed } = useDriverActiveLocations(canSync, snapshotRetryNonce);
   const { departures } = useDepartures();
-  /** Só saídas «Iniciada» (em curso); docs órfãos no Firestore deixam de aparecer após finalizar ou excluir. */
+  /** Mesmo conjunto de placas que o card «Saídas em Andamento» na página principal (hoje local). */
   const pinsVisiveis = useMemo(() => filterDriverLocationPinsPorSaidaIniciada(pins, departures), [pins, departures]);
   const lastUpdatePinsVisiveisMs = useMemo(() => {
     let maxTs = 0;

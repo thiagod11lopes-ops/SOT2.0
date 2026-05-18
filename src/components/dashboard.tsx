@@ -58,6 +58,7 @@ import {
   useVistoriaProblemasMarcadosRefresh,
 } from "../lib/vistoriaSituacaoVtr";
 import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
+import { saidasEmAndamentoHojeRecords } from "../lib/homeSaidasEmAndamento";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
 import { VistoriaNotificacaoAlarmCard } from "./vistoria-notificacao-alarm-card";
@@ -75,18 +76,6 @@ function alarmeJaDisparouNesteDia(agora: Date, horaAlarme: string): boolean {
   const parsed = parseHhMm(horaAlarme);
   if (!parsed) return false;
   return minutosRelogioLocal(agora) >= parsed.h * 60 + parsed.m;
-}
-
-/** KM saída preenchido, KM chegada e chegada vazios → mesmo critério do card Saídas em Andamento. */
-function saidaEmAndamento(r: DepartureRecord): boolean {
-  const finalizadaPorOficinaRubricada =
-    r.kmSaida.trim().length > 0 && r.ficouNaOficina === true && r.rubrica.trim().length > 0;
-  if (finalizadaPorOficinaRubricada) return false;
-  return (
-    r.kmSaida.trim().length > 0 &&
-    r.kmChegada.trim().length === 0 &&
-    r.chegada.trim().length === 0
-  );
 }
 
 /**
@@ -107,19 +96,6 @@ function saidasComAtrasoHoje(
       if (k === Number.POSITIVE_INFINITY) return false;
       return k < agoraMin;
     })
-    .sort((a, b) => {
-      const ka = sortKeyHoraSaida(a.horaSaida);
-      const kb = sortKeyHoraSaida(b.horaSaida);
-      if (ka !== kb) return ka - kb;
-      return a.id.localeCompare(b.id);
-    });
-}
-
-/** Hoje, KM saída preenchido, KM chegada e chegada vazios → viatura em deslocamento. */
-function saidasEmAndamentoHoje(rows: DepartureRecord[], hojeDdMmYyyy: string): DepartureRecord[] {
-  return rows
-    .filter((r) => isDepartureDateSameLocalDay(r.dataSaida, hojeDdMmYyyy))
-    .filter((r) => saidaEmAndamento(r))
     .sort((a, b) => {
       const ka = sortKeyHoraSaida(a.horaSaida);
       const kb = sortKeyHoraSaida(b.horaSaida);
@@ -420,7 +396,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = saidasEmAndamentoHoje(departuresAtivas, hoje);
+    const rows = saidasEmAndamentoHojeRecords(departuresAtivas, hoje);
     return groupDeparturesForListDisplay(rows);
   }, [departuresAtivas]);
 

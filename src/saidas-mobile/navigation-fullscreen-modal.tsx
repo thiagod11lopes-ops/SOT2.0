@@ -5,8 +5,8 @@
  * por cima da app e mostra:
  *  - Mapa **Google Maps** a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (chevron azul rotativo) e destino (pino vermelho).
- *  - Pinos laranjas das **outras viaturas com saída em curso** (tempo real,
- *    via `useDriverActiveLocations`). A placa aparece como label permanente;
+ *  - Pinos laranjas das **outras viaturas listadas no card Saídas em Andamento**
+ *    da página principal (tempo real, via `useDriverActiveLocations`). A placa aparece como label permanente;
  *    o toque abre uma `InfoWindow` com o timestamp da última posição.
  *  - Barra superior com nome do destino, distância e tempo previsto.
  *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
@@ -46,10 +46,8 @@ import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { resolveVehicleType } from "../lib/vehicleTypeByPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
-import {
-  buildPlacaKeysComSaidaIniciada,
-  normalizePlacaKeyDriverMap,
-} from "../lib/departureDriverMapFilter";
+import { normalizePlacaKeyDriverMap } from "../lib/departureDriverMapFilter";
+import { buildPlacaKeysHomeEmAndamentoCard } from "../lib/homeSaidasEmAndamento";
 import {
   type DrivingRoute,
   type GeocodeResult,
@@ -618,19 +616,11 @@ export function NavigationFullScreenModal({
   const { pins: activePins } = useDriverActiveLocations(open);
 
   /**
-   * Conjunto de placas cujas saídas estão **em curso** neste momento — i.e.
-   * KM saída preenchido, sem KM chegada/Hora chegada (nem rubricadas como
-   * "ficou na oficina"), e não canceladas. É a mesma regra do estado
-   * "Iniciada" do cartão (ver `departure-card.tsx`).
-   *
-   * Usado para esconder do mapa pinos de viaturas que já finalizaram a saída
-   * (ou que nunca a chegaram a iniciar) — o Firestore pode manter o doc
-   * `driver_active_locations` durante um curto intervalo após o motorista
-   * rubricar/concluir, ou enquanto o serviço de tracking ainda envia uma
-   * última posição. Aqui filtramos pelo estado real das saídas locais.
+   * Placas no mesmo conjunto que o card «Saídas em Andamento» na home (hoje,
+   * não canceladas, KM saída sem retorno registado). Esconde pinos órfãos no Firestore.
    */
   const { departures } = useDepartures();
-  const placasEmCursoNorm = useMemo(() => buildPlacaKeysComSaidaIniciada(departures), [departures]);
+  const placasEmCursoNorm = useMemo(() => buildPlacaKeysHomeEmAndamentoCard(departures), [departures]);
 
   const otherPins = useMemo(
     () =>
