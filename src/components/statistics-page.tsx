@@ -18,6 +18,13 @@ import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import {
+  addBaselineCalendarDaysToSet,
+  getStatisticsBaselineContribution,
+  mergeMonthlyEvolutionWithBaseline,
+  statisticsBaselineYears,
+  type StatisticsBaselineFilters,
+} from "../lib/statisticsHistoricalBaseline";
 import { downloadStatisticsPdf } from "../lib/statisticsPdf";
 import { StatisticsDepartureTypeDonut } from "./statistics-departure-type-donut";
 import { StatisticsTimeSeriesCharts } from "./statistics-time-series-charts";
@@ -335,9 +342,15 @@ function PodiumCard({
 }
 
 /** Média diária de saídas (administrativa + ambulância) no período filtrado. */
-function computeDailyExitAverage(rows: DepartureRecord[]): number {
+function computeDailyExitAverage(
+  rows: DepartureRecord[],
+  baselineFilters: StatisticsBaselineFilters,
+): number {
   const eligible = rows.filter((row) => row.tipo === "Administrativa" || row.tipo === "Ambulância");
-  if (eligible.length === 0) return 0;
+  const baseline = getStatisticsBaselineContribution(baselineFilters);
+  let count = eligible.length + (baseline ? baseline.admin + baseline.ambulance : 0);
+  if (count === 0) return 0;
+
   const days = new Set<string>();
   for (const row of eligible) {
     const d = parseDepartureDate(row.dataSaida);
@@ -346,8 +359,10 @@ function computeDailyExitAverage(rows: DepartureRecord[]): number {
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
     );
   }
+  if (baseline) addBaselineCalendarDaysToSet(days, baselineFilters);
+
   const divisor = days.size > 0 ? days.size : 1;
-  return eligible.length / divisor;
+  return count / divisor;
 }
 
 function formatExitAverage(value: number): string {
@@ -421,8 +436,24 @@ export function StatisticsPage() {
     });
   }, [departuresForStatistics, yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
 
+  const baselineFilters = useMemo(
+    (): StatisticsBaselineFilters => ({
+      yearFilter,
+      monthFilter,
+      driverFilter,
+      vehicleFilter,
+      typeFilter,
+    }),
+    [yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter],
+  );
+
+  const historicalBaseline = useMemo(
+    () => getStatisticsBaselineContribution(baselineFilters),
+    [baselineFilters],
+  );
+
   const availableYears = useMemo(() => {
-    const years = new Set<string>();
+    const years = new Set<string>(statisticsBaselineYears());
     for (const row of departuresForStatistics) {
       const d = parseDepartureDate(row.dataSaida);
       if (d) years.add(String(d.getFullYear()));
@@ -443,11 +474,18 @@ export function StatisticsPage() {
   }, [departuresForStatistics]);
 
   const totals = useMemo(() => {
-    const total = filteredDepartures.length;
     const admin = filteredDepartures.filter((row) => row.tipo === "Administrativa").length;
     const ambulance = filteredDepartures.filter((row) => row.tipo === "Ambulância").length;
-    return { total, admin, ambulance };
-  }, [filteredDepartures]);
+    const baseAdmin = historicalBaseline?.admin ?? 0;
+    const baseAmbulance = historicalBaseline?.ambulance ?? 0;
+    const totalAdmin = admin + baseAdmin;
+    const totalAmbulance = ambulance + baseAmbulance;
+    return {
+      total: filteredDepartures.length + baseAdmin + baseAmbulance,
+      admin: totalAdmin,
+      ambulance: totalAmbulance,
+    };
+  }, [filteredDepartures, historicalBaseline]);
 
   const countMapMotoristas = useMemo(() => toCountMap(filteredDepartures, (row) => row.motoristas), [filteredDepartures]);
   const rankingMotoristas = useMemo(() => toTopRanking(countMapMotoristas), [countMapMotoristas]);
@@ -493,8 +531,8 @@ export function StatisticsPage() {
   );
 
   const dailyExitAverage = useMemo(
-    () => computeDailyExitAverage(filteredDepartures),
-    [filteredDepartures],
+    () => computeDailyExitAverage(filteredDepartures, baselineFilters),
+    [filteredDepartures, baselineFilters],
   );
 
   const countMapViaturasAdmin = useMemo(
@@ -550,10 +588,11 @@ export function StatisticsPage() {
     [requestedDestinationsAmbulance],
   );
 
-  const monthlyEvolution = useMemo(
-    () => buildMonthlyEvolution(filteredDepartures),
-    [filteredDepartures],
-  );
+  const monthlyEvolution = useMemo(() => {
+    const fromRecords = buildMonthlyEvolution(filteredDepartures);
+    if (!historicalBaseline) return fromRecords;
+    return mergeMonthlyEvolutionWithBaseline(fromRecords, historicalBaseline.byMonth);
+  }, [filteredDepartures, historicalBaseline]);
 
   const filterSummaryLines = useMemo(() => {
     const monthLabel =
