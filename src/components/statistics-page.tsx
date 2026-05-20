@@ -334,15 +334,56 @@ function PodiumCard({
   );
 }
 
-function MetricCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
+/** Média de saídas de ambulância: mensal (filtro «todos» nos meses) ou diária (mês específico). */
+function computeAmbulanceExitAverage(rows: DepartureRecord[], monthFilter: string): number {
+  if (rows.length === 0) return 0;
+  const periodKeys = new Set<string>();
+  for (const row of rows) {
+    const d = parseDepartureDate(row.dataSaida);
+    if (!d) continue;
+    if (monthFilter !== "todos") {
+      periodKeys.add(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      );
+    } else {
+      periodKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+  }
+  const divisor = periodKeys.size > 0 ? periodKeys.size : 1;
+  return rows.length / divisor;
+}
+
+function formatAmbulanceAverage(value: number): string {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function MetricCard({
+  label,
+  value,
+  icon,
+  secondary,
+}: {
+  label: string;
+  value: number;
+  icon: ReactNode;
+  secondary?: { label: string; value: string };
+}) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between gap-3 py-4">
-        <div>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
-          <p className="text-3xl font-bold text-[hsl(var(--primary))]">{value}</p>
+        <div className="flex min-w-0 flex-1 items-stretch gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
+            <p className="text-3xl font-bold text-[hsl(var(--primary))]">{value}</p>
+          </div>
+          {secondary ? (
+            <div className="min-w-0 border-l border-[hsl(var(--border))] pl-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">{secondary.label}</p>
+              <p className="text-2xl font-bold text-[hsl(var(--primary))]">{secondary.value}</p>
+            </div>
+          ) : null}
         </div>
-        <span className="text-[hsl(var(--primary))]">{icon}</span>
+        <span className="shrink-0 text-[hsl(var(--primary))]">{icon}</span>
       </CardContent>
     </Card>
   );
@@ -452,6 +493,11 @@ export function StatisticsPage() {
   const departuresAmbulancia = useMemo(
     () => filteredDepartures.filter((row) => row.tipo === "Ambulância"),
     [filteredDepartures],
+  );
+
+  const ambulanceAverage = useMemo(
+    () => computeAmbulanceExitAverage(departuresAmbulancia, monthFilter),
+    [departuresAmbulancia, monthFilter],
   );
 
   const countMapViaturasAdmin = useMemo(
@@ -688,7 +734,15 @@ export function StatisticsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Número de saídas totais" value={totals.total} icon={<ClipboardList size={24} />} />
         <MetricCard label="Saídas Administrativas" value={totals.admin} icon={<ChartColumnBig size={24} />} />
-        <MetricCard label="Saídas de Ambulância" value={totals.ambulance} icon={<Siren size={24} />} />
+        <MetricCard
+          label="Saídas de Ambulância"
+          value={totals.ambulance}
+          icon={<Siren size={24} />}
+          secondary={{
+            label: "Média de saídas",
+            value: formatAmbulanceAverage(ambulanceAverage),
+          }}
+        />
       </div>
 
       <StatisticsDepartureTypeDonut admin={totals.admin} ambulance={totals.ambulance} total={totals.total} />
