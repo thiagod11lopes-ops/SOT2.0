@@ -14,7 +14,7 @@ import {
 import { useDepartures } from "../context/departures-context";
 import { parseIsoDateToDate, parsePtBrToDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
-import type { DepartureRecord } from "../types/departure";
+import type { DepartureRecord, DepartureType } from "../types/departure";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -341,14 +341,16 @@ function PodiumCard({
   );
 }
 
-/** Média diária de saídas (administrativa + ambulância) no período filtrado. */
-function computeDailyExitAverage(
+/** Média diária de saídas de um tipo no período filtrado (inclui baseline legado). */
+function computeDailyExitAverageByTipo(
   rows: DepartureRecord[],
   baselineFilters: StatisticsBaselineFilters,
+  tipo: DepartureType,
 ): number {
-  const eligible = rows.filter((row) => row.tipo === "Administrativa" || row.tipo === "Ambulância");
-  const baseline = getStatisticsBaselineContribution(baselineFilters);
-  const count = eligible.length + (baseline ? baseline.admin + baseline.ambulance : 0);
+  const eligible = rows.filter((row) => row.tipo === tipo);
+  const tipoFilters = { ...baselineFilters, typeFilter: tipo };
+  const baseline = getStatisticsBaselineContribution(tipoFilters);
+  const count = eligible.length + (baseline ? (tipo === "Administrativa" ? baseline.admin : baseline.ambulance) : 0);
   if (count === 0) return 0;
 
   const days = new Set<string>();
@@ -359,7 +361,8 @@ function computeDailyExitAverage(
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
     );
   }
-  if (baseline) addBaselineCalendarDaysToSet(days, baselineFilters);
+  const periodBaseline = getStatisticsBaselineContribution({ ...baselineFilters, typeFilter: "todos" });
+  if (periodBaseline) addBaselineCalendarDaysToSet(days, baselineFilters);
 
   const divisor = days.size > 0 ? days.size : 1;
   return count / divisor;
@@ -530,8 +533,12 @@ export function StatisticsPage() {
     [filteredDepartures],
   );
 
-  const dailyExitAverage = useMemo(
-    () => computeDailyExitAverage(filteredDepartures, baselineFilters),
+  const dailyExitAverageAdmin = useMemo(
+    () => computeDailyExitAverageByTipo(filteredDepartures, baselineFilters, "Administrativa"),
+    [filteredDepartures, baselineFilters],
+  );
+  const dailyExitAverageAmbulance = useMemo(
+    () => computeDailyExitAverageByTipo(filteredDepartures, baselineFilters, "Ambulância"),
     [filteredDepartures, baselineFilters],
   );
 
@@ -769,14 +776,22 @@ export function StatisticsPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Número de saídas totais" value={totals.total} icon={<ClipboardList size={24} />} />
-        <MetricCard label="Saídas Administrativas" value={totals.admin} icon={<ChartColumnBig size={24} />} />
+        <MetricCard
+          label="Saídas Administrativas"
+          value={totals.admin}
+          icon={<ChartColumnBig size={24} />}
+          secondary={{
+            label: "Média diária de saídas administrativas",
+            value: formatExitAverage(dailyExitAverageAdmin),
+          }}
+        />
         <MetricCard
           label="Saídas de Ambulância"
           value={totals.ambulance}
           icon={<Siren size={24} />}
           secondary={{
-            label: "Média diária de saídas",
-            value: formatExitAverage(dailyExitAverage),
+            label: "Média diária de saídas de ambulância",
+            value: formatExitAverage(dailyExitAverageAmbulance),
           }}
         />
       </div>
