@@ -334,26 +334,23 @@ function PodiumCard({
   );
 }
 
-/** Média de saídas de ambulância: mensal (filtro «todos» nos meses) ou diária (mês específico). */
-function computeAmbulanceExitAverage(rows: DepartureRecord[], monthFilter: string): number {
-  if (rows.length === 0) return 0;
-  const periodKeys = new Set<string>();
-  for (const row of rows) {
+/** Média diária de saídas (administrativa + ambulância) no período filtrado. */
+function computeDailyExitAverage(rows: DepartureRecord[]): number {
+  const eligible = rows.filter((row) => row.tipo === "Administrativa" || row.tipo === "Ambulância");
+  if (eligible.length === 0) return 0;
+  const days = new Set<string>();
+  for (const row of eligible) {
     const d = parseDepartureDate(row.dataSaida);
     if (!d) continue;
-    if (monthFilter !== "todos") {
-      periodKeys.add(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-      );
-    } else {
-      periodKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    }
+    days.add(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    );
   }
-  const divisor = periodKeys.size > 0 ? periodKeys.size : 1;
-  return rows.length / divisor;
+  const divisor = days.size > 0 ? days.size : 1;
+  return eligible.length / divisor;
 }
 
-function formatAmbulanceAverage(value: number): string {
+function formatExitAverage(value: number): string {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
@@ -495,9 +492,9 @@ export function StatisticsPage() {
     [filteredDepartures],
   );
 
-  const ambulanceAverage = useMemo(
-    () => computeAmbulanceExitAverage(departuresAmbulancia, monthFilter),
-    [departuresAmbulancia, monthFilter],
+  const dailyExitAverage = useMemo(
+    () => computeDailyExitAverage(filteredDepartures),
+    [filteredDepartures],
   );
 
   const countMapViaturasAdmin = useMemo(
@@ -739,8 +736,8 @@ export function StatisticsPage() {
           value={totals.ambulance}
           icon={<Siren size={24} />}
           secondary={{
-            label: "Média de saídas",
-            value: formatAmbulanceAverage(ambulanceAverage),
+            label: "Média diária de saídas",
+            value: formatExitAverage(dailyExitAverage),
           }}
         />
       </div>
