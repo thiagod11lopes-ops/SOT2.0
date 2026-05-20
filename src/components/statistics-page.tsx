@@ -348,7 +348,7 @@ function computeDailyExitAverage(
 ): number {
   const eligible = rows.filter((row) => row.tipo === "Administrativa" || row.tipo === "Ambulância");
   const baseline = getStatisticsBaselineContribution(baselineFilters);
-  let count = eligible.length + (baseline ? baseline.admin + baseline.ambulance : 0);
+  const count = eligible.length + (baseline ? baseline.admin + baseline.ambulance : 0);
   if (count === 0) return 0;
 
   const days = new Set<string>();

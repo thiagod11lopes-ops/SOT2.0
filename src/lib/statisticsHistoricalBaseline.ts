@@ -34,7 +34,7 @@ function distributeProportional(total: number, weights: readonly number[]): numb
   if (sumW <= 0 || total <= 0) return weights.map(() => 0);
   const raw = weights.map((w) => (total * w) / sumW);
   const out = raw.map((r) => Math.floor(r));
-  let remainder = total - out.reduce((acc, n) => acc + n, 0);
+  const remainder = total - out.reduce((acc, n) => acc + n, 0);
   const order = raw
     .map((r, i) => ({ i, frac: r - out[i] }))
     .sort((a, b) => b.frac - a.frac);
