@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
+import { MOBILE_MODAL_ABOVE_BOTTOM_TABS_OVERLAY_CLASS } from "../saidas-mobile/mobileModalOverlayClass";
 import { Button } from "./ui/button";
 import { OccurrenceRubricaCapturePanel } from "./occurrence-rubrica-capture-panel";
 
@@ -9,10 +10,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   record: DepartureRecord | null;
   onSave: (id: string, texto: string, rubrica: string) => void;
-  /** Mobile: botão Guardar antes de Cancelar. */
-  confirmFirst?: boolean;
   /** Mobile: modal no topo da tela, sobre todo o conteúdo. */
   alignTop?: boolean;
+  /** Mobile: modal acima da barra Administrativo / Serviço (formulário de saída). */
+  alignAboveBottomTabs?: boolean;
 };
 
 export function DepartureOcorrenciasModal({
@@ -20,8 +21,8 @@ export function DepartureOcorrenciasModal({
   onOpenChange,
   record,
   onSave,
-  confirmFirst = false,
   alignTop = false,
+  alignAboveBottomTabs = false,
 }: Props) {
   const titleId = useId();
   const textId = useId();
@@ -62,10 +63,14 @@ export function DepartureOcorrenciasModal({
   return (
     <div
       className={cn(
-        "pointer-events-auto fixed inset-0 flex justify-center bg-black/55 p-4",
-        alignTop
-          ? "z-[500] items-start pt-[max(1rem,env(safe-area-inset-top,0px))]"
-          : "z-[290] items-end sm:items-center",
+        alignAboveBottomTabs
+          ? cn(MOBILE_MODAL_ABOVE_BOTTOM_TABS_OVERLAY_CLASS, "z-[500]")
+          : cn(
+              "pointer-events-auto fixed inset-0 flex justify-center bg-black/55 p-4",
+              alignTop
+                ? "z-[500] items-start pt-[max(1rem,env(safe-area-inset-top,0px))]"
+                : "z-[290] items-end sm:items-center",
+            ),
       )}
       role="dialog"
       aria-modal="true"
@@ -100,25 +105,12 @@ export function DepartureOcorrenciasModal({
               placeholder="Descreva a ocorrência…"
             />
             <div className="mt-6 flex flex-wrap justify-end gap-2">
-              {confirmFirst ? (
-                <>
-                  <Button type="button" variant="default" onClick={handleGuardar}>
-                    Guardar
-                  </Button>
-                  <Button type="button" onClick={fechar}>
-                    Cancelar
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button type="button" onClick={fechar}>
-                    Cancelar
-                  </Button>
-                  <Button type="button" variant="default" onClick={handleGuardar}>
-                    Guardar
-                  </Button>
-                </>
-              )}
+              <Button type="button" onClick={fechar}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="default" onClick={handleGuardar}>
+                Guardar
+              </Button>
             </div>
           </>
         ) : (
