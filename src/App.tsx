@@ -46,7 +46,6 @@ const tabs = [
   "Vistoria",
   "Frota e Pessoal",
   "Estatística",
-  "Ocorrências",
   "Avisos",
   "Configurações",
 ];
@@ -269,7 +268,6 @@ function App() {
     if (isSettingsTab(activeTab)) return <SettingsPage />;
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     if (activeTab === "Estatística") return <StatisticsPage />;
-    if (activeTab === "Ocorrências") return <OcorrenciasPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [

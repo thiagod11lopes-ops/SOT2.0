@@ -1,5 +1,4 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { PlaceholderPage } from "./placeholder-page";
 
 interface Occurrence {
   id: string;

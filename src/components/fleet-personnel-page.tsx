@@ -8,9 +8,10 @@ import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { TabsList } from "./ui/tabs";
 import { DetalheServicoSheet } from "./detalhe-servico-sheet";
+import { OcorrenciasPage } from "./ocorrencias-page";
 import { VehicleMaintenancePanel } from "./vehicle-maintenance-panel";
 
-const subTabs = ["Viaturas", "Motorista", "Detalhe de Serviço"] as const;
+const subTabs = ["Viaturas", "Motorista", "Detalhe de Serviço", "Ocorrências"] as const;
 
 const viaturaSubTabs = ["Cadastrar Viatura", "Manutenções"] as const;
 
@@ -36,6 +37,7 @@ export function FleetPersonnelPage() {
   const isMotorista = activeSubTab === "Motorista";
   const isViatura = activeSubTab === "Viaturas";
   const isDetalheServico = activeSubTab === "Detalhe de Serviço";
+  const isOcorrencias = activeSubTab === "Ocorrências";
   const isCadastrarViatura = viaturaInnerTab === "Cadastrar Viatura";
 
   const canAddMotorista = useMemo(() => draftMotorista.trim().length > 0, [draftMotorista]);
@@ -306,6 +308,7 @@ export function FleetPersonnelPage() {
           ) : null}
 
           {isDetalheServico ? <DetalheServicoSheet /> : null}
+          {isOcorrencias ? <OcorrenciasPage /> : null}
         </CardContent>
       </Card>
     </div>
