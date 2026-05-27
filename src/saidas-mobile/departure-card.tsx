@@ -1,6 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
+import {
+  DepartureOccurrenceLinesList,
+  occurrenceEntriesFromRecords,
+} from "../components/departure-occurrence-line";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
@@ -42,6 +46,7 @@ export function DepartureCard({
   allowMobileEdit = true,
   mergedDestinoDisplay,
   mergedSetorDisplay,
+  mergedRecords,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
@@ -56,6 +61,8 @@ export function DepartureCard({
   mergedDestinoDisplay?: string;
   /** Idem: setores combinados (vista administrativa). */
   mergedSetorDisplay?: string;
+  /** Registos fundidos no cartão (para exibir ocorrências ligadas a cada linha). */
+  mergedRecords?: DepartureRecord[];
 }) {
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -101,6 +108,10 @@ export function DepartureCard({
   const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
   const destinoCabecalho = mergedDestinoDisplay ?? row.destino;
   const destinoCabecalhoLongo = Boolean(mergedDestinoDisplay);
+  const linkedOccurrenceEntries = useMemo(
+    () => occurrenceEntriesFromRecords(mergedRecords ?? [record]),
+    [mergedRecords, record],
+  );
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -182,7 +193,8 @@ export function DepartureCard({
 
   function handleSalvarOcorrencias(departureId: string, texto: string, rubrica: string) {
     if (!updateDeparture) return;
-    const { id, createdAt, ...rest } = record;
+    const d = departures.find((x) => x.id === departureId) ?? record;
+    const { id, createdAt, ...rest } = d;
     void id;
     void createdAt;
     updateDeparture(departureId, { ...rest, ocorrencias: texto, ocorrenciasRubrica: rubrica });
@@ -771,6 +783,12 @@ export function DepartureCard({
               </div>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {linkedOccurrenceEntries.length > 0 ? (
+        <div className="border-t border-[hsl(var(--border))]/55 bg-[hsl(var(--muted))]/10 px-4 py-3">
+          <DepartureOccurrenceLinesList entries={linkedOccurrenceEntries} compact />
         </div>
       ) : null}
 

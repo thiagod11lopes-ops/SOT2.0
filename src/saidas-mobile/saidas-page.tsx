@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
+import { useUnlinkedOccurrences } from "../context/unlinked-occurrences-context";
+import { UnlinkedOccurrencesBlock } from "../components/unlinked-occurrences-block";
 import { groupDeparturesForListDisplay, type DepartureRecord, type DepartureType } from "../types/departure";
 import { DepartureDeleteOrCancelModal } from "../components/departure-delete-or-cancel-modal";
 import { addDaysPtBr, getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
@@ -65,6 +67,7 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
 export function SaidasPage({ tipo }: { tipo: DepartureType }) {
   const { departures, updateDepartureKmFields, updateDeparture, addDeparture, removeDeparture } =
     useDepartures();
+  const { entriesForPdf } = useUnlinkedOccurrences();
   const [excluirModalId, setExcluirModalId] = useState<string | null>(null);
   const excluirModalRecord = useMemo(
     () => (excluirModalId ? departures.find((d) => d.id === excluirModalId) ?? null : null),
@@ -94,6 +97,11 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
   }, [departures, tipo, filterDate]);
 
   const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
+
+  const unlinkedOccurrences = useMemo(() => {
+    if (!isCompleteDatePtBr(filterDate)) return [];
+    return entriesForPdf(filterDate, tipo);
+  }, [entriesForPdf, filterDate, tipo]);
 
   const emptyMessage = useMemo(() => {
     const ofTipo = departures.filter((d) => d.tipo === tipo);
@@ -329,6 +337,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
               <li key={cardKey} data-departure-id={r.id}>
                 <DepartureCard
                   record={r}
+                  mergedRecords={group.records}
                   mergedDestinoDisplay={group.destinoDisplay}
                   mergedSetorDisplay={group.setorDisplay}
                   allowMobileEdit={editavelMobile}
@@ -349,6 +358,8 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
           })
         )}
       </ul>
+
+      <UnlinkedOccurrencesBlock entries={unlinkedOccurrences} className="px-1" />
     </div>
   );
 }

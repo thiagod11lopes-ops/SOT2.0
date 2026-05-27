@@ -1,11 +1,12 @@
 import { ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDepartures, type DepartureKmFieldsPatch } from "../context/departures-context";
 import {
   isKmEditSessionUnlocked,
   setKmEditSessionUnlocked,
 } from "../lib/kmEditPassword";
 import type { DepartureRecord } from "../types/departure";
+import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { departuresTableShadowClass } from "../lib/uiShadows";
@@ -13,7 +14,9 @@ import { normalize24hTimeWithCaret } from "../lib/timeInput";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { cn } from "../lib/utils";
 import { DepartureDetailModal } from "./departure-detail-modal";
+import { DepartureOccurrenceLine, occurrenceEntriesFromRecords } from "./departure-occurrence-line";
 import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
+import { UnlinkedOccurrencesBlock } from "./unlinked-occurrences-block";
 import { KmEditPasswordModal } from "./km-edit-password-modal";
 import {
   MergedDeparturePickRecordModal,
@@ -105,6 +108,8 @@ interface DeparturesDataTableProps {
   onUpdateKmFields?: (id: string, patch: DepartureKmFieldsPatch) => void;
   /** Abre Cadastrar Nova Saída com os dados do registro. */
   onEdit?: (id: string) => void;
+  /** Ocorrências sem placa — abaixo da tabela, alinhadas à esquerda. */
+  unlinkedOccurrences?: PdfOccurrenceEntry[];
 }
 
 export function DeparturesDataTable({
@@ -116,6 +121,7 @@ export function DeparturesDataTable({
   onTrashClick,
   onUpdateKmFields,
   onEdit,
+  unlinkedOccurrences = [],
 }: DeparturesDataTableProps) {
   const { updateDeparture } = useDepartures();
   const [kmUnlocked, setKmUnlocked] = useState(() => isKmEditSessionUnlocked());
@@ -298,9 +304,10 @@ export function DeparturesDataTable({
             const setorCell = group.setorDisplay;
             const rowKey = group.records.map((r) => r.id).join("|");
             const anyOcorrencias = group.records.some((r) => (r.ocorrencias ?? "").trim().length > 0);
+            const linkedOccurrences = occurrenceEntriesFromRecords(group.records);
             return (
+              <Fragment key={rowKey}>
               <TableRow
-                key={rowKey}
                 className={cn(
                   cancelada && "bg-red-950/[0.08] opacity-50",
                   !cancelada &&
@@ -470,11 +477,23 @@ export function DeparturesDataTable({
                   </div>
                 </TableCell>
               </TableRow>
+              {linkedOccurrences.map((occ) => (
+                <TableRow
+                  key={`${occ.id}-occ`}
+                  className="bg-[hsl(var(--muted))]/10 hover:bg-[hsl(var(--muted))]/10"
+                >
+                  <TableCell colSpan={colSpan} className="py-2 pl-4">
+                    <DepartureOccurrenceLine texto={occ.texto} rubrica={occ.rubrica} compact />
+                  </TableCell>
+                </TableRow>
+              ))}
+              </Fragment>
             );
           })
         )}
       </TableBody>
     </Table>
+    <UnlinkedOccurrencesBlock entries={unlinkedOccurrences} className="px-4 pb-4" />
     </div>
     </>
   );

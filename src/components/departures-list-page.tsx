@@ -443,6 +443,7 @@ export function DeparturesListPage({
           onTrashClick={(group) => setDeleteModalRecords(group)}
           onUpdateKmFields={updateDepartureKmFields}
           onEdit={beginEditDeparture}
+          unlinkedOccurrences={entriesForPdf(filterDepartureDate, filterTipo)}
         />
         {showPainelEscolherMotorista ? (
           <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col gap-6">
