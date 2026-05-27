@@ -154,9 +154,12 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         };
         // Chamada explícita para o Firebase aqui
         if (useCloud) {
+          console.log("[SOT] Tentando gravar ocorrência desvinculada no Firebase:", nextDoc);
           void setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, nextDoc).catch((e) => {
-            console.error("[SOT] Gravar ocorrências desvinculadas na nuvem (explicit):", e);
+            console.error("[SOT] Erro ao gravar ocorrência desvinculada na nuvem:", e);
           });
+        } else {
+          console.log("[SOT] useCloud é false. Ocorrência desvinculada não gravada no Firebase.");
         }
         return nextDoc;
       });
