@@ -64,6 +64,7 @@ export function OcorrenciasPage() {
     const unsubscribe = subscribeSotStateDoc(
       SOT_STATE_DOC.ocorrenciasDesvinculadas,
       (payload) => {
+        console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas:", payload);
         if (payload && Array.isArray(payload)) {
           const extractedUnlinked: Occurrence[] = (payload as UnlinkedOccurrencePayload[]).map((item, index) => ({
             id: `unlinked-${index}-${item.data}-${item.hora}`,
@@ -73,8 +74,10 @@ export function OcorrenciasPage() {
             placa: undefined,
             rubricas: item.rubrica ? [item.rubrica] : undefined,
           }));
+          console.log("[OcorrenciasPage] Ocorrências desvinculadas extraídas:", extractedUnlinked);
           setUnlinkedOccurrences(extractedUnlinked);
         } else {
+          console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas inválido ou vazio.");
           setUnlinkedOccurrences([]);
         }
       },
@@ -119,6 +122,7 @@ export function OcorrenciasPage() {
                   {occurrence.rubricas && occurrence.rubricas.length > 0 ? (
                     (() => {
                       const firstRubrica = occurrence.rubricas[0];
+                      console.log("[OcorrenciasPage] Rubrica para renderizar:", firstRubrica);
                       if (firstRubrica && firstRubrica.startsWith("data:image")) {
                         return <img src={firstRubrica} alt="Rubrica" style={{ maxWidth: "100px", maxHeight: "50px", objectFit: "contain" }} />;
                       } else {
