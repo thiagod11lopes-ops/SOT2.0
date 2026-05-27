@@ -323,31 +323,52 @@ export function OcorrenciasPage() {
       )}
 
       <Dialog open={showDeleteConfirmationModal} onOpenChange={setShowDeleteConfirmationModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar exclusão</DialogTitle>
+        <DialogContent hideCloseButton className="gap-0 overflow-hidden p-0">
+          <div className="relative border-b border-red-200/80 bg-red-50 px-6 py-4 dark:border-red-900/50 dark:bg-red-950/40">
+            <DialogHeader className="space-y-2">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white shadow-sm">
+                  <Trash2 className="h-5 w-5" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pr-8">
+                  <DialogTitle className="text-red-950 dark:text-red-50">
+                    Confirmar exclusão
+                  </DialogTitle>
+                  <DialogDescription className="mt-1.5 text-red-900/80 dark:text-red-100/80">
+                    Tem certeza de que deseja excluir esta ocorrência? Esta ação não pode ser desfeita.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
             <DialogClose asChild>
               <Button
                 variant="ghost"
-                className="absolute right-4 top-4 h-8 w-8 p-0"
+                className="absolute right-3 top-3 h-8 w-8 p-0 text-red-800 hover:bg-red-100 hover:text-red-950 dark:text-red-200 dark:hover:bg-red-900/40 dark:hover:text-red-50"
                 onClick={() => setShowDeleteConfirmationModal(false)}
               >
                 <X className="h-4 w-4" />
                 <span className="sr-only">Fechar</span>
               </Button>
             </DialogClose>
-            <DialogDescription>
-              Tem certeza de que deseja excluir esta ocorrência? Esta ação não pode ser desfeita.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] px-6 py-4">
             <DialogClose asChild>
-              <Button variant="outline" onClick={() => setShowDeleteConfirmationModal(false)} disabled={deleting}>
+              <Button
+                variant="outline"
+                className="border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]"
+                onClick={() => setShowDeleteConfirmationModal(false)}
+                disabled={deleting}
+              >
                 Cancelar
               </Button>
             </DialogClose>
-            <Button variant="default" onClick={() => void confirmDelete()} disabled={deleting}>
-              {deleting ? "Excluindo…" : "Excluir"}
+            <Button
+              variant="default"
+              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500/40"
+              onClick={() => void confirmDelete()}
+              disabled={deleting}
+            >
+              {deleting ? "Excluindo…" : "Excluir ocorrência"}
             </Button>
           </DialogFooter>
         </DialogContent>
