@@ -1,5 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState } from "react";
+import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore"; // Importar Firebase
+
 
 // Componente para a página de Ocorrências
 
@@ -16,42 +18,26 @@ export function OcorrenciasPage() {
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
 
   useEffect(() => {
-    const fetchOccurrences = () => {
-      // Simula uma chamada de API para buscar ocorrências reais
-      const fetchedData: Occurrence[] = [
-        {
-          id: "o-12345",
-          timestamp: "2026-05-12 08:30:00",
-          description: "Colisão traseira leve",
-          details: "Amassado no para-choque traseiro, sem feridos. Envolvimento da placa RKK-9I27.",
-          placa: "RKK-9I27",
-          rubricas: ["Acidente", "Reparo"],
-        },
-        {
-          id: "o-67890",
-          timestamp: "2026-05-27 14:00:00",
-          description: "Problema no freio",
-          details: "Freio falhando intermitentemente. Necessita de inspeção urgente.",
-          placa: "JHL-5432",
-          rubricas: ["Manutenção", "Urgente"],
-        },
-        {
-          id: "o-11223",
-          timestamp: "2026-05-27 10:45:00",
-          description: "Farol queimado",
-          details: "Farol dianteiro esquerdo não acende.",
-          placa: "ABC-1234",
-          rubricas: ["Manutenção"],
-        },
-      ];
+    const unsubscribe = subscribeSotStateDoc(
+      SOT_STATE_DOC.ocorrenciasDesvinculadas,
+      (payload) => {
+        if (payload && Array.isArray(payload)) {
+          // Ordenar as ocorrências pelas mais atuais (timestamp decrescente)
+          const sortedOccurrences = (payload as Occurrence[]).sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          setOccurrences(sortedOccurrences);
+        } else {
+          setOccurrences([]);
+        }
+      },
+      (error) => {
+        console.error("Erro ao buscar ocorrências do Firestore:", error);
+        setOccurrences([]);
+      }
+    );
 
-      // Simula um atraso de rede
-      setTimeout(() => {
-        setOccurrences(fetchedData);
-      }, 500);
-    };
-
-    fetchOccurrences();
+    return () => unsubscribe(); // Cleanup on unmount
   }, []);
 
   return (
