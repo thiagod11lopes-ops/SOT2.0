@@ -7,6 +7,8 @@ export type UnlinkedDepartureOccurrence = {
   texto: string;
   rubrica: string;
   createdAt: number;
+  /** Motorista logado no mobile ao registrar (quando disponível). */
+  motorista?: string;
 };
 
 export type UnlinkedOccurrencesDoc = {

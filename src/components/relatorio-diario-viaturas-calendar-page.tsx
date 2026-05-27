@@ -57,7 +57,7 @@ export function RelatorioDiarioViaturasCalendarPage() {
   }, [confirmSalvoOpen]);
 
   const pdfSalvoSet = useMemo(() => {
-    const _ = tick; // Explicitamente 'read' para TS6133
+    void tick;
     return getPdfSalvoIsoSet();
   }, [tick]);
 

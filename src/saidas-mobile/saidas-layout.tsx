@@ -645,6 +645,7 @@ export function SaidasLayout() {
         defaultDatePtBr={filterDatePtBr}
         viaturasAdministrativas={catalogItems.viaturasAdministrativas}
         ambulancias={catalogItems.ambulancias}
+        motoristaLogado={motoristaLogadoMobile}
         alignTop
       />
       {navigationActive ? null : (

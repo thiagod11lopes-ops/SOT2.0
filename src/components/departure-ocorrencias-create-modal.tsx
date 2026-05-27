@@ -8,6 +8,7 @@ import { NAO_VINCULAR_PLACA_VALUE } from "../types/unlinkedOccurrence";
 import { MergedDeparturePickRecordModal } from "./merged-departure-pick-record-modal";
 import { OccurrenceRubricaCapturePanel } from "./occurrence-rubrica-capture-panel";
 import { Button } from "./ui/button";
+import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import { cn } from "../lib/utils";
 
 type Step = "tipo" | "form" | "rubrica";
@@ -20,6 +21,8 @@ type Props = {
   ambulancias: string[];
   /** Mobile: modal no topo. */
   alignTop?: boolean;
+  /** Nome do motorista logado (mobile); usado em ocorrências sem placa. */
+  motoristaLogado?: string | null;
 };
 
 export function DepartureOcorrenciasCreateModal({
@@ -29,6 +32,7 @@ export function DepartureOcorrenciasCreateModal({
   viaturasAdministrativas,
   ambulancias,
   alignTop = false,
+  motoristaLogado = null,
 }: Props) {
   const titleId = useId();
   const textId = useId();
@@ -82,7 +86,15 @@ export function DepartureOcorrenciasCreateModal({
     if (!tipo || !textoFinal) return;
 
     if (placa === NAO_VINCULAR_PLACA_VALUE) {
-      addUnlinkedOccurrence({ dataSaida: data, tipo, texto: textoFinal, rubrica: rubricaDataUrl });
+      const motorista =
+        (motoristaLogado ?? loadActiveMobileMotorista() ?? "").trim() || undefined;
+      addUnlinkedOccurrence({
+        dataSaida: data,
+        tipo,
+        texto: textoFinal,
+        rubrica: rubricaDataUrl,
+        motorista,
+      });
       fechar();
       return;
     }

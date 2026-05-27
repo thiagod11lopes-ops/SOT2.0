@@ -32,6 +32,7 @@ type UnlinkedOccurrencesContextValue = {
     tipo: DepartureType;
     texto: string;
     rubrica?: string;
+    motorista?: string;
   }) => void;
   entriesForPdf: (dataSaida: string, tipo: DepartureType) => PdfOccurrenceEntry[];
 };
@@ -131,10 +132,12 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
       tipo: DepartureType;
       texto: string;
       rubrica?: string;
+      motorista?: string;
     }) => {
       const texto = args.texto.trim();
       const dataSaida = args.dataSaida.trim();
       const rubrica = (args.rubrica ?? "").trim();
+      const motorista = (args.motorista ?? "").trim();
       if (!texto || !dataSaida) return;
 
       bumpLocalMutation(); // Sinaliza uma mutação local para potencialmente suprimir o remoto por um tempo
@@ -145,6 +148,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         tipo: args.tipo,
         texto,
         rubrica,
+        motorista: motorista || undefined,
         createdAt: Date.now(),
       };
 

@@ -13,6 +13,7 @@ export function normalizeUnlinkedOccurrencesDoc(raw: unknown): UnlinkedOccurrenc
     const o = entry as Partial<UnlinkedDepartureOccurrence>;
     const texto = typeof o.texto === "string" ? o.texto.trim() : "";
     const rubrica = typeof o.rubrica === "string" ? o.rubrica.trim() : "";
+    const motorista = typeof o.motorista === "string" ? o.motorista.trim() : "";
     const dataSaidaFixed = typeof o.dataSaida === "string" ? o.dataSaida.trim() : "";
     if (!texto || !dataSaidaFixed) continue;
     if (o.tipo !== "Administrativa" && o.tipo !== "Ambulância") continue;
@@ -22,6 +23,7 @@ export function normalizeUnlinkedOccurrencesDoc(raw: unknown): UnlinkedOccurrenc
       tipo: o.tipo,
       texto,
       rubrica,
+      motorista: motorista || undefined,
       createdAt: typeof o.createdAt === "number" && Number.isFinite(o.createdAt) ? o.createdAt : Date.now(),
     });
   }

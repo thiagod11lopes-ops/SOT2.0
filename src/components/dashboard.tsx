@@ -362,7 +362,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
 
   const pendenciasVistoriaEscalaSNotif = useMemo(() => {
-    const _ = vistoriaEscalaDataTick; // Explicitamente 'read' para TS6133
+    void vistoriaEscalaDataTick;
 
     ensureVistoriaCloudStateSyncStarted();
     const isoHoje = isoDateFromDate(new Date());

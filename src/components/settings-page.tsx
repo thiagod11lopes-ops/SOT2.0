@@ -383,7 +383,7 @@ export function SettingsPage() {
   }, [placasConsideradasParaMapaGps]);
 
   const vistoriaCloudSnapshot = useMemo(() => {
-    const _ = vistoriaCloudTick; // Explicitamente 'read' para TS6133
+    void vistoriaCloudTick;
     return getVistoriaCloudState();
   }, [vistoriaCloudTick]);
 

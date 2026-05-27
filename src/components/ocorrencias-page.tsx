@@ -1,28 +1,37 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState, useMemo } from "react";
-import { Trash2, X } from "lucide-react";
+import { AlertTriangle, Trash2, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-// Importa o subscriber de departures (corrigido para não importar DepartureRecord daqui)
-import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
-// Importa o tipo DepartureRecord do local correto
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { subscribeDepartures, getDepartureRecord, upsertDepartureRecord } from "../lib/firebase/departuresFirestore";
 import type { DepartureRecord } from "../types/departure";
-import { subscribeSotStateDoc, SOT_STATE_DOC, readSotStateDocFromServer, setSotStateDocWithRetry } from "../lib/firebase/sotStateFirestore";
-import { upsertDepartureRecord } from "../lib/firebase/departuresFirestore";
-
-
-// Componente para a página de Ocorrências
+import {
+  subscribeSotStateDoc,
+  SOT_STATE_DOC,
+  readSotStateDocFromServer,
+  setSotStateDocWithRetry,
+} from "../lib/firebase/sotStateFirestore";
+import { cn } from "../lib/utils";
 
 interface Occurrence {
   id: string;
   timestamp: string;
+  sortKey: number;
   description: string;
-  details: string; // Manter para compatibilidade, mas não será exibido
   placa?: string;
+  motorista: string;
   rubricas?: string[];
+  isUnlinked: boolean;
 }
 
-// Tipo para as ocorrências desvinculadas
 interface UnlinkedOccurrencePayload {
   createdAt: number;
   id: string;
@@ -30,17 +39,44 @@ interface UnlinkedOccurrencePayload {
   tipo: string;
   texto: string;
   rubrica?: string;
+  motorista?: string;
+}
+
+function isUnlinkedOccurrenceId(id: string): boolean {
+  return id.startsWith("uo-");
+}
+
+function formatMotoristaLabel(value: string | undefined): string {
+  const t = value?.trim();
+  return t && t.length > 0 ? t : "—";
+}
+
+function RubricaCell({ rubricas }: { rubricas?: string[] }) {
+  if (!rubricas || rubricas.length === 0) {
+    return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
+  }
+  const first = rubricas[0]?.trim();
+  if (first && first.startsWith("data:image")) {
+    return (
+      <div className="inline-flex rounded-lg border border-[hsl(var(--border))] bg-white p-1 shadow-sm">
+        <img
+          src={first}
+          alt="Rubrica"
+          className="max-h-12 max-w-[7rem] object-contain"
+        />
+      </div>
+    );
+  }
+  return <span className="text-sm">{rubricas.join(", ")}</span>;
 }
 
 export function OcorrenciasPage() {
   const [departuresOccurrences, setDeparturesOccurrences] = useState<Occurrence[]>([]);
   const [unlinkedOccurrences, setUnlinkedOccurrences] = useState<Occurrence[]>([]);
-
-
   const [showDeleteConfirmationModal, setShowDeleteConfirmationModal] = useState(false);
   const [occurrenceToDeleteId, setOccurrenceToDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Efeito para buscar ocorrências dos departures
   useEffect(() => {
     const unsubscribe = subscribeDepartures(
       (departureRecords: DepartureRecord[]) => {
@@ -50,12 +86,14 @@ export function OcorrenciasPage() {
             extractedOccurrences.push({
               id: record.id,
               timestamp: `${record.dataSaida} ${record.horaSaida}`,
+              sortKey: record.createdAt ?? 0,
               description: record.ocorrencias,
-              details: record.ocorrencias,
-              placa: record.viaturas || undefined,
+              placa: record.viaturas.trim() || undefined,
+              motorista: formatMotoristaLabel(record.motoristas),
               rubricas: record.ocorrenciasRubrica
-                ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim())
+                ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim()).filter(Boolean)
                 : undefined,
+              isUnlinked: false,
             });
           }
         });
@@ -64,52 +102,55 @@ export function OcorrenciasPage() {
       (error) => {
         console.error("Erro ao buscar ocorrências dos departures:", error);
         setDeparturesOccurrences([]);
-      }
+      },
     );
     return () => unsubscribe();
   }, []);
 
-  // Efeito para buscar ocorrências desvinculadas
   useEffect(() => {
     const unsubscribe = subscribeSotStateDoc(
       SOT_STATE_DOC.ocorrenciasDesvinculadas,
       (payload) => {
-        console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas:", payload);
-        if (payload && typeof payload === 'object' && 'items' in payload && Array.isArray((payload as { items: unknown[] }).items)) {
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "items" in payload &&
+          Array.isArray((payload as { items: unknown[] }).items)
+        ) {
           const rawItems = (payload as { items: UnlinkedOccurrencePayload[] }).items;
           const extractedUnlinked: Occurrence[] = rawItems.map((item) => {
-            const date = item.dataSaida;
-            const time = new Date(item.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            const time = new Date(item.createdAt).toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            });
             return {
               id: item.id,
-              timestamp: `${date} ${time}`,
+              timestamp: `${item.dataSaida} ${time}`,
+              sortKey: item.createdAt,
               description: item.texto,
-              details: item.texto,
               placa: undefined,
+              motorista: formatMotoristaLabel(item.motorista),
               rubricas: item.rubrica ? [item.rubrica] : undefined,
+              isUnlinked: true,
             };
           });
-          console.log("[OcorrenciasPage] Ocorrências desvinculadas extraídas:", extractedUnlinked);
           setUnlinkedOccurrences(extractedUnlinked);
         } else {
-          console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas inválido ou vazio.");
           setUnlinkedOccurrences([]);
         }
       },
       (error) => {
         console.error("Erro ao buscar ocorrências desvinculadas do Firestore:", error);
         setUnlinkedOccurrences([]);
-      }
+      },
     );
     return () => unsubscribe();
   }, []);
 
-  // Combina e ordena as ocorrências
   const allOccurrences = useMemo(() => {
     const combined = [...departuresOccurrences, ...unlinkedOccurrences];
-    return combined.sort((a, b) =>
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    return combined.sort((a, b) => b.sortKey - a.sortKey);
   }, [departuresOccurrences, unlinkedOccurrences]);
 
   function handleDeleteClick(occurrenceId: string) {
@@ -118,109 +159,172 @@ export function OcorrenciasPage() {
   }
 
   async function confirmDelete() {
-    if (!occurrenceToDeleteId) return;
+    if (!occurrenceToDeleteId || deleting) return;
+    setDeleting(true);
 
-    // Lógica para determinar se é uma ocorrência desvinculada ou de departure
-    if (occurrenceToDeleteId.startsWith("unlinked-")) {
-      // É uma ocorrência desvinculada
-      try {
+    const isUnlinked = isUnlinkedOccurrenceId(occurrenceToDeleteId);
+
+    try {
+      if (isUnlinked) {
         const docRef = await readSotStateDocFromServer(SOT_STATE_DOC.ocorrenciasDesvinculadas);
-        if (docRef && typeof docRef === 'object' && 'items' in docRef && Array.isArray((docRef as { items: unknown[] }).items)) {
+        if (
+          docRef &&
+          typeof docRef === "object" &&
+          "items" in docRef &&
+          Array.isArray((docRef as { items: unknown[] }).items)
+        ) {
           const currentItems = (docRef as { items: UnlinkedOccurrencePayload[] }).items;
-          const updatedItems = currentItems.filter(item => item.id !== occurrenceToDeleteId);
+          const updatedItems = currentItems.filter((item) => item.id !== occurrenceToDeleteId);
           await setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, { items: updatedItems });
-          console.log(`[OcorrenciasPage] Ocorrência desvinculada ${occurrenceToDeleteId} excluída com sucesso.`);
         }
-      } catch (error) {
-        console.error(`[OcorrenciasPage] Erro ao excluir ocorrência desvinculada ${occurrenceToDeleteId}:`, error);
-        window.alert("Erro ao excluir ocorrência desvinculada.");
-      }
-    } else {
-      // É uma ocorrência de departure
-      try {
-        const departureRecord = departuresOccurrences.find(occ => occ.id === occurrenceToDeleteId);
+      } else {
+        const departureRecord = await getDepartureRecord(occurrenceToDeleteId);
         if (departureRecord) {
-          // Para ocorrências vinculadas, limpamos o texto e rubrica no record departure
-          // Note: updateDeparture() precisa de um objeto completo de DepartureRecord, não apenas um patch parcial.
-          // Se updateDeparture suportar patch, isso precisaria ser ajustado.
-          // Por simplicidade, vamos usar o record existente e zerar os campos de ocorrencia.
-
-          await upsertDepartureRecord({ ...departureRecord, ocorrencias: "", ocorrenciasRubrica: undefined });
-          console.log(`[OcorrenciasPage] Ocorrência vinculada ${occurrenceToDeleteId} excluída com sucesso.`);
+          await upsertDepartureRecord({
+            ...departureRecord,
+            ocorrencias: "",
+            ocorrenciasRubrica: "",
+          });
         }
-      } catch (error) {
-        console.error(`[OcorrenciasPage] Erro ao excluir ocorrência vinculada ${occurrenceToDeleteId}:`, error);
-        window.alert("Erro ao excluir ocorrência vinculada.");
       }
+    } catch (error) {
+      console.error(`[OcorrenciasPage] Erro ao excluir ocorrência ${occurrenceToDeleteId}:`, error);
+      window.alert("Erro ao excluir ocorrência. Tente novamente.");
+    } finally {
+      setDeleting(false);
+      setOccurrenceToDeleteId(null);
+      setShowDeleteConfirmationModal(false);
     }
-
-    setOccurrenceToDeleteId(null);
-    setShowDeleteConfirmationModal(false);
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <h2 className="text-2xl font-bold mb-6">Ocorrências do Sistema</h2>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 ring-1 ring-amber-500/25">
+            <AlertTriangle className="h-5 w-5" aria-hidden />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--foreground))]">
+              Ocorrências
+            </h2>
+            <p className="mt-0.5 text-sm text-[hsl(var(--muted-foreground))]">
+              Registos de saídas e ocorrências avulsas (sem placa), mais recentes primeiro.
+            </p>
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-2 self-start rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 text-sm shadow-sm sm:self-auto">
+          <span className="font-medium text-[hsl(var(--foreground))]">{allOccurrences.length}</span>
+          <span className="text-[hsl(var(--muted-foreground))]">
+            {allOccurrences.length === 1 ? "registo" : "registos"}
+          </span>
+        </div>
+      </div>
+
       {allOccurrences.length === 0 ? (
-        <p className="text-center text-gray-500">Nenhuma ocorrência registrada.</p>
+        <div className="rounded-2xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 px-6 py-14 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-[hsl(var(--muted-foreground))]/60" aria-hidden />
+          <p className="mt-3 text-sm font-medium text-[hsl(var(--foreground))]">
+            Nenhuma ocorrência registrada
+          </p>
+          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+            As ocorrências aparecem aqui quando são guardadas numa saída ou sem vincular placa.
+          </p>
+        </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-            <TableHead>Data</TableHead>
-              <TableHead>Hora</TableHead>
-              <TableHead>Descrição</TableHead>
-              <TableHead>Placa</TableHead>
-              <TableHead>Rubricas</TableHead>
-              <TableHead>Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {allOccurrences.map((occurrence) => {
-              const [datePart, timePart] = occurrence.timestamp.split(" ");
-              return (
-                <TableRow key={occurrence.id}>
-                  <TableCell>{datePart}</TableCell>
-                  <TableCell>{timePart}</TableCell>
-                  <TableCell>{occurrence.description}</TableCell>
-                  <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
-                  <TableCell>
-                    {occurrence.rubricas && occurrence.rubricas.length > 0 ? (
-                      (() => {
-                        const firstRubrica = occurrence.rubricas[0];
-                        console.log("[OcorrenciasPage] Rubrica para renderizar:", firstRubrica);
-                        if (firstRubrica && firstRubrica.startsWith("data:image")) {
-                          return <img src={firstRubrica} alt="Rubrica" style={{ maxWidth: "100px", maxHeight: "50px", objectFit: "contain" }} />;
-                        } else {
-                          return occurrence.rubricas.join(", ");
-                        }
-                      })()
-                    ) : (
-                      "N/A"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Excluir ocorrência"
-                      onClick={() => handleDeleteClick(occurrence.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm">
+          <Table
+            wrapperClassName="overflow-x-auto"
+            className="min-w-[52rem] border-collapse"
+          >
+            <TableHeader className="sticky top-0 z-10 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/80 backdrop-blur-sm [&_tr]:bg-transparent">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[6.5rem] whitespace-nowrap">Data</TableHead>
+                <TableHead className="w-[5.5rem] whitespace-nowrap">Hora</TableHead>
+                <TableHead className="min-w-[12rem]">Descrição</TableHead>
+                <TableHead className="w-[6.5rem]">Placa</TableHead>
+                <TableHead className="min-w-[8rem]">Motorista</TableHead>
+                <TableHead className="w-[8.5rem]">Rubrica</TableHead>
+                <TableHead className="w-[4.5rem] text-center">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="[&_tr:nth-child(odd)]:bg-transparent [&_tr:nth-child(even)]:bg-[hsl(var(--muted))]/20">
+              {allOccurrences.map((occurrence) => {
+                const [datePart, timePart] = occurrence.timestamp.split(" ");
+                return (
+                  <TableRow
+                    key={occurrence.id}
+                    className="group border-[hsl(var(--border))]/60 transition-colors hover:bg-[hsl(var(--accent))]/30"
+                  >
+                    <TableCell className="whitespace-nowrap font-medium tabular-nums text-[hsl(var(--foreground))]">
+                      {datePart}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap tabular-nums text-[hsl(var(--muted-foreground))]">
+                      {timePart ?? "—"}
+                    </TableCell>
+                    <TableCell className="max-w-md">
+                      <p className="line-clamp-3 text-sm leading-snug text-[hsl(var(--foreground))]">
+                        {occurrence.description}
+                      </p>
+                      {occurrence.isUnlinked ? (
+                        <span className="mt-1.5 inline-flex rounded-md bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          Sem placa
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {occurrence.placa ? (
+                        <span className="inline-flex rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-0.5 font-mono text-xs font-semibold tracking-wide">
+                          {occurrence.placa}
+                        </span>
+                      ) : (
+                        <span className="text-[hsl(var(--muted-foreground))]">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "text-sm",
+                          occurrence.motorista === "—"
+                            ? "text-[hsl(var(--muted-foreground))]"
+                            : "font-medium text-[hsl(var(--foreground))]",
+                        )}
+                      >
+                        {occurrence.motorista}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <RubricaCell rubricas={occurrence.rubricas} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Excluir ocorrência"
+                        className="h-8 w-8 rounded-lg opacity-70 transition-opacity group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-600"
+                        onClick={() => handleDeleteClick(occurrence.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       )}
+
       <Dialog open={showDeleteConfirmationModal} onOpenChange={setShowDeleteConfirmationModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogTitle>Confirmar exclusão</DialogTitle>
             <DialogClose asChild>
-              <Button variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowDeleteConfirmationModal(false)}>
+              <Button
+                variant="ghost"
+                className="absolute right-4 top-4 h-8 w-8 p-0"
+                onClick={() => setShowDeleteConfirmationModal(false)}
+              >
                 <X className="h-4 w-4" />
                 <span className="sr-only">Fechar</span>
               </Button>
@@ -231,12 +335,12 @@ export function OcorrenciasPage() {
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" onClick={() => setShowDeleteConfirmationModal(false)}>
+              <Button variant="outline" onClick={() => setShowDeleteConfirmationModal(false)} disabled={deleting}>
                 Cancelar
               </Button>
             </DialogClose>
-            <Button variant="default" onClick={confirmDelete}>
-              Excluir
+            <Button variant="default" onClick={() => void confirmDelete()} disabled={deleting}>
+              {deleting ? "Excluindo…" : "Excluir"}
             </Button>
           </DialogFooter>
         </DialogContent>
