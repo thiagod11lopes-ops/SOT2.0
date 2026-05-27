@@ -1,7 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState } from "react";
-// Importa o subscriber de departures e o tipo de registro
-import { subscribeDepartures, type DepartureRecord } from "../lib/firebase/departuresFirestore";
+// Importa o subscriber de departures
+import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
+// Importa o tipo DepartureRecord do local correto
+import type { DepartureRecord } from "../types/departure";
 
 
 // Componente para a página de Ocorrências
@@ -33,7 +35,7 @@ export function OcorrenciasPage() {
               details: record.ocorrencias, // Usando o mesmo para detalhes por simplicidade
               placa: record.viaturas || undefined, // A placa vem de 'viaturas'
               rubricas: record.ocorrenciasRubrica
-                ? record.ocorrenciasRubrica.split(",").map((s) => s.trim())
+                ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim())
                 : undefined,
             });
           }
