@@ -7,6 +7,7 @@ import { Layout } from "./components/layout";
 import { DeparturesListPage } from "./components/departures-list-page";
 import { PlaceholderPage } from "./components/placeholder-page";
 import { StatisticsPage } from "./components/statistics-page";
+import { OcorrenciasPage } from "./components/ocorrencias-page";
 import { SettingsPage } from "./components/settings-page";
 import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
@@ -45,6 +46,7 @@ const tabs = [
   "Vistoria",
   "Frota e Pessoal",
   "Estatística",
+  "Ocorrências",
   "Avisos",
   "Configurações",
 ];
@@ -267,6 +269,7 @@ function App() {
     if (isSettingsTab(activeTab)) return <SettingsPage />;
     if (activeTab === "Frota e Pessoal") return <FleetPersonnelPage />;
     if (activeTab === "Estatística") return <StatisticsPage />;
+    if (activeTab === "Ocorrências") return <OcorrenciasPage />;
     if (activeTab === "Avisos") return <AvisosPage />;
     return <PlaceholderPage title={activeTab} />;
   }, [
