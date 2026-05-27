@@ -180,20 +180,20 @@ export function DepartureOcorrenciasCreateModal({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-auto min-h-14 flex-col gap-1 py-3"
+                  className="h-auto min-h-14 flex-col gap-1 border-sky-400/55 bg-white py-3 font-extrabold text-sky-500 hover:bg-sky-500/10 hover:text-sky-400"
                   onClick={() => escolherTipo("Ambulância")}
                 >
-                  <Ambulance className="h-5 w-5 text-[hsl(var(--primary))]" aria-hidden />
+                  <Ambulance className="h-5 w-5 text-sky-500" aria-hidden />
                   <span>Serviço</span>
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-auto min-h-14 flex-col gap-1 py-3"
+                  className="h-auto min-h-14 flex-col gap-1 border-amber-400/55 bg-white py-3 font-extrabold text-amber-600 hover:bg-amber-500/10 hover:text-amber-500"
                   onClick={() => escolherTipo("Administrativa")}
                 >
-                  <Building2 className="h-5 w-5 text-[hsl(var(--primary))]" aria-hidden />
-                  <span>Administrativa</span>
+                  <Building2 className="h-5 w-5 text-amber-600" aria-hidden />
+                  <span>Administrativo</span>
                 </Button>
               </div>
               <div className="mt-6 flex justify-end">
@@ -205,7 +205,7 @@ export function DepartureOcorrenciasCreateModal({
           ) : step === "form" ? (
             <>
               <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                {tipo === "Ambulância" ? "Serviço" : "Administrativa"} — vincule a uma placa ou registe sem viatura
+                {tipo === "Ambulância" ? "Serviço" : "Administrativo"} — vincule a uma placa ou registe sem viatura
                 (aparece no PDF entre a tabela e a assinatura, alinhada à esquerda).
               </p>
 
@@ -258,7 +258,7 @@ export function DepartureOcorrenciasCreateModal({
               </div>
 
               <div className="mt-6 flex flex-wrap justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep("tipo")}>
+                <Button type="button" onClick={() => setStep("tipo")}>
                   Voltar
                 </Button>
                 <Button type="button" onClick={fechar}>

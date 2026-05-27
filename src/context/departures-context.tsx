@@ -65,6 +65,8 @@ type DeparturesContextValue = {
   beginEditDeparture: (id: string) => void;
   clearPendingEditDeparture: () => void;
   cloudDeparturesSync: CloudDeparturesSyncState;
+  /** Primeira carga local ou snapshot remoto concluída. */
+  initialLoadComplete: boolean;
   forceCloudResync: () => void;
 };
 
@@ -188,6 +190,11 @@ function incrementConflictCountToday(): number {
 export function DeparturesProvider({ children }: { children: ReactNode }) {
   const [departures, setDepartures] = useState<DepartureRecord[]>([]);
   const hydratedRef = useRef(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const markInitialLoadComplete = useCallback(() => {
+    hydratedRef.current = true;
+    setInitialLoadComplete(true);
+  }, []);
   const suppressRemoteUntilRef = useRef(0);
   const initialRemoteSyncDoneRef = useRef(false);
   const recentTouchedIdsRef = useRef<Map<string, number>>(new Map());
@@ -296,7 +303,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     void idbGetJson<unknown>(DEPARTURES_STORAGE_KEY).then((stored) => {
       if (cancelled) return;
       setDepartures(normalizeDepartureRows(stored));
-      hydratedRef.current = true;
+      markInitialLoadComplete();
     });
     return () => {
       cancelled = true;
@@ -380,7 +387,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
                 }
               }
             }
-            hydratedRef.current = true;
+            markInitialLoadComplete();
             void idbSetJson(DEPARTURES_STORAGE_KEY, resolvedRows);
             setCloudDeparturesSync((prev) => ({
               enabled: true,
@@ -400,6 +407,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
               lastErrorAt: Date.now(),
               conflictCountToday: readConflictCountToday(),
             });
+            markInitialLoadComplete();
           },
         );
       } catch (e) {
@@ -417,6 +425,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           lastErrorAt: Date.now(),
           conflictCountToday: readConflictCountToday(),
         });
+        markInitialLoadComplete();
       }
     })();
 
@@ -424,7 +433,15 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud, syncRefreshToken, sweepRecentMutationGuards, enqueueWrite]);
+  }, [useCloud, syncRefreshToken, sweepRecentMutationGuards, enqueueWrite, markInitialLoadComplete]);
+
+  useEffect(() => {
+    if (useCloud) {
+      setInitialLoadComplete(false);
+      return;
+    }
+    setInitialLoadComplete(false);
+  }, [useCloud]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
@@ -750,6 +767,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       beginEditDeparture,
       clearPendingEditDeparture,
       cloudDeparturesSync,
+      initialLoadComplete,
       forceCloudResync,
     }),
     [
@@ -765,6 +783,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       beginEditDeparture,
       clearPendingEditDeparture,
       cloudDeparturesSync,
+      initialLoadComplete,
       forceCloudResync,
     ],
   );

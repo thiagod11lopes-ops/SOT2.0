@@ -5,6 +5,12 @@ export type RunWithProgressOptions = {
   minDurationMs?: number;
 };
 
+export type SystemSyncOverlayState = {
+  active: boolean;
+  progress: number;
+  label: string;
+};
+
 export type MobileLoadingOverlayContextValue = {
   runWithProgress: <T>(task: () => Promise<T> | T, options?: RunWithProgressOptions) => Promise<T>;
   runWithTrackedProgress: <T>(
@@ -14,6 +20,11 @@ export type MobileLoadingOverlayContextValue = {
   isVisible: boolean;
   progress: number;
   label: string;
+  systemSync: SystemSyncOverlayState;
+  setSystemSync: (state: SystemSyncOverlayState) => void;
+  overlayActive: boolean;
+  overlayProgress: number;
+  overlayLabel: string;
 };
 
 export type MobileProgressReporter = {

@@ -466,186 +466,235 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Cabeçalho mobile — grupo de ações (Detalhe, Vistoria, Ocorrências) */
-.saidas-mobile-header-actions {
-  display: flex;
-  width: fit-content;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 0.875rem;
-  border: 1px solid hsl(var(--border) / 0.72);
-  background:
-    linear-gradient(165deg, hsl(var(--card) / 0.94) 0%, hsl(var(--muted) / 0.58) 100%);
-  box-shadow:
-    0 1px 0 0 hsl(var(--primary) / 0.14) inset,
-    0 10px 28px -14px hsl(222 47% 2% / 0.72),
-    0 0 0 1px hsl(var(--primary) / 0.07);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+/* ── Cabeçalho mobile (layout moderno) ── */
+.saidas-mobile-header {
+  padding-bottom: 0.55rem;
 }
 
-.saidas-mobile-header-action-btn {
-  position: relative;
+.saidas-mobile-header-shell {
   display: flex;
-  width: 100%;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow: hidden;
+  border-radius: 1.125rem;
+  border: 1px solid hsl(var(--border) / 0.62);
+  background:
+    linear-gradient(168deg, hsl(var(--card) / 0.96) 0%, hsl(var(--muted) / 0.42) 100%);
+  box-shadow:
+    0 1px 0 0 hsl(var(--primary) / 0.1) inset,
+    0 14px 36px -18px hsl(222 47% 2% / 0.78),
+    0 0 0 1px hsl(var(--primary) / 0.06);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 0.62rem 0.68rem 0.58rem;
+}
+
+.saidas-mobile-header-row {
+  display: flex;
+  min-width: 0;
   align-items: center;
-  border: 0;
-  border-bottom: 1px solid hsl(var(--border) / 0.42);
-  background: transparent;
-  padding: 0.42rem 0.68rem;
-  font-size: 0.754rem;
-  font-weight: 600;
-  letter-spacing: 0.025em;
+}
+
+.saidas-mobile-header-row--top {
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.saidas-mobile-header-row--actions {
+  gap: 0.38rem;
+}
+
+.saidas-mobile-header-row--session {
+  padding-top: 0.12rem;
+}
+
+.saidas-mobile-header-brand {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.06rem;
+}
+
+.saidas-mobile-header-brand-kicker {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--primary) / 0.88);
+}
+
+.saidas-mobile-header-brand-title {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 800;
   line-height: 1;
-  color: hsl(var(--foreground) / 0.94);
+  letter-spacing: -0.03em;
+  color: hsl(var(--foreground));
+}
+
+.saidas-mobile-header-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.32rem;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  background: hsl(var(--background) / 0.42);
+  padding: 0.22rem;
+  box-shadow: 0 1px 0 0 hsl(var(--primary) / 0.08) inset;
+}
+
+.saidas-mobile-header-icon-btn {
+  display: flex;
+  height: 2.35rem;
+  width: 2.35rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
     transform 0.12s ease,
+    background-color 0.18s ease,
     box-shadow 0.18s ease;
 }
 
-.saidas-mobile-header-action-btn:last-child {
-  border-bottom: 0;
+.saidas-mobile-header-icon-btn:active {
+  transform: scale(0.94);
+  background: hsl(var(--muted) / 0.55);
 }
 
-.saidas-mobile-header-action-btn::before {
-  content: "";
-  flex-shrink: 0;
-  width: 0.34rem;
-  height: 0.34rem;
-  margin-right: 0.46rem;
-  border-radius: 9999px;
-  background: hsl(var(--primary));
-  box-shadow: 0 0 10px hsl(var(--primary) / 0.55);
+.saidas-mobile-header-icon-btn--pao {
+  background: hsl(var(--muted) / 0.28);
 }
 
-.saidas-mobile-header-action-btn--vistoria::before {
-  background: hsl(199 88% 58%);
-  box-shadow: 0 0 10px hsl(199 88% 58% / 0.5);
-}
-
-.saidas-mobile-header-action-btn--ocorrencias::before {
-  background: hsl(32 94% 58%);
-  box-shadow: 0 0 10px hsl(32 94% 58% / 0.5);
-}
-
-.saidas-mobile-header-action-btn:active {
-  transform: scale(0.985);
-  background: hsl(var(--primary) / 0.14);
-}
-
-.saidas-mobile-header-action-btn--vistoria:active {
-  background: hsl(199 88% 58% / 0.14);
-}
-
-.saidas-mobile-header-action-btn--ocorrencias:active {
-  background: hsl(32 94% 58% / 0.14);
-}
-
-@media (min-width: 360px) {
-  .saidas-mobile-header-action-btn {
-    padding: 0.46rem 0.74rem;
-    font-size: 0.806rem;
-  }
-}
-
-/* Cabeçalho mobile — painel de status (sync + motorista) */
-.saidas-mobile-header-status {
+.saidas-mobile-header-chip {
+  position: relative;
   display: flex;
-  width: fit-content;
-  min-width: 8.75rem;
-  max-width: 11.5rem;
-  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  border-radius: 0.875rem;
-  border: 1px solid hsl(var(--border) / 0.72);
-  background:
-    linear-gradient(165deg, hsl(var(--card) / 0.94) 0%, hsl(var(--muted) / 0.58) 100%);
-  box-shadow:
-    0 1px 0 0 hsl(var(--primary) / 0.14) inset,
-    0 10px 28px -14px hsl(222 47% 2% / 0.72),
-    0 0 0 1px hsl(var(--primary) / 0.07);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  border-radius: 0.78rem;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: hsl(var(--background) / 0.38);
+  padding: 0.48rem 0.42rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: hsl(var(--foreground) / 0.94);
+  transition:
+    transform 0.12s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
-.saidas-mobile-header-status-sync-trigger,
-.saidas-mobile-header-status-driver {
+.saidas-mobile-header-chip::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.95;
+}
+
+.saidas-mobile-header-chip--detalhe::before {
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.35));
+}
+
+.saidas-mobile-header-chip--vistoria::before {
+  background: linear-gradient(90deg, hsl(199 88% 58%), hsl(199 88% 58% / 0.35));
+}
+
+.saidas-mobile-header-chip--ocorrencias::before {
+  background: linear-gradient(90deg, hsl(32 94% 58%), hsl(32 94% 58% / 0.35));
+}
+
+.saidas-mobile-header-chip:active {
+  transform: scale(0.985);
+}
+
+.saidas-mobile-header-chip--detalhe:active {
+  background: hsl(var(--primary) / 0.12);
+}
+
+.saidas-mobile-header-chip--vistoria:active {
+  background: hsl(199 88% 58% / 0.12);
+}
+
+.saidas-mobile-header-chip--ocorrencias:active {
+  background: hsl(32 94% 58% / 0.12);
+}
+
+.saidas-mobile-header-session {
   display: flex;
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 0.34rem;
-  border: 0;
-  padding: 0.38rem 0.58rem;
-  font-size: 0.625rem;
+  gap: 0.42rem;
+  border-radius: 0.78rem;
+  border: 1px solid hsl(var(--border) / 0.48);
+  background: hsl(var(--background) / 0.34);
+  padding: 0.42rem 0.58rem;
+  font-size: 0.66rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
   line-height: 1.1;
   color: hsl(var(--foreground) / 0.92);
-  background: transparent;
-  transition:
-    background-color 0.18s ease,
-    transform 0.12s ease;
 }
 
-.saidas-mobile-header-status-sync-trigger {
-  border-bottom: 1px solid hsl(var(--border) / 0.42);
-  text-align: left;
+.saidas-mobile-header-session--active {
+  border-color: hsl(152 72% 38% / 0.38);
+  background: hsl(152 72% 42% / 0.08);
 }
 
-.saidas-mobile-header-status-sync-trigger:active {
-  transform: scale(0.985);
-}
-
-.saidas-mobile-header-status-sync-dot,
-.saidas-mobile-header-status-driver-dot {
+.saidas-mobile-header-session-dot {
   flex-shrink: 0;
-  width: 0.32rem;
-  height: 0.32rem;
+  width: 0.38rem;
+  height: 0.38rem;
   border-radius: 9999px;
+  background: hsl(var(--muted-foreground) / 0.55);
 }
 
-.saidas-mobile-header-status-sync-icon {
-  flex-shrink: 0;
-  width: 0.72rem;
-  height: 0.72rem;
-  opacity: 0.88;
+.saidas-mobile-header-session--active .saidas-mobile-header-session-dot {
+  background: hsl(152 72% 48%);
+  box-shadow: 0 0 8px hsl(152 72% 48% / 0.55);
 }
 
-.saidas-mobile-header-status-sync-label,
-.saidas-mobile-header-status-driver-label {
+.saidas-mobile-header-session-label {
   flex-shrink: 0;
   font-size: 0.58rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: hsl(var(--muted-foreground) / 0.95);
 }
 
-.saidas-mobile-header-status-sync-value,
-.saidas-mobile-header-status-driver-value,
-.saidas-mobile-header-status-driver-empty {
+.saidas-mobile-header-session-value,
+.saidas-mobile-header-session-empty {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: right;
 }
 
-.saidas-mobile-header-status-driver-empty {
+.saidas-mobile-header-session-empty {
   color: hsl(var(--muted-foreground) / 0.88);
   font-weight: 500;
 }
 
-.saidas-mobile-header-status-logout {
+.saidas-mobile-header-session-logout {
   flex-shrink: 0;
   border: 1px solid hsl(var(--border) / 0.72);
   border-radius: 9999px;
-  background: hsl(var(--card) / 0.72);
-  padding: 0.12rem 0.42rem;
+  background: hsl(var(--card) / 0.78);
+  padding: 0.16rem 0.48rem;
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -657,74 +706,170 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
     color 0.18s ease;
 }
 
-.saidas-mobile-header-status-logout:active {
+.saidas-mobile-header-session-logout:active {
   background: hsl(var(--muted) / 0.65);
   color: hsl(var(--foreground));
 }
 
-.saidas-mobile-header-status-sync-trigger--active .saidas-mobile-header-status-sync-dot,
-.saidas-mobile-header-status-driver--active .saidas-mobile-header-status-driver-dot {
-  background: hsl(152 72% 48%);
-  box-shadow: 0 0 8px hsl(152 72% 48% / 0.5);
+@media (min-width: 360px) {
+  .saidas-mobile-header-shell {
+    padding: 0.68rem 0.74rem 0.62rem;
+    gap: 0.62rem;
+  }
+
+  .saidas-mobile-header-brand-title {
+    font-size: 1.18rem;
+  }
+
+  .saidas-mobile-header-chip {
+    padding: 0.52rem 0.46rem;
+    font-size: 0.78rem;
+  }
+
+  .saidas-mobile-header-icon-btn {
+    height: 2.45rem;
+    width: 2.45rem;
+  }
 }
 
-.saidas-mobile-header-status-sync-trigger--syncing .saidas-mobile-header-status-sync-dot {
-  background: hsl(199 88% 58%);
-  box-shadow: 0 0 8px hsl(199 88% 58% / 0.5);
+/* Botão ícone de sync (nuvem) — integrado à toolbar */
+.saidas-mobile-cloud-sync-btn {
+  display: flex;
+  height: 2.35rem;
+  width: 2.35rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  transition:
+    transform 0.12s ease,
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
-.saidas-mobile-header-status-sync-trigger--warning .saidas-mobile-header-status-sync-dot {
-  background: hsl(32 94% 58%);
-  box-shadow: 0 0 8px hsl(32 94% 58% / 0.5);
+.saidas-mobile-cloud-sync-btn:active {
+  transform: scale(0.94);
 }
 
-.saidas-mobile-header-status-sync-trigger--error .saidas-mobile-header-status-sync-dot {
-  background: hsl(0 84% 58%);
-  box-shadow: 0 0 8px hsl(0 84% 58% / 0.5);
+.saidas-mobile-cloud-sync-btn--synced {
+  color: hsl(152 72% 42%);
+  background: hsl(152 72% 42% / 0.12);
 }
 
-.saidas-mobile-header-status-sync-trigger--muted .saidas-mobile-header-status-sync-dot,
-.saidas-mobile-header-status-driver .saidas-mobile-header-status-driver-dot {
-  background: hsl(var(--muted-foreground) / 0.55);
-  box-shadow: none;
+.saidas-mobile-cloud-sync-btn--syncing {
+  color: hsl(199 88% 58%);
+  background: hsl(199 88% 52% / 0.12);
 }
 
-.saidas-mobile-header-status-sync-trigger--active:active {
-  background: hsl(152 72% 48% / 0.12);
+.saidas-mobile-cloud-sync-btn--offline,
+.saidas-mobile-cloud-sync-btn--muted {
+  color: hsl(var(--muted-foreground) / 0.85);
 }
 
-.saidas-mobile-header-status-sync-trigger--syncing:active {
-  background: hsl(199 88% 58% / 0.12);
-}
-
-.saidas-mobile-header-status-sync-trigger--warning:active {
-  background: hsl(32 94% 58% / 0.12);
-}
-
-.saidas-mobile-header-status-sync-trigger--error:active {
+.saidas-mobile-cloud-sync-btn--error {
+  color: hsl(0 84% 58%);
   background: hsl(0 84% 58% / 0.12);
 }
 
-.saidas-mobile-header-status-sync-trigger--muted:active {
+.saidas-mobile-cloud-sync-btn-icon--pulse {
+  animation: saidas-mobile-cloud-sync-pulse 1.05s ease-in-out infinite;
+}
+
+@keyframes saidas-mobile-cloud-sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+}
+
+/* Embaçar conteúdo durante sync/carregamento */
+.saidas-mobile-scope--sync-blur {
+  pointer-events: none;
+  user-select: none;
+  filter: blur(7px) saturate(0.92);
+  transform: translateZ(0);
+  transition: filter 0.22s ease;
+}
+
+.mobile-sync-overlay-shimmer {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    hsl(0 0% 100% / 0.35) 45%,
+    transparent 90%
+  );
+  animation: mobile-sync-overlay-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes mobile-sync-overlay-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* Barra inferior mobile — Serviço / Administrativo */
+.saidas-mobile-tab {
+  display: flex;
+  min-height: 3.25rem;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.12s ease;
+}
+
+.saidas-mobile-tab:active {
+  transform: scale(0.985);
+}
+
+.saidas-mobile-tab--admin:not(.saidas-mobile-tab--active) {
+  color: hsl(32 96% 58%);
+}
+
+.saidas-mobile-tab--servico:not(.saidas-mobile-tab--active) {
+  color: hsl(187 95% 56%);
+}
+
+.saidas-mobile-tab--admin:not(.saidas-mobile-tab--active):hover,
+.saidas-mobile-tab--servico:not(.saidas-mobile-tab--active):hover {
   background: hsl(var(--muted) / 0.45);
 }
 
-@media (min-width: 360px) {
-  .saidas-mobile-header-status {
-    min-width: 9.25rem;
-    max-width: 12rem;
-  }
+.saidas-mobile-tab--active {
+  border-color: hsl(var(--primary) / 0.35);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 10px 28px -10px hsl(var(--primary) / 0.55);
+}
 
-  .saidas-mobile-header-status-sync-trigger,
-  .saidas-mobile-header-status-driver {
-    padding: 0.42rem 0.62rem;
-    font-size: 0.66rem;
-  }
-
-  .saidas-mobile-header-status-sync-label,
-  .saidas-mobile-header-status-driver-label {
-    font-size: 0.6rem;
-  }
+.saidas-mobile-tab--active.saidas-mobile-tab--admin,
+.saidas-mobile-tab--active.saidas-mobile-tab--servico {
+  color: hsl(var(--primary-foreground));
 }
 
 /* Leaflet — mapa fullscreen desktop (Passo 4) */

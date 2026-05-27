@@ -40,10 +40,10 @@ export function OccurrenceRubricaCapturePanel({
       <p className="text-sm text-[hsl(var(--muted-foreground))]">{description}</p>
       <RubricaSignaturePad key={padKey} ref={rubricaPadRef} initialDataUrl={initialRubrica} />
       <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" onClick={() => rubricaPadRef.current?.clearPad()}>
+        <Button type="button" variant="default" onClick={() => rubricaPadRef.current?.clearPad()}>
           Limpar
         </Button>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="default" onClick={onCancel}>
           Cancelar
         </Button>
         <Button type="button" variant="default" onClick={handleConfirmar}>

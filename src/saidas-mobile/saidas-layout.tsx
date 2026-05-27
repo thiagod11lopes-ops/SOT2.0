@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Ambulance, Building2, ShieldCheck, UserPlus } from "lucide-react";
+import { Ambulance, Building2 } from "lucide-react";
 import { DepartureOcorrenciasCreateModal } from "../components/departure-ocorrencias-create-modal";
 import { Button } from "../components/ui/button";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -27,13 +27,11 @@ import {
   disableMobilePushSubscriptionForMotorista,
   saveMobilePushSubscriptionForMotorista,
 } from "../lib/firebase/mobilePushSubscriptions";
-import { SaidasMobileHeaderStatus } from "./saidas-mobile-header-status";
-import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
+import { SaidasMobileHeader } from "./saidas-mobile-header";
 import { MobileVistoriaFullscreen } from "./mobile-vistoria-fullscreen";
 import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico-modal";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
-import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
 import { useMobileNavigationActive } from "./mobile-navigation-mode";
 
@@ -458,7 +456,6 @@ export function SaidasLayout() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">
-      <MobileLoadingOverlayHost />
       {vistoriaAdminModalOpen ? (
         <div
           className={`${MOBILE_MODAL_OVERLAY_CLASS} z-[520]`}
@@ -650,82 +647,20 @@ export function SaidasLayout() {
         alignTop
       />
       {navigationActive ? null : (
-      <header
-        className="sticky top-0 z-20 w-full min-w-0 overflow-x-hidden border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-1.5 pt-[calc(0.45rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
-        style={{ paddingTop: "max(0.45rem, var(--safe-top))" }}
-      >
-        <div className="mx-auto grid max-w-lg grid-cols-[1fr_auto_1fr] items-start gap-x-1">
-          <nav className="saidas-mobile-header-actions" aria-label="Ações rápidas">
-            <button
-              type="button"
-              onClick={() => setDetalheServicoOpen(true)}
-              className="saidas-mobile-header-action-btn"
-              aria-label="Detalhe de Serviço — serviço e rotina no dia do filtro"
-              title="Detalhe de Serviço"
-            >
-              Detalhe
-            </button>
-            <button
-              type="button"
-              onClick={openVistoriaWithFirebaseProgress}
-              className="saidas-mobile-header-action-btn saidas-mobile-header-action-btn--vistoria"
-              aria-label="Vistoria — calendário e checklist"
-              title="Vistoria"
-            >
-              Vistoria
-            </button>
-            <button
-              type="button"
-              onClick={() => setOcorrenciasModalOpen(true)}
-              className="saidas-mobile-header-action-btn saidas-mobile-header-action-btn--ocorrencias"
-              aria-label="Ocorrências — lista de ocorrências cadastradas"
-              title="Ocorrências"
-            >
-              Ocorrências
-            </button>
-          </nav>
-          <div className="flex min-w-0 flex-col items-center px-1 text-center">
-            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
-              SOT
-            </p>
-            <h1 className="truncate text-base font-bold leading-tight tracking-tight text-[hsl(var(--foreground))]">
-              Saídas
-            </h1>
-            <div className="mt-0.5">
-              <SaidasMobileHeaderStatus
-                motoristaLogado={motoristaLogadoMobile}
-                onLogout={handleLogoutMotoristaMobile}
-              />
-            </div>
-          </div>
-          <div className="flex min-w-0 items-center justify-end gap-1 min-[400px]:gap-1.5">
-            <SaidasHeaderEscalaPao />
-            <button
-              type="button"
-              onClick={() => {
-                setVistoriaAdminStep("motorista");
-                setVistoriaAdminMotoristaId("");
-                setVistoriaAdminSenha("");
-                setVistoriaAdminModalOpen(true);
-              }}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
-              aria-label="Vistoria administrativa — motorista e senha"
-              title="Vistoria administrativa"
-            >
-              <ShieldCheck className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCadastroCredModalOpen(true)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
-              aria-label="Cadastro de motorista para acesso mobile"
-              title="Cadastro de motorista (mobile)"
-            >
-              <UserPlus className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-            </button>
-          </div>
-        </div>
-      </header>
+        <SaidasMobileHeader
+          motoristaLogado={motoristaLogadoMobile}
+          onLogout={handleLogoutMotoristaMobile}
+          onDetalheServico={() => setDetalheServicoOpen(true)}
+          onVistoria={openVistoriaWithFirebaseProgress}
+          onOcorrencias={() => setOcorrenciasModalOpen(true)}
+          onVistoriaAdministrativa={() => {
+            setVistoriaAdminStep("motorista");
+            setVistoriaAdminMotoristaId("");
+            setVistoriaAdminSenha("");
+            setVistoriaAdminModalOpen(true);
+          }}
+          onCadastroMotorista={() => setCadastroCredModalOpen(true)}
+        />
       )}
 
       <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-lg flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain overscroll-x-none px-3 pb-28 pt-2 min-[480px]:px-4">
@@ -743,29 +678,25 @@ export function SaidasLayout() {
             to="/saidas/administrativas"
             className={({ isActive }) =>
               cn(
-                "flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.7rem] font-semibold transition",
-                isActive
-                  ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-lg shadow-[hsl(var(--primary))]/25"
-                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/50",
+                "saidas-mobile-tab saidas-mobile-tab--admin",
+                isActive && "saidas-mobile-tab--active",
               )
             }
           >
             <Building2 className="h-5 w-5" aria-hidden />
-            <span className="leading-none">Administrativas</span>
+            <span className="leading-none">Administrativo</span>
           </NavLink>
           <NavLink
             to="/saidas/ambulancia"
             className={({ isActive }) =>
               cn(
-                "flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.7rem] font-semibold transition",
-                isActive
-                  ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-lg shadow-[hsl(var(--primary))]/25"
-                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/50",
+                "saidas-mobile-tab saidas-mobile-tab--servico",
+                isActive && "saidas-mobile-tab--active",
               )
             }
           >
             <Ambulance className="h-5 w-5" aria-hidden />
-            <span className="leading-none">Ambulância</span>
+            <span className="leading-none">Serviço</span>
           </NavLink>
         </div>
       </nav>
