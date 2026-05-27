@@ -57,7 +57,10 @@ export function RelatorioDiarioViaturasCalendarPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmSalvoOpen]);
 
-  const pdfSalvoSet = useMemo(() => getPdfSalvoIsoSet(), []);
+  const pdfSalvoSet = useMemo(() => getPdfSalvoIsoSet(), [
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    tick,
+  ]);
 
   const calendarDays = useMemo(() => {
     const y = month.getFullYear();

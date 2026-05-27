@@ -250,10 +250,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     setActiveTab("Avisos");
   }
 
-  useEffect(() => {
-    const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -379,6 +375,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     );
   }, [
     detalheServicoBundle,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    vistoriaEscalaDataTick,
   ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {

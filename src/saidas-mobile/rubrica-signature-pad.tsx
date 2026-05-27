@@ -3,6 +3,7 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useCallback,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { cn } from "../lib/utils";

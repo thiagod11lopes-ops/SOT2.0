@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Ambulance, Building2 } from "lucide-react";
 import { DepartureOcorrenciasCreateModal } from "../components/departure-ocorrencias-create-modal";

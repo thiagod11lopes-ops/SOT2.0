@@ -383,7 +383,10 @@ export function SettingsPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [placasConsideradasParaMapaGps]);
 
-  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), []);
+  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    vistoriaCloudTick,
+  ]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
