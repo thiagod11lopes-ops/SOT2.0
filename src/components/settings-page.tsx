@@ -382,7 +382,7 @@ export function SettingsPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [placasConsideradasParaMapaGps]);
 
-  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), []);
+  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();

@@ -184,7 +184,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
       ctx.fillRect(0, 0, cw, ch);
     }
 
-    function sizeAndClear() {
+    const sizeAndClear = useCallback(() => {
       const host = canvasHostRef.current;
       const canvas = canvasRef.current;
       if (!host || !canvas) return;
@@ -199,7 +199,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       fillWhitePhysical(ctx, canvas.width, canvas.height);
-    }
+    }, [canvasRef, canvasHostRef]);
 
     function canvasXY(e: ReactPointerEvent<HTMLCanvasElement>) {
       const canvas = canvasRef.current;
@@ -210,7 +210,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
       return { x, y };
     }
 
-    function paintInitial(dataUrl: string) {
+    const paintInitial = useCallback((dataUrl: string) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -222,7 +222,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
         hasInkRef.current = true;
       };
       img.src = dataUrl;
-    }
+    }, [canvasRef, hasInkRef]);
 
     useEffect(() => {
       let cancelled = false;

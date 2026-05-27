@@ -1073,6 +1073,8 @@ export function DetalheServicoSheet() {
     });
   }, [
     monthYear,
+    year, // Adicionado
+    monthIndex, // Adicionado
     sheetLive,
     tableEditable,
     showRoTokens,

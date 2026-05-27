@@ -377,7 +377,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       buildViaturasPorMotoristaMap(asg),
       ins,
     );
-  }, [detalheServicoBundle, vistoriaEscalaDataTick]); // Re-adicionado vistoriaEscalaDataTick, removido relogio
+  }, [
+    detalheServicoBundle,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    vistoriaEscalaDataTick,
+  ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
     if (!notificacaoVistoriaAtivo) return false;
@@ -432,7 +436,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       (a, b) => a.localeCompare(b, "pt-BR"),
     );
     return { servico, rotina };
-  }, [detalheServicoBundle, relogio]);
+  }, [detalheServicoBundle]);
 
   const hasMotoristasServicoOuRotina =
     motoristasServicoRotinaHoje.servico.length > 0 || motoristasServicoRotinaHoje.rotina.length > 0;

@@ -165,12 +165,12 @@ export function SaidasLayout() {
     }
   }
 
-  function notifyAlarm(title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void {
+  const notifyAlarm = useCallback((title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void => {
     if (typeof window === "undefined") return;
     playAlarmBeep(sound);
     setAlarmToast({ title, body });
     void showLocalAlarmNotification(title, { body, tag: "sot-mobile-alarm", requireInteraction: true });
-  }
+  }, [playAlarmBeep, setAlarmToast, showLocalAlarmNotification]);
 
   const motoristasCatalogoOrdenados = useMemo(() => {
     const seen = new Set<string>();
