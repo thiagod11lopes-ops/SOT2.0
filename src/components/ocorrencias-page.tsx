@@ -16,16 +16,42 @@ export function OcorrenciasPage() {
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
 
   useEffect(() => {
-    // Aqui você faria a chamada à API para buscar as ocorrências reais.
-    // Por enquanto, vamos simular que não há ocorrências até que algo seja registrado.
-    // Exemplo de como você buscaria:
-    // fetch('/api/ocorrencias')
-    //   .then(res => res.json())
-    //   .then(data => setOccurrences(data))
-    //   .catch(error => console.error('Erro ao buscar ocorrências:', error));
-    
-    // Para simular dados vazios no início:
-    setOccurrences([]);
+    const fetchOccurrences = () => {
+      // Simula uma chamada de API para buscar ocorrências reais
+      const fetchedData: Occurrence[] = [
+        {
+          id: "o-12345",
+          timestamp: "2026-05-12 08:30:00",
+          description: "Colisão traseira leve",
+          details: "Amassado no para-choque traseiro, sem feridos. Envolvimento da placa RKK-9I27.",
+          placa: "RKK-9I27",
+          rubricas: ["Acidente", "Reparo"],
+        },
+        {
+          id: "o-67890",
+          timestamp: "2026-05-27 14:00:00",
+          description: "Problema no freio",
+          details: "Freio falhando intermitentemente. Necessita de inspeção urgente.",
+          placa: "JHL-5432",
+          rubricas: ["Manutenção", "Urgente"],
+        },
+        {
+          id: "o-11223",
+          timestamp: "2026-05-27 10:45:00",
+          description: "Farol queimado",
+          details: "Farol dianteiro esquerdo não acende.",
+          placa: "ABC-1234",
+          rubricas: ["Manutenção"],
+        },
+      ];
+
+      // Simula um atraso de rede
+      setTimeout(() => {
+        setOccurrences(fetchedData);
+      }, 500);
+    };
+
+    fetchOccurrences();
   }, []);
 
   return (
