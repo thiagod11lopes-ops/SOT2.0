@@ -1,6 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState } from "react";
-import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore"; // Importar Firebase
+// Importa o subscriber de departures e o tipo de registro
+import { subscribeDepartures, type DepartureRecord } from "../lib/firebase/departuresFirestore";
 
 
 // Componente para a página de Ocorrências
@@ -18,18 +19,31 @@ export function OcorrenciasPage() {
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
 
   useEffect(() => {
-    const unsubscribe = subscribeSotStateDoc(
-      SOT_STATE_DOC.ocorrenciasDesvinculadas,
-      (payload) => {
-        if (payload && Array.isArray(payload)) {
-          // Ordenar as ocorrências pelas mais atuais (timestamp decrescente)
-          const sortedOccurrences = (payload as Occurrence[]).sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-          setOccurrences(sortedOccurrences);
-        } else {
-          setOccurrences([]);
-        }
+    const unsubscribe = subscribeDepartures(
+      (departureRecords: DepartureRecord[]) => {
+        const extractedOccurrences: Occurrence[] = [];
+        departureRecords.forEach((record) => {
+          // Apenas adiciona se houver texto na ocorrência
+          if (record.ocorrencias && record.ocorrencias.trim().length > 0) {
+            extractedOccurrences.push({
+              id: record.id,
+              // Combina data e hora da saída para o timestamp
+              timestamp: `${record.dataSaida} ${record.horaSaida}`,
+              description: record.ocorrencias,
+              details: record.ocorrencias, // Usando o mesmo para detalhes por simplicidade
+              placa: record.viaturas || undefined, // A placa vem de 'viaturas'
+              rubricas: record.ocorrenciasRubrica
+                ? record.ocorrenciasRubrica.split(",").map((s) => s.trim())
+                : undefined,
+            });
+          }
+        });
+
+        // Ordenar as ocorrências pelas mais atuais (timestamp decrescente)
+        const sortedOccurrences = extractedOccurrences.sort((a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        setOccurrences(sortedOccurrences);
       },
       (error) => {
         console.error("Erro ao buscar ocorrências do Firestore:", error);
