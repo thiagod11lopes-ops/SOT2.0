@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Ambulance, Building2, ClipboardCheck, ShieldCheck, UserPlus } from "lucide-react";
-import { useDepartures } from "../context/departures-context";
-import { useCatalogItems } from "../context/catalog-items-context";
-import { CloudSyncIndicator } from "../components/cloud-sync-indicator";
+import { Ambulance, Building2, ShieldCheck, UserPlus } from "lucide-react";
+import { DepartureOcorrenciasCreateModal } from "../components/departure-ocorrencias-create-modal";
 import { Button } from "../components/ui/button";
+import { useCatalogItems } from "../context/catalog-items-context";
+import { useDepartures } from "../context/departures-context";
 import {
   findMobileMotoristaCredentialByName,
   loadActiveMobileMotorista,
@@ -27,11 +27,11 @@ import {
   disableMobilePushSubscriptionForMotorista,
   saveMobilePushSubscriptionForMotorista,
 } from "../lib/firebase/mobilePushSubscriptions";
+import { SaidasMobileHeaderStatus } from "./saidas-mobile-header-status";
 import { SaidasHeaderEscalaPao } from "./saidas-header-escala-pao";
 import { MobileVistoriaFullscreen } from "./mobile-vistoria-fullscreen";
 import { SaidasMobileDetalheServicoModal } from "./saidas-mobile-detalhe-servico-modal";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
-import { SteeringWheelIcon } from "./steering-wheel-icon";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { MobileLoadingOverlayHost } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
@@ -116,6 +116,7 @@ export function SaidasLayout() {
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
+  const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
   const [vistoriaMobileOpen, setVistoriaMobileOpen] = useState(false);
   const [vistoriaAdministrativaMotorista, setVistoriaAdministrativaMotorista] = useState<string | null>(null);
   const [vistoriaAdminModalOpen, setVistoriaAdminModalOpen] = useState(false);
@@ -640,39 +641,64 @@ export function SaidasLayout() {
         onOpenChange={setDetalheServicoOpen}
         filterDatePtBr={filterDatePtBr}
       />
+      <DepartureOcorrenciasCreateModal
+        open={ocorrenciasModalOpen}
+        onOpenChange={setOcorrenciasModalOpen}
+        defaultDatePtBr={filterDatePtBr}
+        viaturasAdministrativas={catalogItems.viaturasAdministrativas}
+        ambulancias={catalogItems.ambulancias}
+        alignTop
+      />
       {navigationActive ? null : (
       <header
-        className="sticky top-0 z-20 w-full min-w-0 overflow-x-hidden border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-3 pt-[calc(0.75rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
-        style={{ paddingTop: "max(0.75rem, var(--safe-top))" }}
+        className="sticky top-0 z-20 w-full min-w-0 overflow-x-hidden border-b border-[hsl(var(--border))]/90 bg-[hsl(var(--card))]/85 px-3 pb-1.5 pt-[calc(0.45rem+var(--safe-top))] backdrop-blur-xl sm:px-4"
+        style={{ paddingTop: "max(0.45rem, var(--safe-top))" }}
       >
-        <div className="relative mx-auto flex max-w-lg items-center justify-center gap-1.5 min-[400px]:gap-2">
-          <div className="absolute left-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1.5">
+        <div className="mx-auto grid max-w-lg grid-cols-[1fr_auto_1fr] items-start gap-x-1">
+          <nav className="saidas-mobile-header-actions" aria-label="Ações rápidas">
             <button
               type="button"
               onClick={() => setDetalheServicoOpen(true)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
+              className="saidas-mobile-header-action-btn"
               aria-label="Detalhe de Serviço — serviço e rotina no dia do filtro"
               title="Detalhe de Serviço"
             >
-              <SteeringWheelIcon className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" />
+              Detalhe
             </button>
             <button
               type="button"
               onClick={openVistoriaWithFirebaseProgress}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 text-[hsl(var(--foreground))] transition active:scale-[0.98]"
+              className="saidas-mobile-header-action-btn saidas-mobile-header-action-btn--vistoria"
               aria-label="Vistoria — calendário e checklist"
               title="Vistoria"
             >
-              <ClipboardCheck className="h-[1.15rem] w-[1.15rem] text-[hsl(var(--primary))]" />
+              Vistoria
             </button>
-          </div>
-          <div className="min-w-0 max-w-[calc(100%-15rem)] px-1 text-center sm:max-w-[calc(100%-16rem)]">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
+            <button
+              type="button"
+              onClick={() => setOcorrenciasModalOpen(true)}
+              className="saidas-mobile-header-action-btn saidas-mobile-header-action-btn--ocorrencias"
+              aria-label="Ocorrências — lista de ocorrências cadastradas"
+              title="Ocorrências"
+            >
+              Ocorrências
+            </button>
+          </nav>
+          <div className="flex min-w-0 flex-col items-center px-1 text-center">
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
               SOT
             </p>
-            <h1 className="truncate text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">Saídas</h1>
+            <h1 className="truncate text-base font-bold leading-tight tracking-tight text-[hsl(var(--foreground))]">
+              Saídas
+            </h1>
+            <div className="mt-0.5">
+              <SaidasMobileHeaderStatus
+                motoristaLogado={motoristaLogadoMobile}
+                onLogout={handleLogoutMotoristaMobile}
+              />
+            </div>
           </div>
-          <div className="absolute right-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1.5 min-[400px]:gap-2">
+          <div className="flex min-w-0 items-center justify-end gap-1 min-[400px]:gap-1.5">
             <SaidasHeaderEscalaPao />
             <button
               type="button"
@@ -698,27 +724,6 @@ export function SaidasLayout() {
               <UserPlus className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
             </button>
           </div>
-        </div>
-        <div className="mt-2 flex flex-col items-center gap-1">
-          <CloudSyncIndicator compact />
-          {motoristaLogadoMobile ? (
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="rounded-full border border-emerald-300/80 bg-emerald-100/80 px-2 py-0.5 font-medium text-emerald-900">
-                Motorista logado: {motoristaLogadoMobile}
-              </span>
-              <button
-                type="button"
-                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-0.5 text-[hsl(var(--muted-foreground))]"
-                onClick={handleLogoutMotoristaMobile}
-              >
-                Sair
-              </button>
-            </div>
-          ) : (
-            <span className="text-[11px] text-[hsl(var(--muted-foreground))]">
-              Sem motorista logado
-            </span>
-          )}
         </div>
       </header>
       )}

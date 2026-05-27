@@ -7,6 +7,7 @@ import { AppearanceProvider } from "./context/appearance-context";
 import { CatalogItemsProvider } from "./context/catalog-items-context";
 import { DeparturesReportEmailProvider } from "./context/departures-report-email-context";
 import { DeparturesProvider } from "./context/departures-context";
+import { UnlinkedOccurrencesProvider } from "./context/unlinked-occurrences-context";
 import { AvisosProvider } from "./context/avisos-context";
 import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
@@ -35,6 +36,7 @@ createRoot(rootEl).render(
           <DeparturesReportEmailProvider>
             <AlarmDismissProvider>
               <DeparturesProvider>
+                <UnlinkedOccurrencesProvider>
                 <AppTabProvider>
                   <BackupDeparturesLoader />
                   <CatalogItemsProvider>
@@ -56,6 +58,7 @@ createRoot(rootEl).render(
                     </LimpezaPendenteProvider>
                   </CatalogItemsProvider>
                 </AppTabProvider>
+                </UnlinkedOccurrencesProvider>
               </DeparturesProvider>
             </AlarmDismissProvider>
           </DeparturesReportEmailProvider>

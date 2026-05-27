@@ -110,6 +110,8 @@ export interface DeparturesListPdfParams {
   filterDate: string;
   rows: DepartureRecord[];
   signatures: DeparturesPdfSignatures;
+  /** Ocorrências sem placa — entre tabela e assinatura, alinhadas à direita. */
+  unlinkedOccurrences?: string[];
 }
 
 /**
@@ -262,6 +264,29 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
 
   const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? y + 40;
   y = finalY + 12;
+
+  const unlinked = (params.unlinkedOccurrences ?? []).map((t) => t.trim()).filter(Boolean);
+  if (unlinked.length > 0) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    doc.setTextColor(55, 55, 55);
+    const textBlockW = usableW * 0.58;
+    const rightX = pageW - margin;
+    for (const occ of unlinked) {
+      const lines = doc.splitTextToSize(`Ocorrências: ${occ}`, textBlockW) as string[];
+      const blockH = lines.length * 3.15 + 1.5;
+      if (y + blockH > pageH - 55) {
+        doc.addPage();
+        y = margin;
+      }
+      for (let i = 0; i < lines.length; i++) {
+        doc.text(lines[i]!, rightX, y + i * 3.15, { align: "right" });
+      }
+      y += blockH + 1.5;
+    }
+    doc.setTextColor(0, 0, 0);
+    y += 4;
+  }
 
   if (y > pageH - 55) {
     doc.addPage();

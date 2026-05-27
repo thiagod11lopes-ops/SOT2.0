@@ -37,6 +37,8 @@ export const SOT_STATE_DOC = {
   vistoria: "vistoria",
   /** Relatório Diário de Viaturas (carro-quebrado): mapa ISO data → relatório gravado. */
   rdvByDate: "rdvByDate",
+  /** Ocorrências sem placa vinculada (PDF entre tabela e assinatura). */
+  ocorrenciasDesvinculadas: "ocorrenciasDesvinculadas",
   /** Configuração OwnTracks (token partilhado + vínculos motorista→placa) — para iPhones. */
   owntracks: "owntracks",
 } as const;

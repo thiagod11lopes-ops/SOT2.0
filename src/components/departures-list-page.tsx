@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useUnlinkedOccurrences } from "../context/unlinked-occurrences-context";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import type { DeparturesListPdfParams } from "../lib/generateDeparturesPdf";
@@ -72,6 +73,7 @@ export function DeparturesListPage({
     useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { email: reportEmailDest } = useDeparturesReportEmail();
+  const { textsForPdf } = useUnlinkedOccurrences();
   const filterDateId = useId();
   const assinaturaSelectId = useId();
   const filterDateInputRef = useRef<HTMLInputElement>(null);
@@ -212,6 +214,7 @@ export function DeparturesListPage({
       filterDate: d,
       rows: departuresRowsForDate(d),
       signatures: { assinanteDivisao: nome },
+      unlinkedOccurrences: textsForPdf(d, filterTipo),
     }));
   }
 

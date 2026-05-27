@@ -7,9 +7,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type CloudSyncIndicatorProps = {
   compact?: boolean;
+  /** Integrado ao painel compacto do cabeçalho mobile. */
+  variant?: "default" | "mobileStatus";
+  className?: string;
 };
 
-export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps) {
+export function CloudSyncIndicator({
+  compact = false,
+  variant = "default",
+  className,
+}: CloudSyncIndicatorProps) {
   const { cloudDeparturesSync, forceCloudResync } = useDepartures();
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -32,6 +39,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
         label: "Local",
         detail: "Firebase desativado",
         icon: CloudOff,
+        tone: "muted" as const,
         className:
           "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 text-[hsl(var(--muted-foreground))]",
       };
@@ -41,6 +49,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
         label: "Offline",
         detail: "Sem internet",
         icon: CloudOff,
+        tone: "warning" as const,
         className:
           "border-amber-500/30 bg-amber-500/12 text-amber-200",
       };
@@ -50,6 +59,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
         label: "Erro nuvem",
         detail: cloudDeparturesSync.message || "Falha na sincronização",
         icon: TriangleAlert,
+        tone: "error" as const,
         className:
           "border-red-500/35 bg-red-500/12 text-red-200",
       };
@@ -59,6 +69,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
         label: "Sincronizando",
         detail: "Ligando ao Firebase",
         icon: RefreshCw,
+        tone: "syncing" as const,
         className:
           "border-blue-500/30 bg-blue-500/12 text-blue-200",
       };
@@ -67,6 +78,7 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
       label: "Nuvem ativa",
       detail: "Firestore (lista de saídas)",
       icon: Cloud,
+      tone: "active" as const,
       className:
         "border-emerald-800/70 bg-emerald-900/95 text-emerald-50 shadow-sm dark:border-emerald-950/80 dark:bg-emerald-950 dark:text-emerald-100",
     };
@@ -82,20 +94,38 @@ export function CloudSyncIndicator({ compact = false }: CloudSyncIndicatorProps)
       : "-";
 
   const Icon = view.icon;
+  const isMobileStatus = variant === "mobileStatus";
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
-            "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold",
-            view.className,
+            isMobileStatus
+              ? cn(
+                  "saidas-mobile-header-status-sync-trigger",
+                  `saidas-mobile-header-status-sync-trigger--${view.tone}`,
+                )
+              : "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold",
+            !isMobileStatus && view.className,
+            className,
           )}
           title={view.detail}
           aria-live="polite"
         >
-          <Icon className={cn("h-3.5 w-3.5", view.label === "Sincronizando" && "animate-spin")} />
-          <span>{compact ? view.label : `${view.label} - ${view.detail}`}</span>
+          {isMobileStatus ? (
+            <>
+              <span className="saidas-mobile-header-status-sync-dot" aria-hidden />
+              <Icon className={cn("saidas-mobile-header-status-sync-icon", view.label === "Sincronizando" && "animate-spin")} />
+              <span className="saidas-mobile-header-status-sync-label">Sync</span>
+              <span className="saidas-mobile-header-status-sync-value">{view.label}</span>
+            </>
+          ) : (
+            <>
+              <Icon className={cn("h-3.5 w-3.5", view.label === "Sincronizando" && "animate-spin")} />
+              <span>{compact ? view.label : `${view.label} - ${view.detail}`}</span>
+            </>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-3" align="end">

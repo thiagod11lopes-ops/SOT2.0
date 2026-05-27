@@ -48,7 +48,7 @@ import type { DepartureRecord, DepartureType } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
 import { CatalogComboField } from "./catalog-select";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
-import { DepartureOcorrenciasListModal } from "./departure-ocorrencias-list-modal";
+import { DepartureOcorrenciasCreateModal } from "./departure-ocorrencias-create-modal";
 import { RegisteredFullDeparturesTable } from "./registered-full-departures-table";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -1752,12 +1752,14 @@ export function RegisterDeparturePage() {
                 onTrashClick={(id) => setDeleteModalId(id)}
                 onEdit={beginEditDeparture}
               />
-              <DepartureOcorrenciasListModal
+              <DepartureOcorrenciasCreateModal
                 open={ocorrenciasModalOpen}
                 onOpenChange={setOcorrenciasModalOpen}
-                rows={departures}
-                viaturasOptions={mergedViaturasCatalogFull}
-                motoristasOptions={catalogItems.motoristas}
+                defaultDatePtBr={
+                  isCompleteDatePtBr(saidaFiltroDataSaida) ? saidaFiltroDataSaida : getCurrentDatePtBr()
+                }
+                viaturasAdministrativas={catalogItems.viaturasAdministrativas}
+                ambulancias={catalogItems.ambulancias}
               />
             </>
           ) : activeSubTab === "Cadastrar Itens" ? (
