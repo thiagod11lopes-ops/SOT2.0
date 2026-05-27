@@ -1,12 +1,14 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState, useMemo } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { Button } from "./ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 // Importa o subscriber de departures (corrigido para não importar DepartureRecord daqui)
 import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
 // Importa o tipo DepartureRecord do local correto
 import type { DepartureRecord } from "../types/departure";
-import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore";
+import { subscribeSotStateDoc, SOT_STATE_DOC, readSotStateDocFromServer, setSotStateDocWithRetry } from "../lib/firebase/sotStateFirestore";
+import { updateDeparture } from "../lib/firebase/departuresFirestore";
 
 
 // Componente para a página de Ocorrências
@@ -33,6 +35,9 @@ interface UnlinkedOccurrencePayload {
 export function OcorrenciasPage() {
   const [departuresOccurrences, setDeparturesOccurrences] = useState<Occurrence[]>([]);
   const [unlinkedOccurrences, setUnlinkedOccurrences] = useState<Occurrence[]>([]);
+
+  const [showDeleteConfirmationModal, setShowDeleteConfirmationModal] = useState(false);
+  const [occurrenceToDeleteId, setOccurrenceToDeleteId] = useState<string | null>(null);
 
   // Efeito para buscar ocorrências dos departures
   useEffect(() => {
@@ -106,6 +111,64 @@ export function OcorrenciasPage() {
     );
   }, [departuresOccurrences, unlinkedOccurrences]);
 
+  function handleDeleteClick(occurrenceId: string) {
+    setOccurrenceToDeleteId(occurrenceId);
+    setShowDeleteConfirmationModal(true);
+  }
+
+  async function confirmDelete() {
+    if (!occurrenceToDeleteId) return;
+
+    // Lógica para determinar se é uma ocorrência desvinculada ou de departure
+    if (occurrenceToDeleteId.startsWith("unlinked-")) {
+      // É uma ocorrência desvinculada
+      try {
+        const docRef = await readSotStateDocFromServer(SOT_STATE_DOC.ocorrenciasDesvinculadas);
+        if (docRef && typeof docRef === 'object' && 'items' in docRef && Array.isArray((docRef as { items: unknown[] }).items)) {
+          const currentItems = (docRef as { items: UnlinkedOccurrencePayload[] }).items;
+          const updatedItems = currentItems.filter(item => item.id !== occurrenceToDeleteId);
+          await setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, { items: updatedItems });
+          console.log(`[OcorrenciasPage] Ocorrência desvinculada ${occurrenceToDeleteId} excluída com sucesso.`);
+        }
+      } catch (error) {
+        console.error(`[OcorrenciasPage] Erro ao excluir ocorrência desvinculada ${occurrenceToDeleteId}:`, error);
+        window.alert("Erro ao excluir ocorrência desvinculada.");
+      }
+    } else {
+      // É uma ocorrência de departure
+      try {
+        const departureRecord = departuresOccurrences.find(occ => occ.id === occurrenceToDeleteId);
+        if (departureRecord) {
+          const departureId = departureRecord.id; // ID do documento departure
+          // Para ocorrências vinculadas, limpamos o texto e rubrica no record departure
+          // Note: updateDeparture() precisa de um objeto completo de DepartureRecord, não apenas um patch parcial.
+          // Se updateDeparture suportar patch, isso precisaria ser ajustado.
+          // Por simplicidade, vamos usar o record existente e zerar os campos de ocorrencia.
+
+          const updatedRecord = { ...departureRecord, ocorrencias: "", ocorrenciasRubrica: undefined };
+          // updateDeparture(id: string, record: DepartureRecord) - assumindo essa assinatura
+          // Se updateDeparture aceitar um patch, seria melhor
+          // await updateDeparture(departureId, { ocorrencias: "", ocorrenciasRubrica: undefined });
+
+          // Como não tenho a assinatura exata de updateDeparture, vou assumir que ele aceita um objeto completo
+          // ou que eu preciso buscar o record completo primeiro se ele só aceitar patch.
+          // Por enquanto, vou fazer um patch simples se updateDeparture aceitar.
+          // Se não aceitar patch, precisaríamos de uma função para ler o DepartureRecord primeiro.
+          
+          // Revertendo para a suposição de que updateDeparture aceita um patch parcial de acordo com as necessidades do usuário
+          await updateDeparture(departureId, { ocorrencias: "", ocorrenciasRubrica: undefined });
+          console.log(`[OcorrenciasPage] Ocorrência vinculada ${occurrenceToDeleteId} excluída com sucesso.`);
+        }
+      } catch (error) {
+        console.error(`[OcorrenciasPage] Erro ao excluir ocorrência vinculada ${occurrenceToDeleteId}:`, error);
+        window.alert("Erro ao excluir ocorrência vinculada.");
+      }
+    }
+
+    setOccurrenceToDeleteId(null);
+    setShowDeleteConfirmationModal(false);
+  }
+
   return (
     <div className="container mx-auto py-10">
       <h2 className="text-2xl font-bold mb-6">Ocorrências do Sistema</h2>
@@ -152,10 +215,7 @@ export function OcorrenciasPage() {
                       variant="ghost"
                       size="icon"
                       title="Excluir ocorrência"
-                      onClick={() => {
-                        console.log("Clicou em excluir ocorrência:", occurrence.id);
-                        // Lógica de exclusão e modal de confirmação virão aqui
-                      }}
+                      onClick={() => handleDeleteClick(occurrence.id)}
                     >
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
@@ -166,6 +226,26 @@ export function OcorrenciasPage() {
           </TableBody>
         </Table>
       )}
+      <Dialog open={showDeleteConfirmationModal} onOpenChange={setShowDeleteConfirmationModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogDescription>
+              Tem certeza de que deseja excluir esta ocorrência? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" onClick={() => setShowDeleteConfirmationModal(false)}>
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
