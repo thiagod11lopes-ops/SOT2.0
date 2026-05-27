@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { useEffect, useState, useMemo } from "react"; // Adicionado useMemo
+import { useEffect, useState, useMemo } from "react";
 import { subscribeDepartures, type DepartureRecord } from "../lib/firebase/departuresFirestore";
-import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore"; // Importado para ocorrenciasDesvinculadas
+import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore";
 
 
 // Componente para a página de Ocorrências
@@ -38,7 +38,7 @@ export function OcorrenciasPage() {
               id: record.id,
               timestamp: `${record.dataSaida} ${record.horaSaida}`,
               description: record.ocorrencias,
-              details: record.ocorrencias, // Usando o mesmo para detalhes por simplicidade
+              details: record.ocorrencias,
               placa: record.viaturas || undefined,
               rubricas: record.ocorrenciasRubrica
                 ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim())
@@ -63,11 +63,11 @@ export function OcorrenciasPage() {
       (payload) => {
         if (payload && Array.isArray(payload)) {
           const extractedUnlinked: Occurrence[] = (payload as UnlinkedOccurrencePayload[]).map((item, index) => ({
-            id: `unlinked-${index}-${item.data}-${item.hora}`, // Gerar um ID único
+            id: `unlinked-${index}-${item.data}-${item.hora}`,
             timestamp: `${item.data} ${item.hora}`,
             description: item.texto,
             details: item.texto,
-            placa: undefined, // Sem placa para ocorrências desvinculadas
+            placa: undefined,
             rubricas: item.rubrica ? [item.rubrica] : undefined,
           }));
           setUnlinkedOccurrences(extractedUnlinked);
