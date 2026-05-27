@@ -1,5 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState, useMemo } from "react";
+import { Trash2 } from "lucide-react";
+import { Button } from "./ui/button";
 // Importa o subscriber de departures (corrigido para não importar DepartureRecord daqui)
 import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
 // Importa o tipo DepartureRecord do local correto
@@ -146,7 +148,17 @@ export function OcorrenciasPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {/* Botão de lixeira será adicionado aqui */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Excluir ocorrência"
+                      onClick={() => {
+                        console.log("Clicou em excluir ocorrência:", occurrence.id);
+                        // Lógica de exclusão e modal de confirmação virão aqui
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );
