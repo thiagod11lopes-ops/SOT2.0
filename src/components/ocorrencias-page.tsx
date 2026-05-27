@@ -1,5 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
+// Componente para a página de Ocorrências
+
 interface Occurrence {
   id: string;
   timestamp: string;
