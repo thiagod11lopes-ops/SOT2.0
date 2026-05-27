@@ -90,6 +90,7 @@ export function DepartureOcorrenciasCreateModal({
     const record = pendingRecordRef.current;
     if (!record) return;
     const { id, createdAt, ...rest } = record;
+    void createdAt;
     updateDeparture(id, {
       ...rest,
       ocorrencias: textoFinal,

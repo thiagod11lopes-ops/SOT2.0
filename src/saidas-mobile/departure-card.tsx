@@ -1,10 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
-import {
-  DepartureOccurrenceLinesList,
-  occurrenceEntriesFromRecords,
-} from "../components/departure-occurrence-line";
+import { DepartureOccurrenceLinesList } from "../components/departure-occurrence-line";
+import { occurrenceEntriesFromRecords } from "../lib/departureOccurrenceEntries";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
