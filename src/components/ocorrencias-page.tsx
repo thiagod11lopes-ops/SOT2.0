@@ -8,7 +8,7 @@ import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
 // Importa o tipo DepartureRecord do local correto
 import type { DepartureRecord } from "../types/departure";
 import { subscribeSotStateDoc, SOT_STATE_DOC, readSotStateDocFromServer, setSotStateDocWithRetry } from "../lib/firebase/sotStateFirestore";
-import { updateDeparture } from "../lib/firebase/departuresFirestore";
+import { upsertDepartureRecord } from "../lib/firebase/departuresFirestore";
 
 
 // Componente para a página de Ocorrências
@@ -146,7 +146,7 @@ export function OcorrenciasPage() {
           // Se updateDeparture suportar patch, isso precisaria ser ajustado.
           // Por simplicidade, vamos usar o record existente e zerar os campos de ocorrencia.
 
-          await updateDeparture(departureId, { ocorrencias: "", ocorrenciasRubrica: undefined });
+          await upsertDepartureRecord({ ...departureRecord, ocorrencias: "", ocorrenciasRubrica: undefined });
           console.log(`[OcorrenciasPage] Ocorrência vinculada ${occurrenceToDeleteId} excluída com sucesso.`);
         }
       } catch (error) {
@@ -236,7 +236,7 @@ export function OcorrenciasPage() {
                 Cancelar
               </Button>
             </DialogClose>
-            <Button variant="destructive" onClick={confirmDelete}>
+            <Button variant="default" onClick={confirmDelete}>
               Excluir
             </Button>
           </DialogFooter>
