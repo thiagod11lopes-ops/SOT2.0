@@ -1,6 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useEffect, useState, useMemo } from "react";
-import { subscribeDepartures, type DepartureRecord } from "../lib/firebase/departuresFirestore";
+// Importa o subscriber de departures
+import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
+// Importa o tipo DepartureRecord do local correto
+import type { DepartureRecord } from "../types/departure"; // CORRIGIDO AQUI
 import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore";
 
 

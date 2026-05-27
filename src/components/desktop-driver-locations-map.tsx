@@ -797,7 +797,7 @@ function MapLeafletHost({
     return () => {
       if (refitTimer !== undefined) window.clearTimeout(refitTimer);
     };
-  }, [visible, pins, vehicleTypeByPlaca, catalogHint]);
+  }, [visible, pins, vehicleTypeByPlaca, catalogHint, layerRef, mapRef]); // Adicionado layerRef e mapRef
 
   return null;
 }

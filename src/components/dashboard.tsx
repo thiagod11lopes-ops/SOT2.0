@@ -351,7 +351,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const placasInoperantesRdv = rdvFrotaHome.inoperantesComObs;
   const placasDestacadasRdv = rdvFrotaHome.placasDestacadas;
   /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
-  const agoraDashboard = useMemo(() => new Date(), [relogio]);
+  const agoraDashboard = useMemo(() => new Date(), []);
 
   /** Só mostra alarmes com «Ativo» em Avisos, a partir do horário (não antes), depois de disparar. */
   const alarmesNaHome = useMemo(
@@ -377,7 +377,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       buildViaturasPorMotoristaMap(asg),
       ins,
     );
-  }, [detalheServicoBundle, relogio, vistoriaEscalaDataTick]);
+  }, [detalheServicoBundle]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
     if (!notificacaoVistoriaAtivo) return false;
