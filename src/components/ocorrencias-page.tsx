@@ -20,10 +20,13 @@ import {
   setSotStateDocWithRetry,
 } from "../lib/firebase/sotStateFirestore";
 import { cn } from "../lib/utils";
+import { normalizeLegacyDateToPtBr } from "../lib/dateFormat";
+import { parseHhMm, normalize24hTime } from "../lib/timeInput";
 
 interface Occurrence {
   id: string;
-  timestamp: string;
+  dataLabel: string;
+  horaLabel: string;
   sortKey: number;
   description: string;
   placa?: string;
@@ -60,6 +63,32 @@ function rubricasFromDepartureField(value: string | undefined): string[] | undef
   return parts.length > 0 ? parts : undefined;
 }
 
+function formatTimeFromEpoch(epoch: number | undefined): string | null {
+  if (!epoch || !Number.isFinite(epoch) || epoch <= 0) return null;
+  return new Date(epoch).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function formatLinkedOccurrenceData(record: DepartureRecord): string {
+  const normalized = normalizeLegacyDateToPtBr(record.dataSaida ?? "");
+  return normalized || "—";
+}
+
+function formatLinkedOccurrenceHora(record: DepartureRecord): string {
+  const rawHora = (record.horaSaida ?? "").trim();
+  if (!rawHora) return "—";
+  const parsed = parseHhMm(rawHora);
+  if (parsed) {
+    return `${String(parsed.h).padStart(2, "0")}:${String(parsed.m).padStart(2, "0")}`;
+  }
+  const normalized = normalize24hTime(rawHora);
+  if (normalized) return normalized;
+  return rawHora;
+}
+
 function RubricaCell({ rubricas }: { rubricas?: string[] }) {
   if (!rubricas || rubricas.length === 0) {
     return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
@@ -94,7 +123,8 @@ export function OcorrenciasPage() {
           if (record.ocorrencias && record.ocorrencias.trim().length > 0) {
             extractedOccurrences.push({
               id: record.id,
-              timestamp: `${record.dataSaida} ${record.horaSaida}`,
+              dataLabel: formatLinkedOccurrenceData(record),
+              horaLabel: formatLinkedOccurrenceHora(record),
               sortKey: record.createdAt ?? 0,
               description: record.ocorrencias,
               placa: record.viaturas.trim() || undefined,
@@ -126,14 +156,11 @@ export function OcorrenciasPage() {
         ) {
           const rawItems = (payload as { items: UnlinkedOccurrencePayload[] }).items;
           const extractedUnlinked: Occurrence[] = rawItems.map((item) => {
-            const time = new Date(item.createdAt).toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            });
             return {
               id: item.id,
-              timestamp: `${item.dataSaida} ${time}`,
+              dataLabel: normalizeLegacyDateToPtBr(item.dataSaida) || "—",
+              horaLabel:
+                formatTimeFromEpoch(item.createdAt) ?? "—",
               sortKey: item.createdAt,
               description: item.texto,
               placa: undefined,
@@ -256,18 +283,16 @@ export function OcorrenciasPage() {
               </TableRow>
             </TableHeader>
             <TableBody className="[&_tr:nth-child(odd)]:bg-transparent [&_tr:nth-child(even)]:bg-[hsl(var(--muted))]/20">
-              {allOccurrences.map((occurrence) => {
-                const [datePart, timePart] = occurrence.timestamp.split(" ");
-                return (
+              {allOccurrences.map((occurrence) => (
                   <TableRow
                     key={occurrence.id}
                     className="group border-[hsl(var(--border))]/60 transition-colors hover:bg-[hsl(var(--accent))]/30"
                   >
                     <TableCell className="whitespace-nowrap font-medium tabular-nums text-[hsl(var(--foreground))]">
-                      {datePart}
+                      {occurrence.dataLabel}
                     </TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums text-[hsl(var(--muted-foreground))]">
-                      {timePart ?? "—"}
+                      {occurrence.horaLabel}
                     </TableCell>
                     <TableCell className="max-w-md">
                       <p className="line-clamp-3 text-sm leading-snug text-[hsl(var(--foreground))]">
@@ -315,8 +340,7 @@ export function OcorrenciasPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                );
-              })}
+              ))}
             </TableBody>
           </Table>
         </div>
