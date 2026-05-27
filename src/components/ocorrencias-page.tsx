@@ -67,7 +67,6 @@ export function OcorrenciasPage() {
             <TableRow>
               <TableHead>Data/Hora</TableHead>
               <TableHead>Descrição</TableHead>
-              <TableHead>Detalhes</TableHead>
               <TableHead>Placa</TableHead>
               <TableHead>Rubricas</TableHead>
             </TableRow>
@@ -77,7 +76,6 @@ export function OcorrenciasPage() {
               <TableRow key={occurrence.id}>
                 <TableCell>{occurrence.timestamp}</TableCell>
                 <TableCell>{occurrence.description}</TableCell>
-                <TableCell>{occurrence.details}</TableCell>
                 <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
                 <TableCell>{occurrence.rubricas?.join(", ") ?? "N/A"}</TableCell>
               </TableRow>
