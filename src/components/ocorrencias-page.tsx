@@ -146,17 +146,6 @@ export function OcorrenciasPage() {
           // Se updateDeparture suportar patch, isso precisaria ser ajustado.
           // Por simplicidade, vamos usar o record existente e zerar os campos de ocorrencia.
 
-          const updatedRecord = { ...departureRecord, ocorrencias: "", ocorrenciasRubrica: undefined };
-          // updateDeparture(id: string, record: DepartureRecord) - assumindo essa assinatura
-          // Se updateDeparture aceitar um patch, seria melhor
-          // await updateDeparture(departureId, { ocorrencias: "", ocorrenciasRubrica: undefined });
-
-          // Como não tenho a assinatura exata de updateDeparture, vou assumir que ele aceita um objeto completo
-          // ou que eu preciso buscar o record completo primeiro se ele só aceitar patch.
-          // Por enquanto, vou fazer um patch simples se updateDeparture aceitar.
-          // Se não aceitar patch, precisaríamos de uma função para ler o DepartureRecord primeiro.
-          
-          // Revertendo para a suposição de que updateDeparture aceita um patch parcial de acordo com as necessidades do usuário
           await updateDeparture(departureId, { ocorrencias: "", ocorrenciasRubrica: undefined });
           console.log(`[OcorrenciasPage] Ocorrência vinculada ${occurrenceToDeleteId} excluída com sucesso.`);
         }
@@ -231,6 +220,12 @@ export function OcorrenciasPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogClose asChild>
+              <Button variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowDeleteConfirmationModal(false)}>
+                <X className="h-4 w-4" />
+                <span className="sr-only">Fechar</span>
+              </Button>
+            </DialogClose>
             <DialogDescription>
               Tem certeza de que deseja excluir esta ocorrência? Esta ação não pode ser desfeita.
             </DialogDescription>

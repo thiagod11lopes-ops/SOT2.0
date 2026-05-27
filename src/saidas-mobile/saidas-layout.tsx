@@ -133,7 +133,6 @@ export function SaidasLayout() {
     lastVistoriaKey: "",
   });
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- Função de utilidade que não precisa de useCallback
   function playAlarmBeep(sound: AlarmesConfig["beforeDepartureSound"]) {
     if (typeof window === "undefined") return;
     const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;

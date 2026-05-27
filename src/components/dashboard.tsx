@@ -374,8 +374,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     );
   }, [
     detalheServicoBundle,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
-    vistoriaEscalaDataTick,
   ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
