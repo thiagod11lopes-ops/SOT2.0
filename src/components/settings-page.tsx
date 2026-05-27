@@ -329,7 +329,6 @@ export function SettingsPage() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Usado como dependência para forçar re-avaliação
   const [vistoriaCloudTick, setVistoriaCloudTick] = useState(0);
   const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
   const [kmSenhaNova, setKmSenhaNova] = useState("");
@@ -384,7 +383,7 @@ export function SettingsPage() {
   }, [placasConsideradasParaMapaGps]);
 
   const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
     vistoriaCloudTick,
   ]);
 

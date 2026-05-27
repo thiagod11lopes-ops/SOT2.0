@@ -227,7 +227,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Usado como dependência para forçar re-avaliação
   const [vistoriaEscalaDataTick, setVistoriaEscalaDataTick] = useState(0);
 
   useEffect(() => {
@@ -375,7 +374,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     );
   }, [
     detalheServicoBundle,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
     vistoriaEscalaDataTick,
   ]);
 

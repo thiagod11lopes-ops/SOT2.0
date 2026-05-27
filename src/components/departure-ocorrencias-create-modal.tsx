@@ -120,8 +120,10 @@ export function DepartureOcorrenciasCreateModal({
     }
 
     if (placa === NAO_VINCULAR_PLACA_VALUE) {
-      setRubricaPadKey((k) => k + 1);
-      setStep("rubrica");
+      // Para ocorrências desvinculadas, não precisamos de assinatura.
+      // O campo 'rubrica' aqui deve ser texto, então passamos undefined.
+      addUnlinkedOccurrence({ dataSaida: data, tipo, texto: textoFinal, rubrica: undefined });
+      fechar();
       return;
     }
 

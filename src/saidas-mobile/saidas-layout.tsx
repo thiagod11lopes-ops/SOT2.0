@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Ambulance, Building2 } from "lucide-react";
 import { DepartureOcorrenciasCreateModal } from "../components/departure-ocorrencias-create-modal";
@@ -133,7 +133,8 @@ export function SaidasLayout() {
     lastVistoriaKey: "",
   });
 
-  const playAlarmBeep = useCallback((sound: AlarmesConfig["beforeDepartureSound"]) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Função de utilidade que não precisa de useCallback
+  function playAlarmBeep(sound: AlarmesConfig["beforeDepartureSound"]) {
     if (typeof window === "undefined") return;
     const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
@@ -163,7 +164,7 @@ export function SaidasLayout() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }
 
   const notifyAlarm = useCallback((title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void => {
     if (typeof window === "undefined") return;
