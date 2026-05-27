@@ -115,7 +115,20 @@ export function OcorrenciasPage() {
                 <TableCell>{occurrence.timestamp}</TableCell>
                 <TableCell>{occurrence.description}</TableCell>
                 <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
-                <TableCell>{occurrence.rubricas?.join(", ") ?? "N/A"}</TableCell>
+                <TableCell>
+                  {occurrence.rubricas && occurrence.rubricas.length > 0 ? (
+                    (() => {
+                      const firstRubrica = occurrence.rubricas[0];
+                      if (firstRubrica && firstRubrica.startsWith("data:image")) {
+                        return <img src={firstRubrica} alt="Rubrica" style={{ maxWidth: "100px", maxHeight: "50px", objectFit: "contain" }} />;
+                      } else {
+                        return occurrence.rubricas.join(", ");
+                      }
+                    })()
+                  ) : (
+                    "N/A"
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
