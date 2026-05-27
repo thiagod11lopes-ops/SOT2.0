@@ -155,6 +155,10 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         // Chamada explícita para o Firebase aqui
         if (useCloud) {
           console.log("[SOT] Tentando gravar ocorrência desvinculada no Firebase:", nextDoc);
+          if (nextDoc.items.length > 0 && nextDoc.items[nextDoc.items.length - 1]?.rubrica) {
+            console.log("[SOT] Rubrica enviada (última ocorrência):", nextDoc.items[nextDoc.items.length - 1].rubrica.substring(0, 100) + "..."); // Mostra os primeiros 100 caracteres
+            console.log("[SOT] Tamanho total da rubrica enviada:", nextDoc.items[nextDoc.items.length - 1].rubrica.length);
+          }
           void setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, nextDoc).catch((e) => {
             console.error("[SOT] Erro ao gravar ocorrência desvinculada na nuvem:", e);
           });

@@ -65,8 +65,9 @@ export function OcorrenciasPage() {
       SOT_STATE_DOC.ocorrenciasDesvinculadas,
       (payload) => {
         console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas:", payload);
-        if (payload && Array.isArray(payload)) {
-          const extractedUnlinked: Occurrence[] = (payload as UnlinkedOccurrencePayload[]).map((item, index) => ({
+        if (payload && typeof payload === 'object' && 'items' in payload && Array.isArray((payload as { items: unknown[] }).items)) {
+          const rawItems = (payload as { items: UnlinkedOccurrencePayload[] }).items;
+          const extractedUnlinked: Occurrence[] = rawItems.map((item, index) => ({
             id: `unlinked-${index}-${item.data}-${item.hora}`,
             timestamp: `${item.data} ${item.hora}`,
             description: item.texto,
