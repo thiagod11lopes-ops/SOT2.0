@@ -960,7 +960,6 @@ export function RegisterDeparturePage() {
     viaturasCatalogForCurrentTipo,
     catalogItems.motoristas,
     rdvPlacasNaOficinaLower,
-    rdvPlacasInoperantes,
   ]);
 
   const canSubmitWithCatalog = catalogBlockingLabels.length === 0;

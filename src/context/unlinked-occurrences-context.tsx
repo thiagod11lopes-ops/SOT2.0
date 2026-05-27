@@ -161,7 +161,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         return nextDoc;
       });
     },
-    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas],
+    [bumpLocalMutation, useCloud],
   );
 
   const entriesForPdf = useCallback(

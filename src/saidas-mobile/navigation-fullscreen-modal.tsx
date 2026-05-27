@@ -1342,7 +1342,7 @@ export function NavigationFullScreenModal({
       lat: origin.lat + (view3D ? 0 : NAV_2D_OFFSET_LAT_DEGREES),
       lng: origin.lng,
     });
-  }, [navigating, mapInstance, origin, userPanned]);
+  }, [navigating, mapInstance, origin, userPanned, view3D]);
 
   // ---------------------------------------------------------------------------
   // 6c-bis) Aplica/remove tilt + heading sempre que `view3D` muda em modo

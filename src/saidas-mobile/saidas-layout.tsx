@@ -452,7 +452,7 @@ export function SaidasLayout() {
       if (timer) window.clearTimeout(timer);
       unsubVistoria();
     };
-  }, [motoristaLogadoMobile, departures]);
+  }, [motoristaLogadoMobile, departures, notifyAlarm]);
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">

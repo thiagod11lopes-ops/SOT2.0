@@ -96,7 +96,7 @@ export function HomeViewportScale({ children }: HomeViewportScaleProps) {
       outer.style.overflowY = "";
       outer.style.overflowX = "";
     };
-  }, []);
+  }, [zoomMode]);
 
   return (
     <div ref={outerRef} className={cn("flex min-h-0 w-full flex-1 flex-col")}>

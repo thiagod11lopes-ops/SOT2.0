@@ -377,7 +377,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       buildViaturasPorMotoristaMap(asg),
       ins,
     );
-  }, [detalheServicoBundle]);
+  }, [detalheServicoBundle, vistoriaEscalaDataTick]); // Re-adicionado vistoriaEscalaDataTick, removido relogio
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
     if (!notificacaoVistoriaAtivo) return false;

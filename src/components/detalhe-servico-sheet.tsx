@@ -1081,7 +1081,6 @@ export function DetalheServicoSheet() {
     feriasForMonth,
     portraitMode,
     portraitRows,
-    prevMonthSheet,
     feriasObservacoesRetrato,
   ]);
 

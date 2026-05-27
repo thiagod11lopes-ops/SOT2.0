@@ -245,7 +245,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
         cancelAnimationFrame(raf1);
         cancelAnimationFrame(raf2);
       };
-    }, [initialDataUrl, nomeTrim]);
+    }, [initialDataUrl, nomeTrim, paintInitial, sizeAndClear]);
 
     function onPointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
       e.preventDefault();
@@ -319,7 +319,7 @@ export const RubricaSignaturePad = forwardRef<RubricaSignaturePadHandle, Props>(
           sizeAndClear();
         },
       }),
-      [nomeTrim],
+      [nomeTrim, sizeAndClear],
     );
 
     return (

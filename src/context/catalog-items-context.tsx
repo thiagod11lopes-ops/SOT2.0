@@ -243,7 +243,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [useCloud]);
+  }, [useCloud, markInitialLoadComplete]);
 
   useEffect(() => {
     if (!useCloud) return;

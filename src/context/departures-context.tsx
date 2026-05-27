@@ -308,7 +308,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [useCloud]);
+  }, [useCloud, markInitialLoadComplete]);
 
   useEffect(() => {
     if (!useCloud) {
