@@ -113,16 +113,17 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
     void saveUnlinkedOccurrencesToIdb(doc);
   }, [doc, idbReady]);
 
-  useEffect(() => {
-    if (!idbReady || !hydratedRef.current || !useCloud) return;
-    if (applyingRemoteRef.current) {
-      applyingRemoteRef.current = false;
-      return;
-    }
-    void setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, doc).catch((e) => {
-      console.error("[SOT] Gravar ocorrências desvinculadas na nuvem:", e);
-    });
-  }, [doc, useCloud, idbReady]);
+  // Remover este useEffect pois a gravação é feita diretamente em addUnlinkedOccurrence
+  // useEffect(() => {
+  //   if (!idbReady || !hydratedRef.current || !useCloud) return;
+  //   if (applyingRemoteRef.current) {
+  //     applyingRemoteRef.current = false;
+  //     return;
+  //   }
+  //   void setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, doc).catch((e) => {
+  //     console.error("[SOT] Gravar ocorrências desvinculadas na nuvem:", e);
+  //   });
+  // }, [doc, useCloud, idbReady]);
 
   const addUnlinkedOccurrence = useCallback(
     (args: { dataSaida: string; tipo: DepartureType; texto: string; rubrica?: string }) => {
@@ -130,7 +131,18 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
       const dataSaida = args.dataSaida.trim();
       const rubrica = (args.rubrica ?? "").trim();
       if (!texto || !dataSaida) return;
-      bumpLocalMutation();
+
+      bumpLocalMutation(); // Sinaliza uma mutação local para potencialmente suprimir o remoto por um tempo
+
+      const newUnlinkedItem = {
+        id: newUnlinkedOccurrenceId(),
+        dataSaida,
+        tipo: args.tipo,
+        texto,
+        rubrica,
+        createdAt: Date.now(),
+      };
+
       setDoc((prev) => {
         const nextDoc = {
           items: [
@@ -147,7 +159,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         return nextDoc;
       });
     },
-    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas],
+    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas], // Corrigido
   );
 
   const entriesForPdf = useCallback(
