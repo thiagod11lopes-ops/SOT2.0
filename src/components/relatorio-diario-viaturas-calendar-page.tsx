@@ -28,6 +28,7 @@ function navigateToRdv(iso: string) {
 
 export function RelatorioDiarioViaturasCalendarPage() {
   const [month, setMonth] = useState(() => startOfLocalMonth(new Date()));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Usado como dependência para forçar re-avaliação
   const [tick, setTick] = useState(0);
   const [confirmSalvoOpen, setConfirmSalvoOpen] = useState(false);
   const [pendingIso, setPendingIso] = useState<string | null>(null);

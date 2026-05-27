@@ -133,7 +133,7 @@ export function SaidasLayout() {
     lastVistoriaKey: "",
   });
 
-  function playAlarmBeep(sound: AlarmesConfig["beforeDepartureSound"]) {
+  const playAlarmBeep = useCallback((sound: AlarmesConfig["beforeDepartureSound"]) => {
     if (typeof window === "undefined") return;
     const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
@@ -163,7 +163,7 @@ export function SaidasLayout() {
     } catch {
       /* ignore */
     }
-  }
+  }, []);
 
   const notifyAlarm = useCallback((title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void => {
     if (typeof window === "undefined") return;
