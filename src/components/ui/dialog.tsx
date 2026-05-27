@@ -100,7 +100,6 @@ export {
   DialogPortal,
   DialogOverlay,
   DialogTrigger,
-  DialogClose: DialogPrimitive.Close,
   DialogContent,
   DialogHeader,
   DialogFooter,

@@ -140,7 +140,6 @@ export function OcorrenciasPage() {
       try {
         const departureRecord = departuresOccurrences.find(occ => occ.id === occurrenceToDeleteId);
         if (departureRecord) {
-          const departureId = departureRecord.id; // ID do documento departure
           // Para ocorrências vinculadas, limpamos o texto e rubrica no record departure
           // Note: updateDeparture() precisa de um objeto completo de DepartureRecord, não apenas um patch parcial.
           // Se updateDeparture suportar patch, isso precisaria ser ajustado.
