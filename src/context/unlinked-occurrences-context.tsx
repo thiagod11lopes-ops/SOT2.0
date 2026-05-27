@@ -126,7 +126,12 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
   // }, [doc, useCloud, idbReady]);
 
   const addUnlinkedOccurrence = useCallback(
-    (args: { dataSaida: string; tipo: DepartureType; texto: string; rubrica?: string }) => {
+    (args: {
+      dataSaida: string;
+      tipo: DepartureType;
+      texto: string;
+      rubrica?: string;
+    }) => {
       const texto = args.texto.trim();
       const dataSaida = args.dataSaida.trim();
       const rubrica = (args.rubrica ?? "").trim();
@@ -145,10 +150,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
 
       setDoc((prev) => {
         const nextDoc = {
-          items: [
-            ...prev.items,
-            newUnlinkedItem,
-          ],
+          items: [...prev.items, newUnlinkedItem],
         };
         // Chamada explícita para o Firebase aqui
         if (useCloud) {
@@ -159,7 +161,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
         return nextDoc;
       });
     },
-    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas], // Corrigido
+    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas],
   );
 
   const entriesForPdf = useCallback(
