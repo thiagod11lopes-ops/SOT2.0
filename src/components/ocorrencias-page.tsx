@@ -2,7 +2,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useEffect, useState, useMemo } from "react";
 import { Trash2, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { useAuth, useLogin } from "../context/auth-context";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 // Importa o subscriber de departures (corrigido para não importar DepartureRecord daqui)
 import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
@@ -21,7 +20,6 @@ interface Occurrence {
   details: string; // Manter para compatibilidade, mas não será exibido
   placa?: string;
   rubricas?: string[];
-  motorista: string;
 }
 
 // Tipo para as ocorrências desvinculadas
@@ -38,7 +36,6 @@ export function OcorrenciasPage() {
   const [departuresOccurrences, setDeparturesOccurrences] = useState<Occurrence[]>([]);
   const [unlinkedOccurrences, setUnlinkedOccurrences] = useState<Occurrence[]>([]);
 
-  const { motoristaLogado } = useAuth(); // Obter o motorista logado
 
   const [showDeleteConfirmationModal, setShowDeleteConfirmationModal] = useState(false);
   const [occurrenceToDeleteId, setOccurrenceToDeleteId] = useState<string | null>(null);
@@ -59,7 +56,6 @@ export function OcorrenciasPage() {
               rubricas: record.ocorrenciasRubrica
                 ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim())
                 : undefined,
-              motorista: record.motoristas || "N/A",
             });
           }
         });
@@ -91,7 +87,6 @@ export function OcorrenciasPage() {
               details: item.texto,
               placa: undefined,
               rubricas: item.rubrica ? [item.rubrica] : undefined,
-              motorista: motoristaLogado || "N/A",
             };
           });
           console.log("[OcorrenciasPage] Ocorrências desvinculadas extraídas:", extractedUnlinked);
@@ -186,7 +181,6 @@ export function OcorrenciasPage() {
             <TableRow>
             <TableHead>Data</TableHead>
               <TableHead>Hora</TableHead>
-              <TableHead>Motorista</TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead>Placa</TableHead>
               <TableHead>Rubricas</TableHead>
@@ -200,7 +194,6 @@ export function OcorrenciasPage() {
                 <TableRow key={occurrence.id}>
                   <TableCell>{datePart}</TableCell>
                   <TableCell>{timePart}</TableCell>
-                  <TableCell>{occurrence.motorista}</TableCell>
                   <TableCell>{occurrence.description}</TableCell>
                   <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
                   <TableCell>
