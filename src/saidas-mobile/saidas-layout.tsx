@@ -166,12 +166,13 @@ export function SaidasLayout() {
     }
   }
 
-  const notifyAlarm = useCallback((title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Função de utilidade que não precisa de useCallback
+  function notifyAlarm(title: string, body: string, sound: AlarmesConfig["beforeDepartureSound"]): void {
     if (typeof window === "undefined") return;
     playAlarmBeep(sound);
     setAlarmToast({ title, body });
     void showLocalAlarmNotification(title, { body, tag: "sot-mobile-alarm", requireInteraction: true });
-  }, [playAlarmBeep, setAlarmToast]);
+  }
 
   const motoristasCatalogoOrdenados = useMemo(() => {
     const seen = new Set<string>();
