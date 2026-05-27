@@ -20,10 +20,12 @@ interface Occurrence {
 
 // Tipo para as ocorrências desvinculadas
 interface UnlinkedOccurrencePayload {
-  data: string; // Ex: "2026-05-12"
-  hora: string; // Ex: "08:30:00"
-  texto: string; // Descrição da ocorrência
-  rubrica?: string; // Rubrica da ocorrência (pode ser uma string única)
+  createdAt: number;
+  id: string;
+  dataSaida: string;
+  tipo: string;
+  texto: string;
+  rubrica?: string;
 }
 
 export function OcorrenciasPage() {
@@ -67,14 +69,18 @@ export function OcorrenciasPage() {
         console.log("[OcorrenciasPage] Payload de ocorrências desvinculadas:", payload);
         if (payload && typeof payload === 'object' && 'items' in payload && Array.isArray((payload as { items: unknown[] }).items)) {
           const rawItems = (payload as { items: UnlinkedOccurrencePayload[] }).items;
-          const extractedUnlinked: Occurrence[] = rawItems.map((item, index) => ({
-            id: `unlinked-${index}-${item.data}-${item.hora}`,
-            timestamp: `${item.data} ${item.hora}`,
-            description: item.texto,
-            details: item.texto,
-            placa: undefined,
-            rubricas: item.rubrica ? [item.rubrica] : undefined,
-          }));
+          const extractedUnlinked: Occurrence[] = rawItems.map((item) => {
+            const date = item.dataSaida;
+            const time = new Date(item.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            return {
+              id: item.id,
+              timestamp: `${date} ${time}`,
+              description: item.texto,
+              details: item.texto,
+              placa: undefined,
+              rubricas: item.rubrica ? [item.rubrica] : undefined,
+            };
+          });
           console.log("[OcorrenciasPage] Ocorrências desvinculadas extraídas:", extractedUnlinked);
           setUnlinkedOccurrences(extractedUnlinked);
         } else {
@@ -107,35 +113,44 @@ export function OcorrenciasPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Data/Hora</TableHead>
+            <TableHead>Data</TableHead>
+              <TableHead>Hora</TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead>Placa</TableHead>
               <TableHead>Rubricas</TableHead>
+              <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {allOccurrences.map((occurrence) => (
-              <TableRow key={occurrence.id}>
-                <TableCell>{occurrence.timestamp}</TableCell>
-                <TableCell>{occurrence.description}</TableCell>
-                <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
-                <TableCell>
-                  {occurrence.rubricas && occurrence.rubricas.length > 0 ? (
-                    (() => {
-                      const firstRubrica = occurrence.rubricas[0];
-                      console.log("[OcorrenciasPage] Rubrica para renderizar:", firstRubrica);
-                      if (firstRubrica && firstRubrica.startsWith("data:image")) {
-                        return <img src={firstRubrica} alt="Rubrica" style={{ maxWidth: "100px", maxHeight: "50px", objectFit: "contain" }} />;
-                      } else {
-                        return occurrence.rubricas.join(", ");
-                      }
-                    })()
-                  ) : (
-                    "N/A"
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+            {allOccurrences.map((occurrence) => {
+              const [datePart, timePart] = occurrence.timestamp.split(" ");
+              return (
+                <TableRow key={occurrence.id}>
+                  <TableCell>{datePart}</TableCell>
+                  <TableCell>{timePart}</TableCell>
+                  <TableCell>{occurrence.description}</TableCell>
+                  <TableCell>{occurrence.placa ?? "N/A"}</TableCell>
+                  <TableCell>
+                    {occurrence.rubricas && occurrence.rubricas.length > 0 ? (
+                      (() => {
+                        const firstRubrica = occurrence.rubricas[0];
+                        console.log("[OcorrenciasPage] Rubrica para renderizar:", firstRubrica);
+                        if (firstRubrica && firstRubrica.startsWith("data:image")) {
+                          return <img src={firstRubrica} alt="Rubrica" style={{ maxWidth: "100px", maxHeight: "50px", objectFit: "contain" }} />;
+                        } else {
+                          return occurrence.rubricas.join(", ");
+                        }
+                      })()
+                    ) : (
+                      "N/A"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {/* Botão de lixeira será adicionado aqui */}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
