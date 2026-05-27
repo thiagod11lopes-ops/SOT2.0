@@ -5,6 +5,7 @@ export type UnlinkedDepartureOccurrence = {
   dataSaida: string;
   tipo: DepartureType;
   texto: string;
+  rubrica: string;
   createdAt: number;
 };
 

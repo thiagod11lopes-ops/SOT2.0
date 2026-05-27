@@ -73,7 +73,7 @@ export function DeparturesListPage({
     useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { email: reportEmailDest } = useDeparturesReportEmail();
-  const { textsForPdf } = useUnlinkedOccurrences();
+  const { entriesForPdf } = useUnlinkedOccurrences();
   const filterDateId = useId();
   const assinaturaSelectId = useId();
   const filterDateInputRef = useRef<HTMLInputElement>(null);
@@ -214,7 +214,7 @@ export function DeparturesListPage({
       filterDate: d,
       rows: departuresRowsForDate(d),
       signatures: { assinanteDivisao: nome },
-      unlinkedOccurrences: textsForPdf(d, filterTipo),
+      unlinkedOccurrences: entriesForPdf(d, filterTipo),
     }));
   }
 

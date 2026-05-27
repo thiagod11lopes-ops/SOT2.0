@@ -180,12 +180,12 @@ export function DepartureCard({
     setOpen(false);
   }
 
-  function handleSalvarOcorrencias(departureId: string, texto: string) {
+  function handleSalvarOcorrencias(departureId: string, texto: string, rubrica: string) {
     if (!updateDeparture) return;
     const { id, createdAt, ...rest } = record;
     void id;
     void createdAt;
-    updateDeparture(departureId, { ...rest, ocorrencias: texto });
+    updateDeparture(departureId, { ...rest, ocorrencias: texto, ocorrenciasRubrica: rubrica });
   }
 
   function applyAdminCadastroPatch(partial: Partial<DepartureRecord>) {

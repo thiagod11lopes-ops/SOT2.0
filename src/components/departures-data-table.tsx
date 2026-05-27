@@ -192,13 +192,13 @@ export function DeparturesDataTable({
     [rows, ocorrenciasModalId],
   );
 
-  function handleSalvarOcorrencias(departureId: string, texto: string) {
+  function handleSalvarOcorrencias(departureId: string, texto: string, rubrica: string) {
     const d = rows.find((r) => r.id === departureId);
     if (!d) return;
     const { id, createdAt, ...rest } = d;
     void id;
     void createdAt;
-    updateDeparture(departureId, { ...rest, ocorrencias: texto });
+    updateDeparture(departureId, { ...rest, ocorrencias: texto, ocorrenciasRubrica: rubrica });
   }
   const colSpan = showTipoColumn ? 12 : 11;
   const cell = (extra?: string) =>

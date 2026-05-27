@@ -1030,6 +1030,7 @@ export function RegisterDeparturePage() {
       rubrica: "",
       cancelada: false,
       ocorrencias: "",
+      ocorrenciasRubrica: "",
     };
     if (editingId) {
       const prev = departures.find((d) => d.id === editingId);
@@ -1039,6 +1040,7 @@ export function RegisterDeparturePage() {
           rubrica: prev.rubrica,
           cancelada: prev.cancelada,
           ocorrencias: prev.ocorrencias,
+          ocorrenciasRubrica: prev.ocorrenciasRubrica,
         };
       }
     }
@@ -1183,6 +1185,7 @@ export function RegisterDeparturePage() {
       rubrica: "",
       cancelada: false,
       ocorrencias: "",
+      ocorrenciasRubrica: "",
     };
 
     for (const d of dates) {
@@ -1261,6 +1264,7 @@ export function RegisterDeparturePage() {
       rubrica: "",
       cancelada: false,
       ocorrencias: "",
+      ocorrenciasRubrica: "",
     };
 
     for (const d of dates) {

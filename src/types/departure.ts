@@ -44,6 +44,8 @@ export interface DepartureRecord {
   cancelada: boolean;
   /** Notas de ocorrência (texto livre); exibido abaixo da linha no PDF. */
   ocorrencias: string;
+  /** Rubrica desenhada associada à ocorrência (PNG data URL); ao lado do texto no PDF. */
+  ocorrenciasRubrica: string;
 }
 
 const CAMPOS_CADASTRO_SAIDA: readonly Exclude<
@@ -75,6 +77,7 @@ const CAMPOS_CADASTRO_SAIDA: readonly Exclude<
   "rubrica",
   "cancelada",
   "ocorrencias",
+  "ocorrenciasRubrica",
 ];
 
 /** Identifica registros com o mesmo conteúdo de cadastro (todos os campos do formulário, exceto id/data). */

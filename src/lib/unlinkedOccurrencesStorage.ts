@@ -12,6 +12,7 @@ export function normalizeUnlinkedOccurrencesDoc(raw: unknown): UnlinkedOccurrenc
     if (!entry || typeof entry !== "object") continue;
     const o = entry as Partial<UnlinkedDepartureOccurrence>;
     const texto = typeof o.texto === "string" ? o.texto.trim() : "";
+    const rubrica = typeof o.rubrica === "string" ? o.rubrica.trim() : "";
     const dataSaidaFixed = typeof o.dataSaida === "string" ? o.dataSaida.trim() : "";
     if (!texto || !dataSaidaFixed) continue;
     if (o.tipo !== "Administrativa" && o.tipo !== "Ambulância") continue;
@@ -20,6 +21,7 @@ export function normalizeUnlinkedOccurrencesDoc(raw: unknown): UnlinkedOccurrenc
       dataSaida: dataSaidaFixed,
       tipo: o.tipo,
       texto,
+      rubrica,
       createdAt: typeof o.createdAt === "number" && Number.isFinite(o.createdAt) ? o.createdAt : Date.now(),
     });
   }

@@ -58,6 +58,7 @@ function newAmbulanciaPayload(dataSaida: string): Omit<DepartureRecord, "id" | "
     rubrica: "",
     cancelada: false,
     ocorrencias: "",
+    ocorrenciasRubrica: "",
   };
 }
 

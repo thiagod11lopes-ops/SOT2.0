@@ -106,7 +106,8 @@ function departureRowsEqual(a: DepartureRecord, b: DepartureRecord): boolean {
     a.bairro === b.bairro &&
     a.rubrica === b.rubrica &&
     a.cancelada === b.cancelada &&
-    a.ocorrencias === b.ocorrencias
+    a.ocorrencias === b.ocorrencias &&
+    a.ocorrenciasRubrica === b.ocorrenciasRubrica
   );
 }
 

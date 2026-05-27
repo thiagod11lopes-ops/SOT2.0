@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Ambulance, Building2 } from "lucide-react";
 import { useDepartures } from "../context/departures-context";
 import { useUnlinkedOccurrences } from "../context/unlinked-occurrences-context";
@@ -6,10 +6,11 @@ import { findDeparturesForOccurrenceLink } from "../lib/findDeparturesForOccurre
 import type { DepartureRecord, DepartureType } from "../types/departure";
 import { NAO_VINCULAR_PLACA_VALUE } from "../types/unlinkedOccurrence";
 import { MergedDeparturePickRecordModal } from "./merged-departure-pick-record-modal";
+import { OccurrenceRubricaCapturePanel } from "./occurrence-rubrica-capture-panel";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 
-type Step = "tipo" | "form";
+type Step = "tipo" | "form" | "rubrica";
 
 type Props = {
   open: boolean;
@@ -42,6 +43,8 @@ export function DepartureOcorrenciasCreateModal({
   const [texto, setTexto] = useState("");
   const [pickRecords, setPickRecords] = useState<DepartureRecord[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
+  const pendingRecordRef = useRef<DepartureRecord | null>(null);
+  const [rubricaPadKey, setRubricaPadKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -52,6 +55,8 @@ export function DepartureOcorrenciasCreateModal({
     setTexto("");
     setPickRecords([]);
     setPickOpen(false);
+    pendingRecordRef.current = null;
+    setRubricaPadKey((k) => k + 1);
   }, [open, defaultDatePtBr]);
 
   const placaOptions = useMemo(() => {
@@ -71,10 +76,33 @@ export function DepartureOcorrenciasCreateModal({
     setStep("form");
   }
 
-  function salvarEmRegisto(record: DepartureRecord, textoFinal: string) {
+  function salvarComRubrica(rubricaDataUrl: string) {
+    const textoFinal = texto.trim();
+    const data = dataSaida.trim();
+    if (!tipo || !textoFinal) return;
+
+    if (placa === NAO_VINCULAR_PLACA_VALUE) {
+      addUnlinkedOccurrence({ dataSaida: data, tipo, texto: textoFinal, rubrica: rubricaDataUrl });
+      fechar();
+      return;
+    }
+
+    const record = pendingRecordRef.current;
+    if (!record) return;
     const { id, createdAt, ...rest } = record;
-    updateDeparture(id, { ...rest, ocorrencias: textoFinal });
+    updateDeparture(id, {
+      ...rest,
+      ocorrencias: textoFinal,
+      ocorrenciasRubrica: rubricaDataUrl,
+    });
+    pendingRecordRef.current = null;
     fechar();
+  }
+
+  function iniciarRubricaParaRegisto(record: DepartureRecord) {
+    pendingRecordRef.current = record;
+    setRubricaPadKey((k) => k + 1);
+    setStep("rubrica");
   }
 
   function concluirGuardar() {
@@ -91,8 +119,8 @@ export function DepartureOcorrenciasCreateModal({
     }
 
     if (placa === NAO_VINCULAR_PLACA_VALUE) {
-      addUnlinkedOccurrence({ dataSaida: data, tipo, texto: textoFinal });
-      fechar();
+      setRubricaPadKey((k) => k + 1);
+      setStep("rubrica");
       return;
     }
 
@@ -111,7 +139,7 @@ export function DepartureOcorrenciasCreateModal({
     }
 
     if (matches.length === 1) {
-      salvarEmRegisto(matches[0]!, textoFinal);
+      iniciarRubricaParaRegisto(matches[0]!);
       return;
     }
 
@@ -174,11 +202,11 @@ export function DepartureOcorrenciasCreateModal({
                 </Button>
               </div>
             </>
-          ) : (
+          ) : step === "form" ? (
             <>
               <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
                 {tipo === "Ambulância" ? "Serviço" : "Administrativa"} — vincule a uma placa ou registe sem viatura
-                (aparece no PDF entre a tabela e a assinatura, alinhada à direita).
+                (aparece no PDF entre a tabela e a assinatura, alinhada à esquerda).
               </p>
 
               <div className="mt-4 space-y-3">
@@ -241,6 +269,14 @@ export function DepartureOcorrenciasCreateModal({
                 </Button>
               </div>
             </>
+          ) : (
+            <div className="mt-3">
+              <OccurrenceRubricaCapturePanel
+                padKey={rubricaPadKey}
+                onCancel={() => setStep("form")}
+                onConfirm={salvarComRubrica}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -251,8 +287,8 @@ export function DepartureOcorrenciasCreateModal({
         records={pickRecords}
         action="ocorrencias"
         onSelect={(record) => {
-          salvarEmRegisto(record, texto.trim());
           setPickOpen(false);
+          iniciarRubricaParaRegisto(record);
         }}
       />
     </>

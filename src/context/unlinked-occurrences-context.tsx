@@ -17,6 +17,7 @@ import {
   newUnlinkedOccurrenceId,
   saveUnlinkedOccurrencesToIdb,
 } from "../lib/unlinkedOccurrencesStorage";
+import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import type { DepartureType } from "../types/departure";
 import { normalizeLegacyDateToPtBr } from "../lib/dateFormat";
 import type { UnlinkedDepartureOccurrence, UnlinkedOccurrencesDoc } from "../types/unlinkedOccurrence";
@@ -28,8 +29,9 @@ type UnlinkedOccurrencesContextValue = {
     dataSaida: string;
     tipo: DepartureType;
     texto: string;
+    rubrica?: string;
   }) => void;
-  textsForPdf: (dataSaida: string, tipo: DepartureType) => string[];
+  entriesForPdf: (dataSaida: string, tipo: DepartureType) => PdfOccurrenceEntry[];
 };
 
 const UnlinkedOccurrencesContext = createContext<UnlinkedOccurrencesContextValue | null>(null);
@@ -109,9 +111,10 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
   }, [doc, useCloud, idbReady]);
 
   const addUnlinkedOccurrence = useCallback(
-    (args: { dataSaida: string; tipo: DepartureType; texto: string }) => {
+    (args: { dataSaida: string; tipo: DepartureType; texto: string; rubrica?: string }) => {
       const texto = args.texto.trim();
       const dataSaida = args.dataSaida.trim();
+      const rubrica = (args.rubrica ?? "").trim();
       if (!texto || !dataSaida) return;
       bumpLocalMutation();
       setDoc((prev) => ({
@@ -122,6 +125,7 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
             dataSaida,
             tipo: args.tipo,
             texto,
+            rubrica,
             createdAt: Date.now(),
           },
         ],
@@ -130,14 +134,17 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
     [bumpLocalMutation],
   );
 
-  const textsForPdf = useCallback(
-    (dataSaida: string, tipo: DepartureType) => {
+  const entriesForPdf = useCallback(
+    (dataSaida: string, tipo: DepartureType): PdfOccurrenceEntry[] => {
       const d = normalizeLegacyDateToPtBr(dataSaida.trim());
       return doc.items
         .filter((i) => normalizeLegacyDateToPtBr(i.dataSaida) === d && i.tipo === tipo)
         .sort((a, b) => a.createdAt - b.createdAt)
-        .map((i) => i.texto.trim())
-        .filter(Boolean);
+        .map((i) => ({
+          texto: i.texto.trim(),
+          rubrica: i.rubrica.trim() || undefined,
+        }))
+        .filter((e) => e.texto.length > 0);
     },
     [doc.items],
   );
@@ -146,9 +153,9 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
     () => ({
       items: doc.items,
       addUnlinkedOccurrence,
-      textsForPdf,
+      entriesForPdf,
     }),
-    [doc.items, addUnlinkedOccurrence, textsForPdf],
+    [doc.items, addUnlinkedOccurrence, entriesForPdf],
   );
 
   return (

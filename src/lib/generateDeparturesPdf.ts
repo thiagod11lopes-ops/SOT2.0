@@ -8,6 +8,7 @@ import {
   type DepartureRecord,
   type DepartureType,
 } from "../types/departure";
+import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 
 export interface DeparturesPdfSignatures {
   /** Nome do assinante (Divisão de Transporte). */
@@ -104,14 +105,74 @@ function safeFileSegment(value: string): string {
   return value.replace(/[^\d\-a-zA-ZÀ-ÿ]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "documento";
 }
 
+const PDF_OCC_RUBRICA_W_MM = 22;
+const PDF_OCC_RUBRICA_H_MM = 10;
+
+function drawOccurrenceRubricaBeside(
+  doc: jsPDF,
+  rubricaRaw: string | undefined,
+  x: number,
+  y: number,
+  maxHeightMm: number,
+): void {
+  const raw = (rubricaRaw ?? "").trim();
+  if (!isRubricaImageDataUrl(raw)) return;
+  const imgW = PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE;
+  const imgH = Math.min(maxHeightMm, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
+  try {
+    doc.addImage(raw, "PNG", x, y, imgW, imgH);
+  } catch {
+    /* ignore */
+  }
+}
+
+function drawUnlinkedOccurrenceBlock(
+  doc: jsPDF,
+  entry: PdfOccurrenceEntry,
+  leftX: number,
+  y: number,
+  blockWidthMm: number,
+  pageH: number,
+  margin: number,
+): number {
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7.5);
+  doc.setTextColor(55, 55, 55);
+  const rubricaW =
+    entry.rubrica && isRubricaImageDataUrl(entry.rubrica)
+      ? PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE + 2
+      : 0;
+  const textW = Math.max(40, blockWidthMm - rubricaW);
+  const lines = doc.splitTextToSize(`Ocorrências: ${entry.texto}`, textW) as string[];
+  const lineH = 3.15;
+  const textH = lines.length * lineH;
+  const imgH =
+    entry.rubrica && isRubricaImageDataUrl(entry.rubrica)
+      ? PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE
+      : 0;
+  const blockH = Math.max(textH, imgH) + 1.5;
+  if (y + blockH > pageH - 55) {
+    doc.addPage();
+    y = margin;
+  }
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i]!, leftX, y + i * lineH);
+  }
+  if (entry.rubrica) {
+    drawOccurrenceRubricaBeside(doc, entry.rubrica, leftX + textW + 1.5, y, blockH);
+  }
+  doc.setTextColor(0, 0, 0);
+  return y + blockH + 1.5;
+}
+
 export interface DeparturesListPdfParams {
   listTitle: string;
   tipo: DepartureType;
   filterDate: string;
   rows: DepartureRecord[];
   signatures: DeparturesPdfSignatures;
-  /** Ocorrências sem placa — entre tabela e assinatura, alinhadas à direita. */
-  unlinkedOccurrences?: string[];
+  /** Ocorrências sem placa — entre tabela e assinatura, alinhadas à esquerda. */
+  unlinkedOccurrences?: PdfOccurrenceEntry[];
 }
 
 /**
@@ -145,6 +206,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
 
   /** Índice da linha da tabela → índice em `params.rows`, ou `occ` para linha de ocorrências. */
   const rowMap: Array<number | "occ"> = [];
+  const occRowMeta: PdfOccurrenceEntry[] = [];
   const tableBody: (
     | [string, string, string, string, string, string, string, string, string, string]
     | [{ content: string; colSpan: number; styles: Record<string, unknown> }]
@@ -176,6 +238,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       for (const rec of g.records) {
         const occ = (rec.ocorrencias ?? "").trim();
         if (occ) {
+          const occRubrica = (rec.ocorrenciasRubrica ?? "").trim() || undefined;
           tableBody.push([
             {
               content: `Ocorrências: ${occ}`,
@@ -184,11 +247,13 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
                 fontSize: 6.2,
                 fontStyle: "italic",
                 textColor: [55, 55, 55],
-                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: 2 },
+                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: occRubrica ? 26 : 2 },
+                halign: "left",
               },
             },
           ]);
           rowMap.push("occ");
+          occRowMeta.push({ texto: occ, rubrica: occRubrica });
         }
       }
     }
@@ -226,7 +291,15 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       9: { cellWidth: 30 },
     },
     didParseCell: (data) => {
-      if (data.section !== "body" || data.column.index !== 9) return;
+      if (data.section !== "body") return;
+      if (rowMap[data.row.index] === "occ" && data.column.index === 0) {
+        const meta = occRowMeta[data.row.index];
+        if (meta?.rubrica && isRubricaImageDataUrl(meta.rubrica)) {
+          data.cell.styles.minCellHeight = 12;
+        }
+        return;
+      }
+      if (data.column.index !== 9) return;
       const m = rowMap[data.row.index];
       if (m === "occ" || m === undefined) return;
       const row = params.rows[m];
@@ -238,7 +311,24 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       }
     },
     didDrawCell: (data) => {
-      if (data.section !== "body" || data.column.index !== 9) return;
+      if (data.section !== "body") return;
+      if (rowMap[data.row.index] === "occ" && data.column.index === 0) {
+        const meta = occRowMeta[data.row.index];
+        if (meta?.rubrica) {
+          const pad = 0.35;
+          const imgW = PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE;
+          const imgH = Math.min(data.cell.height - pad * 2, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
+          drawOccurrenceRubricaBeside(
+            data.doc,
+            meta.rubrica,
+            data.cell.x + data.cell.width - imgW - pad,
+            data.cell.y + pad,
+            imgH,
+          );
+        }
+        return;
+      }
+      if (data.column.index !== 9) return;
       const m = rowMap[data.row.index];
       if (m === "occ" || m === undefined) return;
       const row = params.rows[m];
@@ -265,26 +355,12 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? y + 40;
   y = finalY + 12;
 
-  const unlinked = (params.unlinkedOccurrences ?? []).map((t) => t.trim()).filter(Boolean);
+  const unlinked = (params.unlinkedOccurrences ?? []).filter((e) => e.texto.trim().length > 0);
   if (unlinked.length > 0) {
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(7.5);
-    doc.setTextColor(55, 55, 55);
-    const textBlockW = usableW * 0.58;
-    const rightX = pageW - margin;
-    for (const occ of unlinked) {
-      const lines = doc.splitTextToSize(`Ocorrências: ${occ}`, textBlockW) as string[];
-      const blockH = lines.length * 3.15 + 1.5;
-      if (y + blockH > pageH - 55) {
-        doc.addPage();
-        y = margin;
-      }
-      for (let i = 0; i < lines.length; i++) {
-        doc.text(lines[i]!, rightX, y + i * 3.15, { align: "right" });
-      }
-      y += blockH + 1.5;
+    const leftX = margin + tableSideOffset;
+    for (const entry of unlinked) {
+      y = drawUnlinkedOccurrenceBlock(doc, entry, leftX, y, TABLE_TOTAL_WIDTH_MM, pageH, margin);
     }
-    doc.setTextColor(0, 0, 0);
     y += 4;
   }
 
