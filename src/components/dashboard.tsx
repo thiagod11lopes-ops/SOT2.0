@@ -211,7 +211,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     [linhasProximasTrocasOleo],
   );
   /** Atualiza saídas administrativas, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
-  const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const [operationalCardsExpanded, setOperationalCardsExpanded] = useState(false);
@@ -379,8 +378,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     );
   }, [
     detalheServicoBundle,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Força re-avaliação quando o tick muda
-    vistoriaEscalaDataTick,
   ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {

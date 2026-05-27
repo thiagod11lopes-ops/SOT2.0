@@ -170,7 +170,7 @@ export function SaidasLayout() {
     playAlarmBeep(sound);
     setAlarmToast({ title, body });
     void showLocalAlarmNotification(title, { body, tag: "sot-mobile-alarm", requireInteraction: true });
-  }, [playAlarmBeep, setAlarmToast, showLocalAlarmNotification]);
+  }, [playAlarmBeep, setAlarmToast]);
 
   const motoristasCatalogoOrdenados = useMemo(() => {
     const seen = new Set<string>();

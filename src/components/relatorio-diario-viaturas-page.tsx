@@ -434,7 +434,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
       mX: paperW * (g.marginMm / 210),
       mY: paperH * (g.marginMm / 297),
     };
-  }, [pdfLayoutDraft, pdfLayoutDraftKey]); // Adicionado pdfLayoutDraft
+  }, [pdfLayoutDraft]);
 
   const pdfContentOffsetXBounds = useMemo(
     () =>
