@@ -51,6 +51,15 @@ function formatMotoristaLabel(value: string | undefined): string {
   return t && t.length > 0 ? t : "—";
 }
 
+/** data:image contém vírgula (ex.: data:image/png;base64,...) — não dividir nesse caso. */
+function rubricasFromDepartureField(value: string | undefined): string[] | undefined {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("data:image")) return [trimmed];
+  const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.length > 0 ? parts : undefined;
+}
+
 function RubricaCell({ rubricas }: { rubricas?: string[] }) {
   if (!rubricas || rubricas.length === 0) {
     return <span className="text-[hsl(var(--muted-foreground))]">—</span>;
@@ -90,9 +99,7 @@ export function OcorrenciasPage() {
               description: record.ocorrencias,
               placa: record.viaturas.trim() || undefined,
               motorista: formatMotoristaLabel(record.motoristas),
-              rubricas: record.ocorrenciasRubrica
-                ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim()).filter(Boolean)
-                : undefined,
+              rubricas: rubricasFromDepartureField(record.ocorrenciasRubrica),
               isUnlinked: false,
             });
           }
