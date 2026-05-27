@@ -362,6 +362,9 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
 
   const pendenciasVistoriaEscalaSNotif = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = vistoriaEscalaDataTick; // Explicitamente 'read' para TS6133
+
     ensureVistoriaCloudStateSyncStarted();
     const isoHoje = isoDateFromDate(new Date());
     const asg = readVistoriaAssignments();
@@ -374,6 +377,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     );
   }, [
     detalheServicoBundle,
+    vistoriaEscalaDataTick,
   ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {

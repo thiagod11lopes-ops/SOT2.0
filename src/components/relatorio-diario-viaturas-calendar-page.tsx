@@ -56,7 +56,11 @@ export function RelatorioDiarioViaturasCalendarPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmSalvoOpen]);
 
-  const pdfSalvoSet = useMemo(() => getPdfSalvoIsoSet(), []);
+  const pdfSalvoSet = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = tick; // Explicitamente 'read' para TS6133
+    return getPdfSalvoIsoSet();
+  }, [tick]);
 
   const calendarDays = useMemo(() => {
     const y = month.getFullYear();

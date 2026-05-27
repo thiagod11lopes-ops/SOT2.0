@@ -382,7 +382,11 @@ export function SettingsPage() {
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [placasConsideradasParaMapaGps]);
 
-  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), []);
+  const vistoriaCloudSnapshot = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = vistoriaCloudTick; // Explicitamente 'read' para TS6133
+    return getVistoriaCloudState();
+  }, [vistoriaCloudTick]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
