@@ -1,9 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { useEffect, useState } from "react";
-// Importa o subscriber de departures
-import { subscribeDepartures } from "../lib/firebase/departuresFirestore";
-// Importa o tipo DepartureRecord do local correto
-import type { DepartureRecord } from "../types/departure";
+import { useEffect, useState, useMemo } from "react"; // Adicionado useMemo
+import { subscribeDepartures, type DepartureRecord } from "../lib/firebase/departuresFirestore";
+import { subscribeSotStateDoc, SOT_STATE_DOC } from "../lib/firebase/sotStateFirestore"; // Importado para ocorrenciasDesvinculadas
 
 
 // Componente para a página de Ocorrências
@@ -12,54 +10,91 @@ interface Occurrence {
   id: string;
   timestamp: string;
   description: string;
-  details: string;
-  placa?: string; // Adicionando a placa, opcional por enquanto
-  rubricas?: string[]; // Adicionando as rubricas, opcional
+  details: string; // Manter para compatibilidade, mas não será exibido
+  placa?: string;
+  rubricas?: string[];
+}
+
+// Tipo para as ocorrências desvinculadas
+interface UnlinkedOccurrencePayload {
+  data: string; // Ex: "2026-05-12"
+  hora: string; // Ex: "08:30:00"
+  texto: string; // Descrição da ocorrência
+  rubrica?: string; // Rubrica da ocorrência (pode ser uma string única)
 }
 
 export function OcorrenciasPage() {
-  const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
+  const [departuresOccurrences, setDeparturesOccurrences] = useState<Occurrence[]>([]);
+  const [unlinkedOccurrences, setUnlinkedOccurrences] = useState<Occurrence[]>([]);
 
+  // Efeito para buscar ocorrências dos departures
   useEffect(() => {
     const unsubscribe = subscribeDepartures(
       (departureRecords: DepartureRecord[]) => {
         const extractedOccurrences: Occurrence[] = [];
         departureRecords.forEach((record) => {
-          // Apenas adiciona se houver texto na ocorrência
           if (record.ocorrencias && record.ocorrencias.trim().length > 0) {
             extractedOccurrences.push({
               id: record.id,
-              // Combina data e hora da saída para o timestamp
               timestamp: `${record.dataSaida} ${record.horaSaida}`,
               description: record.ocorrencias,
               details: record.ocorrencias, // Usando o mesmo para detalhes por simplicidade
-              placa: record.viaturas || undefined, // A placa vem de 'viaturas'
+              placa: record.viaturas || undefined,
               rubricas: record.ocorrenciasRubrica
                 ? record.ocorrenciasRubrica.split(",").map((s: string) => s.trim())
                 : undefined,
             });
           }
         });
-
-        // Ordenar as ocorrências pelas mais atuais (timestamp decrescente)
-        const sortedOccurrences = extractedOccurrences.sort((a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        setOccurrences(sortedOccurrences);
+        setDeparturesOccurrences(extractedOccurrences);
       },
       (error) => {
-        console.error("Erro ao buscar ocorrências do Firestore:", error);
-        setOccurrences([]);
+        console.error("Erro ao buscar ocorrências dos departures:", error);
+        setDeparturesOccurrences([]);
       }
     );
-
-    return () => unsubscribe(); // Cleanup on unmount
+    return () => unsubscribe();
   }, []);
+
+  // Efeito para buscar ocorrências desvinculadas
+  useEffect(() => {
+    const unsubscribe = subscribeSotStateDoc(
+      SOT_STATE_DOC.ocorrenciasDesvinculadas,
+      (payload) => {
+        if (payload && Array.isArray(payload)) {
+          const extractedUnlinked: Occurrence[] = (payload as UnlinkedOccurrencePayload[]).map((item, index) => ({
+            id: `unlinked-${index}-${item.data}-${item.hora}`, // Gerar um ID único
+            timestamp: `${item.data} ${item.hora}`,
+            description: item.texto,
+            details: item.texto,
+            placa: undefined, // Sem placa para ocorrências desvinculadas
+            rubricas: item.rubrica ? [item.rubrica] : undefined,
+          }));
+          setUnlinkedOccurrences(extractedUnlinked);
+        } else {
+          setUnlinkedOccurrences([]);
+        }
+      },
+      (error) => {
+        console.error("Erro ao buscar ocorrências desvinculadas do Firestore:", error);
+        setUnlinkedOccurrences([]);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Combina e ordena as ocorrências
+  const allOccurrences = useMemo(() => {
+    const combined = [...departuresOccurrences, ...unlinkedOccurrences];
+    return combined.sort((a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [departuresOccurrences, unlinkedOccurrences]);
 
   return (
     <div className="container mx-auto py-10">
       <h2 className="text-2xl font-bold mb-6">Ocorrências do Sistema</h2>
-      {occurrences.length === 0 ? (
+      {allOccurrences.length === 0 ? (
         <p className="text-center text-gray-500">Nenhuma ocorrência registrada.</p>
       ) : (
         <Table>
@@ -72,7 +107,7 @@ export function OcorrenciasPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {occurrences.map((occurrence) => (
+            {allOccurrences.map((occurrence) => (
               <TableRow key={occurrence.id}>
                 <TableCell>{occurrence.timestamp}</TableCell>
                 <TableCell>{occurrence.description}</TableCell>
