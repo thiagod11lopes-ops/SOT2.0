@@ -131,21 +131,23 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
       const rubrica = (args.rubrica ?? "").trim();
       if (!texto || !dataSaida) return;
       bumpLocalMutation();
-      setDoc((prev) => ({
-        items: [
-          ...prev.items,
-          {
-            id: newUnlinkedOccurrenceId(),
-            dataSaida,
-            tipo: args.tipo,
-            texto,
-            rubrica,
-            createdAt: Date.now(),
-          },
-        ],
-      }));
+      setDoc((prev) => {
+        const nextDoc = {
+          items: [
+            ...prev.items,
+            newUnlinkedItem,
+          ],
+        };
+        // Chamada explícita para o Firebase aqui
+        if (useCloud) {
+          void setSotStateDocWithRetry(SOT_STATE_DOC.ocorrenciasDesvinculadas, nextDoc).catch((e) => {
+            console.error("[SOT] Gravar ocorrências desvinculadas na nuvem (explicit):", e);
+          });
+        }
+        return nextDoc;
+      });
     },
-    [bumpLocalMutation],
+    [bumpLocalMutation, useCloud, setSotStateDocWithRetry, SOT_STATE_DOC.ocorrenciasDesvinculadas],
   );
 
   const entriesForPdf = useCallback(
