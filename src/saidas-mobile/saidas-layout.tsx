@@ -284,6 +284,39 @@ export function SaidasLayout() {
     setVistoriaMobileOpen(true);
   }
 
+  function waitForMobileModalLoad(
+    progressEvent: string,
+    readyEvent: string,
+    progress: { setProgress: (value: number) => void },
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const onProgress = (event: Event) => {
+        const custom = event as CustomEvent<number>;
+        progress.setProgress(custom.detail);
+      };
+      const timer = window.setTimeout(() => {
+        if (done) return;
+        done = true;
+        progress.setProgress(100);
+        window.removeEventListener(progressEvent, onProgress as EventListener);
+        window.removeEventListener(readyEvent, onReady as EventListener);
+        resolve();
+      }, 9000);
+      const onReady = () => {
+        if (done) return;
+        done = true;
+        progress.setProgress(100);
+        window.clearTimeout(timer);
+        window.removeEventListener(progressEvent, onProgress as EventListener);
+        window.removeEventListener(readyEvent, onReady as EventListener);
+        resolve();
+      };
+      window.addEventListener(progressEvent, onProgress as EventListener);
+      window.addEventListener(readyEvent, onReady as EventListener);
+    });
+  }
+
   function openVistoriaWithFirebaseProgress() {
     void runWithTrackedProgress(
       async (progress) => {
@@ -291,34 +324,29 @@ export function SaidasLayout() {
         setVistoriaAdministrativaMotorista(null);
         setVistoriaMobileOpen(true);
         progress.setProgress(12);
-        await new Promise<void>((resolve) => {
-          let done = false;
-          const onProgress = (event: Event) => {
-            const custom = event as CustomEvent<number>;
-            progress.setProgress(custom.detail);
-          };
-          const timer = window.setTimeout(() => {
-            if (done) return;
-            done = true;
-            progress.setProgress(100);
-            window.removeEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
-            window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
-            resolve();
-          }, 9000);
-          const onReady = () => {
-            if (done) return;
-            done = true;
-            progress.setProgress(100);
-            window.clearTimeout(timer);
-            window.removeEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
-            window.removeEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
-            resolve();
-          };
-          window.addEventListener("sot-mobile-vistoria-progress", onProgress as EventListener);
-          window.addEventListener("sot-mobile-vistoria-ready", onReady as EventListener);
-        });
+        await waitForMobileModalLoad(
+          "sot-mobile-vistoria-progress",
+          "sot-mobile-vistoria-ready",
+          progress,
+        );
       },
       { label: "Sincronizando calendário e placas com o Firebase...", minDurationMs: 300 },
+    );
+  }
+
+  function openDetalheServicoWithProgress() {
+    void runWithTrackedProgress(
+      async (progress) => {
+        progress.setProgress(5);
+        setDetalheServicoOpen(true);
+        progress.setProgress(12);
+        await waitForMobileModalLoad(
+          "sot-mobile-detalhe-servico-progress",
+          "sot-mobile-detalhe-servico-ready",
+          progress,
+        );
+      },
+      { label: "A carregar Detalhe de Serviço…", minDurationMs: 300 },
     );
   }
 
@@ -652,7 +680,7 @@ export function SaidasLayout() {
         <SaidasMobileHeader
           motoristaLogado={motoristaLogadoMobile}
           onLogout={handleLogoutMotoristaMobile}
-          onDetalheServico={() => setDetalheServicoOpen(true)}
+          onDetalheServico={openDetalheServicoWithProgress}
           onVistoria={openVistoriaWithFirebaseProgress}
           onOcorrencias={() => setOcorrenciasModalOpen(true)}
           onVistoriaAdministrativa={() => {

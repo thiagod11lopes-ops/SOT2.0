@@ -47,6 +47,11 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
   const comRo = useMemo(() => marcados.filter((m) => m.rotina), [marcados]);
 
   useEffect(() => {
+    if (!open) return;
+    window.dispatchEvent(new CustomEvent<number>("sot-mobile-detalhe-servico-progress", { detail: 15 }));
+  }, [open]);
+
+  useEffect(() => {
     if (!open) {
       setFullDetail(false);
       return;
@@ -54,20 +59,33 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
     let cancelled = false;
     let unsub: (() => void) | undefined;
 
+    const reportProgress = (pct: number) => {
+      window.dispatchEvent(new CustomEvent<number>("sot-mobile-detalhe-servico-progress", { detail: pct }));
+    };
+    const reportReady = () => {
+      reportProgress(100);
+      window.dispatchEvent(new Event("sot-mobile-detalhe-servico-ready"));
+    };
+
     setLoading(true);
+    reportProgress(30);
     void (async () => {
       try {
         const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
         if (!useCloud) {
           const local = await loadDetalheServicoBundleFromIdb();
           if (cancelled) return;
+          reportProgress(82);
           setBundle(local);
           setLoading(false);
+          reportReady();
           return;
         }
 
+        reportProgress(45);
         await ensureFirebaseAuth();
         if (cancelled) return;
+        reportProgress(55);
 
         unsub = subscribeSotStateDoc(
           SOT_STATE_DOC.detalheServico,
@@ -76,17 +94,24 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
               if (cancelled) return;
               if (payload === null) {
                 setLoading(false);
+                reportReady();
                 return;
               }
+              reportProgress(75);
               const next = normalizeDetalheServicoBundle(payload);
               setBundle(next);
               await saveDetalheServicoBundleToIdb(next);
+              reportProgress(82);
               setLoading(false);
+              reportReady();
             })();
           },
           (err) => {
             console.error("[SOT] Firestore detalhe serviço (mobile):", err);
-            if (!cancelled) setLoading(false);
+            if (!cancelled) {
+              setLoading(false);
+              reportReady();
+            }
           },
           { ignoreCachedSnapshotWhenOnline: true },
         );
@@ -95,6 +120,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
         if (!cancelled) {
           setBundle(null);
           setLoading(false);
+          reportReady();
         }
       }
     })();
@@ -156,9 +182,7 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
-          {loading ? (
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">A carregar…</p>
-          ) : fullDetail ? (
+          {loading ? null : fullDetail ? (
             !dateOk ? (
               <p className="text-sm text-[hsl(var(--muted-foreground))]">Data inválida para mostrar a tabela.</p>
             ) : (
