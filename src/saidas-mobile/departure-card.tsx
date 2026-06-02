@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
-import type { DepartureKmFieldsPatch } from "../context/departures-context";
+import type { DepartureKmFieldsPatch, DepartureUpdatePatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { parseKmCampo } from "../lib/oilMaintenance";
 import { normalize24hTime } from "../lib/timeInput";
@@ -48,7 +48,7 @@ export function DepartureCard({
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
-  updateDeparture?: (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => void;
+  updateDeparture?: (id: string, data: DepartureUpdatePatch) => void;
   /** Ambulância: destaque da saída escolhida para poder usar «Excluir Saída». */
   isSelectedForExcluir?: boolean;
   /** Ambulância: chamado ao tocar no cabeçalho do cartão (junto com expandir). */
@@ -164,21 +164,19 @@ export function DepartureCard({
     void writeMotoristaActiveAssignment({ motorista, placa, departureId: record.id });
   }, [saidaEmCurso, record.id, record.viaturas]);
 
-  function applyAmbPatch(partial: Partial<DepartureRecord>) {
+  function applyAmbPatch(partial: DepartureUpdatePatch) {
     if (!editavel || !updateDeparture) return;
-    updateDeparture(record.id, {
-      ...record,
-      ...partial,
-    });
+    updateDeparture(record.id, partial);
   }
 
   function commitRubrica() {
     if (!updateDeparture) return;
-    const { id, createdAt, ...rest } = record;
-    void id;
-    void createdAt;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
-    updateDeparture(record.id, { ...rest, rubrica: drawn });
+    if (!drawn.trim()) {
+      window.alert("Desenhe a rubrica antes de confirmar.");
+      return;
+    }
+    updateDeparture(record.id, { rubrica: drawn });
     const placa = primaryPlacaFromViaturasField(record.viaturas);
     if (placa && resolveDriverLocationPostUrl()) {
       void clearDriverActiveLocation(placa).catch((e) =>
@@ -191,25 +189,17 @@ export function DepartureCard({
 
   function handleSalvarOcorrencias(departureId: string, texto: string, rubrica: string) {
     if (!updateDeparture) return;
-    const d = departures.find((x) => x.id === departureId) ?? record;
-    const { id, createdAt, ...rest } = d;
-    void id;
-    void createdAt;
-    updateDeparture(departureId, { ...rest, ocorrencias: texto, ocorrenciasRubrica: rubrica });
+    updateDeparture(departureId, { ocorrencias: texto, ocorrenciasRubrica: rubrica });
   }
 
-  function applyAdminCadastroPatch(partial: Partial<DepartureRecord>) {
+  function applyAdminCadastroPatch(partial: DepartureUpdatePatch) {
     if (!editavel || !updateDeparture) return;
-    updateDeparture(record.id, {
-      ...record,
-      ...partial,
-    });
+    updateDeparture(record.id, partial);
   }
 
   function marcarViaturaNaOficina() {
     if (!editavel || !updateDeparture) return;
     updateDeparture(record.id, {
-      ...record,
       kmChegada: "",
       chegada: "",
       ficouNaOficina: true,

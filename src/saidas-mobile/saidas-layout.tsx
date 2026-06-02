@@ -334,22 +334,6 @@ export function SaidasLayout() {
     );
   }
 
-  function openDetalheServicoWithProgress() {
-    void runWithTrackedProgress(
-      async (progress) => {
-        progress.setProgress(5);
-        setDetalheServicoOpen(true);
-        progress.setProgress(12);
-        await waitForMobileModalLoad(
-          "sot-mobile-detalhe-servico-progress",
-          "sot-mobile-detalhe-servico-ready",
-          progress,
-        );
-      },
-      { label: "A carregar Detalhe de Serviço…", minDurationMs: 300 },
-    );
-  }
-
   useEffect(() => {
     if (!alarmToast) return;
     const t = window.setTimeout(() => setAlarmToast(null), 7000);
@@ -680,7 +664,7 @@ export function SaidasLayout() {
         <SaidasMobileHeader
           motoristaLogado={motoristaLogadoMobile}
           onLogout={handleLogoutMotoristaMobile}
-          onDetalheServico={openDetalheServicoWithProgress}
+          onDetalheServico={() => setDetalheServicoOpen(true)}
           onVistoria={openVistoriaWithFirebaseProgress}
           onOcorrencias={() => setOcorrenciasModalOpen(true)}
           onVistoriaAdministrativa={() => {

@@ -26,10 +26,17 @@ import { stopMobileDriverTrackingSessionIfMatches } from "../lib/mobileDriverTra
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import { clearMotoristaActiveAssignmentIfDeparture } from "../lib/motoristaActiveAssignment";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
+import {
+  departureCompletionScore,
+  mergeDeparturePatch,
+  type DepartureUpdatePatch,
+} from "../lib/mergeDepartureUpdate";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import type { DepartureRecord } from "../types/departure";
 import { mergeGroupKey } from "../types/departure";
 import { useSyncPreference } from "./sync-preference-context";
+
+export type { DepartureUpdatePatch } from "../lib/mergeDepartureUpdate";
 
 export type DepartureKmFieldsPatch = Partial<
   Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada">
@@ -55,7 +62,7 @@ type DeparturesContextValue = {
   clearAllDepartures: () => void;
   updateDeparture: (
     id: string,
-    data: Omit<DepartureRecord, "id" | "createdAt">,
+    data: DepartureUpdatePatch,
     options?: { expectedBaseVersion?: number; onVersionConflict?: () => void },
   ) => void;
   removeDeparture: (id: string) => void;
@@ -73,7 +80,7 @@ type DeparturesContextValue = {
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
 const DEPARTURES_STORAGE_KEY = "sot-departures-v1";
 const DEPARTURES_CROSS_TAB_EVENT_KEY = "sot-departures-cross-tab-event-v1";
-const SUPPRESS_REMOTE_MS = 5000;
+const SUPPRESS_REMOTE_MS = 12_000;
 const LOCAL_MUTATION_GUARD_MS = 60_000;
 const WRITE_RETRY_MAX = 6;
 const MIGRATION_UPDATED_BY = "migration-v1";
@@ -351,8 +358,13 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
                   continue;
                 }
                 if (!departureRowsEqual(remote, local)) {
-                  // Passo 8: aplicar sempre o mais novo por version/updatedAt/updatedBy.
-                  const keepLocal = compareDepartureFreshness(local, remote) > 0;
+                  const keepLocalByFreshness = compareDepartureFreshness(local, remote) > 0;
+                  const touchedUntil = recentTouchedIdsRef.current.get(local.id) ?? 0;
+                  const recentlyTouched = touchedUntil > Date.now();
+                  const keepLocalByCompletion =
+                    recentlyTouched &&
+                    departureCompletionScore(local) > departureCompletionScore(remote);
+                  const keepLocal = keepLocalByFreshness || keepLocalByCompletion;
                   if (keepLocal) {
                     mergedById.set(local.id, local);
                   }
@@ -550,7 +562,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   const updateDeparture = useCallback(
     (
       id: string,
-      data: Omit<DepartureRecord, "id" | "createdAt">,
+      data: DepartureUpdatePatch,
       options?: { expectedBaseVersion?: number; onVersionConflict?: () => void },
     ) => {
       if (useCloud) {
@@ -559,12 +571,11 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           const d = prev.find((x) => x.id === id);
           if (!d) return prev;
           const now = Date.now();
+          const merged = mergeDeparturePatch(d, data);
           const next: DepartureRecord = {
-            ...d,
-            ...data,
+            ...merged,
             id: d.id,
             createdAt: d.createdAt,
-            // Não aceitar `version` do payload (ex. spread de `record` desatualizado no mobile).
             version: d.version,
             updatedAt: now,
             updatedBy: clientIdRef.current,
@@ -578,17 +589,17 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
               for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
                   await upsertDepartureRecord(candidate, { expectedBaseVersion: expected });
+                  markTouched(id);
                   return;
                 } catch (err) {
                   if (!isDepartureVersionConflictError(err)) throw err;
-                  // Auto-resolver: recarrega o remoto, reaplica a edição e tenta novamente.
                   const remote = await getDepartureRecord(id);
                   if (!remote) {
                     throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
                   }
+                  const resolved = mergeDeparturePatch(remote, data);
                   candidate = {
-                    ...remote,
-                    ...data,
+                    ...resolved,
                     id: remote.id,
                     createdAt: remote.createdAt,
                     version: remote.version,
@@ -613,16 +624,15 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         return;
       }
       setDepartures((prev) =>
-        prev.map((d) =>
-          d.id === id
-            ? {
-                ...d,
-                ...data,
-                id: d.id,
-                createdAt: d.createdAt,
-              }
-            : d,
-        ),
+        prev.map((d) => {
+          if (d.id !== id) return d;
+          const merged = mergeDeparturePatch(d, data);
+          return {
+            ...merged,
+            id: d.id,
+            createdAt: d.createdAt,
+          };
+        }),
       );
     },
     [useCloud, bumpLocalMutation, markTouched, enqueueWrite],
