@@ -56,6 +56,64 @@ function rubricaColunaPdf(r: DepartureRecord): string {
 /** Margem extra de cada lado da linha relativamente à largura máxima do nome (mm). */
 const SIGNATURE_LINE_PAD_MM = 2.8;
 
+/** Margem inferior reservada ao bloco de assinatura (mm). */
+const PDF_SIGNATURE_BOTTOM_MARGIN_MM = 14;
+/** Espaço mínimo entre o fim do conteúdo e o topo da assinatura (página única). */
+const PDF_SIGNATURE_AFTER_CONTENT_GAP_MM = 12;
+
+/** Estima a altura vertical (mm) do bloco de assinatura — alinhado a `drawSignatureBlock`. */
+function estimateSignatureBlockHeightMm(
+  doc: jsPDF,
+  blockWidth: number,
+  textLines: DeparturesAssinanteTextLine[],
+  rubricaPngDataUrl: string | null,
+): number {
+  const innerPad = 2;
+  const maxTextW = Math.max(16, blockWidth - innerPad * 2);
+  let textHeight = 0;
+  for (const entry of textLines) {
+    const chunks = doc.splitTextToSize(entry.text.trim(), maxTextW) as string[];
+    for (let i = 0; i < chunks.length; i++) {
+      textHeight += entry.muted ? 4.2 : 4.8;
+    }
+  }
+  let h = 4 + 6 + textHeight + 5;
+  if (rubricaPngDataUrl) {
+    h += 10 * PDF_RUBRICA_IMAGE_SCALE + 2;
+  }
+  return h;
+}
+
+function resolveSignatureBlockTopY(
+  doc: jsPDF,
+  pageH: number,
+  contentEndY: number,
+  blockHeight: number,
+  anchorToPageBottom: boolean,
+): number {
+  const bottomMargin = PDF_SIGNATURE_BOTTOM_MARGIN_MM;
+  const pageCount = doc.getNumberOfPages();
+  doc.setPage(pageCount);
+
+  if (anchorToPageBottom) {
+    let topY = pageH - bottomMargin - blockHeight;
+    if (contentEndY + 6 > topY) {
+      doc.addPage();
+      doc.setPage(doc.getNumberOfPages());
+      topY = pageH - bottomMargin - blockHeight;
+    }
+    return topY;
+  }
+
+  let topY = contentEndY + PDF_SIGNATURE_AFTER_CONTENT_GAP_MM;
+  if (topY + blockHeight > pageH - bottomMargin) {
+    doc.addPage();
+    doc.setPage(doc.getNumberOfPages());
+    topY = pageH - bottomMargin - blockHeight;
+  }
+  return topY;
+}
+
 function drawSignatureBlock(
   doc: jsPDF,
   blockX: number,
@@ -395,10 +453,8 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
     y += 4;
   }
 
-  if (y > pageH - 55) {
-    doc.addPage();
-    y = margin;
-  }
+  const contentEndY = y;
+  const multiPageDocument = doc.getNumberOfPages() > 1;
 
   const { assinanteDivisao } = params.signatures;
   const hasAny = Boolean(assinanteDivisao);
@@ -414,15 +470,18 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   const signGroupW = Math.min(usableW, 168);
 
   if (assinanteDivisao && assinanteDisplay) {
-    if (y > pageH - 40) {
-      doc.addPage();
-      y = margin;
-    }
     const blockLeft = margin + (usableW - signGroupW) / 2;
-    y = drawSignatureBlock(
+    const sigHeight = estimateSignatureBlockHeightMm(
+      doc,
+      signGroupW,
+      assinanteDisplay.lines,
+      rubricaAssinanteDataUrl,
+    );
+    const sigTopY = resolveSignatureBlockTopY(doc, pageH, contentEndY, sigHeight, multiPageDocument);
+    drawSignatureBlock(
       doc,
       blockLeft,
-      y,
+      sigTopY,
       signGroupW,
       assinanteDisplay.lines,
       rubricaAssinanteDataUrl,
@@ -433,7 +492,21 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
     doc.setFont("helvetica", "italic");
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
-    doc.text("(Nenhuma assinatura confirmada no painel Assinar.)", margin + usableW / 2, y, { align: "center" });
+    const placeholderH = 8;
+    const placeholderTopY = resolveSignatureBlockTopY(
+      doc,
+      pageH,
+      contentEndY,
+      placeholderH,
+      multiPageDocument,
+    );
+    doc.setPage(doc.getNumberOfPages());
+    doc.text(
+      "(Nenhuma assinatura confirmada no painel Assinar.)",
+      margin + usableW / 2,
+      placeholderTopY + 4,
+      { align: "center" },
+    );
     doc.setTextColor(0, 0, 0);
   }
 
