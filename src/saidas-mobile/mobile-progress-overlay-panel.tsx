@@ -1,10 +1,6 @@
 import { createPortal } from "react-dom";
 import { cn } from "../lib/utils";
-
-export function clampMobileProgress(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
+import { clampMobileProgress } from "./mobileProgressUtils";
 
 type MobileProgressOverlayPanelProps = {
   progress: number;

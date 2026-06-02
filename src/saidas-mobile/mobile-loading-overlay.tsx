@@ -6,7 +6,8 @@ import {
   type SystemSyncOverlayState,
   useMobileLoadingOverlay,
 } from "./mobile-loading-context";
-import { clampMobileProgress, MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
+import { clampMobileProgress } from "./mobileProgressUtils";
+import { MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
 
 const DEFAULT_LABEL = "A carregar...";
 const DEFAULT_SYSTEM_SYNC: SystemSyncOverlayState = {

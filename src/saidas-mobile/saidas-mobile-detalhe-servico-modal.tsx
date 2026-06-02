@@ -16,7 +16,8 @@ import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
-import { clampMobileProgress, MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
+import { clampMobileProgress } from "./mobileProgressUtils";
+import { MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
 
 type Props = {
   open: boolean;
