@@ -6,6 +6,7 @@ import {
   type DeparturesAssinanteTextLine,
 } from "./departuresAssinanteDisplay";
 import { isRubricaImageDataUrl } from "./rubricaDrawing";
+import { addRubricaPngToPdf, prepareRubricaDataUrlForPdf, prepareRubricaDataUrlMapForPdf } from "./rubricaPdfEmbed";
 import {
   groupDeparturesForListDisplay,
   listRowFromRecord,
@@ -25,8 +26,13 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const TABLE_TOTAL_WIDTH_MM =
   26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28 + 30;
 
-/** Imagens de rubrica no PDF (coluna da tabela e miniatura no bloco de assinatura): 50% do tamanho anterior. */
-const PDF_RUBRICA_IMAGE_SCALE = 0.5;
+/** Rubricas PNG no PDF: 1 = tamanho pleno (o dobro do anterior 0,5). */
+const PDF_RUBRICA_IMAGE_SCALE = 1;
+/** Fração da área útil da célula «Rubrica» ocupada pelo desenho. */
+const PDF_RUBRICA_TABLE_FILL = 0.8 * 0.8;
+/** Altura mínima (mm) das linhas com rubrica desenhada na tabela. */
+const PDF_RUBRICA_CELL_MIN_HEIGHT_MM = 24;
+const PDF_OCC_RUBRICA_CELL_MIN_HEIGHT_MM = 20;
 
 /** No PDF, rubrica de saída cancelada (texto) — antecede o nome; evita duplicar se já existir no registo. */
 const PDF_RUBRICA_CANCEL_PREFIX = "Cancelado por: ";
@@ -93,7 +99,7 @@ function drawSignatureBlock(
     const ix = centerX - imgW / 2;
     const iy = lineY - imgH;
     try {
-      doc.addImage(rubricaPngDataUrl, "PNG", ix, iy, imgW, imgH);
+      addRubricaPngToPdf(doc, rubricaPngDataUrl, ix, iy, imgW, imgH);
     } catch {
       /* ignore */
     }
@@ -131,11 +137,7 @@ function drawOccurrenceRubricaBeside(
   if (!isRubricaImageDataUrl(raw)) return;
   const imgW = PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE;
   const imgH = Math.min(maxHeightMm, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
-  try {
-    doc.addImage(raw, "PNG", x, y, imgW, imgH);
-  } catch {
-    /* ignore */
-  }
+  addRubricaPngToPdf(doc, raw, x, y, imgW, imgH);
 }
 
 function drawUnlinkedOccurrenceBlock(
@@ -146,6 +148,7 @@ function drawUnlinkedOccurrenceBlock(
   blockWidthMm: number,
   pageH: number,
   margin: number,
+  resolveRubrica: (raw?: string) => string,
 ): number {
   doc.setFont("helvetica", "italic");
   doc.setFontSize(7.5);
@@ -171,7 +174,7 @@ function drawUnlinkedOccurrenceBlock(
     doc.text(lines[i]!, leftX, y + i * lineH);
   }
   if (entry.rubrica) {
-    drawOccurrenceRubricaBeside(doc, entry.rubrica, leftX + textW + 1.5, y, blockH);
+    drawOccurrenceRubricaBeside(doc, resolveRubrica(entry.rubrica), leftX + textW + 1.5, y, blockH);
   }
   doc.setTextColor(0, 0, 0);
   return y + blockH + 1.5;
@@ -259,7 +262,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
                 fontSize: 6.2,
                 fontStyle: "italic",
                 textColor: [55, 55, 55],
-                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: occRubrica ? 26 : 2 },
+                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: occRubrica ? 48 : 2 },
                 halign: "left",
               },
             },
@@ -270,6 +273,25 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       }
     }
   }
+
+  const rubricaSources: string[] = [];
+  for (const row of params.rows) {
+    const raw = (row.rubrica ?? "").trim();
+    if (isRubricaImageDataUrl(raw)) rubricaSources.push(raw);
+    const occRaw = (row.ocorrenciasRubrica ?? "").trim();
+    if (isRubricaImageDataUrl(occRaw)) rubricaSources.push(occRaw);
+  }
+  for (const entry of params.unlinkedOccurrences ?? []) {
+    const raw = (entry.rubrica ?? "").trim();
+    if (isRubricaImageDataUrl(raw)) rubricaSources.push(raw);
+  }
+  const rubricaEmbedBySource = await prepareRubricaDataUrlMapForPdf(rubricaSources);
+
+  const resolveRubricaEmbed = (raw: string | undefined): string => {
+    const trimmed = (raw ?? "").trim();
+    if (!isRubricaImageDataUrl(trimmed)) return trimmed;
+    return rubricaEmbedBySource.get(trimmed) ?? trimmed;
+  };
 
   autoTable(doc, {
     startY: y,
@@ -307,7 +329,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       if (rowMap[data.row.index] === "occ" && data.column.index === 0) {
         const meta = occRowMeta[data.row.index];
         if (meta?.rubrica && isRubricaImageDataUrl(meta.rubrica)) {
-          data.cell.styles.minCellHeight = 12;
+          data.cell.styles.minCellHeight = PDF_OCC_RUBRICA_CELL_MIN_HEIGHT_MM;
         }
         return;
       }
@@ -319,7 +341,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       const raw = (row.rubrica ?? "").trim();
       if (isRubricaImageDataUrl(raw)) {
         data.cell.text = [];
-        data.cell.styles.minCellHeight = 12;
+        data.cell.styles.minCellHeight = PDF_RUBRICA_CELL_MIN_HEIGHT_MM;
       }
     },
     didDrawCell: (data) => {
@@ -332,7 +354,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
           const imgH = Math.min(data.cell.height - pad * 2, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
           drawOccurrenceRubricaBeside(
             data.doc,
-            meta.rubrica,
+            resolveRubricaEmbed(meta.rubrica),
             data.cell.x + data.cell.width - imgW - pad,
             data.cell.y + pad,
             imgH,
@@ -347,20 +369,17 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       if (!row) return;
       const raw = (row.rubrica ?? "").trim();
       if (!isRubricaImageDataUrl(raw)) return;
-      /** Área útil da célula; a rubrica usa 64% da área, centrada; `PDF_RUBRICA_IMAGE_SCALE` reduz o desenho em 50%. */
+      const embed = resolveRubricaEmbed(raw);
+      /** Área útil da célula; rubrica centrada com escala plena (2× vs. configuração anterior). */
       const pad = 0.25;
       const innerW = Math.max(0.5, data.cell.width - pad * 2);
       const innerH = Math.max(0.5, data.cell.height - pad * 2);
-      const scale = 0.8 * 0.8 * PDF_RUBRICA_IMAGE_SCALE;
+      const scale = PDF_RUBRICA_TABLE_FILL * PDF_RUBRICA_IMAGE_SCALE;
       const iw = innerW * scale;
       const ih = innerH * scale;
       const ix = data.cell.x + pad + (innerW - iw) / 2;
       const iy = data.cell.y + pad + (innerH - ih) / 2;
-      try {
-        data.doc.addImage(raw, "PNG", ix, iy, iw, ih);
-      } catch {
-        /* ignore */
-      }
+      addRubricaPngToPdf(data.doc, embed, ix, iy, iw, ih);
     },
   });
 
@@ -371,7 +390,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   if (unlinked.length > 0) {
     const leftX = margin + tableSideOffset;
     for (const entry of unlinked) {
-      y = drawUnlinkedOccurrenceBlock(doc, entry, leftX, y, TABLE_TOTAL_WIDTH_MM, pageH, margin);
+      y = drawUnlinkedOccurrenceBlock(doc, entry, leftX, y, TABLE_TOTAL_WIDTH_MM, pageH, margin, resolveRubricaEmbed);
     }
     y += 4;
   }
@@ -387,7 +406,8 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   let rubricaAssinanteDataUrl: string | null = null;
   const assinanteDisplay = assinanteDivisao ? resolveDeparturesAssinanteDisplay(assinanteDivisao) : null;
   if (assinanteDisplay?.rubricaThiagoPng) {
-    rubricaAssinanteDataUrl = await fetchRubricaThiagoAsDataUrl();
+    const thiagoRaw = await fetchRubricaThiagoAsDataUrl();
+    rubricaAssinanteDataUrl = thiagoRaw ? await prepareRubricaDataUrlForPdf(thiagoRaw) : null;
   }
 
   /** Largura do bloco de assinatura (Divisão de Transporte), centrada na página. */
