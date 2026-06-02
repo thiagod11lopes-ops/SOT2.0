@@ -1,6 +1,10 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
-import { fetchRubricaThiagoAsDataUrl, isAssinanteRubricaThiago } from "./rubricaAssinanteThiago";
+import { fetchRubricaThiagoAsDataUrl } from "./rubricaAssinanteThiago";
+import {
+  resolveDeparturesAssinanteDisplay,
+  type DeparturesAssinanteTextLine,
+} from "./departuresAssinanteDisplay";
 import { isRubricaImageDataUrl } from "./rubricaDrawing";
 import {
   groupDeparturesForListDisplay,
@@ -51,8 +55,7 @@ function drawSignatureBlock(
   blockX: number,
   topY: number,
   blockWidth: number,
-  name: string,
-  label: string,
+  textLines: DeparturesAssinanteTextLine[],
   rubricaPngDataUrl: string | null = null,
 ): number {
   const centerX = blockX + blockWidth / 2;
@@ -60,10 +63,20 @@ function drawSignatureBlock(
   doc.setFontSize(10);
   const innerPad = 2;
   const maxTextW = Math.max(16, blockWidth - innerPad * 2);
-  const nameLines = doc.splitTextToSize(name.trim(), maxTextW);
+
+  const wrappedLines: DeparturesAssinanteTextLine[] = [];
+  for (const entry of textLines) {
+    const chunks = doc.splitTextToSize(entry.text.trim(), maxTextW) as string[];
+    for (const chunk of chunks) {
+      wrappedLines.push({ text: chunk, bold: entry.bold, muted: entry.muted });
+    }
+  }
+
   let maxLineW = 0;
-  for (const line of nameLines) {
-    maxLineW = Math.max(maxLineW, doc.getTextWidth(line));
+  for (const entry of wrappedLines) {
+    doc.setFont("helvetica", entry.bold ? "bold" : "normal");
+    doc.setFontSize(entry.muted ? 8 : entry.bold ? 10 : 9);
+    maxLineW = Math.max(maxLineW, doc.getTextWidth(entry.text));
   }
   const lineW = Math.min(blockWidth, maxLineW + SIGNATURE_LINE_PAD_MM * 2);
 
@@ -88,17 +101,16 @@ function drawSignatureBlock(
   }
 
   let ty = nameStartY;
-  for (const line of nameLines) {
-    doc.text(line, centerX, ty, { align: "center" });
-    ty += 4.8;
+  for (const entry of wrappedLines) {
+    doc.setFont("helvetica", entry.bold ? "bold" : "normal");
+    doc.setFontSize(entry.muted ? 8 : entry.bold ? 10 : 9);
+    if (entry.muted) doc.setTextColor(70, 70, 70);
+    else doc.setTextColor(0, 0, 0);
+    doc.text(entry.text, centerX, ty, { align: "center" });
+    ty += entry.muted ? 4.2 : 4.8;
   }
-  const y = ty;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(70, 70, 70);
-  doc.text(label, centerX, y, { align: "center" });
   doc.setTextColor(0, 0, 0);
-  return y + 5;
+  return ty + 5;
 }
 
 function safeFileSegment(value: string): string {
@@ -373,14 +385,15 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   const hasAny = Boolean(assinanteDivisao);
 
   let rubricaAssinanteDataUrl: string | null = null;
-  if (assinanteDivisao && isAssinanteRubricaThiago(assinanteDivisao)) {
+  const assinanteDisplay = assinanteDivisao ? resolveDeparturesAssinanteDisplay(assinanteDivisao) : null;
+  if (assinanteDisplay?.rubricaThiagoPng) {
     rubricaAssinanteDataUrl = await fetchRubricaThiagoAsDataUrl();
   }
 
   /** Largura do bloco de assinatura (Divisão de Transporte), centrada na página. */
   const signGroupW = Math.min(usableW, 168);
 
-  if (assinanteDivisao) {
+  if (assinanteDivisao && assinanteDisplay) {
     if (y > pageH - 40) {
       doc.addPage();
       y = margin;
@@ -391,8 +404,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       blockLeft,
       y,
       signGroupW,
-      assinanteDivisao,
-      "Divisão de Transporte",
+      assinanteDisplay.lines,
       rubricaAssinanteDataUrl,
     );
   }
