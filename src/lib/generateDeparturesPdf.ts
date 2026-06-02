@@ -56,8 +56,10 @@ function rubricaColunaPdf(r: DepartureRecord): string {
 /** Margem extra de cada lado da linha relativamente à largura máxima do nome (mm). */
 const SIGNATURE_LINE_PAD_MM = 2.8;
 
-/** Margem inferior reservada ao bloco de assinatura (mm). */
-const PDF_SIGNATURE_BOTTOM_MARGIN_MM = 14;
+/** Espaço entre o fim da tabela e o topo do bloco de assinatura (mm). */
+const PDF_SIGNATURE_AFTER_TABLE_GAP_MM = 12;
+/** Altura do bloco título + data no topo de cada folha (mm). */
+const PAGE_HEADER_BLOCK_MM = 16;
 const PDF_SIGNATURE_PLACEHOLDER_HEIGHT_MM = 8;
 
 /** Estima a altura vertical (mm) do bloco de assinatura — alinhado a `drawSignatureBlock`. */
@@ -83,47 +85,87 @@ function estimateSignatureBlockHeightMm(
   return h;
 }
 
-function signatureTopYOnPage(pageH: number, sigHeight: number): number {
-  return pageH - PDF_SIGNATURE_BOTTOM_MARGIN_MM - sigHeight;
+function drawDeparturesPageHeader(
+  doc: jsPDF,
+  centerX: number,
+  margin: number,
+  listTitle: string,
+  dateLabel: string,
+): void {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.text(listTitle, centerX, margin, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Data: ${dateLabel}`, centerX, margin + 7, { align: "center" });
 }
 
-function stampSignatureOnEveryPage(
+function drawSignatureOrPlaceholder(
   doc: jsPDF,
-  pageH: number,
+  topY: number,
   margin: number,
   usableW: number,
   blockLeft: number,
   signGroupW: number,
-  sigHeight: number,
   assinanteDisplay: ReturnType<typeof resolveDeparturesAssinanteDisplay> | null,
   rubricaAssinanteDataUrl: string | null,
   hasAny: boolean,
 ): void {
-  const total = doc.getNumberOfPages();
-  for (let page = 1; page <= total; page++) {
+  if (hasAny && assinanteDisplay) {
+    drawSignatureBlock(
+      doc,
+      blockLeft,
+      topY,
+      signGroupW,
+      assinanteDisplay.lines,
+      rubricaAssinanteDataUrl,
+    );
+    return;
+  }
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.text(
+    "(Nenhuma assinatura confirmada no painel Assinar.)",
+    margin + usableW / 2,
+    topY + 4,
+    { align: "center" },
+  );
+  doc.setTextColor(0, 0, 0);
+}
+
+/** Assinatura logo abaixo da tabela em cada folha (última folha pode incluir ocorrências avulsas antes). */
+function stampSignaturesNearContent(
+  doc: jsPDF,
+  tableBottomByPage: Map<number, number>,
+  lastPage: number,
+  lastPageSigTopY: number,
+  margin: number,
+  usableW: number,
+  blockLeft: number,
+  signGroupW: number,
+  assinanteDisplay: ReturnType<typeof resolveDeparturesAssinanteDisplay> | null,
+  rubricaAssinanteDataUrl: string | null,
+  hasAny: boolean,
+): void {
+  for (let page = 1; page <= lastPage; page++) {
     doc.setPage(page);
-    const topY = signatureTopYOnPage(pageH, sigHeight);
-    if (hasAny && assinanteDisplay) {
-      drawSignatureBlock(
-        doc,
-        blockLeft,
-        topY,
-        signGroupW,
-        assinanteDisplay.lines,
-        rubricaAssinanteDataUrl,
-      );
-    } else {
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(9);
-      doc.setTextColor(120, 120, 120);
-      doc.text(
-        "(Nenhuma assinatura confirmada no painel Assinar.)",
-        margin + usableW / 2,
-        topY + 4,
-        { align: "center" },
-      );
-      doc.setTextColor(0, 0, 0);
-    }
+    const topY =
+      page === lastPage
+        ? lastPageSigTopY
+        : (tableBottomByPage.get(page) ?? margin) + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
+    drawSignatureOrPlaceholder(
+      doc,
+      topY,
+      margin,
+      usableW,
+      blockLeft,
+      signGroupW,
+      assinanteDisplay,
+      rubricaAssinanteDataUrl,
+      hasAny,
+    );
   }
 }
 
@@ -219,8 +261,12 @@ function drawUnlinkedOccurrenceBlock(
   blockWidthMm: number,
   pageH: number,
   margin: number,
+  tableStartY: number,
+  centerX: number,
+  listTitle: string,
+  dateLabel: string,
   resolveRubrica: (raw?: string) => string,
-  footerReserveMm: number,
+  sigReserveMm: number,
 ): number {
   doc.setFont("helvetica", "italic");
   doc.setFontSize(7.5);
@@ -238,10 +284,11 @@ function drawUnlinkedOccurrenceBlock(
       ? PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE
       : 0;
   const blockH = Math.max(textH, imgH) + 1.5;
-  const maxContentY = pageH - footerReserveMm;
+  const maxContentY = pageH - sigReserveMm;
   if (y + blockH > maxContentY) {
     doc.addPage();
-    y = margin;
+    drawDeparturesPageHeader(doc, centerX, margin, listTitle, dateLabel);
+    y = tableStartY;
   }
   for (let i = 0; i < lines.length; i++) {
     doc.text(lines[i]!, leftX, y + i * lineH);
@@ -275,17 +322,9 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   const tableSideOffset = Math.max(0, (usableW - TABLE_TOTAL_WIDTH_MM) / 2);
   const centerX = pageW / 2;
 
-  let y = margin;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(params.listTitle, centerX, y, { align: "center" });
-  y += 7;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
   const dateLabel = params.filterDate.trim() ? params.filterDate : "(data incompleta)";
-  doc.text(`Data: ${dateLabel}`, centerX, y, { align: "center" });
-  y += 9;
+  const tableStartY = margin + PAGE_HEADER_BLOCK_MM;
+  const tableBottomByPage = new Map<number, number>();
 
   const omOrHospitalHead = params.tipo === "Ambulância" ? "Hospital" : "OM";
   const head = [
@@ -380,11 +419,11 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
     hasAny && assinanteDisplay
       ? estimateSignatureBlockHeightMm(doc, signGroupW, assinanteDisplay.lines, rubricaAssinanteDataUrl)
       : PDF_SIGNATURE_PLACEHOLDER_HEIGHT_MM;
-  /** Reserva rodapé em cada folha para a assinatura não sobrepor a tabela. */
-  const footerReserveMm = sigHeight + PDF_SIGNATURE_BOTTOM_MARGIN_MM;
+  /** Reserva inferior na folha atual da tabela (reduzida nas continuações via didDrawPage). */
+  const tablePageBottomReserveMm = sigHeight + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
 
   autoTable(doc, {
-    startY: y,
+    startY: tableStartY,
     head,
     body: tableBody,
     styles: {
@@ -404,7 +443,19 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
     margin: {
       left: margin + tableSideOffset,
       right: margin + tableSideOffset,
-      bottom: footerReserveMm,
+      top: tableStartY,
+      bottom: tablePageBottomReserveMm,
+    },
+    willDrawPage: (data) => {
+      drawDeparturesPageHeader(doc, centerX, margin, params.listTitle, dateLabel);
+      data.settings.margin.top = tableStartY;
+    },
+    didDrawPage: (data) => {
+      if (data.cursor) {
+        tableBottomByPage.set(data.pageNumber, data.cursor.y);
+      }
+      /** Folhas de continuação não reservam rodapé fixo — assinatura fica junto à tabela. */
+      data.settings.margin.bottom = margin;
     },
     tableWidth: TABLE_TOTAL_WIDTH_MM,
     columnStyles: {
@@ -478,12 +529,17 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
     },
   });
 
-  const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? y + 40;
-  y = finalY + 12;
+  const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? tableStartY + 40;
+  const lastPage = doc.getNumberOfPages();
+  let lastPageSigTopY =
+    (tableBottomByPage.get(lastPage) ?? finalY) + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
 
   const unlinked = (params.unlinkedOccurrences ?? []).filter((e) => e.texto.trim().length > 0);
   if (unlinked.length > 0) {
+    doc.setPage(lastPage);
+    let y = finalY + 4;
     const leftX = margin + tableSideOffset;
+    const sigReserveMm = sigHeight + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
     for (const entry of unlinked) {
       y = drawUnlinkedOccurrenceBlock(
         doc,
@@ -493,21 +549,26 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
         TABLE_TOTAL_WIDTH_MM,
         pageH,
         margin,
+        tableStartY,
+        centerX,
+        params.listTitle,
+        dateLabel,
         resolveRubricaEmbed,
-        footerReserveMm,
+        sigReserveMm,
       );
     }
-    y += 4;
+    lastPageSigTopY = y + 4;
   }
 
-  stampSignatureOnEveryPage(
+  stampSignaturesNearContent(
     doc,
-    pageH,
+    tableBottomByPage,
+    doc.getNumberOfPages(),
+    lastPageSigTopY,
     margin,
     usableW,
     blockLeft,
     signGroupW,
-    sigHeight,
     assinanteDisplay,
     rubricaAssinanteDataUrl,
     hasAny,
