@@ -8,7 +8,7 @@ const movieSubtitleClass =
 export function DeveloperCreditBadge() {
   return (
     <p
-      className={`pointer-events-none fixed bottom-3 right-4 z-[120] max-w-[min(calc(100vw-2rem),20rem)] select-none text-right text-xs sm:text-sm ${movieSubtitleClass}`}
+      className={`pointer-events-none fixed bottom-3 right-4 z-[120] max-w-[min(calc(100vw-2rem),20rem)] origin-bottom-right scale-50 select-none text-right text-xs sm:text-sm ${movieSubtitleClass}`}
     >
       Desenvolvido por: 1SG EF Thiago Lopes
     </p>
