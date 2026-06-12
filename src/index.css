@@ -239,11 +239,83 @@ html[data-appearance="dark"] body {
   }
 }
 
+.sot-radar-blips {
+  position: absolute;
+  inset: 0;
+}
+
+.sot-radar-blip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  transform: translate(-50%, -50%);
+  color: hsl(120 85% 42% / 0.38);
+  opacity: 0.55;
+  transition:
+    opacity 0.2s ease,
+    color 0.2s ease,
+    filter 0.2s ease;
+}
+
+.sot-radar-blip-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.sot-radar-blip--ping {
+  opacity: 1;
+  color: hsl(120 100% 68%);
+  filter: drop-shadow(0 0 6px hsl(120 100% 55% / 0.95)) drop-shadow(0 0 14px hsl(120 100% 50% / 0.55));
+  animation: sot-radar-blip-ping 0.52s ease-out;
+}
+
+.sot-radar-blip-ring {
+  position: absolute;
+  inset: -0.45rem;
+  border-radius: 50%;
+  border: 1px solid hsl(120 100% 55% / 0.75);
+  animation: sot-radar-blip-ring 0.65s ease-out forwards;
+}
+
+@keyframes sot-radar-blip-ping {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes sot-radar-blip-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sot-radar-sweep,
   .sot-radar-sweep-trail,
   .sot-radar-preview::after {
     animation: none;
+  }
+
+  .sot-radar-blip--ping {
+    animation: none;
+  }
+
+  .sot-radar-blip-ring {
+    display: none;
   }
 }
 
