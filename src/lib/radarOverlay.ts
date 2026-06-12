@@ -31,7 +31,7 @@ function polarToScreen(angleDeg: number, radiusVmin: number): { leftPct: number;
 function angleFromCenter(leftPct: number, topPct: number): number {
   const dx = leftPct - RADAR_CENTER_LEFT_PCT;
   const dy = topPct - RADAR_CENTER_TOP_PCT;
-  return (Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+  return ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
 }
 
 export function sweepAngleAtTime(nowMs: number): number {
