@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
+import { DesktopBrasaoWatermark } from "./desktop-brasao-watermark";
 import { DeveloperCreditBadge } from "./developer-credit-badge";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
@@ -71,10 +72,11 @@ export function Layout({
     <div
       data-ui-chrome-visible={headerVisible ? "true" : "false"}
       className={cn(
-        "bg-[hsl(var(--background))]",
+        "relative bg-[hsl(var(--background))]",
         fitHomeViewport ? "flex h-[100dvh] min-h-0 flex-col overflow-hidden" : "min-h-screen",
       )}
     >
+      <DesktopBrasaoWatermark />
       <div className="fixed right-0 top-0 z-[80]">
         <Button
           type="button"
@@ -96,7 +98,7 @@ export function Layout({
       />
       <main
         className={cn(
-          "mx-auto max-w-[1600px] px-6 pb-8",
+          "relative z-[2] mx-auto max-w-[1600px] px-6 pb-8",
           headerVisible ? "pt-64 xl:pt-44" : "pt-20 xl:pt-20",
           homeTickerActive && "pb-32 sm:pb-36",
           fitHomeViewport && "flex min-h-0 w-full flex-1 flex-col overflow-hidden",
