@@ -32,6 +32,15 @@ import {
   parsePtBrToDate,
 } from "../lib/dateFormat";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import {
+  getRamalForSetor,
+  mergeSetorRamalFromDepartures,
+  normalizeSetorRamalMemory,
+  rememberSetorRamal,
+  SETOR_RAMAL_MEMORY_STORAGE_KEY,
+  setorRamalMemoryEquals,
+  type SetorRamalMemory,
+} from "../lib/setorRamalMemory";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { normalize24hTime } from "../lib/timeInput";
 import { HOSPITAL_EXEMPLOS_OCULTOS_MODAL_MOBILE } from "../lib/mobileCatalogExcludes";
@@ -525,6 +534,8 @@ export function RegisterDeparturePage() {
   );
   const [customLocations, setCustomLocations] = useState<CustomLocationsState>(() => emptyCustomLocations());
   const [customLocationsHydrated, setCustomLocationsHydrated] = useState(false);
+  const [setorRamalMemory, setSetorRamalMemory] = useState<SetorRamalMemory>({});
+  const [setorRamalMemoryHydrated, setSetorRamalMemoryHydrated] = useState(false);
   const customLocationsRemoteRef = useRef(false);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloudLocations = isFirebaseConfigured() && firebaseOnlyEnabled;
@@ -566,6 +577,26 @@ export function RegisterDeparturePage() {
     if (!customLocationsHydrated) return;
     void idbSetJson(CUSTOM_LOCATIONS_STORAGE_KEY, customLocations);
   }, [customLocations, customLocationsHydrated]);
+
+  useEffect(() => {
+    void idbGetJson<unknown>(SETOR_RAMAL_MEMORY_STORAGE_KEY).then((stored) => {
+      setSetorRamalMemory(normalizeSetorRamalMemory(stored));
+      setSetorRamalMemoryHydrated(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!setorRamalMemoryHydrated) return;
+    void idbSetJson(SETOR_RAMAL_MEMORY_STORAGE_KEY, setorRamalMemory);
+  }, [setorRamalMemory, setorRamalMemoryHydrated]);
+
+  useEffect(() => {
+    if (!setorRamalMemoryHydrated) return;
+    setSetorRamalMemory((prev) => {
+      const merged = mergeSetorRamalFromDepartures(prev, departures);
+      return setorRamalMemoryEquals(prev, merged) ? prev : merged;
+    });
+  }, [departures, setorRamalMemoryHydrated]);
 
   useEffect(() => {
     if (!customLocationsHydrated || !useCloudLocations) return;
@@ -1007,6 +1038,35 @@ export function RegisterDeparturePage() {
     return () => window.clearTimeout(id);
   }, [cadastroSuccessModalOpen, setMainAppTab, setPendingDeparturesFilterDatePtBr, bumpDeparturesListMountKey]);
 
+  const persistSetorRamalPair = useCallback((setor: string, ramal: string) => {
+    const setorTrim = setor.trim();
+    const ramalTrim = ramal.trim();
+    if (!setorTrim || !ramalTrim) return;
+    setSetorRamalMemory((prev) => rememberSetorRamal(prev, setorTrim, ramalTrim));
+  }, []);
+
+  const handleSectorChange = useCallback(
+    (next: string) => {
+      setSetorRamalMemory((prev) => {
+        let updated = prev;
+        if (sector.trim() && extension.trim()) {
+          updated = rememberSetorRamal(prev, sector, extension);
+        }
+        const remembered = getRamalForSetor(updated, next);
+        if (remembered !== null) {
+          setExtension(remembered);
+        }
+        return updated;
+      });
+      setSector(next);
+    },
+    [sector, extension],
+  );
+
+  const handleExtensionBlur = useCallback(() => {
+    persistSetorRamalPair(sector, extension);
+  }, [persistSetorRamalPair, sector, extension]);
+
   function buildDeparturePayload(): Omit<DepartureRecord, "id" | "createdAt"> {
     const base: Omit<DepartureRecord, "id" | "createdAt"> = {
       tipo: departureType as DepartureRecord["tipo"],
@@ -1071,6 +1131,7 @@ export function RegisterDeparturePage() {
     }
     setCatalogSubmitAttempted(false);
     const payload = buildDeparturePayload();
+    persistSetorRamalPair(payload.setor, payload.ramal);
     if (editingId) {
       const editingTargetId = editingId;
       // Versão esperada: a do estado atual em `updateDeparture` (prev), não a do início da edição —
@@ -1127,7 +1188,9 @@ export function RegisterDeparturePage() {
       return;
     }
     setCatalogSubmitAttempted(false);
-    addDeparture(buildDeparturePayload());
+    const payload = buildDeparturePayload();
+    persistSetorRamalPair(payload.setor, payload.ramal);
+    addDeparture(payload);
     setSeriesSelectedDates([]);
     setSeriesCalendarOpen(false);
     setCity("Rio de Janeiro");
@@ -1891,7 +1954,7 @@ export function RegisterDeparturePage() {
                 label="Setor"
                 category="setores"
                 value={sector}
-                onChange={setSector}
+                onChange={handleSectorChange}
                 options={catalogItems.setores}
                 showPlusAfterAttempt={catalogSubmitAttempted}
               />
@@ -2108,6 +2171,7 @@ export function RegisterDeparturePage() {
                   type="text"
                   value={extension}
                   onChange={(event) => setExtension(event.target.value.replace(/[A-Za-zÀ-ÿ]/g, ""))}
+                  onBlur={handleExtensionBlur}
                   className={sotFormSelectClass}
                 />
               </div>
