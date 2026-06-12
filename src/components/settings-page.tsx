@@ -78,6 +78,7 @@ import {
 import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
+import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { DesktopDriverLocationsMapHeaderButton } from "./desktop-driver-locations-map";
 import { Button } from "./ui/button";
@@ -95,6 +96,7 @@ type AlarmesConfig = {
 };
 
 const SETTINGS_SECTIONS = [
+  { id: "settings-aparencia", label: "Aparência" },
   { id: "settings-sync", label: "Modo de sincronização" },
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
@@ -1066,6 +1068,10 @@ export function SettingsPage() {
             </nav>
 
             <div className="min-h-[min(28rem,70vh)] min-w-0 flex-1 p-4 sm:p-6">
+              {activeSectionId === "settings-aparencia" ? (
+                <SettingsAppearanceSection panelClass={SETTINGS_PANEL_CLASS} />
+              ) : null}
+
               {activeSectionId === "settings-sync" ? (
               <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-sync">
                 <h3 id="settings-heading-sync" className="text-base font-semibold text-[hsl(var(--foreground))]">

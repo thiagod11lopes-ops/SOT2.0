@@ -4,13 +4,14 @@
 @custom-variant dark (&:where(html[data-appearance="dark"] *));
 
 :root {
+  color-scheme: light;
   --background: 210 20% 96%;
   --foreground: 222 47% 11%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
   --border: 214 25% 88%;
   --muted: 214 22% 92%;
-  --muted-foreground: 215 16% 46%;
+  --muted-foreground: 215 16% 42%;
   --primary: 204 58% 32%;
   --primary-foreground: 210 40% 98%;
   --ring: 204 58% 40%;
@@ -35,13 +36,14 @@
 }
 
 html[data-appearance="dark"] {
+  color-scheme: dark;
   --background: 222 32% 7%;
   --foreground: 210 36% 98%;
   --card: 222 30% 10%;
   --card-foreground: 210 36% 98%;
   --border: 217 22% 17%;
   --muted: 217 22% 14%;
-  --muted-foreground: 215 18% 72%;
+  --muted-foreground: 215 20% 76%;
   --primary: 187 72% 52%;
   --primary-foreground: 222 40% 8%;
   --ring: 187 80% 58%;
@@ -56,13 +58,14 @@ html[data-appearance="dark"] {
 }
 
 html[data-appearance="ultra-modern"] {
+  color-scheme: light;
   --background: 220 22% 97%;
   --foreground: 224 64% 7%;
   --card: 0 0% 100%;
   --card-foreground: 224 64% 7%;
   --border: 220 16% 88%;
   --muted: 220 16% 96%;
-  --muted-foreground: 220 10% 38%;
+  --muted-foreground: 220 10% 36%;
   --primary: 201 90% 44%;
   --primary-foreground: 0 0% 100%;
   --ring: 201 90% 48%;
