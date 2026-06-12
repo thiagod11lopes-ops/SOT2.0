@@ -1,8 +1,11 @@
-/** Marca d'água do brasão em todas as páginas desktop (`public/brasao.png`). */
+/**
+ * Marca d'água do brasão em todas as páginas desktop (`public/brasao.png`).
+ * z-[48]: sobre cards/conteúdo; abaixo do cabeçalho (50), telão e modais.
+ */
 export function DesktopBrasaoWatermark() {
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[1] flex items-center justify-center overflow-hidden"
+      className="pointer-events-none fixed inset-0 z-[48] flex items-center justify-center overflow-hidden"
       aria-hidden
     >
       <img

@@ -76,7 +76,6 @@ export function Layout({
         fitHomeViewport ? "flex h-[100dvh] min-h-0 flex-col overflow-hidden" : "min-h-screen",
       )}
     >
-      <DesktopBrasaoWatermark />
       <div className="fixed right-0 top-0 z-[80]">
         <Button
           type="button"
@@ -98,7 +97,7 @@ export function Layout({
       />
       <main
         className={cn(
-          "relative z-[2] mx-auto max-w-[1600px] px-6 pb-8",
+          "mx-auto max-w-[1600px] px-6 pb-8",
           headerVisible ? "pt-64 xl:pt-44" : "pt-20 xl:pt-20",
           homeTickerActive && "pb-32 sm:pb-36",
           fitHomeViewport && "flex min-h-0 w-full flex-1 flex-col overflow-hidden",
@@ -106,6 +105,7 @@ export function Layout({
       >
         {fitHomeViewport ? <HomeViewportScale>{children}</HomeViewportScale> : children}
       </main>
+      <DesktopBrasaoWatermark />
       <DeveloperCreditBadge />
     </div>
   );
