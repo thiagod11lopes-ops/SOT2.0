@@ -72,5 +72,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
+
+    /** Subscrições push mobile — leitura para métricas do Painel de Controle. */
+    match /sot_mobile_push_subscriptions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
   }
 }

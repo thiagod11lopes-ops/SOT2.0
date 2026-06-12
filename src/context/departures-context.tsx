@@ -32,7 +32,7 @@ import { mergeGroupKey } from "../types/departure";
 import { useSyncPreference } from "./sync-preference-context";
 
 export type DepartureKmFieldsPatch = Partial<
-  Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada">
+  Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada" | "ficouNaOficina">
 >;
 
 export type CloudDeparturesSyncState = {

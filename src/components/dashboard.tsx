@@ -115,17 +115,23 @@ function saidasComAtrasoHoje(
     });
 }
 
-/** Hoje, KM saída preenchido, KM chegada e chegada vazios → viatura em deslocamento. */
-function saidasEmAndamentoHoje(rows: DepartureRecord[], hojeDdMmYyyy: string): DepartureRecord[] {
-  return rows
+/**
+ * Grupos de saídas em andamento hoje (mesma viatura, motorista e horário).
+ * Usa o registo primário do grupo — alinhado com a tabela/lista agrupada.
+ */
+function saidasEmAndamentoGruposHoje(
+  rows: DepartureRecord[],
+  hojeDdMmYyyy: string,
+): ReturnType<typeof groupDeparturesForListDisplay> {
+  const doDia = rows
     .filter((r) => isDepartureDateSameLocalDay(r.dataSaida, hojeDdMmYyyy))
-    .filter((r) => saidaEmAndamento(r))
     .sort((a, b) => {
       const ka = sortKeyHoraSaida(a.horaSaida);
       const kb = sortKeyHoraSaida(b.horaSaida);
       if (ka !== kb) return ka - kb;
       return a.id.localeCompare(b.id);
     });
+  return groupDeparturesForListDisplay(doDia).filter((g) => saidaEmAndamento(g.primary));
 }
 
 /** Mesma aparência dos títulos das abas Saídas Administrativas / Ambulância. */
@@ -420,8 +426,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = saidasEmAndamentoHoje(departuresAtivas, hoje);
-    return groupDeparturesForListDisplay(rows);
+    return saidasEmAndamentoGruposHoje(departuresAtivas, hoje);
   }, [departuresAtivas]);
 
   const comAtraso = useMemo(() => {

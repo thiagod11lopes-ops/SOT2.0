@@ -1,5 +1,6 @@
 import type { DepartureRecord } from "../types/departure";
 import { parseIsoDateToDate } from "./dateFormat";
+import { formatKmThousandsPtBr } from "./kmInput";
 
 /** Troca de óleo a cada 10.000 km ou a cada 6 meses (o que ocorrer primeiro). */
 export const OLEO_KM_INTERVALO = 10_000;
@@ -74,6 +75,16 @@ export function maiorKmChegadaPorViatura(
     if (max === null || km > max) max = km;
   }
   return max;
+}
+
+/** Valor formatado para KM saída ao focar/clicar — igual ao KM ATUAL em Manutenções. */
+export function formatKmSaidaPrefillFromKmAtualViatura(
+  saidas: DepartureRecord[],
+  placa: string,
+): string | null {
+  const km = maiorKmChegadaPorViatura(saidas, placa);
+  if (km === null) return null;
+  return formatKmThousandsPtBr(String(km));
 }
 
 export function adicionarMesesIso(dataIso: string, meses: number): string {
