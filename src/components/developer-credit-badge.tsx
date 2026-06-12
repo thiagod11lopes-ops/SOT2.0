@@ -1,6 +1,6 @@
-/** Estilo legenda de filme: amarelo-laranja com contorno escuro para leitura sobre qualquer fundo. */
+/** Legenda amarelo-laranja: peso normal e sombra leve para não “borrar” em tamanho reduzido. */
 const movieSubtitleClass =
-  "font-bold leading-tight text-[#FFE066] [text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000,0_2px_6px_rgba(0,0,0,0.85)]";
+  "font-normal leading-snug text-[#FFE566] antialiased [text-shadow:0_1px_2px_rgba(0,0,0,0.92),0_0_1px_rgba(0,0,0,0.75)]";
 
 /**
  * Crédito fixo no desktop — canto inferior direito, sobre o telão de avisos (z-index acima).
