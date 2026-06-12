@@ -1,10 +1,9 @@
-import { Ambulance, Ship } from "lucide-react";
+import { Ambulance } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppearance } from "../context/appearance-context";
 import {
-  angleDifference,
   createRandomRadarBlips,
-  RADAR_SWEEP_HALF_WIDTH_DEG,
+  isHitByBrightSweepLine,
   sweepAngleAtTime,
   type RadarBlip,
 } from "../lib/radarOverlay";
@@ -34,10 +33,10 @@ export function DesktopRadarOverlay() {
       const sweep = sweepAngleAtTime(performance.now());
 
       for (const blip of blips) {
-        const inCone = angleDifference(sweep, blip.angleDeg) <= RADAR_SWEEP_HALF_WIDTH_DEG;
+        const onBrightLine = isHitByBrightSweepLine(sweep, blip.angleDeg);
         const was = wasInSweep[blip.id] ?? false;
 
-        if (inCone && !was && Math.random() < blip.detectChance) {
+        if (onBrightLine && !was && Math.random() < blip.detectChance) {
           setPingingIds((prev) => {
             const next = new Set(prev);
             next.add(blip.id);
@@ -53,7 +52,7 @@ export function DesktopRadarOverlay() {
           }, 480 + Math.random() * 320);
         }
 
-        wasInSweep[blip.id] = inCone;
+        wasInSweep[blip.id] = onBrightLine;
       }
 
       frame = window.requestAnimationFrame(tick);
@@ -81,14 +80,12 @@ export function DesktopRadarOverlay() {
 }
 
 function RadarBlipMarker({ blip, pinging }: { blip: RadarBlip; pinging: boolean }) {
-  const Icon = blip.kind === "ambulance" ? Ambulance : Ship;
-
   return (
     <div
       className={cn("sot-radar-blip", pinging && "sot-radar-blip--ping")}
       style={{ left: `${blip.leftPct}%`, top: `${blip.topPct}%` }}
     >
-      <Icon className="sot-radar-blip-icon" strokeWidth={2} aria-hidden />
+      <Ambulance className="sot-radar-blip-icon" strokeWidth={2} aria-hidden />
       {pinging ? <span className="sot-radar-blip-ring" /> : null}
     </div>
   );

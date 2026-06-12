@@ -1,14 +1,17 @@
 /** Deve coincidir com `animation-duration` de `.sot-radar-sweep` em `index.css`. */
 export const RADAR_SWEEP_PERIOD_MS = 5500;
 
-/** Meio-ângulo do feixe de deteção (graus). */
-export const RADAR_SWEEP_HALF_WIDTH_DEG = 11;
+/**
+ * Largura angular da listra clara (`.sot-radar-sweep`: 358°–360° no conic-gradient).
+ * Só esta faixa dispara o ping — não o rasto nem o feixe largo.
+ */
+export const RADAR_BRIGHT_SWEEP_WIDTH_DEG = 2;
 
-export type RadarBlipKind = "ship" | "ambulance";
+/** Meio-ângulo da listra clara (graus). */
+export const RADAR_SWEEP_HALF_WIDTH_DEG = RADAR_BRIGHT_SWEEP_WIDTH_DEG / 2;
 
 export type RadarBlip = {
   id: string;
-  kind: RadarBlipKind;
   /** Posição em % da viewport (centro do alvo). */
   leftPct: number;
   topPct: number;
@@ -43,6 +46,11 @@ export function angleDifference(a: number, b: number): number {
   return d > 180 ? 360 - d : d;
 }
 
+/** Verdadeiro quando o alvo está sob a listra verde mais clara da varredura. */
+export function isHitByBrightSweepLine(sweepDeg: number, targetDeg: number): boolean {
+  return angleDifference(sweepDeg, targetDeg) <= RADAR_SWEEP_HALF_WIDTH_DEG;
+}
+
 export function createRandomRadarBlips(count = 12): RadarBlip[] {
   const blips: RadarBlip[] = [];
   for (let i = 0; i < count; i++) {
@@ -51,7 +59,6 @@ export function createRandomRadarBlips(count = 12): RadarBlip[] {
     const { leftPct, topPct } = polarToScreen(angleDeg, radiusVmin);
     blips.push({
       id: `radar-blip-${i}-${Math.random().toString(36).slice(2, 7)}`,
-      kind: Math.random() < 0.42 ? "ambulance" : "ship",
       leftPct,
       topPct,
       angleDeg: angleFromCenter(leftPct, topPct),
