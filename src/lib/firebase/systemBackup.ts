@@ -20,6 +20,7 @@ import {
 import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
 import {
   APPEARANCE_IDB_KEY,
+  defaultAppearanceRecord,
   parseAppearanceRecord,
   writeAppearanceToLocalStorage,
   type AppearanceRecord,
@@ -158,7 +159,7 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
 
   const appearance = toRecordMap(sot.appearance);
   const appearanceRecord: AppearanceRecord =
-    parseAppearanceRecord(appearance) ?? { mode: "original", updatedAt: Date.now() };
+    parseAppearanceRecord(appearance) ?? defaultAppearanceRecord();
   await idbSetJson(APPEARANCE_IDB_KEY, appearanceRecord, { maxAttempts: 6 });
   writeAppearanceToLocalStorage(appearanceRecord);
 
@@ -261,7 +262,7 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
   await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: motoristaPaoNome });
 
   const appearanceRecord =
-    parseAppearanceRecord(await getIdb<unknown>(APPEARANCE_IDB_KEY)) ?? { mode: "original", updatedAt: Date.now() };
+    parseAppearanceRecord(await getIdb<unknown>(APPEARANCE_IDB_KEY)) ?? defaultAppearanceRecord();
   await setSotStateDocWithRetry(SOT_STATE_DOC.appearance, appearanceRecord);
 
   const reportEmail = String((await getIdb<string>(REPORT_EMAIL_IDB_KEY)) ?? "").trim();
