@@ -1,9 +1,10 @@
 import { Ambulance } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppearance } from "../context/appearance-context";
 import {
   createRandomRadarBlips,
   isHitByBrightSweepLine,
+  stepRadarBlip,
   sweepAngleAtTime,
   type RadarBlip,
 } from "../lib/radarOverlay";
@@ -15,24 +16,38 @@ import { cn } from "../lib/utils";
  */
 export function DesktopRadarOverlay() {
   const { appearance } = useAppearance();
-  const blips = useMemo(() => (appearance === "radar" ? createRandomRadarBlips() : []), [appearance]);
+  const [blips, setBlips] = useState<RadarBlip[]>([]);
   const [pingingIds, setPingingIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
-    if (appearance !== "radar" || blips.length === 0) return;
+    if (appearance !== "radar") {
+      setBlips([]);
+      return;
+    }
+
+    let blipState = createRandomRadarBlips();
+    setBlips(blipState);
 
     const reducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     if (reducedMotion) return;
 
     let frame = 0;
+    let lastTickMs = performance.now();
     const wasInSweep: Record<string, boolean> = {};
 
-    const tick = () => {
-      const sweep = sweepAngleAtTime(performance.now());
+    const tick = (nowMs: number) => {
+      const dtSec = Math.min(0.05, (nowMs - lastTickMs) / 1000);
+      lastTickMs = nowMs;
 
-      for (const blip of blips) {
+      blipState = blipState.map((blip) => stepRadarBlip(blip, nowMs, dtSec));
+      setBlips(blipState);
+
+      const sweep = sweepAngleAtTime(nowMs);
+
+      for (const blip of blipState) {
         const onBrightLine = isHitByBrightSweepLine(sweep, blip.angleDeg);
         const was = wasInSweep[blip.id] ?? false;
 
@@ -60,7 +75,7 @@ export function DesktopRadarOverlay() {
 
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [appearance, blips]);
+  }, [appearance]);
 
   if (appearance !== "radar") return null;
 

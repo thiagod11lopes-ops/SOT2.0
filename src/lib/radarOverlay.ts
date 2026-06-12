@@ -10,6 +10,9 @@ export const RADAR_BRIGHT_SWEEP_WIDTH_DEG = 2;
 /** Meio-ângulo da listra clara (graus). */
 export const RADAR_SWEEP_HALF_WIDTH_DEG = RADAR_BRIGHT_SWEEP_WIDTH_DEG / 2;
 
+export const RADAR_BLIP_MIN_RADIUS_VMIN = 10;
+export const RADAR_BLIP_MAX_RADIUS_VMIN = 44;
+
 export type RadarBlip = {
   id: string;
   /** Posição em % da viewport (centro do alvo). */
@@ -17,6 +20,10 @@ export type RadarBlip = {
   topPct: number;
   /** Ângulo polar a partir do centro do radar (0° = topo, sentido horário). */
   angleDeg: number;
+  radiusVmin: number;
+  angleVelDegPerSec: number;
+  radiusVelVminPerSec: number;
+  nextHeadingChangeAt: number;
   /** Probabilidade de «ping» quando a varredura cruza (0–1). */
   detectChance: number;
 };
@@ -24,17 +31,38 @@ export type RadarBlip = {
 const RADAR_CENTER_LEFT_PCT = 50;
 const RADAR_CENTER_TOP_PCT = 48;
 
-function polarToScreen(angleDeg: number, radiusVmin: number): { leftPct: number; topPct: number } {
+export function polarToScreen(angleDeg: number, radiusVmin: number): { leftPct: number; topPct: number } {
   const rad = (angleDeg * Math.PI) / 180;
   const leftPct = RADAR_CENTER_LEFT_PCT + radiusVmin * Math.sin(rad);
   const topPct = RADAR_CENTER_TOP_PCT - radiusVmin * Math.cos(rad);
   return { leftPct, topPct };
 }
 
-function angleFromCenter(leftPct: number, topPct: number): number {
+export function angleFromCenter(leftPct: number, topPct: number): number {
   const dx = leftPct - RADAR_CENTER_LEFT_PCT;
   const dy = topPct - RADAR_CENTER_TOP_PCT;
   return ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+}
+
+function syncBlipScreen(blip: RadarBlip): RadarBlip {
+  const { leftPct, topPct } = polarToScreen(blip.angleDeg, blip.radiusVmin);
+  return {
+    ...blip,
+    leftPct,
+    topPct,
+    angleDeg: angleFromCenter(leftPct, topPct),
+  };
+}
+
+function randomHeadingChangeAt(nowMs: number): number {
+  return nowMs + 5000 + Math.random() * 12_000;
+}
+
+function randomSlowVelocity(): { angleVelDegPerSec: number; radiusVelVminPerSec: number } {
+  return {
+    angleVelDegPerSec: (Math.random() - 0.5) * 4.2,
+    radiusVelVminPerSec: (Math.random() - 0.5) * 0.55,
+  };
 }
 
 export function sweepAngleAtTime(nowMs: number): number {
@@ -52,18 +80,58 @@ export function isHitByBrightSweepLine(sweepDeg: number, targetDeg: number): boo
 }
 
 export function createRandomRadarBlips(count = 12): RadarBlip[] {
+  const now = typeof performance !== "undefined" ? performance.now() : 0;
   const blips: RadarBlip[] = [];
   for (let i = 0; i < count; i++) {
     const angleDeg = Math.random() * 360;
-    const radiusVmin = 10 + Math.random() * 34;
-    const { leftPct, topPct } = polarToScreen(angleDeg, radiusVmin);
-    blips.push({
-      id: `radar-blip-${i}-${Math.random().toString(36).slice(2, 7)}`,
-      leftPct,
-      topPct,
-      angleDeg: angleFromCenter(leftPct, topPct),
-      detectChance: 0.5 + Math.random() * 0.45,
-    });
+    const radiusVmin =
+      RADAR_BLIP_MIN_RADIUS_VMIN +
+      Math.random() * (RADAR_BLIP_MAX_RADIUS_VMIN - RADAR_BLIP_MIN_RADIUS_VMIN);
+    const velocity = randomSlowVelocity();
+    blips.push(
+      syncBlipScreen({
+        id: `radar-blip-${i}-${Math.random().toString(36).slice(2, 7)}`,
+        leftPct: 0,
+        topPct: 0,
+        angleDeg,
+        radiusVmin,
+        ...velocity,
+        nextHeadingChangeAt: randomHeadingChangeAt(now),
+        detectChance: 0.5 + Math.random() * 0.45,
+      }),
+    );
   }
   return blips;
+}
+
+/** Avança o alvo com deriva lenta e aleatória, mantendo-o na área do radar. */
+export function stepRadarBlip(blip: RadarBlip, nowMs: number, dtSec: number): RadarBlip {
+  let { angleDeg, radiusVmin, angleVelDegPerSec, radiusVelVminPerSec, nextHeadingChangeAt } = blip;
+
+  if (nowMs >= nextHeadingChangeAt) {
+    const velocity = randomSlowVelocity();
+    angleVelDegPerSec = velocity.angleVelDegPerSec;
+    radiusVelVminPerSec = velocity.radiusVelVminPerSec;
+    nextHeadingChangeAt = randomHeadingChangeAt(nowMs);
+  }
+
+  angleDeg = (angleDeg + angleVelDegPerSec * dtSec + 360) % 360;
+  radiusVmin += radiusVelVminPerSec * dtSec;
+
+  if (radiusVmin < RADAR_BLIP_MIN_RADIUS_VMIN) {
+    radiusVmin = RADAR_BLIP_MIN_RADIUS_VMIN;
+    radiusVelVminPerSec = Math.abs(radiusVelVminPerSec) * 0.85;
+  } else if (radiusVmin > RADAR_BLIP_MAX_RADIUS_VMIN) {
+    radiusVmin = RADAR_BLIP_MAX_RADIUS_VMIN;
+    radiusVelVminPerSec = -Math.abs(radiusVelVminPerSec) * 0.85;
+  }
+
+  return syncBlipScreen({
+    ...blip,
+    angleDeg,
+    radiusVmin,
+    angleVelDegPerSec,
+    radiusVelVminPerSec,
+    nextHeadingChangeAt,
+  });
 }

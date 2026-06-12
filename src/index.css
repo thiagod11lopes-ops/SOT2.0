@@ -255,6 +255,8 @@ html[data-appearance="dark"] body {
   color: hsl(120 85% 42% / 0.38);
   opacity: 0.55;
   transition:
+    left 0.45s linear,
+    top 0.45s linear,
     opacity 0.2s ease,
     color 0.2s ease,
     filter 0.2s ease;
@@ -308,6 +310,13 @@ html[data-appearance="dark"] body {
   .sot-radar-sweep-trail,
   .sot-radar-preview::after {
     animation: none;
+  }
+
+  .sot-radar-blip {
+    transition:
+      opacity 0.2s ease,
+      color 0.2s ease,
+      filter 0.2s ease;
   }
 
   .sot-radar-blip--ping {
