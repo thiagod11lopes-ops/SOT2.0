@@ -76,6 +76,7 @@ import {
   resolveDriverLocationPostUrl,
 } from "../lib/driverLocationPost";
 import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
@@ -1232,7 +1233,7 @@ export function SettingsPage() {
               id="save-period-mode"
               value={savePeriodMode}
               onChange={(e) => setSavePeriodMode(e.target.value as SavePeriodMode)}
-              className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+              className={cn(sotFormInputClass, "max-w-sm")}
             >
               <option value="full">Completo (todas as saídas)</option>
               <option value="month">Por mês</option>
@@ -1248,7 +1249,7 @@ export function SettingsPage() {
                   type="month"
                   value={saveMonthValue}
                   onChange={(e) => setSaveMonthValue(e.target.value)}
-                  className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                  className={cn(sotFormInputClass, "max-w-sm")}
                 />
               </div>
             ) : null}
@@ -1265,7 +1266,7 @@ export function SettingsPage() {
                   step={1}
                   value={saveYearValue}
                   onChange={(e) => setSaveYearValue(e.target.value)}
-                  className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                  className={cn(sotFormInputClass, "max-w-sm")}
                 />
               </div>
             ) : null}
@@ -1321,7 +1322,7 @@ export function SettingsPage() {
               value={reportEmailDest}
               onChange={(e) => setReportEmailDest(e.target.value)}
               onBlur={() => setReportEmailStored(reportEmailDest)}
-              className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+              className={cn(sotFormInputClass, "max-w-md")}
                 />
               </div>
               </section>

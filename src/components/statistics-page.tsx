@@ -26,6 +26,7 @@ import {
   type StatisticsBaselineFilters,
 } from "../lib/statisticsHistoricalBaseline";
 import { downloadStatisticsPdf } from "../lib/statisticsPdf";
+import { sotFormInputCompactClass } from "../lib/sotFormFieldClasses";
 import { StatisticsDepartureTypeDonut } from "./statistics-departure-type-donut";
 import { StatisticsTimeSeriesCharts } from "./statistics-time-series-charts";
 
@@ -690,7 +691,7 @@ export function StatisticsPage() {
               <select
                 value={yearFilter}
                 onChange={(e) => setYearFilter(e.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-2 text-xs text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className={sotFormInputCompactClass}
               >
                 <option value="todos">Todos</option>
                 {availableYears.map((year) => (
@@ -705,7 +706,7 @@ export function StatisticsPage() {
               <select
                 value={monthFilter}
                 onChange={(e) => setMonthFilter(e.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-2 text-xs text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className={sotFormInputCompactClass}
               >
                 <option value="todos">Todos</option>
                 {MONTH_OPTIONS.map((month) => (
@@ -720,7 +721,7 @@ export function StatisticsPage() {
               <select
                 value={driverFilter}
                 onChange={(e) => setDriverFilter(e.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-2 text-xs text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className={sotFormInputCompactClass}
               >
                 <option value="todos">Todos</option>
                 {availableDrivers.map((driver) => (
@@ -735,7 +736,7 @@ export function StatisticsPage() {
               <select
                 value={vehicleFilter}
                 onChange={(e) => setVehicleFilter(e.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-2 text-xs text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className={sotFormInputCompactClass}
               >
                 <option value="todos">Todas</option>
                 {availableVehicles.map((vehicle) => (
@@ -750,7 +751,7 @@ export function StatisticsPage() {
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-2 text-xs text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className={sotFormInputCompactClass}
               >
                 <option value="todos">Todos</option>
                 <option value="Administrativa">Administrativa</option>

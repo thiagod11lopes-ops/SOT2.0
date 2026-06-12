@@ -4,6 +4,8 @@ import type { CatalogCategory } from "../context/catalog-items-context";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useLimpezaPendente } from "../context/limpeza-pendente-context";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { TabsList } from "./ui/tabs";
@@ -87,7 +89,7 @@ export function FleetPersonnelPage() {
                         }
                       }}
                       placeholder="Ex.: SG Silva"
-                      className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className={cn(sotFormInputClass, "min-w-0 flex-1")}
                     />
                     <Button
                       type="button"
@@ -158,7 +160,7 @@ export function FleetPersonnelPage() {
                         }
                       }}
                       placeholder="Ex.: TTP-2G26"
-                      className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className={cn(sotFormInputClass, "min-w-0 flex-1")}
                     />
                     <Button
                       type="button"
@@ -238,7 +240,7 @@ export function FleetPersonnelPage() {
                         }
                       }}
                       placeholder="Ex.: AMB-01 / M-10234"
-                      className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className={cn(sotFormInputClass, "min-w-0 flex-1")}
                     />
                     <Button
                       type="button"

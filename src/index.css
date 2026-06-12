@@ -108,6 +108,35 @@ html[data-appearance="dark"] body {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
 }
 
+/* Campos editáveis no modo escuro — fundo sem branco (como «Data do pedido»). */
+html[data-appearance="dark"]:not(.saidas-mobile-shell) :where(
+    input.sot-form-control,
+    select.sot-form-control,
+    textarea.sot-form-control,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="color"]),
+    select,
+    textarea
+  ) {
+  background-color: hsl(var(--card) / 0.42) !important;
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) select option {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) :where(input, textarea)::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) input[type="checkbox"],
+html[data-appearance="dark"]:not(.saidas-mobile-shell) input[type="radio"] {
+  background-color: hsl(var(--card) / 0.42);
+  border-color: hsl(var(--border));
+}
+
 /* react-day-picker: dia selecionado usa as cores do sistema */
 .calendar-themed.rdp-root {
   --rdp-accent-color: hsl(var(--primary));

@@ -43,6 +43,11 @@ import {
   getRdvPlacasPorSituacaoComObservacaoForDate,
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
+import {
+  sotFormInputClass,
+  sotFormInputMonoClass,
+  sotFormSelectClass,
+} from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import type { DepartureRecord, DepartureType } from "../types/departure";
 import { CatalogItemsPanel } from "./catalog-items-panel";
@@ -1439,7 +1444,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-viatura"
                     value={saidaFiltroViatura}
                     onChange={(e) => setSaidaFiltroViatura(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todas</option>
                     {saidaFiltroViaturaOptions.map((v) => (
@@ -1458,7 +1463,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-motorista"
                     value={saidaFiltroMotorista}
                     onChange={(e) => setSaidaFiltroMotorista(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroMotoristaOptions.map((mtr) => (
@@ -1477,7 +1482,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-tipo"
                     value={saidaFiltroTipo}
                     onChange={(e) => setSaidaFiltroTipo(e.target.value as "Todos" | DepartureType)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="Todos">Todos</option>
                     <option value="Administrativa">Administrativa</option>
@@ -1493,7 +1498,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-setor"
                     value={saidaFiltroSetor}
                     onChange={(e) => setSaidaFiltroSetor(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroSetorOptions.map((x) => (
@@ -1512,7 +1517,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-responsavel"
                     value={saidaFiltroResponsavel}
                     onChange={(e) => setSaidaFiltroResponsavel(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroResponsavelOptions.map((x) => (
@@ -1531,7 +1536,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-om"
                     value={saidaFiltroOm}
                     onChange={(e) => setSaidaFiltroOm(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todas</option>
                     {saidaFiltroOmOptions.map((x) => (
@@ -1550,7 +1555,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-hospital"
                     value={saidaFiltroHospital}
                     onChange={(e) => setSaidaFiltroHospital(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroHospitalOptions.map((x) => (
@@ -1569,7 +1574,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-cidade"
                     value={saidaFiltroCidade}
                     onChange={(e) => setSaidaFiltroCidade(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todas</option>
                     {saidaFiltroCidadeOptions.map((x) => (
@@ -1588,7 +1593,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-bairro"
                     value={saidaFiltroBairro}
                     onChange={(e) => setSaidaFiltroBairro(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroBairroOptions.map((x) => (
@@ -1607,7 +1612,7 @@ export function RegisterDeparturePage() {
                     id="saida-filter-objetivo"
                     value={saidaFiltroObjetivo}
                     onChange={(e) => setSaidaFiltroObjetivo(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">Todos</option>
                     {saidaFiltroObjetivoOptions.map((x) => (
@@ -1630,7 +1635,7 @@ export function RegisterDeparturePage() {
                     value={saidaFiltroDataSaida}
                     onChange={(e) => setSaidaFiltroDataSaida(normalizeDatePtBr(e.target.value))}
                     placeholder="dd/mm/aaaa"
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={sotFormInputMonoClass}
                   />
                 </div>
 
@@ -1646,7 +1651,7 @@ export function RegisterDeparturePage() {
                     value={saidaFiltroDataPedido}
                     onChange={(e) => setSaidaFiltroDataPedido(normalizeDatePtBr(e.target.value))}
                     placeholder="dd/mm/aaaa"
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={sotFormInputMonoClass}
                   />
                 </div>
 
@@ -1660,7 +1665,7 @@ export function RegisterDeparturePage() {
                     onChange={(e) =>
                       setSaidaFiltroCancelada(e.target.value as "Todas" | "Ativas" | "Canceladas")
                     }
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="Todas">Todas</option>
                     <option value="Ativas">Ativas</option>
@@ -1680,7 +1685,7 @@ export function RegisterDeparturePage() {
                         e.target.value as "Todas" | "Com ocorrência" | "Sem ocorrência",
                       )
                     }
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="Todas">Todas</option>
                     <option value="Com ocorrência">Com ocorrência</option>
@@ -1704,7 +1709,7 @@ export function RegisterDeparturePage() {
                       value={saidaLupaBusca}
                       onChange={(e) => setSaidaLupaBusca(e.target.value)}
                       placeholder="Buscar na tabela…"
-                      className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white py-2 pl-9 pr-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className={cn(sotFormInputClass, "py-2 pl-9 pr-3")}
                       aria-label="Buscar e destacar na tabela de saídas"
                     />
                   </div>
@@ -1774,7 +1779,7 @@ export function RegisterDeparturePage() {
                 <select
                   value={departureType}
                   onChange={(event) => setDepartureType(event.target.value)}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 >
                   <option value="Administrativa">Administrativa</option>
                   <option value="Ambulância">Ambulância</option>
@@ -1790,7 +1795,7 @@ export function RegisterDeparturePage() {
                     autoComplete="off"
                     value={requestDate}
                     onChange={(event) => setRequestDate(normalizeDatePtBr(event.target.value))}
-                    className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={cn(sotFormInputMonoClass, "min-w-0 flex-1")}
                   />
                   <Popover open={requestCalendarOpen} onOpenChange={setRequestCalendarOpen}>
                     <PopoverTrigger asChild>
@@ -1827,7 +1832,7 @@ export function RegisterDeparturePage() {
                   inputMode="numeric"
                   value={requestTime}
                   onChange={(event) => setRequestTime(normalize24hTime(event.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 />
               </div>
 
@@ -1840,7 +1845,7 @@ export function RegisterDeparturePage() {
                     autoComplete="off"
                     value={departureDate}
                     onChange={(event) => setDepartureDate(normalizeDatePtBr(event.target.value))}
-                    className="h-10 min-w-0 flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 font-mono text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={cn(sotFormInputMonoClass, "min-w-0 flex-1")}
                   />
                   <Popover open={departureCalendarOpen} onOpenChange={setDepartureCalendarOpen}>
                     <PopoverTrigger asChild>
@@ -1877,7 +1882,7 @@ export function RegisterDeparturePage() {
                   inputMode="numeric"
                   value={departureTime}
                   onChange={(event) => setDepartureTime(normalize24hTime(event.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 />
               </div>
 
@@ -1897,7 +1902,7 @@ export function RegisterDeparturePage() {
                   type="text"
                   value={departureObjective}
                   onChange={(event) => setDepartureObjective(event.target.value)}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 />
               </div>
 
@@ -1908,7 +1913,7 @@ export function RegisterDeparturePage() {
                   inputMode="numeric"
                   value={passengerCount}
                   onChange={(event) => setPassengerCount(event.target.value.replace(/\D/g, ""))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 />
               </div>
 
@@ -1944,7 +1949,7 @@ export function RegisterDeparturePage() {
                       id="field-viaturas"
                       value={vehicles}
                       onChange={(event) => handleVehicleChange(event.target.value)}
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                      className={sotFormSelectClass}
                     >
                       <option value="">—</option>
                       {orphanViatura ? (
@@ -1982,7 +1987,7 @@ export function RegisterDeparturePage() {
                     type="text"
                     value={vehicles}
                     onChange={(event) => setVehicles(event.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   />
                 )}
               </div>
@@ -1996,7 +2001,7 @@ export function RegisterDeparturePage() {
                     id="field-motoristas"
                     value={drivers}
                     onChange={(event) => setDrivers(event.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   >
                     <option value="">—</option>
                     {motoristaSelectOptions.map((m) => (
@@ -2011,7 +2016,7 @@ export function RegisterDeparturePage() {
                     type="text"
                     value={drivers}
                     onChange={(event) => setDrivers(event.target.value)}
-                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    className={sotFormSelectClass}
                   />
                 )}
               </div>
@@ -2069,7 +2074,7 @@ export function RegisterDeparturePage() {
                       value={kmDeparture}
                       onFocus={handleKmDepartureFieldFocus}
                       onChange={(event) => setKmDeparture(formatKmThousandsPtBr(event.target.value))}
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                      className={sotFormSelectClass}
                     />
                   </div>
 
@@ -2080,7 +2085,7 @@ export function RegisterDeparturePage() {
                       inputMode="numeric"
                       value={kmArrival}
                       onChange={(event) => setKmArrival(formatKmThousandsPtBr(event.target.value))}
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                      className={sotFormSelectClass}
                     />
                   </div>
 
@@ -2091,7 +2096,7 @@ export function RegisterDeparturePage() {
                       inputMode="numeric"
                       value={arrivalTime}
                       onChange={(event) => setArrivalTime(normalize24hTime(event.target.value))}
-                      className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                      className={sotFormSelectClass}
                     />
                   </div>
                 </>
@@ -2103,7 +2108,7 @@ export function RegisterDeparturePage() {
                   type="text"
                   value={extension}
                   onChange={(event) => setExtension(event.target.value.replace(/[A-Za-zÀ-ÿ]/g, ""))}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 />
               </div>
 
@@ -2124,7 +2129,7 @@ export function RegisterDeparturePage() {
                     e.preventDefault();
                     openAddCityModal();
                   }}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 >
                   {allCityNames.map((metroCity) => (
                     <option key={metroCity} value={metroCity}>
@@ -2147,7 +2152,7 @@ export function RegisterDeparturePage() {
                     e.preventDefault();
                     openAddBairroModal();
                   }}
-                  className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  className={sotFormSelectClass}
                 >
                   {bairroSelectOptions.length > 0 ? (
                     bairroSelectOptions.map((item) => (
@@ -2500,7 +2505,7 @@ export function RegisterDeparturePage() {
                 }
               }}
               placeholder={addLocationModal.kind === "city" ? "Nome da cidade" : "Nome do bairro"}
-              className="mt-3 h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))]"
+              className={cn(sotFormInputClass, "mt-3")}
             />
             <div className="mt-4 flex justify-end gap-2">
               <Button
@@ -2575,7 +2580,7 @@ export function RegisterDeparturePage() {
             }
           }}
         >
-          <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-lg">
+          <div className="w-full max-w-md rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-lg">
             <h3 className="text-base font-semibold text-zinc-900">Viatura inoperante</h3>
             <p className="mt-2 text-sm text-zinc-700">
               A viatura <strong>{pendingInoperanteVehicle}</strong> consta como inoperante no RDV.

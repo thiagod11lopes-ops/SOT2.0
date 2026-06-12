@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import type { CatalogCategory } from "../context/catalog-items-context";
 import { isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { CatalogSuccessModal } from "./catalog-success-modal";
 import { Button } from "./ui/button";
@@ -63,7 +64,8 @@ export function CatalogComboField({
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
           className={cn(
-            "h-10 min-w-0 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:bg-slate-100",
+            sotFormInputClass,
+            "min-w-0",
             showPlusButton ? "flex-1" : "w-full",
             showPlusAfterAttempt && needsCatalogEntry && "border-red-500/90",
           )}

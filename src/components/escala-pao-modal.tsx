@@ -26,6 +26,7 @@ import {
   MESES_DISTRIBUICAO_INTEGRANTES,
   OPCOES_DIA_ESPECIAL,
 } from "../lib/escalaPaoStorage";
+import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
@@ -301,7 +302,7 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
                       }}
                       placeholder="Nome do integrante"
                       autoComplete="off"
-                      className="min-w-[12rem] flex-1 rounded-md border border-[hsl(var(--border))] bg-white px-3 py-2 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className={cn(sotFormTextareaClass, "min-h-0 min-w-[12rem] flex-1 py-2")}
                     />
                     <Button type="button" size="sm" onClick={handleIntegranteAdd}>
                       Adicionar
@@ -428,7 +429,7 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
                             if (Number.isNaN(v)) return;
                             setDiaInicioDistribuicao(Math.min(Math.max(1, v), daysInMonth));
                           }}
-                          className="h-9 w-[4.5rem] rounded-md border border-[hsl(var(--border))] bg-white px-2 text-center text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] dark:bg-[hsl(var(--background))]"
+                          className={cn(sotFormInputClass, "h-9 w-[4.5rem] px-2 text-center tabular-nums")}
                         />
                         <span className="text-sm text-[hsl(var(--muted-foreground))]">
                           (mês com {daysInMonth} dias)

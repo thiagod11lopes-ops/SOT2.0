@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import type { DepartureRecord } from "../types/departure";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { Button } from "./ui/button";
 
 type Props = {
@@ -134,7 +135,7 @@ export function DepartureOcorrenciasListModal({
               id="ocorrencias-filter-viatura"
               value={filtroViatura}
               onChange={(e) => setFiltroViatura(e.target.value)}
-              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              className={sotFormInputClass}
             >
               <option value="">Todas</option>
               {viaturasOptions.map((v) => (
@@ -152,7 +153,7 @@ export function DepartureOcorrenciasListModal({
               id="ocorrencias-filter-motorista"
               value={filtroMotorista}
               onChange={(e) => setFiltroMotorista(e.target.value)}
-              className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              className={sotFormInputClass}
             >
               <option value="">Todos</option>
               {motoristasOptions.map((m) => (
