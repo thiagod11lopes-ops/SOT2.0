@@ -74,7 +74,11 @@ export function Header({
             onClick={openRdvInApp}
             className={cn(rdvRouteActive && "shadow-sm")}
           >
-            <BrokenCarIcon />
+            <BrokenCarIcon
+              className={cn(
+                rdvRouteActive ? "text-[hsl(var(--primary-foreground))]" : "text-[hsl(var(--primary))]",
+              )}
+            />
           </Button>
         </div>
       </div>

@@ -50,12 +50,12 @@ export function TabsList({ items, active, onChange, variant = "default" }: TabsL
                   isMain ? "font-bold" : "font-medium",
                   isActive(item)
                     ? cn(
-                        "bg-[hsl(var(--primary))] text-white shadow-sm",
+                        "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm",
                         isMain &&
                           "[text-shadow:0_1px_2px_rgba(0,0,0,0.45),0_3px_10px_rgba(0,0,0,0.35)]",
                       )
                     : cn(
-                        "text-slate-500 hover:bg-[hsl(var(--muted))] hover:text-slate-900",
+                        "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
                         isMain &&
                           "[text-shadow:0_1px_2px_rgba(0,0,0,0.28),0_2px_8px_rgba(0,0,0,0.18)]",
                       ),
