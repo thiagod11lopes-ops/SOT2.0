@@ -72,4 +72,21 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
       border: "hsl(220 16% 88%)",
     },
   },
+  {
+    mode: "radar",
+    title: "Radar",
+    subtitle: "Console tático",
+    description:
+      "Fundo escuro fosforescente, textos e acentos em verde com grade de varredura e linha giratória estilo painel de radar.",
+    highlights: ["Visual tático", "Varredura animada"],
+    preview: {
+      background: "hsl(125 42% 5%)",
+      card: "hsl(125 38% 8%)",
+      foreground: "hsl(120 90% 62%)",
+      muted: "hsl(120 55% 42%)",
+      primary: "hsl(120 100% 42%)",
+      primaryForeground: "hsl(125 45% 6%)",
+      border: "hsl(120 65% 28%)",
+    },
+  },
 ];

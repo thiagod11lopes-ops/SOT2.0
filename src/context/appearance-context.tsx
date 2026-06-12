@@ -14,14 +14,14 @@ import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "..
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import { useSyncPreference } from "./sync-preference-context";
 
-export type AppearanceMode = "original" | "dark" | "ultra-modern";
+export type AppearanceMode = "original" | "dark" | "ultra-modern" | "radar";
 
 const IDB_KEY = "sot-appearance";
 const LEGACY_LS_KEY = "sot-appearance";
 const SUPPRESS_REMOTE_MS = 5000;
 
 function isAppearanceMode(v: unknown): v is AppearanceMode {
-  return v === "dark" || v === "ultra-modern" || v === "original";
+  return v === "dark" || v === "ultra-modern" || v === "original" || v === "radar";
 }
 
 /** Leitura síncrona (localStorage) para evitar flash do tema errado ao recarregar. */

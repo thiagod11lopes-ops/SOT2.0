@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { DesktopBrasaoWatermark } from "./desktop-brasao-watermark";
+import { DesktopRadarOverlay } from "./desktop-radar-overlay";
 import { DeveloperCreditBadge } from "./developer-credit-badge";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
@@ -105,6 +106,7 @@ export function Layout({
       >
         {fitHomeViewport ? <HomeViewportScale>{children}</HomeViewportScale> : children}
       </main>
+      <DesktopRadarOverlay />
       <DesktopBrasaoWatermark />
       <DeveloperCreditBadge />
     </div>

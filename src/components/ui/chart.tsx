@@ -12,7 +12,10 @@ import type { Props as DefaultLegendContentProps } from "recharts/types/componen
 
 import { cn } from "../../lib/utils";
 
-const THEMES = { light: "", dark: 'html[data-appearance="dark"]' } as const;
+const THEMES = {
+  light: "",
+  dark: 'html[data-appearance="dark"], html[data-appearance="radar"]',
+} as const;
 
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const;
 

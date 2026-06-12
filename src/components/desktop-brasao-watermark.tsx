@@ -5,7 +5,7 @@
 export function DesktopBrasaoWatermark() {
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[95] flex items-center justify-center overflow-hidden"
+      className="desktop-brasao-watermark pointer-events-none fixed inset-0 z-[95] flex items-center justify-center overflow-hidden"
       aria-hidden
     >
       <img

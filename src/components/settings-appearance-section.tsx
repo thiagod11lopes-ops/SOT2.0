@@ -1,4 +1,4 @@
-import { Check, Monitor, Moon, Sparkles } from "lucide-react";
+import { Check, Monitor, Moon, Radar, Sparkles } from "lucide-react";
 import type { AppearanceMode } from "../context/appearance-context";
 import { useAppearance } from "../context/appearance-context";
 import { APPEARANCE_OPTIONS, type AppearanceOption } from "../lib/appearanceOptions";
@@ -8,13 +8,15 @@ const MODE_ICONS: Record<AppearanceMode, typeof Monitor> = {
   original: Monitor,
   dark: Moon,
   "ultra-modern": Sparkles,
+  radar: Radar,
 };
 
 function AppearancePreviewMock({ option }: { option: AppearanceOption }) {
   const p = option.preview;
+  const isRadar = option.mode === "radar";
   return (
     <div
-      className="overflow-hidden rounded-xl border shadow-inner"
+      className={cn("overflow-hidden rounded-xl border shadow-inner", isRadar && "sot-radar-preview")}
       style={{ background: p.background, borderColor: p.border }}
     >
       <div className="flex items-center gap-2 border-b px-2.5 py-2" style={{ borderColor: p.border }}>
@@ -129,7 +131,7 @@ export function SettingsAppearanceSection({ panelClass }: { panelClass: string }
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {APPEARANCE_OPTIONS.map((option) => (
           <AppearanceOptionCard
             key={option.mode}
