@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BackupDeparturesLoader } from "./components/backup-departures-loader";
 import { DeparturesProvider } from "./context/departures-context";
+import { SyncPreferenceProvider } from "./context/sync-preference-context";
+import { CatalogItemsProvider } from "./context/catalog-items-context";
+import { UnlinkedOccurrencesProvider } from "./context/unlinked-occurrences-context";
 import { RootErrorBoundary } from "./root-error-boundary";
 import { SaidasMobileApp } from "./saidas-mobile/saidas-mobile-app";
 import { ensureMobilePushServiceWorkerRegistered } from "./lib/mobilePushNotifications";
@@ -17,10 +20,16 @@ void ensureMobilePushServiceWorkerRegistered();
 createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
-      <DeparturesProvider>
-        <BackupDeparturesLoader />
-        <SaidasMobileApp />
-      </DeparturesProvider>
+      <SyncPreferenceProvider>
+        <DeparturesProvider>
+          <CatalogItemsProvider>
+            <UnlinkedOccurrencesProvider>
+              <BackupDeparturesLoader />
+              <SaidasMobileApp />
+            </UnlinkedOccurrencesProvider>
+          </CatalogItemsProvider>
+        </DeparturesProvider>
+      </SyncPreferenceProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );

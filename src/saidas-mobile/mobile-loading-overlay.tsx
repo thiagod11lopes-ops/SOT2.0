@@ -3,24 +3,40 @@ import {
   MobileLoadingOverlayContext,
   type MobileProgressReporter,
   type RunWithProgressOptions,
+  type SystemSyncOverlayState,
   useMobileLoadingOverlay,
 } from "./mobile-loading-context";
+import { clampMobileProgress } from "./mobileProgressUtils";
+import { MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
 
 const DEFAULT_LABEL = "A carregar...";
+const DEFAULT_SYSTEM_SYNC: SystemSyncOverlayState = {
+  active: false,
+  progress: 0,
+  label: "A sincronizar…",
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function clampProgress(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, Math.round(value)));
+  return clampMobileProgress(value);
 }
 
 export function MobileLoadingOverlayProvider({ children }: { children: ReactNode }) {
   const [isVisible, setIsVisible] = useState(false);
   const [progress, setProgress] = useState(0);
   const [label, setLabel] = useState(DEFAULT_LABEL);
+  const [systemSync, setSystemSyncState] = useState<SystemSyncOverlayState>(DEFAULT_SYSTEM_SYNC);
+
+  const setSystemSync = useCallback((state: SystemSyncOverlayState) => {
+    setSystemSyncState({
+      active: state.active,
+      progress: clampProgress(state.progress),
+      label: state.label.trim() || DEFAULT_SYSTEM_SYNC.label,
+    });
+  }, []);
 
   const runWithTrackedProgress = useCallback(
     async <T,>(
@@ -85,6 +101,10 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
     [runWithTrackedProgress],
   );
 
+  const overlayActive = isVisible || systemSync.active;
+  const overlayProgress = isVisible ? progress : systemSync.progress;
+  const overlayLabel = isVisible ? label : systemSync.label;
+
   const value = useMemo(
     () => ({
       runWithProgress,
@@ -92,8 +112,24 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
       isVisible,
       progress,
       label,
+      systemSync,
+      setSystemSync,
+      overlayActive,
+      overlayProgress,
+      overlayLabel,
     }),
-    [runWithProgress, runWithTrackedProgress, isVisible, progress, label],
+    [
+      runWithProgress,
+      runWithTrackedProgress,
+      isVisible,
+      progress,
+      label,
+      systemSync,
+      setSystemSync,
+      overlayActive,
+      overlayProgress,
+      overlayLabel,
+    ],
   );
 
   return (
@@ -104,30 +140,15 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
 }
 
 export function MobileLoadingOverlayHost() {
-  const { isVisible, progress, label } = useMobileLoadingOverlay();
-  if (!isVisible) return null;
+  const { overlayActive, overlayProgress, overlayLabel } = useMobileLoadingOverlay();
+  if (!overlayActive) return null;
 
   return (
-    <div className="fixed inset-0 z-[980] flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
-      <div className="w-[min(92vw,26rem)] rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-4 shadow-2xl">
-        <p className="mb-2 text-center text-sm font-semibold text-[hsl(var(--foreground))]">{label}</p>
-        <div
-          className="h-3 w-full overflow-hidden rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/45"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(progress)}
-          aria-label={label}
-        >
-          <div
-            className="h-full bg-[hsl(var(--primary))] transition-[width] duration-100 ease-linear"
-            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-          />
-        </div>
-        <p className="mt-2 text-center text-xs font-semibold tabular-nums text-[hsl(var(--muted-foreground))]">
-          {Math.round(progress)}%
-        </p>
-      </div>
-    </div>
+    <MobileProgressOverlayPanel
+      progress={overlayProgress}
+      label={overlayLabel}
+      subtitle="Sincronização"
+      className="z-[980]"
+    />
   );
 }

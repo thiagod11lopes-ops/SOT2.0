@@ -1,13 +1,19 @@
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
-import { fetchRubricaThiagoAsDataUrl, isAssinanteRubricaThiago } from "./rubricaAssinanteThiago";
+import { fetchRubricaThiagoAsDataUrl } from "./rubricaAssinanteThiago";
+import {
+  resolveDeparturesAssinanteDisplay,
+  type DeparturesAssinanteTextLine,
+} from "./departuresAssinanteDisplay";
 import { isRubricaImageDataUrl } from "./rubricaDrawing";
+import { addRubricaPngToPdf, prepareRubricaDataUrlForPdf, prepareRubricaDataUrlMapForPdf } from "./rubricaPdfEmbed";
 import {
   groupDeparturesForListDisplay,
   listRowFromRecord,
   type DepartureRecord,
   type DepartureType,
 } from "../types/departure";
+import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 
 export interface DeparturesPdfSignatures {
   /** Nome do assinante (Divisão de Transporte). */
@@ -20,8 +26,13 @@ type JsPDFWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 const TABLE_TOTAL_WIDTH_MM =
   26 + 28 + 16 + 42 + 22 + 18 + 18 + 16 + 28 + 30;
 
-/** Imagens de rubrica no PDF (coluna da tabela e miniatura no bloco de assinatura): 50% do tamanho anterior. */
-const PDF_RUBRICA_IMAGE_SCALE = 0.5;
+/** Rubricas PNG no PDF: 1 = tamanho pleno (o dobro do anterior 0,5). */
+const PDF_RUBRICA_IMAGE_SCALE = 1;
+/** Fração da área útil da célula «Rubrica» ocupada pelo desenho. */
+const PDF_RUBRICA_TABLE_FILL = 0.8 * 0.8;
+/** Altura mínima (mm) das linhas com rubrica desenhada na tabela. */
+const PDF_RUBRICA_CELL_MIN_HEIGHT_MM = 24;
+const PDF_OCC_RUBRICA_CELL_MIN_HEIGHT_MM = 20;
 
 /** No PDF, rubrica de saída cancelada (texto) — antecede o nome; evita duplicar se já existir no registo. */
 const PDF_RUBRICA_CANCEL_PREFIX = "Cancelado por: ";
@@ -45,13 +56,125 @@ function rubricaColunaPdf(r: DepartureRecord): string {
 /** Margem extra de cada lado da linha relativamente à largura máxima do nome (mm). */
 const SIGNATURE_LINE_PAD_MM = 2.8;
 
+/** Espaço entre o fim da tabela e o topo do bloco de assinatura (mm). */
+const PDF_SIGNATURE_AFTER_TABLE_GAP_MM = 12;
+/** Altura do bloco título + data no topo de cada folha (mm). */
+const PAGE_HEADER_BLOCK_MM = 16;
+const PDF_SIGNATURE_PLACEHOLDER_HEIGHT_MM = 8;
+
+/** Estima a altura vertical (mm) do bloco de assinatura — alinhado a `drawSignatureBlock`. */
+function estimateSignatureBlockHeightMm(
+  doc: jsPDF,
+  blockWidth: number,
+  textLines: DeparturesAssinanteTextLine[],
+  rubricaPngDataUrl: string | null,
+): number {
+  const innerPad = 2;
+  const maxTextW = Math.max(16, blockWidth - innerPad * 2);
+  let textHeight = 0;
+  for (const entry of textLines) {
+    const chunks = doc.splitTextToSize(entry.text.trim(), maxTextW) as string[];
+    for (let i = 0; i < chunks.length; i++) {
+      textHeight += entry.muted ? 4.2 : 4.8;
+    }
+  }
+  let h = 4 + 6 + textHeight + 5;
+  if (rubricaPngDataUrl) {
+    h += 10 * PDF_RUBRICA_IMAGE_SCALE + 2;
+  }
+  return h;
+}
+
+function drawDeparturesPageHeader(
+  doc: jsPDF,
+  centerX: number,
+  margin: number,
+  listTitle: string,
+  dateLabel: string,
+): void {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.text(listTitle, centerX, margin, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Data: ${dateLabel}`, centerX, margin + 7, { align: "center" });
+}
+
+function drawSignatureOrPlaceholder(
+  doc: jsPDF,
+  topY: number,
+  margin: number,
+  usableW: number,
+  blockLeft: number,
+  signGroupW: number,
+  assinanteDisplay: ReturnType<typeof resolveDeparturesAssinanteDisplay> | null,
+  rubricaAssinanteDataUrl: string | null,
+  hasAny: boolean,
+): void {
+  if (hasAny && assinanteDisplay) {
+    drawSignatureBlock(
+      doc,
+      blockLeft,
+      topY,
+      signGroupW,
+      assinanteDisplay.lines,
+      rubricaAssinanteDataUrl,
+    );
+    return;
+  }
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.text(
+    "(Nenhuma assinatura confirmada no painel Assinar.)",
+    margin + usableW / 2,
+    topY + 4,
+    { align: "center" },
+  );
+  doc.setTextColor(0, 0, 0);
+}
+
+/** Assinatura logo abaixo da tabela em cada folha (última folha pode incluir ocorrências avulsas antes). */
+function stampSignaturesNearContent(
+  doc: jsPDF,
+  tableBottomByPage: Map<number, number>,
+  lastPage: number,
+  lastPageSigTopY: number,
+  margin: number,
+  usableW: number,
+  blockLeft: number,
+  signGroupW: number,
+  assinanteDisplay: ReturnType<typeof resolveDeparturesAssinanteDisplay> | null,
+  rubricaAssinanteDataUrl: string | null,
+  hasAny: boolean,
+): void {
+  for (let page = 1; page <= lastPage; page++) {
+    doc.setPage(page);
+    const topY =
+      page === lastPage
+        ? lastPageSigTopY
+        : (tableBottomByPage.get(page) ?? margin) + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
+    drawSignatureOrPlaceholder(
+      doc,
+      topY,
+      margin,
+      usableW,
+      blockLeft,
+      signGroupW,
+      assinanteDisplay,
+      rubricaAssinanteDataUrl,
+      hasAny,
+    );
+  }
+}
+
 function drawSignatureBlock(
   doc: jsPDF,
   blockX: number,
   topY: number,
   blockWidth: number,
-  name: string,
-  label: string,
+  textLines: DeparturesAssinanteTextLine[],
   rubricaPngDataUrl: string | null = null,
 ): number {
   const centerX = blockX + blockWidth / 2;
@@ -59,10 +182,20 @@ function drawSignatureBlock(
   doc.setFontSize(10);
   const innerPad = 2;
   const maxTextW = Math.max(16, blockWidth - innerPad * 2);
-  const nameLines = doc.splitTextToSize(name.trim(), maxTextW);
+
+  const wrappedLines: DeparturesAssinanteTextLine[] = [];
+  for (const entry of textLines) {
+    const chunks = doc.splitTextToSize(entry.text.trim(), maxTextW) as string[];
+    for (const chunk of chunks) {
+      wrappedLines.push({ text: chunk, bold: entry.bold, muted: entry.muted });
+    }
+  }
+
   let maxLineW = 0;
-  for (const line of nameLines) {
-    maxLineW = Math.max(maxLineW, doc.getTextWidth(line));
+  for (const entry of wrappedLines) {
+    doc.setFont("helvetica", entry.bold ? "bold" : "normal");
+    doc.setFontSize(entry.muted ? 8 : entry.bold ? 10 : 9);
+    maxLineW = Math.max(maxLineW, doc.getTextWidth(entry.text));
   }
   const lineW = Math.min(blockWidth, maxLineW + SIGNATURE_LINE_PAD_MM * 2);
 
@@ -79,7 +212,7 @@ function drawSignatureBlock(
     const ix = centerX - imgW / 2;
     const iy = lineY - imgH;
     try {
-      doc.addImage(rubricaPngDataUrl, "PNG", ix, iy, imgW, imgH);
+      addRubricaPngToPdf(doc, rubricaPngDataUrl, ix, iy, imgW, imgH);
     } catch {
       /* ignore */
     }
@@ -87,21 +220,84 @@ function drawSignatureBlock(
   }
 
   let ty = nameStartY;
-  for (const line of nameLines) {
-    doc.text(line, centerX, ty, { align: "center" });
-    ty += 4.8;
+  for (const entry of wrappedLines) {
+    doc.setFont("helvetica", entry.bold ? "bold" : "normal");
+    doc.setFontSize(entry.muted ? 8 : entry.bold ? 10 : 9);
+    if (entry.muted) doc.setTextColor(70, 70, 70);
+    else doc.setTextColor(0, 0, 0);
+    doc.text(entry.text, centerX, ty, { align: "center" });
+    ty += entry.muted ? 4.2 : 4.8;
   }
-  const y = ty;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(70, 70, 70);
-  doc.text(label, centerX, y, { align: "center" });
   doc.setTextColor(0, 0, 0);
-  return y + 5;
+  return ty + 5;
 }
 
 function safeFileSegment(value: string): string {
   return value.replace(/[^\d\-a-zA-ZÀ-ÿ]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "documento";
+}
+
+const PDF_OCC_RUBRICA_W_MM = 22;
+const PDF_OCC_RUBRICA_H_MM = 10;
+
+function drawOccurrenceRubricaBeside(
+  doc: jsPDF,
+  rubricaRaw: string | undefined,
+  x: number,
+  y: number,
+  maxHeightMm: number,
+): void {
+  const raw = (rubricaRaw ?? "").trim();
+  if (!isRubricaImageDataUrl(raw)) return;
+  const imgW = PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE;
+  const imgH = Math.min(maxHeightMm, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
+  addRubricaPngToPdf(doc, raw, x, y, imgW, imgH);
+}
+
+function drawUnlinkedOccurrenceBlock(
+  doc: jsPDF,
+  entry: PdfOccurrenceEntry,
+  leftX: number,
+  y: number,
+  blockWidthMm: number,
+  pageH: number,
+  margin: number,
+  tableStartY: number,
+  centerX: number,
+  listTitle: string,
+  dateLabel: string,
+  resolveRubrica: (raw?: string) => string,
+  sigReserveMm: number,
+): number {
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7.5);
+  doc.setTextColor(55, 55, 55);
+  const rubricaW =
+    entry.rubrica && isRubricaImageDataUrl(entry.rubrica)
+      ? PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE + 2
+      : 0;
+  const textW = Math.max(40, blockWidthMm - rubricaW);
+  const lines = doc.splitTextToSize(`Ocorrências: ${entry.texto}`, textW) as string[];
+  const lineH = 3.15;
+  const textH = lines.length * lineH;
+  const imgH =
+    entry.rubrica && isRubricaImageDataUrl(entry.rubrica)
+      ? PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE
+      : 0;
+  const blockH = Math.max(textH, imgH) + 1.5;
+  const maxContentY = pageH - sigReserveMm;
+  if (y + blockH > maxContentY) {
+    doc.addPage();
+    drawDeparturesPageHeader(doc, centerX, margin, listTitle, dateLabel);
+    y = tableStartY;
+  }
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i]!, leftX, y + i * lineH);
+  }
+  if (entry.rubrica) {
+    drawOccurrenceRubricaBeside(doc, resolveRubrica(entry.rubrica), leftX + textW + 1.5, y, blockH);
+  }
+  doc.setTextColor(0, 0, 0);
+  return y + blockH + 1.5;
 }
 
 export interface DeparturesListPdfParams {
@@ -110,6 +306,8 @@ export interface DeparturesListPdfParams {
   filterDate: string;
   rows: DepartureRecord[];
   signatures: DeparturesPdfSignatures;
+  /** Ocorrências sem placa — entre tabela e assinatura, alinhadas à esquerda. */
+  unlinkedOccurrences?: PdfOccurrenceEntry[];
 }
 
 /**
@@ -124,17 +322,9 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
   const tableSideOffset = Math.max(0, (usableW - TABLE_TOTAL_WIDTH_MM) / 2);
   const centerX = pageW / 2;
 
-  let y = margin;
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(params.listTitle, centerX, y, { align: "center" });
-  y += 7;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
   const dateLabel = params.filterDate.trim() ? params.filterDate : "(data incompleta)";
-  doc.text(`Data: ${dateLabel}`, centerX, y, { align: "center" });
-  y += 9;
+  const tableStartY = margin + PAGE_HEADER_BLOCK_MM;
+  const tableBottomByPage = new Map<number, number>();
 
   const omOrHospitalHead = params.tipo === "Ambulância" ? "Hospital" : "OM";
   const head = [
@@ -143,6 +333,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
 
   /** Índice da linha da tabela → índice em `params.rows`, ou `occ` para linha de ocorrências. */
   const rowMap: Array<number | "occ"> = [];
+  const occRowMeta: PdfOccurrenceEntry[] = [];
   const tableBody: (
     | [string, string, string, string, string, string, string, string, string, string]
     | [{ content: string; colSpan: number; styles: Record<string, unknown> }]
@@ -174,6 +365,7 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       for (const rec of g.records) {
         const occ = (rec.ocorrencias ?? "").trim();
         if (occ) {
+          const occRubrica = (rec.ocorrenciasRubrica ?? "").trim() || undefined;
           tableBody.push([
             {
               content: `Ocorrências: ${occ}`,
@@ -182,18 +374,56 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
                 fontSize: 6.2,
                 fontStyle: "italic",
                 textColor: [55, 55, 55],
-                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: 2 },
+                cellPadding: { top: 1.2, bottom: 1.6, left: 2, right: occRubrica ? 48 : 2 },
+                halign: "left",
               },
             },
           ]);
           rowMap.push("occ");
+          occRowMeta.push({ texto: occ, rubrica: occRubrica });
         }
       }
     }
   }
 
+  const rubricaSources: string[] = [];
+  for (const row of params.rows) {
+    const raw = (row.rubrica ?? "").trim();
+    if (isRubricaImageDataUrl(raw)) rubricaSources.push(raw);
+    const occRaw = (row.ocorrenciasRubrica ?? "").trim();
+    if (isRubricaImageDataUrl(occRaw)) rubricaSources.push(occRaw);
+  }
+  for (const entry of params.unlinkedOccurrences ?? []) {
+    const raw = (entry.rubrica ?? "").trim();
+    if (isRubricaImageDataUrl(raw)) rubricaSources.push(raw);
+  }
+  const rubricaEmbedBySource = await prepareRubricaDataUrlMapForPdf(rubricaSources);
+
+  const resolveRubricaEmbed = (raw: string | undefined): string => {
+    const trimmed = (raw ?? "").trim();
+    if (!isRubricaImageDataUrl(trimmed)) return trimmed;
+    return rubricaEmbedBySource.get(trimmed) ?? trimmed;
+  };
+
+  const { assinanteDivisao } = params.signatures;
+  const hasAny = Boolean(assinanteDivisao);
+  const assinanteDisplay = assinanteDivisao ? resolveDeparturesAssinanteDisplay(assinanteDivisao) : null;
+  let rubricaAssinanteDataUrl: string | null = null;
+  if (assinanteDisplay?.rubricaThiagoPng) {
+    const thiagoRaw = await fetchRubricaThiagoAsDataUrl();
+    rubricaAssinanteDataUrl = thiagoRaw ? await prepareRubricaDataUrlForPdf(thiagoRaw) : null;
+  }
+  const signGroupW = Math.min(usableW, 168);
+  const blockLeft = margin + (usableW - signGroupW) / 2;
+  const sigHeight =
+    hasAny && assinanteDisplay
+      ? estimateSignatureBlockHeightMm(doc, signGroupW, assinanteDisplay.lines, rubricaAssinanteDataUrl)
+      : PDF_SIGNATURE_PLACEHOLDER_HEIGHT_MM;
+  /** Reserva inferior na folha atual da tabela (reduzida nas continuações via didDrawPage). */
+  const tablePageBottomReserveMm = sigHeight + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
+
   autoTable(doc, {
-    startY: y,
+    startY: tableStartY,
     head,
     body: tableBody,
     styles: {
@@ -209,7 +439,24 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       valign: "middle",
     },
     bodyStyles: { valign: "middle" },
-    margin: { left: margin + tableSideOffset, right: margin + tableSideOffset },
+    showHead: "everyPage",
+    margin: {
+      left: margin + tableSideOffset,
+      right: margin + tableSideOffset,
+      top: tableStartY,
+      bottom: tablePageBottomReserveMm,
+    },
+    willDrawPage: (data) => {
+      drawDeparturesPageHeader(doc, centerX, margin, params.listTitle, dateLabel);
+      data.settings.margin.top = tableStartY;
+    },
+    didDrawPage: (data) => {
+      if (data.cursor) {
+        tableBottomByPage.set(data.pageNumber, data.cursor.y);
+      }
+      /** Folhas de continuação não reservam rodapé fixo — assinatura fica junto à tabela. */
+      data.settings.margin.bottom = margin;
+    },
     tableWidth: TABLE_TOTAL_WIDTH_MM,
     columnStyles: {
       0: { cellWidth: 26 },
@@ -224,7 +471,15 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       9: { cellWidth: 30 },
     },
     didParseCell: (data) => {
-      if (data.section !== "body" || data.column.index !== 9) return;
+      if (data.section !== "body") return;
+      if (rowMap[data.row.index] === "occ" && data.column.index === 0) {
+        const meta = occRowMeta[data.row.index];
+        if (meta?.rubrica && isRubricaImageDataUrl(meta.rubrica)) {
+          data.cell.styles.minCellHeight = PDF_OCC_RUBRICA_CELL_MIN_HEIGHT_MM;
+        }
+        return;
+      }
+      if (data.column.index !== 9) return;
       const m = rowMap[data.row.index];
       if (m === "occ" || m === undefined) return;
       const row = params.rows[m];
@@ -232,77 +487,92 @@ export async function buildDeparturesListPdf(params: DeparturesListPdfParams): P
       const raw = (row.rubrica ?? "").trim();
       if (isRubricaImageDataUrl(raw)) {
         data.cell.text = [];
-        data.cell.styles.minCellHeight = 12;
+        data.cell.styles.minCellHeight = PDF_RUBRICA_CELL_MIN_HEIGHT_MM;
       }
     },
     didDrawCell: (data) => {
-      if (data.section !== "body" || data.column.index !== 9) return;
+      if (data.section !== "body") return;
+      if (rowMap[data.row.index] === "occ" && data.column.index === 0) {
+        const meta = occRowMeta[data.row.index];
+        if (meta?.rubrica) {
+          const pad = 0.35;
+          const imgW = PDF_OCC_RUBRICA_W_MM * PDF_RUBRICA_IMAGE_SCALE;
+          const imgH = Math.min(data.cell.height - pad * 2, PDF_OCC_RUBRICA_H_MM * PDF_RUBRICA_IMAGE_SCALE);
+          drawOccurrenceRubricaBeside(
+            data.doc,
+            resolveRubricaEmbed(meta.rubrica),
+            data.cell.x + data.cell.width - imgW - pad,
+            data.cell.y + pad,
+            imgH,
+          );
+        }
+        return;
+      }
+      if (data.column.index !== 9) return;
       const m = rowMap[data.row.index];
       if (m === "occ" || m === undefined) return;
       const row = params.rows[m];
       if (!row) return;
       const raw = (row.rubrica ?? "").trim();
       if (!isRubricaImageDataUrl(raw)) return;
-      /** Área útil da célula; a rubrica usa 64% da área, centrada; `PDF_RUBRICA_IMAGE_SCALE` reduz o desenho em 50%. */
+      const embed = resolveRubricaEmbed(raw);
+      /** Área útil da célula; rubrica centrada com escala plena (2× vs. configuração anterior). */
       const pad = 0.25;
       const innerW = Math.max(0.5, data.cell.width - pad * 2);
       const innerH = Math.max(0.5, data.cell.height - pad * 2);
-      const scale = 0.8 * 0.8 * PDF_RUBRICA_IMAGE_SCALE;
+      const scale = PDF_RUBRICA_TABLE_FILL * PDF_RUBRICA_IMAGE_SCALE;
       const iw = innerW * scale;
       const ih = innerH * scale;
       const ix = data.cell.x + pad + (innerW - iw) / 2;
       const iy = data.cell.y + pad + (innerH - ih) / 2;
-      try {
-        data.doc.addImage(raw, "PNG", ix, iy, iw, ih);
-      } catch {
-        /* ignore */
-      }
+      addRubricaPngToPdf(data.doc, embed, ix, iy, iw, ih);
     },
   });
 
-  const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? y + 40;
-  y = finalY + 12;
+  const finalY = (doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? tableStartY + 40;
+  const lastPage = doc.getNumberOfPages();
+  let lastPageSigTopY =
+    (tableBottomByPage.get(lastPage) ?? finalY) + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
 
-  if (y > pageH - 55) {
-    doc.addPage();
-    y = margin;
-  }
-
-  const { assinanteDivisao } = params.signatures;
-  const hasAny = Boolean(assinanteDivisao);
-
-  let rubricaAssinanteDataUrl: string | null = null;
-  if (assinanteDivisao && isAssinanteRubricaThiago(assinanteDivisao)) {
-    rubricaAssinanteDataUrl = await fetchRubricaThiagoAsDataUrl();
-  }
-
-  /** Largura do bloco de assinatura (Divisão de Transporte), centrada na página. */
-  const signGroupW = Math.min(usableW, 168);
-
-  if (assinanteDivisao) {
-    if (y > pageH - 40) {
-      doc.addPage();
-      y = margin;
+  const unlinked = (params.unlinkedOccurrences ?? []).filter((e) => e.texto.trim().length > 0);
+  if (unlinked.length > 0) {
+    doc.setPage(lastPage);
+    let y = finalY + 4;
+    const leftX = margin + tableSideOffset;
+    const sigReserveMm = sigHeight + PDF_SIGNATURE_AFTER_TABLE_GAP_MM;
+    for (const entry of unlinked) {
+      y = drawUnlinkedOccurrenceBlock(
+        doc,
+        entry,
+        leftX,
+        y,
+        TABLE_TOTAL_WIDTH_MM,
+        pageH,
+        margin,
+        tableStartY,
+        centerX,
+        params.listTitle,
+        dateLabel,
+        resolveRubricaEmbed,
+        sigReserveMm,
+      );
     }
-    const blockLeft = margin + (usableW - signGroupW) / 2;
-    y = drawSignatureBlock(
-      doc,
-      blockLeft,
-      y,
-      signGroupW,
-      assinanteDivisao,
-      "Divisão de Transporte",
-      rubricaAssinanteDataUrl,
-    );
+    lastPageSigTopY = y + 4;
   }
 
-  if (!hasAny) {
-    doc.setFont("helvetica", "italic");
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text("(Nenhuma assinatura confirmada no painel Assinar.)", margin + usableW / 2, y, { align: "center" });
-    doc.setTextColor(0, 0, 0);
-  }
+  stampSignaturesNearContent(
+    doc,
+    tableBottomByPage,
+    doc.getNumberOfPages(),
+    lastPageSigTopY,
+    margin,
+    usableW,
+    blockLeft,
+    signGroupW,
+    assinanteDisplay,
+    rubricaAssinanteDataUrl,
+    hasAny,
+  );
 
   const slugTipo = params.tipo === "Ambulância" ? "ambulancia" : "administrativas";
   const slugData = safeFileSegment(params.filterDate.trim() || "sem-data");

@@ -54,6 +54,7 @@ export function normalizeImportedDeparture(raw: Record<string, unknown>): Depart
     rubrica: str(raw.rubrica),
     cancelada: raw.cancelada === true,
     ocorrencias: str(raw.ocorrencias),
+    ocorrenciasRubrica: str(raw.ocorrenciasRubrica),
   };
 }
 

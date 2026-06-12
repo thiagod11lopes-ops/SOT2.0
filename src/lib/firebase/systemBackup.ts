@@ -87,6 +87,7 @@ function toDepartureRecord(id: string, data: Record<string, unknown>): Departure
     rubrica: String(data.rubrica ?? ""),
     cancelada: data.cancelada === true,
     ocorrencias: String(data.ocorrencias ?? ""),
+    ocorrenciasRubrica: String(data.ocorrenciasRubrica ?? ""),
   };
 }
 

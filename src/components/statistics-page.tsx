@@ -14,10 +14,17 @@ import {
 import { useDepartures } from "../context/departures-context";
 import { parseIsoDateToDate, parsePtBrToDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
-import type { DepartureRecord } from "../types/departure";
+import type { DepartureRecord, DepartureType } from "../types/departure";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import {
+  addBaselineCalendarDaysToSet,
+  getStatisticsBaselineContribution,
+  mergeMonthlyEvolutionWithBaseline,
+  statisticsBaselineYears,
+  type StatisticsBaselineFilters,
+} from "../lib/statisticsHistoricalBaseline";
 import { downloadStatisticsPdf } from "../lib/statisticsPdf";
 import { StatisticsDepartureTypeDonut } from "./statistics-departure-type-donut";
 import { StatisticsTimeSeriesCharts } from "./statistics-time-series-charts";
@@ -334,15 +341,64 @@ function PodiumCard({
   );
 }
 
-function MetricCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
+/** Média diária de saídas de um tipo no período filtrado (inclui baseline legado). */
+function computeDailyExitAverageByTipo(
+  rows: DepartureRecord[],
+  baselineFilters: StatisticsBaselineFilters,
+  tipo: DepartureType,
+): number {
+  const eligible = rows.filter((row) => row.tipo === tipo);
+  const tipoFilters = { ...baselineFilters, typeFilter: tipo };
+  const baseline = getStatisticsBaselineContribution(tipoFilters);
+  const count = eligible.length + (baseline ? (tipo === "Administrativa" ? baseline.admin : baseline.ambulance) : 0);
+  if (count === 0) return 0;
+
+  const days = new Set<string>();
+  for (const row of eligible) {
+    const d = parseDepartureDate(row.dataSaida);
+    if (!d) continue;
+    days.add(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+    );
+  }
+  const periodBaseline = getStatisticsBaselineContribution({ ...baselineFilters, typeFilter: "todos" });
+  if (periodBaseline) addBaselineCalendarDaysToSet(days, baselineFilters);
+
+  const divisor = days.size > 0 ? days.size : 1;
+  return count / divisor;
+}
+
+function formatExitAverage(value: number): string {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function MetricCard({
+  label,
+  value,
+  icon,
+  secondary,
+}: {
+  label: string;
+  value: number;
+  icon: ReactNode;
+  secondary?: { label: string; value: string };
+}) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between gap-3 py-4">
-        <div>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
-          <p className="text-3xl font-bold text-[hsl(var(--primary))]">{value}</p>
+        <div className="flex min-w-0 flex-1 items-stretch gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
+            <p className="text-3xl font-bold text-[hsl(var(--primary))]">{value}</p>
+          </div>
+          {secondary ? (
+            <div className="min-w-0 border-l border-[hsl(var(--border))] pl-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">{secondary.label}</p>
+              <p className="text-2xl font-bold text-[hsl(var(--primary))]">{secondary.value}</p>
+            </div>
+          ) : null}
         </div>
-        <span className="text-[hsl(var(--primary))]">{icon}</span>
+        <span className="shrink-0 text-[hsl(var(--primary))]">{icon}</span>
       </CardContent>
     </Card>
   );
@@ -383,8 +439,24 @@ export function StatisticsPage() {
     });
   }, [departuresForStatistics, yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
 
+  const baselineFilters = useMemo(
+    (): StatisticsBaselineFilters => ({
+      yearFilter,
+      monthFilter,
+      driverFilter,
+      vehicleFilter,
+      typeFilter,
+    }),
+    [yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter],
+  );
+
+  const historicalBaseline = useMemo(
+    () => getStatisticsBaselineContribution(baselineFilters),
+    [baselineFilters],
+  );
+
   const availableYears = useMemo(() => {
-    const years = new Set<string>();
+    const years = new Set<string>(statisticsBaselineYears());
     for (const row of departuresForStatistics) {
       const d = parseDepartureDate(row.dataSaida);
       if (d) years.add(String(d.getFullYear()));
@@ -405,11 +477,18 @@ export function StatisticsPage() {
   }, [departuresForStatistics]);
 
   const totals = useMemo(() => {
-    const total = filteredDepartures.length;
     const admin = filteredDepartures.filter((row) => row.tipo === "Administrativa").length;
     const ambulance = filteredDepartures.filter((row) => row.tipo === "Ambulância").length;
-    return { total, admin, ambulance };
-  }, [filteredDepartures]);
+    const baseAdmin = historicalBaseline?.admin ?? 0;
+    const baseAmbulance = historicalBaseline?.ambulance ?? 0;
+    const totalAdmin = admin + baseAdmin;
+    const totalAmbulance = ambulance + baseAmbulance;
+    return {
+      total: filteredDepartures.length + baseAdmin + baseAmbulance,
+      admin: totalAdmin,
+      ambulance: totalAmbulance,
+    };
+  }, [filteredDepartures, historicalBaseline]);
 
   const countMapMotoristas = useMemo(() => toCountMap(filteredDepartures, (row) => row.motoristas), [filteredDepartures]);
   const rankingMotoristas = useMemo(() => toTopRanking(countMapMotoristas), [countMapMotoristas]);
@@ -452,6 +531,15 @@ export function StatisticsPage() {
   const departuresAmbulancia = useMemo(
     () => filteredDepartures.filter((row) => row.tipo === "Ambulância"),
     [filteredDepartures],
+  );
+
+  const dailyExitAverageAdmin = useMemo(
+    () => computeDailyExitAverageByTipo(filteredDepartures, baselineFilters, "Administrativa"),
+    [filteredDepartures, baselineFilters],
+  );
+  const dailyExitAverageAmbulance = useMemo(
+    () => computeDailyExitAverageByTipo(filteredDepartures, baselineFilters, "Ambulância"),
+    [filteredDepartures, baselineFilters],
   );
 
   const countMapViaturasAdmin = useMemo(
@@ -507,10 +595,11 @@ export function StatisticsPage() {
     [requestedDestinationsAmbulance],
   );
 
-  const monthlyEvolution = useMemo(
-    () => buildMonthlyEvolution(filteredDepartures),
-    [filteredDepartures],
-  );
+  const monthlyEvolution = useMemo(() => {
+    const fromRecords = buildMonthlyEvolution(filteredDepartures);
+    if (!historicalBaseline) return fromRecords;
+    return mergeMonthlyEvolutionWithBaseline(fromRecords, historicalBaseline.byMonth);
+  }, [filteredDepartures, historicalBaseline]);
 
   const filterSummaryLines = useMemo(() => {
     const monthLabel =
@@ -687,8 +776,24 @@ export function StatisticsPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard label="Número de saídas totais" value={totals.total} icon={<ClipboardList size={24} />} />
-        <MetricCard label="Saídas Administrativas" value={totals.admin} icon={<ChartColumnBig size={24} />} />
-        <MetricCard label="Saídas de Ambulância" value={totals.ambulance} icon={<Siren size={24} />} />
+        <MetricCard
+          label="Saídas Administrativas"
+          value={totals.admin}
+          icon={<ChartColumnBig size={24} />}
+          secondary={{
+            label: "Média diária de saídas administrativas",
+            value: formatExitAverage(dailyExitAverageAdmin),
+          }}
+        />
+        <MetricCard
+          label="Saídas de Ambulância"
+          value={totals.ambulance}
+          icon={<Siren size={24} />}
+          secondary={{
+            label: "Média diária de saídas de ambulância",
+            value: formatExitAverage(dailyExitAverageAmbulance),
+          }}
+        />
       </div>
 
       <StatisticsDepartureTypeDonut admin={totals.admin} ambulance={totals.ambulance} total={totals.total} />

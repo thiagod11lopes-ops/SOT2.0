@@ -75,6 +75,7 @@ import {
   clearDriverActiveLocation,
   resolveDriverLocationPostUrl,
 } from "../lib/driverLocationPost";
+import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
@@ -368,16 +369,23 @@ export function SettingsPage() {
   const { pins: driverActivePins } = useDriverActiveLocations(
     activeSectionId === "settings-rastreamento-gps" && isFirebaseConfigured(),
   );
+  const placasConsideradasParaMapaGps = useMemo(
+    () => filterDriverLocationPinsPorSaidaIniciada(driverActivePins, departures),
+    [driverActivePins, departures],
+  );
   const placasNoMapaOrdenadas = useMemo(() => {
     const set = new Set<string>();
-    for (const p of driverActivePins) {
+    for (const p of placasConsideradasParaMapaGps) {
       const t = p.placa.trim();
       if (t) set.add(t);
     }
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [driverActivePins]);
+  }, [placasConsideradasParaMapaGps]);
 
-  const vistoriaCloudSnapshot = useMemo(() => getVistoriaCloudState(), [vistoriaCloudTick]);
+  const vistoriaCloudSnapshot = useMemo(() => {
+    void vistoriaCloudTick;
+    return getVistoriaCloudState();
+  }, [vistoriaCloudTick]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();

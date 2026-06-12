@@ -83,6 +83,7 @@ export function mapBackupRowToDepartureRecord(raw: Record<string, unknown>): Dep
     rubrica: str(raw.rubrica),
     cancelada: raw.cancelada === true,
     ocorrencias: str(raw.ocorrencias),
+    ocorrenciasRubrica: str(raw.ocorrenciasRubrica),
   };
 }
 

@@ -196,6 +196,8 @@ function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): Catalog
 
 type CatalogItemsContextValue = {
   items: CatalogItemsState;
+  /** Primeira carga local ou snapshot remoto concluída. */
+  initialLoadComplete: boolean;
   /** Retorna `true` se o item foi incluído (novo); `false` se vazio ou duplicado. */
   addItem: (category: CatalogCategory, value: string) => boolean;
   removeItem: (category: CatalogCategory, value: string) => void;
@@ -210,6 +212,11 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   /** `true` após a 1.ª leitura do IndexedDB (evita gravar estado vazio antes do merge). */
   const initialIdbLoadDoneRef = useRef(false);
   const hydratedRef = useRef(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const markInitialLoadComplete = useCallback(() => {
+    hydratedRef.current = true;
+    setInitialLoadComplete(true);
+  }, []);
   const applyingRemoteRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
   const { firebaseOnlyEnabled } = useSyncPreference();
@@ -231,12 +238,12 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       const fromDb = normalizeCatalogState(stored);
       setItems((prev) => mergeCatalogStates(fromDb, prev));
       initialIdbLoadDoneRef.current = true;
-      hydratedRef.current = true;
+      markInitialLoadComplete();
     });
     return () => {
       cancelled = true;
     };
-  }, [useCloud]);
+  }, [useCloud, markInitialLoadComplete]);
 
   useEffect(() => {
     if (!useCloud) return;
@@ -255,7 +262,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 // Doc ausente na nuvem: sem isto `hydratedRef` nunca passa a true e o efeito
                 // que grava na nuvem não corre — instalação mobile nova fica com catálogo vazio
                 // para sempre mesmo com "Nuvem ativa" (sincronização de saídas é outro fluxo).
-                hydratedRef.current = true;
+                markInitialLoadComplete();
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -280,7 +287,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 }
                 return merged;
               });
-              hydratedRef.current = true;
+              markInitialLoadComplete();
             })();
           },
           (err) => console.error("[SOT] Firestore catálogo:", err),
@@ -288,12 +295,21 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (catálogo):", e);
+        markInitialLoadComplete();
       }
     })();
     return () => {
       cancelled = true;
       unsub?.();
     };
+  }, [useCloud, markInitialLoadComplete]);
+
+  useEffect(() => {
+    if (useCloud) {
+      setInitialLoadComplete(false);
+      return;
+    }
+    setInitialLoadComplete(false);
   }, [useCloud]);
 
   useEffect(() => {
@@ -367,8 +383,8 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, addItem, removeItem }),
-    [items, addItem, removeItem],
+    () => ({ items, initialLoadComplete, addItem, removeItem }),
+    [items, initialLoadComplete, addItem, removeItem],
   );
 
   return (

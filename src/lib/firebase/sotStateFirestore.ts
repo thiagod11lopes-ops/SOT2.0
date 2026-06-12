@@ -37,6 +37,8 @@ export const SOT_STATE_DOC = {
   vistoria: "vistoria",
   /** Relatório Diário de Viaturas (carro-quebrado): mapa ISO data → relatório gravado. */
   rdvByDate: "rdvByDate",
+  /** Ocorrências sem placa vinculada (PDF entre tabela e assinatura). */
+  ocorrenciasDesvinculadas: "ocorrenciasDesvinculadas",
   /** Configuração OwnTracks (token partilhado + vínculos motorista→placa) — para iPhones. */
   owntracks: "owntracks",
 } as const;
@@ -94,7 +96,7 @@ export function subscribeSotStateDoc(
                   const p =
                     data && typeof data === "object" && "payload" in data
                       ? (data as { payload: unknown }).payload
-                      : null;
+                      : data; // <--- ALTERADO: Usa 'data' se 'payload' não existir
                   onPayload(p ?? null);
                 })
                 .catch((err) => {
@@ -121,7 +123,7 @@ export function subscribeSotStateDoc(
           }
           const data = snap.data();
           const p =
-            data && typeof data === "object" && "payload" in data ? (data as { payload: unknown }).payload : null;
+            data && typeof data === "object" && "payload" in data ? (data as { payload: unknown }).payload : data; // <--- ALTERADO: Usa 'data' se 'payload' não existir
           onPayload(p ?? null);
         },
         (err) => onError(err instanceof Error ? err : new Error(String(err))),
@@ -146,7 +148,7 @@ export async function readSotStateDocFromServer(docId: SotStateDocId): Promise<u
   const snap = await getDocFromServer(docRef(docId));
   if (!snap.exists()) return null;
   const data = snap.data();
-  const payload = data && typeof data === "object" && "payload" in data ? (data as { payload?: unknown }).payload : null;
+  const payload = data && typeof data === "object" && "payload" in data ? (data as { payload?: unknown }).payload : data; // <--- ALTERADO: Usa 'data' se 'payload' não existir
   return payload ?? null;
 }
 

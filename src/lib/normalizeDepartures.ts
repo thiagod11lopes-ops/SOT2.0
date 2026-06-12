@@ -30,6 +30,7 @@ export function normalizeDepartureRows(value: unknown): DepartureRecord[] {
         rubrica: typeof r.rubrica === "string" ? r.rubrica : "",
         cancelada: typeof r.cancelada === "boolean" ? r.cancelada : false,
         ocorrencias: typeof r.ocorrencias === "string" ? r.ocorrencias : "",
+        ocorrenciasRubrica: typeof r.ocorrenciasRubrica === "string" ? r.ocorrenciasRubrica : "",
         ficouNaOficina: r.ficouNaOficina === true,
         ...ambTipoSaidaBools(r),
       };

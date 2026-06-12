@@ -39,7 +39,7 @@ export function SaidasHeaderEscalaPao() {
 
   return (
     <>
-      <div className="flex min-w-0 shrink-0 flex-row items-center gap-1.5 min-[400px]:gap-2">
+      <div className="flex shrink-0 flex-row items-center">
         <button
           type="button"
           onClick={() => setModalOpen(true)}
@@ -47,7 +47,7 @@ export function SaidasHeaderEscalaPao() {
           aria-expanded={modalOpen}
           aria-label="Abrir escala do pão"
           title={titulo}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 transition active:scale-[0.98]"
+          className="saidas-mobile-header-icon-btn saidas-mobile-header-icon-btn--pao"
         >
           <img
             src={paoImg}

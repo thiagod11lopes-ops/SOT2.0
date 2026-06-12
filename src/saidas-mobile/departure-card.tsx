@@ -1,11 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CarFront, ChevronDown, ChevronUp, ClipboardList, Signature } from "lucide-react";
 import { DepartureOcorrenciasModal } from "../components/departure-ocorrencias-modal";
+import { DepartureOccurrenceLinesList } from "../components/departure-occurrence-line";
+import { occurrenceEntriesFromRecords } from "../lib/departureOccurrenceEntries";
 import { Button } from "../components/ui/button";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
 import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
-import type { DepartureKmFieldsPatch } from "../context/departures-context";
+import type { DepartureKmFieldsPatch, DepartureUpdatePatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
 import { normalize24hTime } from "../lib/timeInput";
@@ -42,10 +44,11 @@ export function DepartureCard({
   allowMobileEdit = true,
   mergedDestinoDisplay,
   mergedSetorDisplay,
+  mergedRecords,
 }: {
   record: DepartureRecord;
   onPatchKm: (patch: DepartureKmFieldsPatch) => void;
-  updateDeparture?: (id: string, data: Omit<DepartureRecord, "id" | "createdAt">) => void;
+  updateDeparture?: (id: string, data: DepartureUpdatePatch) => void;
   /** Ambulância: destaque da saída escolhida para poder usar «Excluir Saída». */
   isSelectedForExcluir?: boolean;
   /** Ambulância: chamado ao tocar no cabeçalho do cartão (junto com expandir). */
@@ -56,6 +59,8 @@ export function DepartureCard({
   mergedDestinoDisplay?: string;
   /** Idem: setores combinados (vista administrativa). */
   mergedSetorDisplay?: string;
+  /** Registos fundidos no cartão (para exibir ocorrências ligadas a cada linha). */
+  mergedRecords?: DepartureRecord[];
 }) {
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -101,6 +106,10 @@ export function DepartureCard({
   const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
   const destinoCabecalho = mergedDestinoDisplay ?? row.destino;
   const destinoCabecalhoLongo = Boolean(mergedDestinoDisplay);
+  const linkedOccurrenceEntries = useMemo(
+    () => occurrenceEntriesFromRecords(mergedRecords ?? [record]),
+    [mergedRecords, record],
+  );
 
   const kmSaidaPreenchido = record.kmSaida.trim().length > 0;
   const kmChegadaPreenchido = record.kmChegada.trim().length > 0;
@@ -126,7 +135,13 @@ export function DepartureCard({
     stopMobileDriverTrackingSessionIfMatches(record.id);
     const motorista = loadActiveMobileMotorista();
     if (motorista) void clearMotoristaActiveAssignmentIfDeparture(motorista, record.id);
-  }, [saidaFinalizada, record.id]);
+    const placa = primaryPlacaFromViaturasField(record.viaturas);
+    if (placa && resolveDriverLocationPostUrl()) {
+      void clearDriverActiveLocation(placa).catch((e) =>
+        console.warn("[SOT mobile] clearDriverActiveLocation (saída finalizada):", e),
+      );
+    }
+  }, [saidaFinalizada, record.id, record.viaturas]);
 
   /**
    * Re-escreve a atribuição `motorista_active_assignments` no Firestore sempre que esta saída
@@ -149,21 +164,19 @@ export function DepartureCard({
     void writeMotoristaActiveAssignment({ motorista, placa, departureId: record.id });
   }, [saidaEmCurso, record.id, record.viaturas]);
 
-  function applyAmbPatch(partial: Partial<DepartureRecord>) {
+  function applyAmbPatch(partial: DepartureUpdatePatch) {
     if (!editavel || !updateDeparture) return;
-    updateDeparture(record.id, {
-      ...record,
-      ...partial,
-    });
+    updateDeparture(record.id, partial);
   }
 
   function commitRubrica() {
     if (!updateDeparture) return;
-    const { id, createdAt, ...rest } = record;
-    void id;
-    void createdAt;
     const drawn = rubricaPadRef.current?.getDataUrl() ?? "";
-    updateDeparture(record.id, { ...rest, rubrica: drawn });
+    if (!drawn.trim()) {
+      window.alert("Desenhe a rubrica antes de confirmar.");
+      return;
+    }
+    updateDeparture(record.id, { rubrica: drawn });
     const placa = primaryPlacaFromViaturasField(record.viaturas);
     if (placa && resolveDriverLocationPostUrl()) {
       void clearDriverActiveLocation(placa).catch((e) =>
@@ -174,20 +187,14 @@ export function DepartureCard({
     setOpen(false);
   }
 
-  function handleSalvarOcorrencias(departureId: string, texto: string) {
+  function handleSalvarOcorrencias(departureId: string, texto: string, rubrica: string) {
     if (!updateDeparture) return;
-    const { id, createdAt, ...rest } = record;
-    void id;
-    void createdAt;
-    updateDeparture(departureId, { ...rest, ocorrencias: texto });
+    updateDeparture(departureId, { ocorrencias: texto, ocorrenciasRubrica: rubrica });
   }
 
-  function applyAdminCadastroPatch(partial: Partial<DepartureRecord>) {
+  function applyAdminCadastroPatch(partial: DepartureUpdatePatch) {
     if (!editavel || !updateDeparture) return;
-    updateDeparture(record.id, {
-      ...record,
-      ...partial,
-    });
+    updateDeparture(record.id, partial);
   }
 
   function marcarViaturaNaOficina() {
@@ -745,14 +752,19 @@ export function DepartureCard({
         </div>
       ) : null}
 
+      {linkedOccurrenceEntries.length > 0 ? (
+        <div className="border-t border-[hsl(var(--border))]/55 bg-[hsl(var(--muted))]/10 px-4 py-3">
+          <DepartureOccurrenceLinesList entries={linkedOccurrenceEntries} compact />
+        </div>
+      ) : null}
+
       {updateDeparture ? (
         <DepartureOcorrenciasModal
           open={ocorrenciasModalOpen}
           onOpenChange={setOcorrenciasModalOpen}
           record={record}
           onSave={handleSalvarOcorrencias}
-          confirmFirst
-          alignTop
+          alignAboveBottomTabs
         />
       ) : null}
 

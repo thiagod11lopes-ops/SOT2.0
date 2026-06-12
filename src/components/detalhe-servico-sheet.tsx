@@ -1073,6 +1073,8 @@ export function DetalheServicoSheet() {
     });
   }, [
     monthYear,
+    year, // Adicionado
+    monthIndex, // Adicionado
     sheetLive,
     tableEditable,
     showRoTokens,
@@ -1081,7 +1083,6 @@ export function DetalheServicoSheet() {
     feriasForMonth,
     portraitMode,
     portraitRows,
-    prevMonthSheet,
     feriasObservacoesRetrato,
   ]);
 
@@ -1129,7 +1130,7 @@ export function DetalheServicoSheet() {
       });
       closeMenu();
     },
-    [closeMenu, clearCellEditSnapshot],
+    [closeMenu, clearCellEditSnapshot, setSheet], // Adicionado setSheet
   );
 
   const addRowBelow = useCallback(
@@ -1144,7 +1145,7 @@ export function DetalheServicoSheet() {
       });
       closeMenu();
     },
-    [closeMenu, clearCellEditSnapshot],
+    [closeMenu, clearCellEditSnapshot, setSheet], // Adicionado setSheet
   );
 
   const deleteRow = useCallback(
@@ -1161,7 +1162,7 @@ export function DetalheServicoSheet() {
       });
       closeMenu();
     },
-    [closeMenu, clearCellEditSnapshot],
+    [closeMenu, clearCellEditSnapshot, setSheet], // Adicionado setSheet
   );
 
   const addFirstRow = useCallback(() => {
@@ -1172,7 +1173,7 @@ export function DetalheServicoSheet() {
       return { rows: [...prev.rows, id], cells: { ...prev.cells, [id]: {} } };
     });
     closeMenu();
-  }, [closeMenu, clearCellEditSnapshot]);
+  }, [closeMenu, clearCellEditSnapshot, setSheet]); // Adicionado setSheet
 
   const addFirstRowDiasNao = useCallback(() => {
     const id = newRowId();
@@ -1249,7 +1250,7 @@ export function DetalheServicoSheet() {
       return stack.slice(0, -1);
     });
     setMenu(null);
-  }, [clearCellEditSnapshot]);
+  }, [clearCellEditSnapshot, setSheet]);
 
   const setCellValue = useCallback((rowId: string, key: string, value: string) => {
     const normalizedValue =
@@ -1261,7 +1262,7 @@ export function DetalheServicoSheet() {
         [rowId]: { ...(prev.cells[rowId] ?? {}), [key]: normalizedValue },
       },
     }));
-  }, []);
+  }, [setSheet]);
 
   const setPortraitCellValue = useCallback(
     (
@@ -1290,12 +1291,12 @@ export function DetalheServicoSheet() {
         };
       });
     },
-    [],
+    [setBundle, monthYearRef], // Adicionado setBundle e monthYearRef
   );
 
   const onCellFocus = useCallback(() => {
     cellEditBeforeRef.current = cloneSheet(sheetRef.current);
-  }, []);
+  }, [sheetRef]); // Adicionado sheetRef
 
   const onCellBlur = useCallback((rowId: string, key: string, value: string) => {
     const before = cellEditBeforeRef.current;

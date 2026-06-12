@@ -610,7 +610,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   }, []);
   const persistAvisosToIdb = useMemo(
     () => !isFirebaseOnlyOnlineActive(),
-    [firebaseOnlyOnlinePolicyTick, firebaseOnlyEnabled],
+    [], // Removido firebaseOnlyOnlinePolicyTick e firebaseOnlyEnabled
   );
 
   /** Online + Firebase: bloqueia gravar na nuvem até o primeiro snapshot (evita sobrescrever o doc com estado vazio). */
@@ -690,7 +690,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         setNotificacaoVistoriaUpdatedAtState(n.notificacaoVistoriaUpdatedAt);
       })
       .finally(() => setPersistReady(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só a decisão do primeiro render (persistAvisosToIdb) importa
   }, [persistAvisosToIdb]);
 
   useLayoutEffect(() => {

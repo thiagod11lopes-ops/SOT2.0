@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useUnlinkedOccurrences } from "../context/unlinked-occurrences-context";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import type { DeparturesListPdfParams } from "../lib/generateDeparturesPdf";
@@ -21,7 +22,8 @@ import {
 import { parseHhMm } from "../lib/timeInput";
 import { isPlausibleEmail } from "../lib/departuresReportEmail";
 import { downloadDeparturesListPdfsInSequence } from "../lib/generateDeparturesPdf";
-import { isAssinanteRubricaThiago, rubricaThiagoPublicUrl } from "../lib/rubricaAssinanteThiago";
+import { resolveDeparturesAssinanteDisplay } from "../lib/departuresAssinanteDisplay";
+import { rubricaThiagoPublicUrl } from "../lib/rubricaAssinanteThiago";
 import { openGmailComposeWithDeparturesPdfList } from "../lib/sendDeparturesListPdfEmail";
 import { cn } from "../lib/utils";
 import { AssinarOpcoesModal, AssinarPeriodosCalendarModal } from "./departures-assinar-modals";
@@ -72,6 +74,7 @@ export function DeparturesListPage({
     useDepartures();
   const { items: catalogItems } = useCatalogItems();
   const { email: reportEmailDest } = useDeparturesReportEmail();
+  const { entriesForPdf } = useUnlinkedOccurrences();
   const filterDateId = useId();
   const assinaturaSelectId = useId();
   const filterDateInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +96,10 @@ export function DeparturesListPage({
   const [selectedMotoristaAssinatura, setSelectedMotoristaAssinatura] = useState("");
   /** Após OK: nome exibido na linha de assinatura abaixo da tabela. */
   const [assinaturaConfirmadaNome, setAssinaturaConfirmadaNome] = useState<string | null>(null);
+  const assinaturaConfirmadaDisplay = useMemo(
+    () => (assinaturaConfirmadaNome ? resolveDeparturesAssinanteDisplay(assinaturaConfirmadaNome) : null),
+    [assinaturaConfirmadaNome],
+  );
   const [deleteModalRecords, setDeleteModalRecords] = useState<DepartureRecord[] | null>(null);
   const [servicoModalOpen, setServicoModalOpen] = useState(false);
   /** Remove o valor one-shot após montagem (após cadastro); não força “hoje” no filtro. */
@@ -212,6 +219,7 @@ export function DeparturesListPage({
       filterDate: d,
       rows: departuresRowsForDate(d),
       signatures: { assinanteDivisao: nome },
+      unlinkedOccurrences: entriesForPdf(d, filterTipo),
     }));
   }
 
@@ -440,6 +448,7 @@ export function DeparturesListPage({
           onTrashClick={(group) => setDeleteModalRecords(group)}
           onUpdateKmFields={updateDepartureKmFields}
           onEdit={beginEditDeparture}
+          unlinkedOccurrences={entriesForPdf(filterDepartureDate, filterTipo)}
         />
         {showPainelEscolherMotorista ? (
           <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col gap-6">
@@ -485,11 +494,11 @@ export function DeparturesListPage({
           </div>
         ) : null}
 
-        {assinaturaConfirmadaNome ? (
+        {assinaturaConfirmadaNome && assinaturaConfirmadaDisplay ? (
           <div className="mx-auto mt-8 flex w-full max-w-md flex-col items-center gap-0 text-center print:break-inside-avoid">
             <div className="flex w-full max-w-xs flex-col items-stretch gap-0">
               <div className="relative min-h-[3rem] w-full border-0 border-b-2 border-[hsl(var(--foreground))] bg-transparent">
-                {isAssinanteRubricaThiago(assinaturaConfirmadaNome) ? (
+                {assinaturaConfirmadaDisplay.rubricaThiagoPng ? (
                   <img
                     src={rubricaThiagoPublicUrl()}
                     alt=""
@@ -499,8 +508,22 @@ export function DeparturesListPage({
               </div>
               <span className="sr-only">Área para assinatura manuscrita</span>
             </div>
-            <p className="mt-4 text-base font-semibold text-[hsl(var(--foreground))]">{assinaturaConfirmadaNome}</p>
-            <p className="mt-1 text-sm font-medium text-[hsl(var(--muted-foreground))]">Divisão de Transporte</p>
+            <div className="mt-4 flex w-full flex-col items-center gap-1">
+              {assinaturaConfirmadaDisplay.lines.map((line) => (
+                <p
+                  key={line.text}
+                  className={cn(
+                    line.muted
+                      ? "text-sm font-medium text-[hsl(var(--muted-foreground))]"
+                      : line.bold
+                        ? "text-base font-semibold text-[hsl(var(--foreground))]"
+                        : "text-sm text-[hsl(var(--foreground))]",
+                  )}
+                >
+                  {line.text}
+                </p>
+              ))}
+            </div>
             {datasAssinatura.length > 0 ? (
               <p className="mt-3 max-w-md text-center text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
                 Assinatura aplicável aos dias:{" "}

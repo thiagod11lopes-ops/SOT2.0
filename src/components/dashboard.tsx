@@ -58,6 +58,7 @@ import {
   useVistoriaProblemasMarcadosRefresh,
 } from "../lib/vistoriaSituacaoVtr";
 import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
+import { saidasEmAndamentoGruposHoje } from "../lib/homeSaidasEmAndamento";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
 import { VistoriaNotificacaoAlarmCard } from "./vistoria-notificacao-alarm-card";
@@ -75,18 +76,6 @@ function alarmeJaDisparouNesteDia(agora: Date, horaAlarme: string): boolean {
   const parsed = parseHhMm(horaAlarme);
   if (!parsed) return false;
   return minutosRelogioLocal(agora) >= parsed.h * 60 + parsed.m;
-}
-
-/** KM saída preenchido, KM chegada e chegada vazios → mesmo critério do card Saídas em Andamento. */
-function saidaEmAndamento(r: DepartureRecord): boolean {
-  const finalizadaPorOficinaRubricada =
-    r.kmSaida.trim().length > 0 && r.ficouNaOficina === true && r.rubrica.trim().length > 0;
-  if (finalizadaPorOficinaRubricada) return false;
-  return (
-    r.kmSaida.trim().length > 0 &&
-    r.kmChegada.trim().length === 0 &&
-    r.chegada.trim().length === 0
-  );
 }
 
 /**
@@ -113,25 +102,6 @@ function saidasComAtrasoHoje(
       if (ka !== kb) return ka - kb;
       return a.id.localeCompare(b.id);
     });
-}
-
-/**
- * Grupos de saídas em andamento hoje (mesma viatura, motorista e horário).
- * Usa o registo primário do grupo — alinhado com a tabela/lista agrupada.
- */
-function saidasEmAndamentoGruposHoje(
-  rows: DepartureRecord[],
-  hojeDdMmYyyy: string,
-): ReturnType<typeof groupDeparturesForListDisplay> {
-  const doDia = rows
-    .filter((r) => isDepartureDateSameLocalDay(r.dataSaida, hojeDdMmYyyy))
-    .sort((a, b) => {
-      const ka = sortKeyHoraSaida(a.horaSaida);
-      const kb = sortKeyHoraSaida(b.horaSaida);
-      if (ka !== kb) return ka - kb;
-      return a.id.localeCompare(b.id);
-    });
-  return groupDeparturesForListDisplay(doDia).filter((g) => saidaEmAndamento(g.primary));
 }
 
 /** Mesma aparência dos títulos das abas Saídas Administrativas / Ambulância. */
@@ -241,7 +211,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     [linhasProximasTrocasOleo],
   );
   /** Atualiza saídas administrativas, alarmes e atraso quando o relógio avança (30s para o card de alarme aproximar-se do minuto configurado). */
-  const [relogio, setRelogio] = useState(0);
   const [rdvOficinaTick, setRdvOficinaTick] = useState(0);
   const [limpezaModalOpen, setLimpezaModalOpen] = useState(false);
   const [operationalCardsExpanded, setOperationalCardsExpanded] = useState(false);
@@ -280,10 +249,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     setActiveTab("Avisos");
   }
 
-  useEffect(() => {
-    const id = window.setInterval(() => setRelogio((n) => n + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -381,7 +346,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   const placasInoperantesRdv = rdvFrotaHome.inoperantesComObs;
   const placasDestacadasRdv = rdvFrotaHome.placasDestacadas;
   /** Mesmo instante para tabelas da home, atraso, alarmes e alerta de piscar. */
-  const agoraDashboard = useMemo(() => new Date(), [relogio]);
+  const agoraDashboard = useMemo(() => new Date(), []);
 
   /** Só mostra alarmes com «Ativo» em Avisos, a partir do horário (não antes), depois de disparar. */
   const alarmesNaHome = useMemo(
@@ -397,6 +362,8 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
   );
 
   const pendenciasVistoriaEscalaSNotif = useMemo(() => {
+    void vistoriaEscalaDataTick;
+
     ensureVistoriaCloudStateSyncStarted();
     const isoHoje = isoDateFromDate(new Date());
     const asg = readVistoriaAssignments();
@@ -407,7 +374,10 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       buildViaturasPorMotoristaMap(asg),
       ins,
     );
-  }, [detalheServicoBundle, relogio, vistoriaEscalaDataTick]);
+  }, [
+    detalheServicoBundle,
+    vistoriaEscalaDataTick,
+  ]);
 
   const vistoriaNotificacaoVisivelNaHome = useMemo(() => {
     if (!notificacaoVistoriaAtivo) return false;
@@ -461,7 +431,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
       (a, b) => a.localeCompare(b, "pt-BR"),
     );
     return { servico, rotina };
-  }, [detalheServicoBundle, relogio]);
+  }, [detalheServicoBundle]);
 
   const hasMotoristasServicoOuRotina =
     motoristasServicoRotinaHoje.servico.length > 0 || motoristasServicoRotinaHoje.rotina.length > 0;

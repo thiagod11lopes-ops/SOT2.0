@@ -5,8 +5,8 @@
  * por cima da app e mostra:
  *  - Mapa **Google Maps** a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (chevron azul rotativo) e destino (pino vermelho).
- *  - Pinos laranjas das **outras viaturas com saída em curso** (tempo real,
- *    via `useDriverActiveLocations`). A placa aparece como label permanente;
+ *  - Pinos laranjas das **outras viaturas listadas no card Saídas em Andamento**
+ *    da página principal (tempo real, via `useDriverActiveLocations`). A placa aparece como label permanente;
  *    o toque abre uma `InfoWindow` com o timestamp da última posição.
  *  - Barra superior com nome do destino, distância e tempo previsto.
  *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
@@ -46,6 +46,8 @@ import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { resolveVehicleType } from "../lib/vehicleTypeByPlaca";
 import { setMobileNavigationActive } from "./mobile-navigation-mode";
 import type { DepartureRecord } from "../types/departure";
+import { normalizePlacaKeyDriverMap } from "../lib/departureDriverMapFilter";
+import { buildPlacaKeysHomeEmAndamentoCard } from "../lib/homeSaidasEmAndamento";
 import {
   type DrivingRoute,
   type GeocodeResult,
@@ -227,11 +229,6 @@ function formatRelativeTime(ms: number, now: number = Date.now()): string {
   if (hr < 24) return `há ${hr} h`;
   const days = Math.floor(hr / 24);
   return days === 1 ? "há 1 dia" : `há ${days} dias`;
-}
-
-/** Normaliza placa para comparação (trim + uppercase). */
-function normalizePlaca(p: string): string {
-  return p.trim().toUpperCase();
 }
 
 /**
@@ -611,7 +608,7 @@ export function NavigationFullScreenModal({
 
   /** Placa **do motorista actual** — filtrada da lista de outras viaturas. */
   const currentPlacaNorm = useMemo(
-    () => normalizePlaca(primaryPlacaFromViaturasField(record.viaturas)),
+    () => normalizePlacaKeyDriverMap(primaryPlacaFromViaturasField(record.viaturas)),
     [record.viaturas],
   );
 
@@ -619,39 +616,16 @@ export function NavigationFullScreenModal({
   const { pins: activePins } = useDriverActiveLocations(open);
 
   /**
-   * Conjunto de placas cujas saídas estão **em curso** neste momento — i.e.
-   * KM saída preenchido, sem KM chegada/Hora chegada (nem rubricadas como
-   * "ficou na oficina"), e não canceladas. É a mesma regra do estado
-   * "Iniciada" do cartão (ver `departure-card.tsx`).
-   *
-   * Usado para esconder do mapa pinos de viaturas que já finalizaram a saída
-   * (ou que nunca a chegaram a iniciar) — o Firestore pode manter o doc
-   * `driver_active_locations` durante um curto intervalo após o motorista
-   * rubricar/concluir, ou enquanto o serviço de tracking ainda envia uma
-   * última posição. Aqui filtramos pelo estado real das saídas locais.
+   * Placas no mesmo conjunto que o card «Saídas em Andamento» na home (hoje,
+   * não canceladas, KM saída sem retorno registado). Esconde pinos órfãos no Firestore.
    */
   const { departures } = useDepartures();
-  const placasEmCursoNorm = useMemo(() => {
-    const set = new Set<string>();
-    for (const d of departures) {
-      if (d.cancelada) continue;
-      const kmSaidaPreenchido = d.kmSaida.trim().length > 0;
-      if (!kmSaidaPreenchido) continue;
-      const kmChegadaPreenchido = d.kmChegada.trim().length > 0;
-      const chegadaPreenchido = d.chegada.trim().length > 0;
-      const ficouNaOficina = d.ficouNaOficina === true && d.rubrica.trim().length > 0;
-      const saidaFinalizada = (kmChegadaPreenchido && chegadaPreenchido) || ficouNaOficina;
-      if (saidaFinalizada) continue;
-      const placa = normalizePlaca(primaryPlacaFromViaturasField(d.viaturas));
-      if (placa) set.add(placa);
-    }
-    return set;
-  }, [departures]);
+  const placasEmCursoNorm = useMemo(() => buildPlacaKeysHomeEmAndamentoCard(departures), [departures]);
 
   const otherPins = useMemo(
     () =>
       activePins.filter((p) => {
-        const norm = normalizePlaca(p.placa);
+        const norm = normalizePlacaKeyDriverMap(p.placa);
         if (norm === currentPlacaNorm) return false;
         return placasEmCursoNorm.has(norm);
       }),
@@ -1368,7 +1342,7 @@ export function NavigationFullScreenModal({
       lat: origin.lat + (view3D ? 0 : NAV_2D_OFFSET_LAT_DEGREES),
       lng: origin.lng,
     });
-  }, [navigating, mapInstance, origin, userPanned]);
+  }, [navigating, mapInstance, origin, userPanned, view3D]);
 
   // ---------------------------------------------------------------------------
   // 6c-bis) Aplica/remove tilt + heading sempre que `view3D` muda em modo

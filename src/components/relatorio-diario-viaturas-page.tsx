@@ -395,15 +395,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
   const pdfLayoutDraftKey = useMemo(
     () => JSON.stringify(pdfLayoutDraft),
     [
-      pdfLayoutDraft.marginMm,
-      pdfLayoutDraft.imageWidthPercent,
-      pdfLayoutDraft.html2canvasScale,
-      pdfLayoutDraft.tableContentScale,
-      pdfLayoutDraft.signatureFontPt,
-      pdfLayoutDraft.signatureMarginScale,
-      pdfLayoutDraft.contentOffsetXMm,
-      pdfLayoutDraft.contentOffsetYMm,
-      pdfLayoutDraft.mainTitleOffsetMm,
+      pdfLayoutDraft, // Adicionado pdfLayoutDraft
     ],
   );
 
@@ -442,7 +434,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
       mX: paperW * (g.marginMm / 210),
       mY: paperH * (g.marginMm / 297),
     };
-  }, [pdfLayoutDraftKey]);
+  }, [pdfLayoutDraft]);
 
   const pdfContentOffsetXBounds = useMemo(
     () =>
@@ -507,7 +499,7 @@ export function RelatorioDiarioViaturasPage({ initialReportDate }: RelatorioDiar
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pdfConfigOpen, pdfLayoutDraftKey, rdvPdfPreviewDigest]);
+  }, [pdfConfigOpen, pdfLayoutDraftKey, rdvPdfPreviewDigest, pdfLayoutDraft]); // Adicionado pdfLayoutDraft
 
   const countAmb = useMemo(() => countResumoSituacao(rowsAmb), [rowsAmb]);
   const countAdm = useMemo(() => countResumoSituacao(rowsAdm), [rowsAdm]);
