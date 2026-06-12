@@ -15,18 +15,26 @@ import { cn } from "../lib/utils";
  * z-[94]: sobre o fundo, abaixo do brasão (95) e da UI interativa.
  */
 export function DesktopRadarOverlay() {
-  const { appearance } = useAppearance();
+  const { appearance, radarShowAmbulances } = useAppearance();
   const [blips, setBlips] = useState<RadarBlip[]>([]);
   const [pingingIds, setPingingIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     if (appearance !== "radar") {
       setBlips([]);
+      setPingingIds(new Set());
+      return;
+    }
+
+    if (!radarShowAmbulances) {
+      setBlips([]);
+      setPingingIds(new Set());
       return;
     }
 
     let blipState = createRandomRadarBlips();
     setBlips(blipState);
+    setPingingIds(new Set());
 
     const reducedMotion =
       typeof window !== "undefined" &&
@@ -75,7 +83,7 @@ export function DesktopRadarOverlay() {
 
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [appearance]);
+  }, [appearance, radarShowAmbulances]);
 
   if (appearance !== "radar") return null;
 

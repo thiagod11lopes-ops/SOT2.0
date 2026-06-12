@@ -13,6 +13,7 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   APPEARANCE_IDB_KEY,
+  defaultAppearanceRecord,
   mergeAppearanceRecords,
   parseAppearanceRecord,
   readAppearanceFromLocalStorage,
@@ -28,7 +29,7 @@ import { useSyncPreference } from "./sync-preference-context";
 const SUPPRESS_REMOTE_MS = 5000;
 
 function readAppearanceBootstrap(): AppearanceRecord {
-  return readAppearanceFromLocalStorage() ?? { mode: "original", updatedAt: 0 };
+  return readAppearanceFromLocalStorage() ?? defaultAppearanceRecord();
 }
 
 async function loadAppearanceFromIdb(): Promise<AppearanceRecord> {
@@ -51,9 +52,21 @@ function applyToDocument(mode: AppearanceMode) {
   }
 }
 
+function applyRecordToState(
+  record: AppearanceRecord,
+  setAppearanceState: (mode: AppearanceMode) => void,
+  setRadarShowAmbulancesState: (show: boolean) => void,
+) {
+  setAppearanceState(record.mode);
+  setRadarShowAmbulancesState(record.radarShowAmbulances);
+  applyToDocument(record.mode);
+}
+
 type AppearanceContextValue = {
   appearance: AppearanceMode;
   setAppearance: (mode: AppearanceMode) => void;
+  radarShowAmbulances: boolean;
+  setRadarShowAmbulances: (show: boolean) => void;
 };
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
@@ -61,6 +74,7 @@ const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const bootstrap = readAppearanceBootstrap();
   const [appearance, setAppearanceState] = useState<AppearanceMode>(bootstrap.mode);
+  const [radarShowAmbulances, setRadarShowAmbulancesState] = useState(bootstrap.radarShowAmbulances);
   const recordRef = useRef<AppearanceRecord>(bootstrap);
   const [localReady, setLocalReady] = useState(false);
   const applyingRemoteRef = useRef(false);
@@ -85,8 +99,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       applyingRemoteRef.current = true;
       recordRef.current = record;
-      setAppearanceState(record.mode);
-      applyToDocument(record.mode);
+      applyRecordToState(record, setAppearanceState, setRadarShowAmbulancesState);
       setLocalReady(true);
       if (!useCloud) {
         hydratedRef.current = true;
@@ -121,12 +134,12 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
               );
               return;
             }
-            const remote = parseAppearanceRecord(payload) ?? { mode: "original" as const, updatedAt: 0 };
+            const remote = parseAppearanceRecord(payload) ?? defaultAppearanceRecord();
             const local = recordRef.current;
             if (remote.updatedAt > local.updatedAt) {
               applyingRemoteRef.current = true;
               recordRef.current = remote;
-              setAppearanceState(remote.mode);
+              applyRecordToState(remote, setAppearanceState, setRadarShowAmbulancesState);
               void saveAppearanceLocally(remote);
               hydratedRef.current = true;
               queueMicrotask(() => {
@@ -135,7 +148,10 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
               return;
             }
             hydratedRef.current = true;
-            if (remote.mode !== local.mode) {
+            if (
+              remote.mode !== local.mode ||
+              remote.radarShowAmbulances !== local.radarShowAmbulances
+            ) {
               void setSotStateDocWithRetry(SOT_STATE_DOC.appearance, local).catch((e) =>
                 console.error("[SOT] Sincronizar aparência local (mais recente) na nuvem:", e),
               );
@@ -162,9 +178,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!localReady || !persistReadyRef.current) return;
     if (applyingRemoteRef.current) return;
-    const record = recordRef.current;
-    void saveAppearanceLocally(record);
-  }, [appearance, localReady]);
+    void saveAppearanceLocally(recordRef.current);
+  }, [appearance, radarShowAmbulances, localReady]);
 
   useEffect(() => {
     if (!localReady || !hydratedRef.current || !useCloud) return;
@@ -175,20 +190,42 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     void setSotStateDocWithRetry(SOT_STATE_DOC.appearance, recordRef.current).catch((e) => {
       console.error("[SOT] Gravar aparência na nuvem:", e);
     });
-  }, [appearance, useCloud, localReady]);
+  }, [appearance, radarShowAmbulances, useCloud, localReady]);
 
   const setAppearance = useCallback(
     (mode: AppearanceMode) => {
       bumpLocalMutation();
       hydratedRef.current = true;
-      const next: AppearanceRecord = { mode, updatedAt: Date.now() };
+      const next: AppearanceRecord = {
+        ...recordRef.current,
+        mode,
+        updatedAt: Date.now(),
+      };
       recordRef.current = next;
       setAppearanceState(mode);
     },
     [bumpLocalMutation],
   );
 
-  const value = useMemo(() => ({ appearance, setAppearance }), [appearance, setAppearance]);
+  const setRadarShowAmbulances = useCallback(
+    (show: boolean) => {
+      bumpLocalMutation();
+      hydratedRef.current = true;
+      const next: AppearanceRecord = {
+        ...recordRef.current,
+        radarShowAmbulances: show,
+        updatedAt: Date.now(),
+      };
+      recordRef.current = next;
+      setRadarShowAmbulancesState(show);
+    },
+    [bumpLocalMutation],
+  );
+
+  const value = useMemo(
+    () => ({ appearance, setAppearance, radarShowAmbulances, setRadarShowAmbulances }),
+    [appearance, setAppearance, radarShowAmbulances, setRadarShowAmbulances],
+  );
 
   return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>;
 }

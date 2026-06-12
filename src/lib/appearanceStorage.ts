@@ -6,7 +6,13 @@ export const APPEARANCE_LS_KEY = "sot-appearance";
 export type AppearanceRecord = {
   mode: AppearanceMode;
   updatedAt: number;
+  /** Tema Radar: exibir ambulâncias na varredura (padrão: ligado). */
+  radarShowAmbulances: boolean;
 };
+
+export function defaultAppearanceRecord(mode: AppearanceMode = "original"): AppearanceRecord {
+  return { mode, updatedAt: 0, radarShowAmbulances: true };
+}
 
 export function isAppearanceMode(v: unknown): v is AppearanceMode {
   return v === "dark" || v === "ultra-modern" || v === "original" || v === "radar";
@@ -15,7 +21,7 @@ export function isAppearanceMode(v: unknown): v is AppearanceMode {
 /** Aceita string legada, objeto `{ mode }` ou `{ mode, updatedAt }`. */
 export function parseAppearanceRecord(raw: unknown): AppearanceRecord | null {
   if (isAppearanceMode(raw)) {
-    return { mode: raw, updatedAt: 0 };
+    return defaultAppearanceRecord(raw);
   }
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -25,6 +31,7 @@ export function parseAppearanceRecord(raw: unknown): AppearanceRecord | null {
   return {
     mode,
     updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0,
+    radarShowAmbulances: o.radarShowAmbulances !== false,
   };
 }
 
@@ -32,7 +39,7 @@ export function mergeAppearanceRecords(
   a: AppearanceRecord | null,
   b: AppearanceRecord | null,
 ): AppearanceRecord {
-  if (!a) return b ?? { mode: "original", updatedAt: 0 };
+  if (!a) return b ?? defaultAppearanceRecord();
   if (!b) return a;
   if (b.updatedAt > a.updatedAt) return b;
   if (a.updatedAt > b.updatedAt) return a;
@@ -63,5 +70,9 @@ export function writeAppearanceToLocalStorage(record: AppearanceRecord): void {
 }
 
 export function appearanceRecordEquals(a: AppearanceRecord, b: AppearanceRecord): boolean {
-  return a.mode === b.mode && a.updatedAt === b.updatedAt;
+  return (
+    a.mode === b.mode &&
+    a.updatedAt === b.updatedAt &&
+    a.radarShowAmbulances === b.radarShowAmbulances
+  );
 }

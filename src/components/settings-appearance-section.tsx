@@ -52,19 +52,32 @@ function AppearanceOptionCard({
   option,
   selected,
   onSelect,
+  radarShowAmbulances,
+  onRadarShowAmbulancesChange,
 }: {
   option: AppearanceOption;
   selected: boolean;
   onSelect: () => void;
+  radarShowAmbulances?: boolean;
+  onRadarShowAmbulancesChange?: (show: boolean) => void;
 }) {
   const Icon = MODE_ICONS[option.mode];
+  const isRadar = option.mode === "radar";
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
       aria-pressed={selected}
       className={cn(
-        "group relative flex w-full flex-col gap-3 rounded-2xl border p-4 text-left transition-all duration-300",
+        "group relative flex w-full cursor-pointer flex-col gap-3 rounded-2xl border p-4 text-left transition-all duration-300",
         "bg-[hsl(var(--card))] hover:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.35)]",
         selected
           ? "border-[hsl(var(--primary))]/55 ring-2 ring-[hsl(var(--primary))]/25 shadow-[0_16px_40px_-24px_hsl(var(--primary)/0.35)]"
@@ -104,12 +117,34 @@ function AppearanceOptionCard({
           </li>
         ))}
       </ul>
-    </button>
+      {isRadar ? (
+        <label
+          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[hsl(var(--border))]/80 bg-[hsl(var(--muted))]/25 px-3 py-2.5 text-left"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] accent-[hsl(var(--primary))]"
+            checked={radarShowAmbulances ?? true}
+            onChange={(event) => onRadarShowAmbulancesChange?.(event.target.checked)}
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium text-[hsl(var(--foreground))]">
+              Ambulâncias na detecção do radar
+            </span>
+            <span className="mt-0.5 block text-[0.65rem] leading-snug text-[hsl(var(--muted-foreground))]">
+              Exibe ícones em movimento que piscam quando a listra de varredura passa por cima.
+            </span>
+          </span>
+        </label>
+      ) : null}
+    </div>
   );
 }
 
 export function SettingsAppearanceSection({ panelClass }: { panelClass: string }) {
-  const { appearance, setAppearance } = useAppearance();
+  const { appearance, setAppearance, radarShowAmbulances, setRadarShowAmbulances } = useAppearance();
 
   return (
     <section className={panelClass} aria-labelledby="settings-heading-aparencia">
@@ -138,6 +173,10 @@ export function SettingsAppearanceSection({ panelClass }: { panelClass: string }
             option={option}
             selected={appearance === option.mode}
             onSelect={() => setAppearance(option.mode)}
+            radarShowAmbulances={option.mode === "radar" ? radarShowAmbulances : undefined}
+            onRadarShowAmbulancesChange={
+              option.mode === "radar" ? setRadarShowAmbulances : undefined
+            }
           />
         ))}
       </div>
