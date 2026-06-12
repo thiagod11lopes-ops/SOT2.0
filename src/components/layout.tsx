@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
+import { DeveloperCreditBadge } from "./developer-credit-badge";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
 import { Button } from "./ui/button";
@@ -103,14 +104,7 @@ export function Layout({
       >
         {fitHomeViewport ? <HomeViewportScale>{children}</HomeViewportScale> : children}
       </main>
-      <p
-        className={cn(
-          "pointer-events-none fixed right-4 z-[60] max-w-[min(100vw-2rem,22rem)] select-none text-right text-[0.65rem] font-medium leading-snug tracking-wide text-[hsl(var(--muted-foreground))]/85 sm:text-xs",
-          homeTickerActive ? "bottom-[5.75rem] sm:bottom-[6rem]" : "bottom-3",
-        )}
-      >
-        Desenvolvido por 1º SG EF Thiago Lopes de Oliveira
-      </p>
+      <DeveloperCreditBadge />
     </div>
   );
 }

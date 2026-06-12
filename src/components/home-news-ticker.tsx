@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useAvisos } from "../context/avisos-context";
 import { joinMarqueeAvisosGeraisLinhas } from "../lib/buildHomeTickerSegments";
 import { cn } from "../lib/utils";
@@ -23,12 +23,33 @@ export function HomeNewsTicker() {
     [marqueeText],
   );
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const syncOffset = () => {
+      root.style.setProperty("--sot-home-ticker-offset", `${el.offsetHeight}px`);
+    };
+    syncOffset();
+    const ro = new ResizeObserver(syncOffset);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--sot-home-ticker-offset");
+    };
+  }, [showPrincipal, hasGerais, avisoPrincipal, avisosGeraisLinhas.length, marqueeText]);
+
   if (!showPrincipal && !hasGerais) {
     return null;
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] w-full min-w-0 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
+    <div
+      ref={rootRef}
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] w-full min-w-0 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]"
+    >
       <div className="pointer-events-auto w-full min-w-0 border-t border-slate-600/80">
         <div
           className={cn(
