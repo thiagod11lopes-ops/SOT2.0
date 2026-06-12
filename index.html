@@ -11,6 +11,24 @@
       rel="stylesheet"
     />
     <title>sot-react</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("sot-appearance");
+          if (!raw) return;
+          var mode = raw;
+          if (raw.charAt(0) === "{") {
+            var parsed = JSON.parse(raw);
+            mode = parsed && parsed.mode;
+          }
+          if (mode && mode !== "original") {
+            document.documentElement.dataset.appearance = mode;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
