@@ -20,31 +20,43 @@ const IDB_KEY = "sot-appearance";
 const LEGACY_LS_KEY = "sot-appearance";
 const SUPPRESS_REMOTE_MS = 5000;
 
-async function loadAppearanceFromIdb(): Promise<AppearanceMode> {
-  const v = await idbGetJson<unknown>(IDB_KEY);
-  if (v === "dark" || v === "ultra-modern" || v === "original") return v;
+function isAppearanceMode(v: unknown): v is AppearanceMode {
+  return v === "dark" || v === "ultra-modern" || v === "original";
+}
+
+/** Leitura síncrona (localStorage) para evitar flash do tema errado ao recarregar. */
+function readAppearanceBootstrap(): AppearanceMode {
   try {
     if (typeof localStorage === "undefined") return "original";
     const ls = localStorage.getItem(LEGACY_LS_KEY);
-    if (ls === "dark" || ls === "ultra-modern" || ls === "original") {
-      await idbSetJson(IDB_KEY, ls);
-      localStorage.removeItem(LEGACY_LS_KEY);
-      return ls;
-    }
+    if (isAppearanceMode(ls)) return ls;
   } catch {
     /* ignore */
   }
   return "original";
 }
 
+async function loadAppearanceFromIdb(): Promise<AppearanceMode> {
+  const v = await idbGetJson<unknown>(IDB_KEY);
+  if (isAppearanceMode(v)) return v;
+  return readAppearanceBootstrap();
+}
+
 async function saveAppearanceToIdb(mode: AppearanceMode): Promise<void> {
   await idbSetJson(IDB_KEY, mode);
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(LEGACY_LS_KEY, mode);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function normalizeAppearancePayload(raw: unknown): AppearanceMode {
   if (!raw || typeof raw !== "object") return "original";
   const m = (raw as Record<string, unknown>).mode;
-  if (m === "dark" || m === "ultra-modern" || m === "original") return m;
+  if (isAppearanceMode(m)) return m;
   return "original";
 }
 
@@ -64,10 +76,15 @@ type AppearanceContextValue = {
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
-  const [appearance, setAppearanceState] = useState<AppearanceMode>("original");
+  const bootstrap = readAppearanceBootstrap();
+  const [appearance, setAppearanceState] = useState<AppearanceMode>(bootstrap);
+  const appearanceRef = useRef(appearance);
+  appearanceRef.current = appearance;
   const [localReady, setLocalReady] = useState(false);
   const applyingRemoteRef = useRef(false);
-  const hydratedRef = useRef(true);
+  /** Permite gravar na nuvem após hidratação local e/ou 1.º snapshot remoto. */
+  const hydratedRef = useRef(false);
+  const persistReadyRef = useRef(false);
   const suppressRemoteUntilRef = useRef(0);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
@@ -76,15 +93,29 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (useCloud) {
-      // Modo estrito Firebase: ignora hidratação inicial por cache local.
-      setLocalReady(true);
-      return;
-    }
+    applyToDocument(bootstrap);
+  }, [bootstrap]);
+
+  /** Sempre hidrata do IndexedDB (também em modo Firebase) antes de aceitar gravações. */
+  useEffect(() => {
+    let cancelled = false;
     void loadAppearanceFromIdb().then((m) => {
+      if (cancelled) return;
+      applyingRemoteRef.current = true;
       setAppearanceState(m);
+      applyToDocument(m);
       setLocalReady(true);
+      if (!useCloud) {
+        hydratedRef.current = true;
+      }
+      queueMicrotask(() => {
+        applyingRemoteRef.current = false;
+        persistReadyRef.current = true;
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [useCloud]);
 
   useEffect(() => {
@@ -99,24 +130,29 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
           SOT_STATE_DOC.appearance,
           (payload) => {
             if (cancelled) return;
-            void (async () => {
-              if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
-                return;
-              }
-              if (Date.now() < suppressRemoteUntilRef.current) return;
-              applyingRemoteRef.current = true;
-              const next = normalizeAppearancePayload(payload);
-              setAppearanceState(next);
-              void saveAppearanceToIdb(next);
+            if (Date.now() < suppressRemoteUntilRef.current) return;
+            if (payload === null) {
               hydratedRef.current = true;
-            })();
+              void setSotStateDocWithRetry(SOT_STATE_DOC.appearance, {
+                mode: appearanceRef.current,
+              }).catch((e) => console.error("[SOT] Sem doc de aparência na nuvem — gravar preferência local:", e));
+              return;
+            }
+            applyingRemoteRef.current = true;
+            const next = normalizeAppearancePayload(payload);
+            setAppearanceState(next);
+            void saveAppearanceToIdb(next);
+            hydratedRef.current = true;
+            queueMicrotask(() => {
+              applyingRemoteRef.current = false;
+            });
           },
           (err) => console.error("[SOT] Firestore aparência:", err),
           { ignoreCachedSnapshotWhenOnline: true },
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (aparência):", e);
+        hydratedRef.current = true;
       }
     })();
     return () => {
@@ -130,7 +166,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, [appearance]);
 
   useEffect(() => {
-    if (!localReady) return;
+    if (!localReady || !persistReadyRef.current) return;
+    if (applyingRemoteRef.current) return;
     void saveAppearanceToIdb(appearance);
   }, [appearance, localReady]);
 
@@ -145,10 +182,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     });
   }, [appearance, useCloud, localReady]);
 
-  const setAppearance = useCallback((mode: AppearanceMode) => {
-    bumpLocalMutation();
-    setAppearanceState(mode);
-  }, [bumpLocalMutation]);
+  const setAppearance = useCallback(
+    (mode: AppearanceMode) => {
+      bumpLocalMutation();
+      hydratedRef.current = true;
+      setAppearanceState(mode);
+    },
+    [bumpLocalMutation],
+  );
 
   const value = useMemo(() => ({ appearance, setAppearance }), [appearance, setAppearance]);
 
