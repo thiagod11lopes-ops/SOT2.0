@@ -13,6 +13,8 @@ export const RADAR_SWEEP_HALF_WIDTH_DEG = RADAR_BRIGHT_SWEEP_WIDTH_DEG / 2;
 export const RADAR_BLIP_MIN_RADIUS_VMIN = 10;
 export const RADAR_BLIP_MAX_RADIUS_VMIN = 44;
 
+export const RADAR_BLIP_COUNT = 10;
+
 export type RadarBlip = {
   id: string;
   /** Posição em % da viewport (centro do alvo). */
@@ -79,7 +81,7 @@ export function isHitByBrightSweepLine(sweepDeg: number, targetDeg: number): boo
   return angleDifference(sweepDeg, targetDeg) <= RADAR_SWEEP_HALF_WIDTH_DEG;
 }
 
-export function createRandomRadarBlips(count = 12): RadarBlip[] {
+export function createRandomRadarBlips(count = RADAR_BLIP_COUNT): RadarBlip[] {
   const now = typeof performance !== "undefined" ? performance.now() : 0;
   const blips: RadarBlip[] = [];
   for (let i = 0; i < count; i++) {
