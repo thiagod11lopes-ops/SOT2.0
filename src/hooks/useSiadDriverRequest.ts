@@ -1,29 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   confirmSiadDriver,
-  getSiadDriverRequestForDate,
+  getSiadDriverRequestForSlot,
   readSiadDriverRequestStore,
   requestSiadDriver,
   subscribeSiadDriverRequestChanges,
+  parseSiadDriverRequestSlotKey,
   type SiadDriverRequestRecord,
+  type SiadDriverRequestSlot,
 } from "../lib/siadDriverRequest";
 
-export function useSiadDriverRequest(dateSaida: string) {
+export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
   const [record, setRecord] = useState<SiadDriverRequestRecord | null>(() =>
-    getSiadDriverRequestForDate(dateSaida),
+    getSiadDriverRequestForSlot(dateSaida, horaSaida),
   );
 
   const refresh = useCallback(() => {
-    setRecord(getSiadDriverRequestForDate(dateSaida));
-  }, [dateSaida]);
+    setRecord(getSiadDriverRequestForSlot(dateSaida, horaSaida));
+  }, [dateSaida, horaSaida]);
 
   useEffect(() => {
     refresh();
     return subscribeSiadDriverRequestChanges(refresh);
   }, [refresh]);
 
-  const request = useCallback(() => requestSiadDriver(dateSaida), [dateSaida]);
-  const confirm = useCallback(() => confirmSiadDriver(dateSaida), [dateSaida]);
+  const request = useCallback(
+    (hora?: string) => requestSiadDriver(dateSaida, hora ?? horaSaida),
+    [dateSaida, horaSaida],
+  );
+  const confirm = useCallback(
+    () => confirmSiadDriver(dateSaida, horaSaida),
+    [dateSaida, horaSaida],
+  );
 
   return {
     record,
@@ -37,12 +45,19 @@ export function useSiadDriverRequest(dateSaida: string) {
   };
 }
 
-export function usePendingSiadDriverRequests() {
-  const [pending, setPending] = useState(() => {
+export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
+  const [pending, setPending] = useState<SiadDriverRequestSlot[]>(() => {
     const store = readSiadDriverRequestStore();
     return Object.entries(store)
       .filter(([, row]) => row.status === "requested")
-      .map(([dateSaida, record]) => ({ dateSaida, record }))
+      .map(([key, record]) => {
+        const slot = parseSiadDriverRequestSlotKey(key);
+        return {
+          dateSaida: slot.dateSaida,
+          horaSaida: slot.horaSaida,
+          record,
+        };
+      })
       .sort((a, b) => b.record.requestedAt - a.record.requestedAt);
   });
 
@@ -51,7 +66,14 @@ export function usePendingSiadDriverRequests() {
     setPending(
       Object.entries(store)
         .filter(([, row]) => row.status === "requested")
-        .map(([dateSaida, record]) => ({ dateSaida, record }))
+        .map(([key, record]) => {
+          const slot = parseSiadDriverRequestSlotKey(key);
+          return {
+            dateSaida: slot.dateSaida,
+            horaSaida: slot.horaSaida,
+            record,
+          };
+        })
         .sort((a, b) => b.record.requestedAt - a.record.requestedAt),
     );
   }, []);

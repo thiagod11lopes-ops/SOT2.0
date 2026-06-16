@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Scale, Settings, Sparkles, Users, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, Clock, Lock, MapPin, Plus, Scale, Settings, Sparkles, Users, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -22,8 +22,8 @@ import {
 } from "../lib/siadFormPassword";
 import { useSiadPwaShell } from "../lib/useSiadPwaShell";
 import {
-  describeSiadDriverRequestStatus,
-  resetSiadDriverRequest,
+  describeSiadDriverRequestsForDate,
+  resetSiadDriverRequestForDate,
 } from "../lib/siadDriverRequest";
 import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
@@ -42,6 +42,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { SiadStatisticsPanel } from "./siad-statistics-panel";
 import { SiadDriverRequestButton } from "./siad-driver-request-button";
+import { SiadDeparturesDayList } from "./siad-departures-day-list";
 
 const SIAD_DEPARTURE_FORM_ID = "siad-departure-form";
 
@@ -247,7 +248,7 @@ function SiadCadastroSuccessModal({
 
 export function SiadQuickDepartureFormPage() {
   useSiadPwaShell();
-  const { addDeparture } = useDepartures();
+  const { addDeparture, departures } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
@@ -270,10 +271,11 @@ export function SiadQuickDepartureFormPage() {
   const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
   const [passwordFormSuccess, setPasswordFormSuccess] = useState<string | null>(null);
   const [statsPanelOpen, setStatsPanelOpen] = useState(false);
+  const [addSaidaExpanded, setAddSaidaExpanded] = useState(false);
   const [motoristaResetDate, setMotoristaResetDate] = useState(getCurrentDatePtBr);
   const [motoristaResetMessage, setMotoristaResetMessage] = useState<string | null>(null);
 
-  const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate);
+  const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate, horaSaida);
 
   useEffect(() => {
     setSetorPassword(getSiadFormPassword());
@@ -379,12 +381,16 @@ export function SiadQuickDepartureFormPage() {
       setMotoristaResetMessage("Informe uma data válida (dd/mm/aaaa).");
       return;
     }
-    const removed = resetSiadDriverRequest(date);
-    if (!removed) {
+    const removed = resetSiadDriverRequestForDate(date);
+    if (removed === 0) {
       setMotoristaResetMessage(`Não há pedido de motorista para ${date}.`);
       return;
     }
-    setMotoristaResetMessage(`Pedido resetado para ${date}. Já é possível solicitar novamente.`);
+    setMotoristaResetMessage(
+      removed === 1
+        ? `Pedido resetado para ${date}. Já é possível solicitar novamente.`
+        : `${removed} pedidos resetados para ${date}. Já é possível solicitar novamente.`,
+    );
     motoristaResetStatus.refresh();
   }
 
@@ -455,6 +461,7 @@ export function SiadQuickDepartureFormPage() {
       setBairros([""]);
       setPassageiros([{ ...EMPTY_SIAD_PASSAGEIRO }]);
       setSubmitAttempted(false);
+      setAddSaidaExpanded(false);
     } finally {
       setSubmitting(false);
     }
@@ -606,7 +613,7 @@ export function SiadQuickDepartureFormPage() {
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
                 Situação:{" "}
                 <strong className="text-[hsl(var(--foreground))]">
-                  {describeSiadDriverRequestStatus(motoristaResetStatus.record)}
+                  {describeSiadDriverRequestsForDate(motoristaResetDate)}
                 </strong>
               </p>
               <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleResetMotoristaRequest}>
@@ -655,9 +662,9 @@ export function SiadQuickDepartureFormPage() {
         <CardHeader className="relative border-b border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.12)] to-transparent pb-5">
           <div className="flex items-start justify-between gap-3 pr-1">
             <div className="min-w-0 space-y-1">
-              <CardTitle className="text-lg">Novo registro</CardTitle>
+              <CardTitle className="text-lg">Saídas SIAD</CardTitle>
               <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                Setor SIAD — data, hora, bairro e passageiros
+                Data do dia, solicitação de motorista e cadastro de saídas
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -793,13 +800,45 @@ export function SiadQuickDepartureFormPage() {
                   />
                 </PopoverContent>
               </Popover>
-              <SiadDriverRequestButton dateSaida={dataSaida} disabled={!isUnlocked || dateInvalid} />
+              <SiadDriverRequestButton
+                dateSaida={dataSaida}
+                horaSaida={horaSaida}
+                disabled={!isUnlocked || dateInvalid}
+              />
               </div>
               {submitAttempted && dateInvalid ? (
                 <p className="text-xs text-red-600">Informe uma data válida (dd/mm/aaaa).</p>
               ) : null}
             </div>
 
+            <SiadDeparturesDayList departures={departures} dateSaida={dataSaida} />
+
+            <div className="space-y-0">
+              <button
+                type="button"
+                onClick={() => setAddSaidaExpanded((expanded) => !expanded)}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.1)] px-4 py-3.5 text-left shadow-sm transition-colors hover:bg-[hsl(var(--muted)/0.16)]",
+                  addSaidaExpanded && "rounded-b-none border-b-transparent",
+                )}
+                aria-expanded={addSaidaExpanded}
+                aria-controls="siad-add-saida-panel"
+              >
+                <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Adicionar Saída</span>
+                <ChevronDown
+                  className={cn(
+                    "h-5 w-5 shrink-0 text-[hsl(var(--primary))] transition-transform duration-200",
+                    addSaidaExpanded && "rotate-180",
+                  )}
+                  aria-hidden
+                />
+              </button>
+
+              {addSaidaExpanded ? (
+                <div
+                  id="siad-add-saida-panel"
+                  className="space-y-6 rounded-2xl rounded-t-none border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 sm:p-5"
+                >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <div className="flex min-h-[1.25rem] flex-wrap items-center gap-2">
@@ -992,24 +1031,22 @@ export function SiadQuickDepartureFormPage() {
                 <p className="text-xs text-red-600">Informe ao menos um passageiro.</p>
               ) : null}
             </div>
+
+            <Button
+              type="submit"
+              className="siad-pwa-touch-target h-12 w-full rounded-xl text-base font-semibold shadow-md touch-manipulation"
+              disabled={submitting || !isUnlocked}
+            >
+              <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
+              {submitting ? "Cadastrando…" : "Cadastrar saída"}
+            </Button>
+                </div>
+              ) : null}
+            </div>
           </form>
         </CardContent>
       </Card>
       </div>
-      </div>
-
-      <div className="siad-pwa-submit-bar border-t border-[hsl(var(--border)/0.65)]">
-        <div className="mx-auto w-full max-w-2xl">
-          <Button
-            type="submit"
-            form={SIAD_DEPARTURE_FORM_ID}
-            className="siad-pwa-touch-target h-12 w-full rounded-xl text-base font-semibold shadow-md touch-manipulation"
-            disabled={submitting || !isUnlocked}
-          >
-            <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-            {submitting ? "Cadastrando…" : "Cadastrar saída"}
-          </Button>
-        </div>
       </div>
     </div>
   );
