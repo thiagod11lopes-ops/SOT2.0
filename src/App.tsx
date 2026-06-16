@@ -313,16 +313,18 @@ function App() {
       >
         {content}
       </Layout>
-      <SiadDriverRequestAlertModal />
       {showHomeAvisosTicker ? <HomeNewsTicker /> : null}
     </>
   );
+
+  const showSiadDriverRequestModal = !isMobileRoute && !isSiadSaidaRoute;
 
   return (
     <>
       <DesktopDriverLocationsMapProvider enabled={!isMobileRoute && !isSiadSaidaRoute}>
         {appContent}
       </DesktopDriverLocationsMapProvider>
+      {showSiadDriverRequestModal ? <SiadDriverRequestAlertModal /> : null}
       {shouldRequireDailyBackup ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">

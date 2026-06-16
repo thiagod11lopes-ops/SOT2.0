@@ -1,14 +1,32 @@
-import { CarFront, CheckCircle2, Radio, Sparkles } from "lucide-react";
+import { CarFront, CheckCircle2, Radio, Sparkles, Volume2 } from "lucide-react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
 import { confirmSiadDriver } from "../lib/siadDriverRequest";
+import {
+  SIAD_DRIVER_REQUEST_SPEECH_TEXT,
+  startSiadDriverRequestSpeechLoop,
+  stopSiadDriverRequestSpeech,
+} from "../lib/siadDriverRequestSpeech";
 import { Button } from "./ui/button";
 
 export function SiadDriverRequestAlertModal() {
   const pending = usePendingSiadDriverRequests();
   const active = pending[0] ?? null;
   const open = Boolean(active);
+  const activeDate = active?.dateSaida ?? null;
+
+  useEffect(() => {
+    if (!open) {
+      stopSiadDriverRequestSpeech();
+      return;
+    }
+    const stopSpeech = startSiadDriverRequestSpeechLoop();
+    return () => {
+      stopSpeech();
+      stopSiadDriverRequestSpeech();
+    };
+  }, [open, activeDate]);
 
   useEffect(() => {
     if (!open) return;
@@ -21,8 +39,11 @@ export function SiadDriverRequestAlertModal() {
 
   if (!open || !active) return null;
 
+  const dateSaida = active.dateSaida;
+
   function handleConfirm() {
-    confirmSiadDriver(active.dateSaida);
+    stopSiadDriverRequestSpeech();
+    confirmSiadDriver(dateSaida);
   }
 
   return createPortal(
@@ -59,9 +80,13 @@ export function SiadDriverRequestAlertModal() {
             SIAD SOLICITADO
           </h2>
           <p id="siad-driver-alert-desc" className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-            O setor SIAD solicitou motorista para a saída de{" "}
+            Saída de{" "}
             <strong className="font-semibold text-slate-900 dark:text-white">{active.dateSaida}</strong>.
             Confirme para avisar o formulário de Saídas SIAD.
+          </p>
+          <p className="mx-auto mt-3 flex max-w-sm items-start justify-center gap-2 rounded-xl border border-orange-200/80 bg-orange-50/90 px-3 py-2.5 text-left text-sm font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
+            <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-300" aria-hidden />
+            <span>{SIAD_DRIVER_REQUEST_SPEECH_TEXT}</span>
           </p>
         </div>
 

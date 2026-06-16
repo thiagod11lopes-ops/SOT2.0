@@ -10,16 +10,33 @@ export type SiadDriverRequestStore = Record<string, SiadDriverRequestRecord>;
 
 export const SIAD_DRIVER_REQUEST_STORAGE_KEY = "sot:siad-driver-request-v1";
 export const SIAD_DRIVER_REQUEST_CHANGED_EVENT = "sot:siad-driver-request-changed";
+const SIAD_DRIVER_REQUEST_BC_CHANNEL = "sot-siad-driver-request-v1";
+
+let broadcastChannel: BroadcastChannel | null = null;
+
+function getSiadDriverRequestBroadcastChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === "undefined") return null;
+  if (!broadcastChannel) {
+    broadcastChannel = new BroadcastChannel(SIAD_DRIVER_REQUEST_BC_CHANNEL);
+  }
+  return broadcastChannel;
+}
 
 function notifyChanged() {
   if (typeof window === "undefined") return;
+  const payload = { ts: Date.now() };
   try {
-    window.localStorage.setItem(`${SIAD_DRIVER_REQUEST_STORAGE_KEY}:ping`, String(Date.now()));
+    window.localStorage.setItem(`${SIAD_DRIVER_REQUEST_STORAGE_KEY}:ping`, String(payload.ts));
     window.localStorage.removeItem(`${SIAD_DRIVER_REQUEST_STORAGE_KEY}:ping`);
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new CustomEvent(SIAD_DRIVER_REQUEST_CHANGED_EVENT));
+  try {
+    getSiadDriverRequestBroadcastChannel()?.postMessage(payload);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent(SIAD_DRIVER_REQUEST_CHANGED_EVENT, { detail: payload }));
 }
 
 export function readSiadDriverRequestStore(): SiadDriverRequestStore {
@@ -110,11 +127,25 @@ export function subscribeSiadDriverRequestChanges(onChange: () => void): () => v
       onChange();
     }
   };
+  const onBroadcast = () => onChange();
+  const onFocus = () => onChange();
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") onChange();
+  };
+
+  const channel = getSiadDriverRequestBroadcastChannel();
+  channel?.addEventListener("message", onBroadcast);
 
   window.addEventListener(SIAD_DRIVER_REQUEST_CHANGED_EVENT, onCustom);
   window.addEventListener("storage", onStorage);
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVisibility);
+
   return () => {
+    channel?.removeEventListener("message", onBroadcast);
     window.removeEventListener(SIAD_DRIVER_REQUEST_CHANGED_EVENT, onCustom);
     window.removeEventListener("storage", onStorage);
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisibility);
   };
 }
