@@ -21,6 +21,11 @@ import {
   verifySiadFormPassword,
 } from "../lib/siadFormPassword";
 import { useSiadPwaShell } from "../lib/useSiadPwaShell";
+import {
+  describeSiadDriverRequestStatus,
+  resetSiadDriverRequest,
+} from "../lib/siadDriverRequest";
+import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -265,10 +270,20 @@ export function SiadQuickDepartureFormPage() {
   const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
   const [passwordFormSuccess, setPasswordFormSuccess] = useState<string | null>(null);
   const [statsPanelOpen, setStatsPanelOpen] = useState(false);
+  const [motoristaResetDate, setMotoristaResetDate] = useState(getCurrentDatePtBr);
+  const [motoristaResetMessage, setMotoristaResetMessage] = useState<string | null>(null);
+
+  const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate);
 
   useEffect(() => {
     setSetorPassword(getSiadFormPassword());
   }, [passwordDialogOpen]);
+
+  useEffect(() => {
+    if (!passwordDialogOpen) return;
+    setMotoristaResetDate(dataSaida);
+    setMotoristaResetMessage(null);
+  }, [passwordDialogOpen, dataSaida]);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const pendingDateCaret = useRef<number | null>(null);
@@ -355,6 +370,22 @@ export function SiadQuickDepartureFormPage() {
     setSenhaNovaConfirmacao("");
     setPasswordFormError(null);
     setPasswordFormSuccess(null);
+    setMotoristaResetMessage(null);
+  }
+
+  function handleResetMotoristaRequest() {
+    const date = motoristaResetDate.trim();
+    if (!isCompleteDatePtBr(date)) {
+      setMotoristaResetMessage("Informe uma data válida (dd/mm/aaaa).");
+      return;
+    }
+    const removed = resetSiadDriverRequest(date);
+    if (!removed) {
+      setMotoristaResetMessage(`Não há pedido de motorista para ${date}.`);
+      return;
+    }
+    setMotoristaResetMessage(`Pedido resetado para ${date}. Já é possível solicitar novamente.`);
+    motoristaResetStatus.refresh();
   }
 
   function handlePasswordDialogChange(open: boolean) {
@@ -483,12 +514,17 @@ export function SiadQuickDepartureFormPage() {
       <Dialog open={passwordDialogOpen} onOpenChange={handlePasswordDialogChange}>
         <DialogContent className="max-w-md w-[calc(100vw-2rem)] sm:w-full max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Configurar senha</DialogTitle>
+            <DialogTitle>Configurações SIAD</DialogTitle>
             <DialogDescription>
-              Altere a senha exibida ao lado do campo Setor. A senha inicial é 0000.
+              Senha do formulário e reset do pedido de motorista por data da saída.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleChangePassword}>
+            <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)] p-4">
+              <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Senha do formulário</h3>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Altere a senha exibida ao lado do campo Setor. A senha inicial é 0000.
+              </p>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="siad-senha-atual">
                 Senha atual
@@ -535,11 +571,65 @@ export function SiadQuickDepartureFormPage() {
             {passwordFormSuccess ? (
               <p className="text-xs text-emerald-700 dark:text-emerald-300">{passwordFormSuccess}</p>
             ) : null}
+            <Button type="submit" className="w-full sm:w-auto">
+              Salvar senha
+            </Button>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-orange-200/80 bg-orange-50/50 p-4 dark:border-orange-500/20 dark:bg-orange-950/20">
+              <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedido de motorista</h3>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Resetar o pedido de uma data para voltar a solicitar motorista e remover o alerta no SOT 2.0.
+              </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="siad-motorista-reset-date">
+                  Data da saída
+                </label>
+                <input
+                  id="siad-motorista-reset-date"
+                  type="date"
+                  value={
+                    motoristaResetDate.includes("/")
+                      ? `${motoristaResetDate.slice(6, 10)}-${motoristaResetDate.slice(3, 5)}-${motoristaResetDate.slice(0, 2)}`
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const [y, m, d] = v.split("-");
+                    setMotoristaResetDate(`${d}/${m}/${y}`);
+                    setMotoristaResetMessage(null);
+                  }}
+                  className="h-10 w-full rounded-lg border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                />
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Situação:{" "}
+                <strong className="text-[hsl(var(--foreground))]">
+                  {describeSiadDriverRequestStatus(motoristaResetStatus.record)}
+                </strong>
+              </p>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleResetMotoristaRequest}>
+                Resetar pedido de motorista
+              </Button>
+              {motoristaResetMessage ? (
+                <p
+                  className={cn(
+                    "text-xs",
+                    motoristaResetMessage.startsWith("Pedido resetado")
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-[hsl(var(--muted-foreground))]",
+                  )}
+                >
+                  {motoristaResetMessage}
+                </p>
+              ) : null}
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => handlePasswordDialogChange(false)}>
                 Fechar
               </Button>
-              <Button type="submit">Salvar senha</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -587,7 +677,7 @@ export function SiadQuickDepartureFormPage() {
                 variant="outline"
                 size="icon"
                 className="siad-pwa-touch-target h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm touch-manipulation sm:h-9 sm:w-9"
-                aria-label="Configurar senha do SIAD"
+                aria-label="Configurações do SIAD"
                 disabled={!isUnlocked}
                 onClick={() => setPasswordDialogOpen(true)}
               >
@@ -841,52 +931,22 @@ export function SiadQuickDepartureFormPage() {
               </div>
               <div className="space-y-2">
                 {passageiros.map((passageiro, index) => (
-                  <div
-                    key={index}
-                    className={cn(
-                      "flex items-center gap-2",
-                      "max-sm:flex-col max-sm:items-stretch max-sm:rounded-xl max-sm:border max-sm:border-[hsl(var(--border))] max-sm:bg-slate-50/80 max-sm:p-3",
-                    )}
-                  >
-                    <div className="flex min-w-0 items-center gap-2 max-sm:w-full">
-                      <select
-                        value={passageiro.posto}
-                        onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
-                        aria-label={
-                          index === 0 ? "Posto/Grad do passageiro" : `Posto/Grad do passageiro ${index + 1}`
-                        }
-                        className="h-11 w-[7.25rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:text-sm"
-                      >
-                        <option value="">Posto/Grad</option>
-                        {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
-                          <option key={posto} value={posto}>
-                            {posto}
-                          </option>
-                        ))}
-                      </select>
-                      {index === 0 ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:hidden"
-                          aria-label="Adicionar outro passageiro"
-                          onClick={handleAddPassageiro}
-                        >
-                          <Plus className="h-5 w-5" />
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:hidden"
-                          aria-label={`Remover passageiro ${index + 1}`}
-                          onClick={() => handleRemovePassageiro(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+                  <div key={index} className="flex items-center gap-2">
+                    <select
+                      value={passageiro.posto}
+                      onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
+                      aria-label={
+                        index === 0 ? "Posto/Grad do passageiro" : `Posto/Grad do passageiro ${index + 1}`
+                      }
+                      className="h-11 w-[6.75rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[7.25rem]"
+                    >
+                      <option value="">Posto/Grad</option>
+                      {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
+                        <option key={posto} value={posto}>
+                          {posto}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       id={index === 0 ? passageirosFieldId : undefined}
                       type="text"
@@ -904,7 +964,7 @@ export function SiadQuickDepartureFormPage() {
                       <Button
                         type="button"
                         size="icon"
-                        className="siad-pwa-touch-target hidden h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:inline-flex"
+                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
                         aria-label="Adicionar outro passageiro"
                         onClick={handleAddPassageiro}
                       >
@@ -915,7 +975,7 @@ export function SiadQuickDepartureFormPage() {
                         type="button"
                         variant="outline"
                         size="icon"
-                        className="siad-pwa-touch-target hidden h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:inline-flex"
+                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
                         aria-label={`Remover passageiro ${index + 1}`}
                         onClick={() => handleRemovePassageiro(index)}
                       >
@@ -926,7 +986,7 @@ export function SiadQuickDepartureFormPage() {
                 ))}
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Cada passageiro cadastrado conta como um no sistema. Selecione o Posto/Grad à esquerda do nome, se aplicável.
+                Cada passageiro cadastrado conta como um no sistema. Use o botão + para adicionar mais passageiros, como nos bairros.
               </p>
               {submitAttempted && passageirosInvalid ? (
                 <p className="text-xs text-red-600">Informe ao menos um passageiro.</p>
