@@ -1,10 +1,7 @@
 import { CalendarDays, CheckCircle2, MapPin, Users } from "lucide-react";
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { flushSync } from "react-dom";
-import { useAppTab } from "../context/app-tab-context";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
-import { stashDeparturesListFilterFromCadastro } from "../lib/departuresListFilterCadastro";
 import {
   formatDateToPtBr,
   getCurrentDatePtBr,
@@ -81,11 +78,6 @@ function buildSiadQuickDeparturePayload(params: {
 export function SiadQuickDepartureFormPage() {
   const { addDeparture } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
-  const {
-    setActiveTab: setMainAppTab,
-    setPendingDeparturesFilterDatePtBr,
-    bumpDeparturesListMountKey,
-  } = useAppTab();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
   const [endereco, setEndereco] = useState("");
@@ -93,6 +85,7 @@ export function SiadQuickDepartureFormPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const pendingDateCaret = useRef<number | null>(null);
@@ -138,30 +131,35 @@ export function SiadQuickDepartureFormPage() {
         numeroPassageiros: numeroPassageiros.trim(),
       });
       addDeparture(payload);
-      stashDeparturesListFilterFromCadastro(payload.dataSaida);
-      flushSync(() => {
-        setPendingDeparturesFilterDatePtBr(payload.dataSaida);
-        bumpDeparturesListMountKey();
-        setMainAppTab("Saídas Administrativas");
-      });
-      if (typeof window !== "undefined" && /^#\/siad-saida(\/|$)/.test(window.location.hash)) {
-        window.location.hash = "";
-      }
+      setSuccessMessage(`Saída cadastrada para ${payload.dataSaida}.`);
+      setEndereco("");
+      setNumeroPassageiros("");
+      setSubmitAttempted(false);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
+    <div className="flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
       <div className="space-y-1 text-center sm:text-left">
         <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--primary))] sm:text-3xl">
           Saída administrativa SIAD
         </h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Preencha os dados e cadastre direto na tabela de saídas administrativas.
+          Cadastro rápido de saídas do setor SIAD.
         </p>
       </div>
+
+      {successMessage ? (
+        <div
+          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100"
+          role="status"
+        >
+          {successMessage}
+        </div>
+      ) : null}
 
       <Card className="overflow-hidden border-[hsl(var(--border))] shadow-[0_24px_60px_-18px_rgba(0,0,0,0.35)]">
         <CardHeader className="border-b border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.12)] to-transparent pb-5">
@@ -328,11 +326,12 @@ export function SiadQuickDepartureFormPage() {
               disabled={submitting}
             >
               <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-              {submitting ? "Cadastrando…" : "Cadastrar e abrir tabela"}
+              {submitting ? "Cadastrando…" : "Cadastrar saída"}
             </Button>
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

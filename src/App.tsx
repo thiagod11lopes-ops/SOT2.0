@@ -152,7 +152,7 @@ function App() {
   const handleIdleReturnHome = useCallback(() => {
     setActiveTab(null);
     setHomeRemountKey((k) => k + 1);
-    if (/^#\/(carro-quebrado|siad-saida)(\/|$)/.test(window.location.hash)) {
+    if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
       window.location.hash = "";
     }
   }, [setActiveTab]);
@@ -160,7 +160,10 @@ function App() {
   const isMobileRoute = hash.startsWith("#/saidas");
   const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
   const isSiadSaidaRoute = /^#\/siad-saida(\/|$)/.test(hash);
-  useIdleResetToHome(!isMobileRoute && !detalheServicoEditingActive, handleIdleReturnHome);
+  useIdleResetToHome(
+    !isMobileRoute && !isSiadSaidaRoute && !detalheServicoEditingActive,
+    handleIdleReturnHome,
+  );
 
   useEffect(() => {
     const onDetalheServicoEditing = (event: Event) => {
@@ -174,7 +177,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (hash.startsWith("#/saidas")) return;
+    if (hash.startsWith("#/saidas") || isSiadSaidaRoute) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
       // Não limpar `#/siad-saida` para manter o deep-link direto ao formulário.
@@ -183,7 +186,7 @@ function App() {
       }
       setActiveTab("Cadastrar Saída");
     }
-  }, [editIntentVersion, setActiveTab, hash]);
+  }, [editIntentVersion, setActiveTab, hash, isSiadSaidaRoute]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
@@ -207,6 +210,7 @@ function App() {
   const todayKey = localDayKeyNow();
   const shouldRequireDailyBackup =
     !isMobileRoute &&
+    !isSiadSaidaRoute &&
     isOnline &&
     firebaseOnlyEnabled &&
     cloudDeparturesSync.enabled &&
@@ -234,9 +238,6 @@ function App() {
   }
 
   const content = useMemo(() => {
-    if (isSiadSaidaRoute) {
-      return <SiadQuickDepartureFormPage />;
-    }
     if (isCarroQuebradoRoute) {
       const m = /^#\/carro-quebrado\/dia\/(\d{4}-\d{2}-\d{2})$/.exec(hash);
       return (
@@ -283,15 +284,16 @@ function App() {
     pendingDeparturesFilterDatePtBr,
     departuresListMountKey,
     isCarroQuebradoRoute,
-    isSiadSaidaRoute,
   ]);
 
-  const isHome = !activeTab && !isCarroQuebradoRoute && !isSiadSaidaRoute;
+  const isHome = !activeTab && !isCarroQuebradoRoute;
   const showHomeAvisosTicker =
     isHome && (Boolean(avisoPrincipal.trim()) || avisosGeraisLinhas.length > 0);
 
   const appContent = isMobileRoute ? (
     <SaidasMobileApp />
+  ) : isSiadSaidaRoute ? (
+    <SiadQuickDepartureFormPage />
   ) : (
     <>
       <Layout
@@ -310,7 +312,9 @@ function App() {
 
   return (
     <>
-      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute}>{appContent}</DesktopDriverLocationsMapProvider>
+      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute && !isSiadSaidaRoute}>
+        {appContent}
+      </DesktopDriverLocationsMapProvider>
       {shouldRequireDailyBackup ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
