@@ -12,7 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
-import { getDepartureReferenceDate } from "../lib/dateFormat";
+import { getDepartureReferenceDate, getCurrentDatePtBr, isCompleteDatePtBr } from "../lib/dateFormat";
 import {
   DEFAULT_KM_EDIT_PASSWORD,
   notifyKmEditPasswordChangedExternally,
@@ -76,6 +76,12 @@ import {
   resolveDriverLocationPostUrl,
 } from "../lib/driverLocationPost";
 import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
+import {
+  describeSiadDriverRequestStatus,
+  getSiadDriverRequestForDate,
+  resetSiadDriverRequest,
+  subscribeSiadDriverRequestChanges,
+} from "../lib/siadDriverRequest";
 import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
@@ -101,6 +107,7 @@ const SETTINGS_SECTIONS = [
   { id: "settings-sync", label: "Modo de sincronização" },
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
+  { id: "settings-siad-motorista", label: "SIAD — motorista" },
   { id: "settings-email-pdf", label: "E-mail do relatório PDF" },
   { id: "settings-alarmes", label: "Alarmes" },
   { id: "settings-mobile-motoristas", label: "Mobile — motoristas" },
@@ -315,6 +322,7 @@ export function SettingsPage() {
   useEffect(() => {
     setReportEmailDest(reportEmailStored);
   }, [reportEmailStored]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fullBackupFileInputRef = useRef<HTMLInputElement>(null);
   const firebaseImportBackupFileInputRef = useRef<HTMLInputElement>(null);
@@ -336,7 +344,21 @@ export function SettingsPage() {
   const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
   const [kmSenhaNova, setKmSenhaNova] = useState("");
   const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
+  const [siadMotoristaResetDate, setSiadMotoristaResetDate] = useState(getCurrentDatePtBr);
+  const [siadMotoristaResetMessage, setSiadMotoristaResetMessage] = useState<string | null>(null);
+  const [siadMotoristaResetTick, setSiadMotoristaResetTick] = useState(0);
   const [activeSectionId, setActiveSectionId] = useState<string>(SETTINGS_SECTIONS[0].id);
+
+  useEffect(() => {
+    return subscribeSiadDriverRequestChanges(() => setSiadMotoristaResetTick((tick) => tick + 1));
+  }, []);
+
+  const siadMotoristaRequestRecord = useMemo(
+    () => getSiadDriverRequestForDate(siadMotoristaResetDate),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick sincroniza status após reset remoto
+    [siadMotoristaResetDate, siadMotoristaResetTick],
+  );
+
   const [alarmesConfig, setAlarmesConfig] = useState<AlarmesConfig>(() => loadAlarmesConfig());
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() => {
     if (!isNotificationSupported()) return "unsupported";
@@ -827,6 +849,20 @@ export function SettingsPage() {
     );
   }
 
+  function handleResetSiadMotoristaRequest() {
+    const date = siadMotoristaResetDate.trim();
+    if (!isCompleteDatePtBr(date)) {
+      setSiadMotoristaResetMessage("Informe uma data válida (dd/mm/aaaa).");
+      return;
+    }
+    const removed = resetSiadDriverRequest(date);
+    if (!removed) {
+      setSiadMotoristaResetMessage(`Não há pedido de motorista SIAD registrado para ${date}.`);
+      return;
+    }
+    setSiadMotoristaResetMessage(`Pedido resetado para ${date}. Já é possível solicitar motorista novamente.`);
+  }
+
   function handleSaveMobileMotoristaCred() {
     const motorista = mobileCredMotorista.trim();
     const senha = mobileCredSenha.trim();
@@ -1296,6 +1332,61 @@ export function SettingsPage() {
                   Saídas administrativas: <strong>{administrativas.length}</strong> · Ambulâncias:{" "}
                   <strong>{ambulancias.length}</strong> · Total geral: <strong>{departures.length}</strong>
                 </p>
+              </section>
+              ) : null}
+
+              {activeSectionId === "settings-siad-motorista" ? (
+              <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-siad-motorista">
+                <h3 id="settings-heading-siad-motorista" className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  SIAD — pedido de motorista
+                </h3>
+                <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  Resetar o pedido de motorista de uma <strong>data da saída</strong> para permitir nova solicitação no
+                  formulário <strong>Saídas SIAD</strong> e remover o alerta pendente no SOT 2.0.
+                </p>
+                <div className="flex max-w-md flex-col gap-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.15)] p-3">
+                  <label className="text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="siad-motorista-reset-date">
+                    Data da saída
+                  </label>
+                  <input
+                    id="siad-motorista-reset-date"
+                    type="date"
+                    value={
+                      siadMotoristaResetDate.includes("/")
+                        ? `${siadMotoristaResetDate.slice(6, 10)}-${siadMotoristaResetDate.slice(3, 5)}-${siadMotoristaResetDate.slice(0, 2)}`
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!v) return;
+                      const [y, m, d] = v.split("-");
+                      setSiadMotoristaResetDate(`${d}/${m}/${y}`);
+                      setSiadMotoristaResetMessage(null);
+                    }}
+                    className={cn(sotFormInputClass, "max-w-sm")}
+                  />
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    Situação atual:{" "}
+                    <strong className="text-[hsl(var(--foreground))]">
+                      {describeSiadDriverRequestStatus(siadMotoristaRequestRecord)}
+                    </strong>
+                  </p>
+                  <Button type="button" variant="outline" className="w-fit" onClick={handleResetSiadMotoristaRequest}>
+                    Resetar pedido de motorista
+                  </Button>
+                  {siadMotoristaResetMessage ? (
+                    <p
+                      className={cn(
+                        "text-sm",
+                        siadMotoristaResetMessage.startsWith("Pedido resetado")
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-[hsl(var(--muted-foreground))]",
+                      )}
+                    >
+                      {siadMotoristaResetMessage}
+                    </p>
+                  ) : null}
+                </div>
               </section>
               ) : null}
 

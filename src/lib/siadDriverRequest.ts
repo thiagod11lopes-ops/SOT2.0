@@ -118,6 +118,25 @@ export function confirmSiadDriver(dateSaida: string): boolean {
   return true;
 }
 
+/** Remove o pedido de motorista SIAD da data — permite solicitar novamente. */
+export function resetSiadDriverRequest(dateSaida: string): boolean {
+  const key = dateSaida.trim();
+  if (!key) return false;
+  const store = readSiadDriverRequestStore();
+  if (!(key in store)) return false;
+  delete store[key];
+  writeSiadDriverRequestStore(store);
+  return true;
+}
+
+export function describeSiadDriverRequestStatus(
+  record: SiadDriverRequestRecord | null | undefined,
+): string {
+  if (!record) return "Nenhum pedido registrado";
+  if (record.status === "requested") return "Aguardando confirmação no SOT 2.0";
+  return "Saída confirmada";
+}
+
 export function subscribeSiadDriverRequestChanges(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
 
