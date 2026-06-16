@@ -41,6 +41,8 @@ export const SOT_STATE_DOC = {
   ocorrenciasDesvinculadas: "ocorrenciasDesvinculadas",
   /** Configuração OwnTracks (token partilhado + vínculos motorista→placa) — para iPhones. */
   owntracks: "owntracks",
+  /** Pedidos de motorista SIAD (alerta «SIAD SOLICITADO» em todos os dispositivos). */
+  siadDriverRequest: "siadDriverRequest",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

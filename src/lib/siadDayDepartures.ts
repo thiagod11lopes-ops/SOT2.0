@@ -6,11 +6,19 @@ import {
 import { parsePassageirosFromObjetivo } from "./siadStatistics";
 import type { DepartureRecord } from "../types/departure";
 
+function isPlaceholderMotorista(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return trimmed.toUpperCase() === "ASD";
+}
+
 export type SiadDayDepartureGroup = {
   horaSaida: string;
   bairros: string[];
   passageiros: string[];
   motoristaStatus: "none" | "requested" | "confirmed";
+  recordIds: string[];
+  motoristasEscalados: string[];
 };
 
 function dedupePreserveOrder(items: string[]): string[] {
@@ -49,12 +57,22 @@ export function groupSiadDeparturesForDay(
       const passageiros = dedupePreserveOrder(
         records.flatMap((r) => parsePassageirosFromObjetivo(r.objetivoSaida)),
       );
+      const motoristasEscalados = dedupePreserveOrder(
+        records.map((r) => r.motoristas).filter((m) => !isPlaceholderMotorista(m)),
+      );
       const slot = getSiadDriverRequestForSlot(date, horaSaida);
       let motoristaStatus: SiadDayDepartureGroup["motoristaStatus"] = "none";
       if (slot?.status === "confirmed") motoristaStatus = "confirmed";
       else if (slot?.status === "requested") motoristaStatus = "requested";
 
-      return { horaSaida, bairros, passageiros, motoristaStatus };
+      return {
+        horaSaida,
+        bairros,
+        passageiros,
+        motoristaStatus,
+        recordIds: records.map((r) => r.id),
+        motoristasEscalados,
+      };
     })
     .sort((a, b) => a.horaSaida.localeCompare(b.horaSaida, "pt-BR"));
 }

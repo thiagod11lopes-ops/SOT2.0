@@ -89,34 +89,79 @@ export function readSiadDriverRequestStore(): SiadDriverRequestStore {
   try {
     const raw = localStorage.getItem(SIAD_DRIVER_REQUEST_STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return {};
-    const out: SiadDriverRequestStore = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!key.trim() || !value || typeof value !== "object") continue;
-      const row = value as Record<string, unknown>;
-      const status = row.status;
-      const requestedAt = row.requestedAt;
-      if (status !== "requested" && status !== "confirmed") continue;
-      if (typeof requestedAt !== "number" || !Number.isFinite(requestedAt)) continue;
-      const confirmedAt = row.confirmedAt;
-      out[key] = {
-        status,
-        requestedAt,
-        confirmedAt:
-          typeof confirmedAt === "number" && Number.isFinite(confirmedAt) ? confirmedAt : undefined,
-      };
-    }
-    return out;
+    return parseSiadDriverRequestStore(JSON.parse(raw));
   } catch {
     return {};
   }
 }
 
-function writeSiadDriverRequestStore(store: SiadDriverRequestStore) {
+export function parseSiadDriverRequestStore(parsed: unknown): SiadDriverRequestStore {
+  if (!parsed || typeof parsed !== "object") return {};
+  const out: SiadDriverRequestStore = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!key.trim() || !value || typeof value !== "object") continue;
+    const row = value as Record<string, unknown>;
+    const status = row.status;
+    const requestedAt = row.requestedAt;
+    if (status !== "requested" && status !== "confirmed") continue;
+    if (typeof requestedAt !== "number" || !Number.isFinite(requestedAt)) continue;
+    const confirmedAt = row.confirmedAt;
+    out[key] = {
+      status,
+      requestedAt,
+      confirmedAt:
+        typeof confirmedAt === "number" && Number.isFinite(confirmedAt) ? confirmedAt : undefined,
+    };
+  }
+  return out;
+}
+
+/** Mescla pedidos locais e remotos preservando confirmações e timestamps mais recentes. */
+export function mergeSiadDriverRequestStores(
+  base: SiadDriverRequestStore,
+  incoming: SiadDriverRequestStore,
+): SiadDriverRequestStore {
+  const out: SiadDriverRequestStore = { ...base };
+  for (const [key, incomingRec] of Object.entries(incoming)) {
+    const prev = out[key];
+    if (!prev) {
+      out[key] = incomingRec;
+      continue;
+    }
+    if (incomingRec.status === "confirmed" && prev.status === "requested") {
+      out[key] = incomingRec;
+      continue;
+    }
+    if (prev.status === "confirmed" && incomingRec.status === "requested") {
+      continue;
+    }
+    if (incomingRec.requestedAt >= prev.requestedAt) {
+      out[key] = incomingRec;
+    }
+  }
+  return out;
+}
+
+let cloudPushListener: ((store: SiadDriverRequestStore) => void) | null = null;
+
+export function setSiadDriverRequestCloudPushListener(
+  listener: ((store: SiadDriverRequestStore) => void) | null,
+): void {
+  cloudPushListener = listener;
+}
+
+function writeSiadDriverRequestStore(store: SiadDriverRequestStore, options?: { skipCloud?: boolean }) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SIAD_DRIVER_REQUEST_STORAGE_KEY, JSON.stringify(store));
   notifyChanged();
+  if (!options?.skipCloud && cloudPushListener) {
+    cloudPushListener(store);
+  }
+}
+
+/** Aplica snapshot remoto (Firestore) no armazenamento local sem reenviar à nuvem. */
+export function applySiadDriverRequestStoreFromRemote(store: SiadDriverRequestStore) {
+  writeSiadDriverRequestStore(store, { skipCloud: true });
 }
 
 export function getSiadDriverRequestForSlot(
