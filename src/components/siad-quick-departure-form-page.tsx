@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, MapPin, Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Users } from "lucide-react";
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
@@ -13,6 +13,7 @@ import {
   getMetroRioNeighborhoodSuggestions,
   resolveMetroRioCityForNeighborhood,
 } from "../lib/metroRioLocations";
+import { normalize24hTime, parseHhMm } from "../lib/timeInput";
 import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -41,6 +42,7 @@ function formatWeekdayCommaDatePtBr(d: Date): string {
 
 function buildSiadQuickDeparturePayload(params: {
   dataSaida: string;
+  horaSaida: string;
   endereco: string;
   numeroPassageiros: string;
 }): Omit<DepartureRecord, "id" | "createdAt"> {
@@ -50,7 +52,7 @@ function buildSiadQuickDeparturePayload(params: {
     dataPedido: getCurrentDatePtBr(),
     horaPedido: getCurrentTime(),
     dataSaida: params.dataSaida,
-    horaSaida: "08:00",
+    horaSaida: params.horaSaida,
     setor: "SIAD",
     ramal: "",
     objetivoSaida: "Atendimento domiciliar",
@@ -80,6 +82,7 @@ export function SiadQuickDepartureFormPage() {
   const { addItem: addCatalogItem } = useCatalogItems();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
+  const [horaSaida, setHoraSaida] = useState("08:00");
   const [endereco, setEndereco] = useState("");
   const [numeroPassageiros, setNumeroPassageiros] = useState("");
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -91,6 +94,7 @@ export function SiadQuickDepartureFormPage() {
   const pendingDateCaret = useRef<number | null>(null);
   const enderecoListId = useId();
   const dateFieldId = useId();
+  const horaSaidaFieldId = useId();
   const enderecoFieldId = useId();
   const passageirosFieldId = useId();
 
@@ -98,9 +102,10 @@ export function SiadQuickDepartureFormPage() {
   const selectedDate = useMemo(() => parsePtBrToDate(dataSaida), [dataSaida]);
 
   const dateInvalid = !isCompleteDatePtBr(dataSaida) || !selectedDate;
+  const horaSaidaInvalid = parseHhMm(horaSaida) === null;
   const enderecoInvalid = endereco.trim().length === 0;
   const passageirosInvalid = numeroPassageiros.trim().length === 0;
-  const canSubmit = !dateInvalid && !enderecoInvalid && !passageirosInvalid;
+  const canSubmit = !dateInvalid && !horaSaidaInvalid && !enderecoInvalid && !passageirosInvalid;
 
   if (pendingDateCaret.current !== null && dateInputRef.current) {
     const caret = pendingDateCaret.current;
@@ -127,11 +132,12 @@ export function SiadQuickDepartureFormPage() {
       ensureSiadCatalogDefaults();
       const payload = buildSiadQuickDeparturePayload({
         dataSaida: dataSaida.trim(),
+        horaSaida: horaSaida.trim(),
         endereco,
         numeroPassageiros: numeroPassageiros.trim(),
       });
       addDeparture(payload);
-      setSuccessMessage(`Saída cadastrada para ${payload.dataSaida}.`);
+      setSuccessMessage(`Saída cadastrada para ${payload.dataSaida} às ${payload.horaSaida}.`);
       setEndereco("");
       setNumeroPassageiros("");
       setSubmitAttempted(false);
@@ -164,7 +170,7 @@ export function SiadQuickDepartureFormPage() {
       <Card className="overflow-hidden border-[hsl(var(--border))] shadow-[0_24px_60px_-18px_rgba(0,0,0,0.35)]">
         <CardHeader className="border-b border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.12)] to-transparent pb-5">
           <CardTitle className="text-lg">Novo registro</CardTitle>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Setor SIAD — destino e passageiros</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Setor SIAD — data, hora, bairro e passageiros</p>
         </CardHeader>
         <CardContent className="pt-6">
           <form className="space-y-6" onSubmit={handleSubmit} noValidate>
@@ -254,7 +260,35 @@ export function SiadQuickDepartureFormPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="siad-setor">
+              <label className="flex items-center gap-2 text-sm font-medium" htmlFor={horaSaidaFieldId}>
+                <Clock className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
+                Hora da Saída
+              </label>
+              <input
+                id={horaSaidaFieldId}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="HH:MM"
+                aria-label="Hora da saída (HH:MM)"
+                value={horaSaida}
+                onChange={(event) => setHoraSaida(normalize24hTime(event.target.value))}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-center font-mono text-sm tabular-nums shadow-sm placeholder:font-sans placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                  submitAttempted && horaSaidaInvalid && "border-red-500/90",
+                )}
+              />
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Formato 24 horas (ex.: 08:00, 13:30).
+              </p>
+              {submitAttempted && horaSaidaInvalid ? (
+                <p className="text-xs text-red-600">Informe um horário válido (HH:MM).</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium" htmlFor="siad-setor">
+                <Lock className="h-4 w-4 text-[hsl(var(--muted-foreground))]" aria-hidden />
                 Setor
               </label>
               <input
@@ -262,14 +296,20 @@ export function SiadQuickDepartureFormPage() {
                 type="text"
                 value="SIAD"
                 readOnly
-                className="h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-slate-50 px-3 text-sm font-medium text-[hsl(var(--foreground))] shadow-sm"
+                disabled
+                aria-readonly="true"
+                aria-describedby="siad-setor-hint"
+                className="h-11 w-full cursor-not-allowed rounded-xl border border-[hsl(var(--border))] bg-slate-100 px-3 text-sm font-medium text-[hsl(var(--muted-foreground))] shadow-sm opacity-90"
               />
+              <p id="siad-setor-hint" className="text-xs text-[hsl(var(--muted-foreground))]">
+                Setor bloqueado: este formulário é exclusivo para <strong>SIAD</strong> e o setor não pode ser alterado.
+              </p>
             </div>
 
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium" htmlFor={enderecoFieldId}>
                 <MapPin className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-                Endereço
+                Bairro
               </label>
               <input
                 id={enderecoFieldId}
@@ -277,7 +317,7 @@ export function SiadQuickDepartureFormPage() {
                 list={enderecoListId}
                 value={endereco}
                 onChange={(e) => setEndereco(e.target.value)}
-                placeholder="Bairro ou endereço na RM-RJ"
+                placeholder="Bairro na RM-RJ"
                 autoComplete="off"
                 className={cn(
                   "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
@@ -293,7 +333,7 @@ export function SiadQuickDepartureFormPage() {
                 Sugestões de bairros do Rio de Janeiro e região metropolitana. Você também pode digitar livremente.
               </p>
               {submitAttempted && enderecoInvalid ? (
-                <p className="text-xs text-red-600">Informe o endereço ou bairro de destino.</p>
+                <p className="text-xs text-red-600">Informe o bairro de destino.</p>
               ) : null}
             </div>
 
