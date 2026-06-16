@@ -1,19 +1,22 @@
 import { Clock3, Sparkles, X } from "lucide-react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { getSiadDriverRequestForSlot } from "../lib/siadDriverRequest";
+import { resolveSiadDriverRequestForSlot } from "../lib/siadDriverRequest";
+import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 
 export function SiadDriverRequestTimePickerModal({
   open,
   dateSaida,
+  departures,
   horarios,
   onClose,
   onSelect,
 }: {
   open: boolean;
   dateSaida: string;
+  departures: DepartureRecord[];
   horarios: string[];
   onClose: () => void;
   onSelect: (horaSaida: string) => void;
@@ -71,7 +74,7 @@ export function SiadDriverRequestTimePickerModal({
 
         <ul className="relative space-y-2">
           {horarios.map((hora) => {
-            const slot = getSiadDriverRequestForSlot(dateSaida, hora);
+            const slot = resolveSiadDriverRequestForSlot(dateSaida, hora, departures);
             const blocked = slot?.status === "requested" || slot?.status === "confirmed";
             const statusLabel =
               slot?.status === "confirmed"

@@ -193,12 +193,17 @@ export function collectSiadDeparturesForSlot(
 /**
  * Pedido de motorista anterior a um novo cadastro no mesmo horário (ex.: após exclusão)
  * não deve reaparecer como confirmado/solicitado.
+ *
+ * Pedidos «requested» sem saídas visíveis no slot são mantidos (ex.: sync ainda em andamento
+ * no SOT 2.0) para o modal não fechar antes da confirmação.
  */
 export function isSiadDriverRequestStale(
   record: SiadDriverRequestRecord,
   slotDepartures: DepartureRecord[],
 ): boolean {
-  if (slotDepartures.length === 0) return true;
+  if (slotDepartures.length === 0) {
+    return record.status === "confirmed";
+  }
   const oldestCreated = Math.min(...slotDepartures.map((row) => row.createdAt));
   return record.requestedAt < oldestCreated;
 }
@@ -255,18 +260,15 @@ export function listSiadDriverRequestsForDate(dateSaida: string): SiadDriverRequ
 export function getSiadDepartureTimesForDate(
   departures: DepartureRecord[],
   dateSaida: string,
-  includeHora?: string,
 ): string[] {
   const date = dateSaida.trim();
   const times = new Set<string>();
   for (const row of departures) {
-    if (!isSiadDeparture(row)) continue;
+    if (!isSiadDeparture(row) || row.cancelada) continue;
     if (row.dataSaida.trim() !== date) continue;
     const hora = normalizeSiadDriverRequestHora(row.horaSaida);
     if (hora) times.add(hora);
   }
-  const extra = includeHora ? normalizeSiadDriverRequestHora(includeHora) : null;
-  if (extra) times.add(extra);
   return [...times].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
@@ -295,6 +297,9 @@ export function requestSiadDriver(
 ): boolean {
   if (departures) {
     resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures);
+    if (collectSiadDeparturesForSlot(departures, dateSaida, horaSaida).length === 0) {
+      return false;
+    }
   }
   const key = getSiadDriverRequestSlotKey(dateSaida, horaSaida);
   if (!key) return false;

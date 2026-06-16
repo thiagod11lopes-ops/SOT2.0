@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDepartures } from "../context/departures-context";
 import {
+  collectSiadDeparturesForSlot,
   confirmSiadDriver,
+  isSiadDriverRequestStale,
   readSiadDriverRequestStore,
   requestSiadDriver,
   resolveSiadDriverRequestForSlot,
@@ -54,15 +56,16 @@ export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
   const refresh = useCallback(() => {
     const store = readSiadDriverRequestStore();
     const next = Object.entries(store)
-      .map(([key]) => {
+      .map(([key, record]) => {
+        if (record.status !== "requested") return null;
         const slot = parseSiadDriverRequestSlotKey(key);
         const hora = slot.horaSaida ?? "";
-        const resolved = resolveSiadDriverRequestForSlot(slot.dateSaida, hora, departures);
-        if (!resolved || resolved.status !== "requested") return null;
+        const slotDepartures = collectSiadDeparturesForSlot(departures, slot.dateSaida, hora);
+        if (isSiadDriverRequestStale(record, slotDepartures)) return null;
         return {
           dateSaida: slot.dateSaida,
           horaSaida: slot.horaSaida,
-          record: resolved,
+          record,
         };
       })
       .filter((slot): slot is SiadDriverRequestSlot => slot !== null)

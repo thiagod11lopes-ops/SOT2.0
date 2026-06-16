@@ -23,26 +23,28 @@ export function SiadDriverRequestButton({
   const [timePickerOpen, setTimePickerOpen] = useState(false);
 
   const horariosDoDia = useMemo(
-    () => getSiadDepartureTimesForDate(departures, dateSaida, horaSaida),
-    [departures, dateSaida, horaSaida],
+    () => getSiadDepartureTimesForDate(departures, dateSaida),
+    [departures, dateSaida],
   );
 
   const horaLabel = normalizeSiadDriverRequestHora(horaSaida);
+  const hasSaidasCadastradas = horariosDoDia.length > 0;
+  const canSendRequest = canRequest && hasSaidasCadastradas;
 
   function submitRequest(hora: string) {
-    if (!normalizeSiadDriverRequestHora(hora)) return;
+    const normalized = normalizeSiadDriverRequestHora(hora);
+    if (!normalized || !horariosDoDia.includes(normalized)) return;
     request(hora);
     setTimePickerOpen(false);
   }
 
   function handleClick() {
-    if (disabled || !canRequest) return;
+    if (disabled || !canSendRequest) return;
     if (horariosDoDia.length >= 2) {
       setTimePickerOpen(true);
       return;
     }
-    const hora = horariosDoDia[0] ?? horaSaida;
-    submitRequest(hora);
+    submitRequest(horariosDoDia[0]!);
   }
 
   function handleSelectHorario(hora: string) {
@@ -116,7 +118,7 @@ export function SiadDriverRequestButton({
   ) : (
     <button
       type="button"
-      disabled={disabled}
+      disabled={disabled || !hasSaidasCadastradas}
       onClick={handleClick}
       className={cn(
         "group relative flex h-full min-h-[11.5rem] w-full flex-col justify-between overflow-hidden rounded-2xl border border-orange-300/40 p-4 text-left text-white shadow-[0_20px_50px_-18px_rgba(249,115,22,0.75)] transition-transform active:scale-[0.99]",
@@ -139,9 +141,11 @@ export function SiadDriverRequestButton({
       <div className="relative space-y-1">
         <p className="text-lg font-bold leading-tight">Solicitar motorista</p>
         <p className="text-xs text-orange-50/90">
-          {horariosDoDia.length >= 2
-            ? "Várias saídas no dia — escolha o horário"
-            : `Avisar o SOT 2.0${horaHint || " para a data selecionada"}`}
+          {!hasSaidasCadastradas
+            ? "Cadastre uma saída no dia antes de solicitar"
+            : horariosDoDia.length >= 2
+              ? "Várias saídas no dia — escolha o horário"
+              : `Avisar o SOT 2.0${horaHint || " para a data selecionada"}`}
         </p>
       </div>
       <span className="relative mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-orange-600 shadow-md">
@@ -157,6 +161,7 @@ export function SiadDriverRequestButton({
       <SiadDriverRequestTimePickerModal
         open={timePickerOpen}
         dateSaida={dateSaida}
+        departures={departures}
         horarios={horariosDoDia}
         onClose={() => setTimePickerOpen(false)}
         onSelect={handleSelectHorario}
