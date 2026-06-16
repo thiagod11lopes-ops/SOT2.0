@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Settings, Sparkles, Users, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Scale, Settings, Sparkles, Users, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -34,6 +34,7 @@ import {
 } from "./ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
+import { SiadStatisticsPanel } from "./siad-statistics-panel";
 
 const WEEKDAY_NAMES_PT = [
   "domingo",
@@ -70,20 +71,67 @@ function dedupeBairrosPreserveOrder(items: string[]): string[] {
   return dedupeTextosPreserveOrder(items);
 }
 
-function formatSiadObjetivoComPassageiros(nomes: string[]): string {
+const SIAD_PASSAGEIRO_POSTOS = [
+  "Alte",
+  "CMG",
+  "CF",
+  "CC",
+  "CT",
+  "1°TEN",
+  "2°TEN",
+  "GM",
+  "SO",
+  "1°SG",
+  "2°SG",
+  "3°SG",
+  "CB",
+  "MN",
+] as const;
+
+type SiadPassageiroRow = {
+  nome: string;
+  posto: string;
+};
+
+const EMPTY_SIAD_PASSAGEIRO: SiadPassageiroRow = { nome: "", posto: "" };
+
+function formatPassageiroComPosto(row: SiadPassageiroRow): string {
+  const nome = row.nome.trim();
+  const posto = row.posto.trim();
+  if (!nome) return "";
+  return posto ? `${posto} ${nome}` : nome;
+}
+
+function dedupePassageirosPreserveOrder(items: SiadPassageiroRow[]): SiadPassageiroRow[] {
+  const seen = new Set<string>();
+  const out: SiadPassageiroRow[] = [];
+  for (const item of items) {
+    const nome = item.nome.trim();
+    if (!nome) continue;
+    const posto = item.posto.trim();
+    const key = `${posto.toLowerCase()}|${nome.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ nome, posto });
+  }
+  return out;
+}
+
+function formatSiadObjetivoComPassageiros(passageiros: SiadPassageiroRow[]): string {
   const base = "Atendimento domiciliar";
-  if (nomes.length === 0) return base;
-  return `${base} — Passageiros: ${formatDestinosListaPt(nomes)}`;
+  const labels = passageiros.map(formatPassageiroComPosto).filter(Boolean);
+  if (labels.length === 0) return base;
+  return `${base} — Passageiros: ${formatDestinosListaPt(labels)}`;
 }
 
 function buildSiadQuickDeparturePayload(params: {
   dataSaida: string;
   horaSaida: string;
   endereco: string;
-  passageirosNomes: string[];
+  passageiros: SiadPassageiroRow[];
 }): Omit<DepartureRecord, "id" | "createdAt"> {
   const endereco = params.endereco.trim();
-  const nomes = dedupeTextosPreserveOrder(params.passageirosNomes);
+  const passageiros = dedupePassageirosPreserveOrder(params.passageiros);
   return {
     tipo: "Administrativa",
     dataPedido: getCurrentDatePtBr(),
@@ -92,8 +140,8 @@ function buildSiadQuickDeparturePayload(params: {
     horaSaida: params.horaSaida,
     setor: "SIAD",
     ramal: "",
-    objetivoSaida: formatSiadObjetivoComPassageiros(nomes),
-    numeroPassageiros: String(nomes.length),
+    objetivoSaida: formatSiadObjetivoComPassageiros(passageiros),
+    numeroPassageiros: String(passageiros.length),
     responsavelPedido: "SIAD",
     om: "",
     viaturas: "ASD",
@@ -191,7 +239,7 @@ export function SiadQuickDepartureFormPage() {
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
   const [horaSaida, setHoraSaida] = useState("08:00");
   const [bairros, setBairros] = useState<string[]>([""]);
-  const [passageirosNomes, setPassageirosNomes] = useState<string[]>([""]);
+  const [passageiros, setPassageiros] = useState<SiadPassageiroRow[]>([{ ...EMPTY_SIAD_PASSAGEIRO }]);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -207,6 +255,7 @@ export function SiadQuickDepartureFormPage() {
   const [senhaNovaConfirmacao, setSenhaNovaConfirmacao] = useState("");
   const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
   const [passwordFormSuccess, setPasswordFormSuccess] = useState<string | null>(null);
+  const [statsPanelOpen, setStatsPanelOpen] = useState(false);
 
   useEffect(() => {
     setSetorPassword(getSiadFormPassword());
@@ -227,8 +276,8 @@ export function SiadQuickDepartureFormPage() {
     [bairros],
   );
   const passageirosPreenchidos = useMemo(
-    () => dedupeTextosPreserveOrder(passageirosNomes),
-    [passageirosNomes],
+    () => dedupePassageirosPreserveOrder(passageiros),
+    [passageiros],
   );
 
   const dateInvalid = !isCompleteDatePtBr(dataSaida) || !selectedDate;
@@ -265,15 +314,19 @@ export function SiadQuickDepartureFormPage() {
   }
 
   function handleAddPassageiro() {
-    setPassageirosNomes((prev) => [...prev, ""]);
+    setPassageiros((prev) => [...prev, { ...EMPTY_SIAD_PASSAGEIRO }]);
   }
 
-  function handlePassageiroChange(index: number, value: string) {
-    setPassageirosNomes((prev) => prev.map((nome, i) => (i === index ? value : nome)));
+  function handlePassageiroNomeChange(index: number, value: string) {
+    setPassageiros((prev) => prev.map((row, i) => (i === index ? { ...row, nome: value } : row)));
+  }
+
+  function handlePassageiroPostoChange(index: number, value: string) {
+    setPassageiros((prev) => prev.map((row, i) => (i === index ? { ...row, posto: value } : row)));
   }
 
   function handleRemovePassageiro(index: number) {
-    setPassageirosNomes((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+    setPassageiros((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
   function handleLogin(event: FormEvent) {
@@ -340,7 +393,7 @@ export function SiadQuickDepartureFormPage() {
       const base = {
         dataSaida: dataSaida.trim(),
         horaSaida: horaSaida.trim(),
-        passageirosNomes: passageirosPreenchidos,
+        passageiros: passageirosPreenchidos,
       };
       for (const bairro of bairrosPreenchidos) {
         addDeparture(
@@ -360,7 +413,7 @@ export function SiadQuickDepartureFormPage() {
       );
       setSuccessModalOpen(true);
       setBairros([""]);
-      setPassageirosNomes([""]);
+      setPassageiros([{ ...EMPTY_SIAD_PASSAGEIRO }]);
       setSubmitAttempted(false);
     } finally {
       setSubmitting(false);
@@ -379,6 +432,7 @@ export function SiadQuickDepartureFormPage() {
         message={successMessage ?? ""}
         onClose={handleCloseSuccessModal}
       />
+      <SiadStatisticsPanel open={statsPanelOpen} onClose={() => setStatsPanelOpen(false)} />
       <Dialog open={!isUnlocked}>
         <DialogContent
           hideCloseButton
@@ -506,17 +560,30 @@ export function SiadQuickDepartureFormPage() {
                 Setor SIAD — data, hora, bairro e passageiros
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
-              aria-label="Configurar senha do SIAD"
-              disabled={!isUnlocked}
-              onClick={() => setPasswordDialogOpen(true)}
-            >
-              <Settings className="h-4 w-4 text-[hsl(var(--primary))]" />
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
+                aria-label="Estatísticas de saídas SIAD"
+                disabled={!isUnlocked}
+                onClick={() => setStatsPanelOpen(true)}
+              >
+                <Scale className="h-4 w-4 text-[hsl(var(--primary))]" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
+                aria-label="Configurar senha do SIAD"
+                disabled={!isUnlocked}
+                onClick={() => setPasswordDialogOpen(true)}
+              >
+                <Settings className="h-4 w-4 text-[hsl(var(--primary))]" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
@@ -736,21 +803,34 @@ export function SiadQuickDepartureFormPage() {
                 ) : null}
               </div>
               <div className="space-y-2">
-                {passageirosNomes.map((nome, index) => (
+                {passageiros.map((passageiro, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <input
                       id={index === 0 ? passageirosFieldId : undefined}
                       type="text"
-                      value={nome}
-                      onChange={(e) => handlePassageiroChange(index, e.target.value)}
+                      value={passageiro.nome}
+                      onChange={(e) => handlePassageiroNomeChange(index, e.target.value)}
                       placeholder="Nome do passageiro"
                       autoComplete="name"
-                      aria-label={index === 0 ? "Passageiro" : `Passageiro ${index + 1}`}
+                      aria-label={index === 0 ? "Nome do passageiro" : `Nome do passageiro ${index + 1}`}
                       className={cn(
                         "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
                         submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
                       )}
                     />
+                    <select
+                      value={passageiro.posto}
+                      onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
+                      aria-label={index === 0 ? "Posto do passageiro" : `Posto do passageiro ${index + 1}`}
+                      className="h-11 w-[5.75rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[6.25rem]"
+                    >
+                      <option value="">Posto</option>
+                      {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
+                        <option key={posto} value={posto}>
+                          {posto}
+                        </option>
+                      ))}
+                    </select>
                     {index === 0 ? (
                       <Button
                         type="button"
@@ -777,7 +857,7 @@ export function SiadQuickDepartureFormPage() {
                 ))}
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Cada nome cadastrado conta como um passageiro no sistema. Use o botão + para incluir mais pessoas.
+                Cada passageiro cadastrado conta como um no sistema. Selecione o posto à direita do nome, se aplicável.
               </p>
               {submitAttempted && passageirosInvalid ? (
                 <p className="text-xs text-red-600">Informe ao menos um passageiro.</p>
