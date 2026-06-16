@@ -351,7 +351,7 @@ export function SiadStatisticsPanel({
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <RankedList
-                  title="Passageiros que mais saem"
+                  title="Ranque de Passageiros"
                   icon={<Users className="h-4 w-4 text-white" />}
                   entries={stats.topPassageiros}
                   emptyLabel="Nenhum passageiro nomeado no período."

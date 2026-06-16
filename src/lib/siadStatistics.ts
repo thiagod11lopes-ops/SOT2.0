@@ -89,6 +89,18 @@ export function parsePassageirosFromObjetivo(objetivo: string): string[] {
     .filter(Boolean);
 }
 
+const NAO_INFORMADOS_LABEL = "Não informados";
+
+function hasAsdPlaceholder(value: string): boolean {
+  return value.trim().toUpperCase().includes("ASD");
+}
+
+function normalizeSiadStatsPlaceLabel(raw: string): string {
+  const t = raw.trim();
+  if (!t || hasAsdPlaceholder(t)) return NAO_INFORMADOS_LABEL;
+  return t;
+}
+
 function foldBairroKey(value: string): string {
   return value
     .trim()
@@ -100,13 +112,17 @@ function foldBairroKey(value: string): string {
 
 function normalizeBairroLabel(raw: string): string {
   const t = raw.trim();
-  if (!t) return "";
+  if (!t || hasAsdPlaceholder(t)) return NAO_INFORMADOS_LABEL;
   const f = foldBairroKey(t);
   if (/\bdicamp\w*\b/i.test(f) || /di\s*-?\s*camp\b/i.test(f)) return "Campo Grande";
   if (/\bcemeru\w*\b/i.test(f) || /ce\s*-?\s*meru\b/i.test(f)) return "Santa Cruz";
   if (f === "campo grande" || f.startsWith("campo grande ")) return "Campo Grande";
   if (f === "santa cruz" || f.startsWith("santa cruz ")) return "Santa Cruz";
   return t;
+}
+
+function normalizeCidadeLabel(raw: string): string {
+  return normalizeSiadStatsPlaceLabel(raw);
 }
 
 function toRanking(map: Map<string, number>, limit = 10): SiadStatsRankEntry[] {
@@ -214,10 +230,10 @@ export function computeSiadStatistics(
     }
 
     const bairro = normalizeBairroLabel(row.bairro);
-    if (bairro) bairroCounts.set(bairro, (bairroCounts.get(bairro) ?? 0) + 1);
+    bairroCounts.set(bairro, (bairroCounts.get(bairro) ?? 0) + 1);
 
-    const cidade = row.cidade.trim();
-    if (cidade) cidadeCounts.set(cidade, (cidadeCounts.get(cidade) ?? 0) + 1);
+    const cidade = normalizeCidadeLabel(row.cidade);
+    cidadeCounts.set(cidade, (cidadeCounts.get(cidade) ?? 0) + 1);
 
     const hora = parseHhMm(row.horaSaida.trim());
     if (hora) {
