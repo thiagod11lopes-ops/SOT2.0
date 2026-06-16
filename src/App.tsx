@@ -12,6 +12,7 @@ import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { SiadQuickDepartureFormPage } from "./components/siad-quick-departure-form-page";
+import { SiadDriverRequestAlertModal } from "./components/siad-driver-request-alert-modal";
 import { RelatorioDiarioViaturasCalendarPage } from "./components/relatorio-diario-viaturas-calendar-page";
 import { RelatorioDiarioViaturasPage } from "./components/relatorio-diario-viaturas-page";
 import { RdvRouteErrorBoundary } from "./components/rdv-route-error-boundary";
@@ -312,6 +313,7 @@ function App() {
       >
         {content}
       </Layout>
+      <SiadDriverRequestAlertModal />
       {showHomeAvisosTicker ? <HomeNewsTicker /> : null}
     </>
   );

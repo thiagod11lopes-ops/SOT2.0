@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="apple-touch-icon" href="./sot-pwa-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,6 +17,13 @@
         function applySiadDocumentTitle() {
           if (/^#\/siad-saida(\/|$)/.test(window.location.hash)) {
             document.title = "Saídas SIAD";
+            var theme = document.querySelector('meta[name="theme-color"]');
+            if (!theme) {
+              theme = document.createElement("meta");
+              theme.setAttribute("name", "theme-color");
+              document.head.appendChild(theme);
+            }
+            theme.setAttribute("content", "#0c4a6e");
           }
         }
         applySiadDocumentTitle();

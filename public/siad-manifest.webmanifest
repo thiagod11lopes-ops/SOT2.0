@@ -1,0 +1,27 @@
+{
+  "name": "Saídas SIAD",
+  "short_name": "SIAD",
+  "description": "Cadastro rápido de saídas administrativas do setor SIAD.",
+  "start_url": "./index.html#/siad-saida",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#0c4a6e",
+  "lang": "pt-BR",
+  "categories": ["productivity", "business"],
+  "icons": [
+    {
+      "src": "./sot-pwa-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "./sot-pwa-icon-maskable.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ]
+}

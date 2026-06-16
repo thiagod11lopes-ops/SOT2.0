@@ -801,6 +801,131 @@ html.saidas-mobile-shell .saidas-mobile-scope main {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ── SIAD PWA (#/siad-saida) — app standalone em Android/iOS ── */
+html.siad-mobile-shell {
+  position: fixed;
+  inset: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  height: 100dvh;
+  min-height: -webkit-fill-available;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-y;
+}
+
+html.siad-mobile-shell body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: -webkit-fill-available;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.siad-mobile-shell #root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.siad-pwa-scope {
+  --siad-safe-top: env(safe-area-inset-top, 0px);
+  --siad-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --siad-safe-left: env(safe-area-inset-left, 0px);
+  --siad-safe-right: env(safe-area-inset-right, 0px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.siad-pwa-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: calc(5.5rem + var(--siad-safe-bottom));
+  padding-left: var(--siad-safe-left);
+  padding-right: var(--siad-safe-right);
+}
+
+.siad-pwa-safe-top {
+  padding-top: max(0.75rem, var(--siad-safe-top));
+}
+
+.siad-pwa-submit-bar {
+  flex-shrink: 0;
+  padding-top: 0.75rem;
+  padding-bottom: max(0.85rem, var(--siad-safe-bottom));
+  padding-left: max(1rem, var(--siad-safe-left));
+  padding-right: max(1rem, var(--siad-safe-right));
+  background: linear-gradient(
+    to top,
+    hsl(var(--background)) 72%,
+    hsl(var(--background) / 0.92) 88%,
+    transparent
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+@media (max-width: 640px) {
+  html.siad-mobile-shell .siad-pwa-scope input:not([type="checkbox"]):not([type="radio"]),
+  html.siad-mobile-shell .siad-pwa-scope select,
+  html.siad-mobile-shell .siad-pwa-scope textarea {
+    font-size: 16px;
+  }
+
+  html.siad-mobile-shell .siad-pwa-scope .siad-pwa-touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
+.siad-stats-sheet {
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px));
+}
+
+.siad-stats-filters-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  padding-bottom: 0.15rem;
+  margin-inline: -0.15rem;
+  padding-inline: 0.15rem;
+}
+
+.siad-stats-filters-scroll > button {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+
 /* ── Cabeçalho mobile (layout moderno) ── */
 .saidas-mobile-header {
   padding-bottom: 0.55rem;

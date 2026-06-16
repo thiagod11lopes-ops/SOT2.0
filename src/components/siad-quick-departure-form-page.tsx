@@ -20,6 +20,7 @@ import {
   setSiadFormPassword,
   verifySiadFormPassword,
 } from "../lib/siadFormPassword";
+import { useSiadPwaShell } from "../lib/useSiadPwaShell";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -35,6 +36,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { SiadStatisticsPanel } from "./siad-statistics-panel";
+import { SiadDriverRequestButton } from "./siad-driver-request-button";
+
+const SIAD_DEPARTURE_FORM_ID = "siad-departure-form";
 
 const WEEKDAY_NAMES_PT = [
   "domingo",
@@ -184,7 +188,7 @@ function SiadCadastroSuccessModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[300] flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="siad-success-title"
@@ -233,6 +237,7 @@ function SiadCadastroSuccessModal({
 }
 
 export function SiadQuickDepartureFormPage() {
+  useSiadPwaShell();
   const { addDeparture } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
 
@@ -426,7 +431,7 @@ export function SiadQuickDepartureFormPage() {
   }
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
+    <div className="siad-pwa-scope relative bg-[hsl(var(--background))]">
       <SiadCadastroSuccessModal
         open={successModalOpen}
         message={successMessage ?? ""}
@@ -436,7 +441,7 @@ export function SiadQuickDepartureFormPage() {
       <Dialog open={!isUnlocked}>
         <DialogContent
           hideCloseButton
-          className="max-w-sm"
+          className="max-w-sm w-[calc(100vw-2rem)] sm:w-full"
           onPointerDownOutside={(event) => event.preventDefault()}
           onEscapeKeyDown={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
@@ -472,7 +477,7 @@ export function SiadQuickDepartureFormPage() {
       </Dialog>
 
       <Dialog open={passwordDialogOpen} onOpenChange={handlePasswordDialogChange}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[calc(100vw-2rem)] sm:w-full max-h-[min(90dvh,calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Configurar senha</DialogTitle>
             <DialogDescription>
@@ -536,9 +541,10 @@ export function SiadQuickDepartureFormPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
+      <div className="siad-pwa-scroll">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-8 siad-pwa-safe-top">
       <div className="space-y-1 text-center sm:text-left">
-        <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--primary))] sm:text-3xl">
+        <h1 className="text-xl font-bold tracking-tight text-[hsl(var(--primary))] sm:text-3xl">
           Saída administrativa SIAD
         </h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -565,7 +571,7 @@ export function SiadQuickDepartureFormPage() {
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
+                className="siad-pwa-touch-target h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm touch-manipulation sm:h-9 sm:w-9"
                 aria-label="Estatísticas de saídas SIAD"
                 disabled={!isUnlocked}
                 onClick={() => setStatsPanelOpen(true)}
@@ -576,7 +582,7 @@ export function SiadQuickDepartureFormPage() {
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
+                className="siad-pwa-touch-target h-10 w-10 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm touch-manipulation sm:h-9 sm:w-9"
                 aria-label="Configurar senha do SIAD"
                 disabled={!isUnlocked}
                 onClick={() => setPasswordDialogOpen(true)}
@@ -587,11 +593,12 @@ export function SiadQuickDepartureFormPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <form className="space-y-6" onSubmit={handleSubmit} noValidate>
+          <form id={SIAD_DEPARTURE_FORM_ID} className="space-y-6" onSubmit={handleSubmit} noValidate>
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor={dateFieldId}>
                 Data
               </label>
+              <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-[minmax(0,1fr)_minmax(10.5rem,12.5rem)]">
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <div
                   className={cn(
@@ -668,6 +675,8 @@ export function SiadQuickDepartureFormPage() {
                   />
                 </PopoverContent>
               </Popover>
+              <SiadDriverRequestButton dateSaida={dataSaida} disabled={!isUnlocked || dateInvalid} />
+              </div>
               {submitAttempted && dateInvalid ? (
                 <p className="text-xs text-red-600">Informe uma data válida (dd/mm/aaaa).</p>
               ) : null}
@@ -804,7 +813,52 @@ export function SiadQuickDepartureFormPage() {
               </div>
               <div className="space-y-2">
                 {passageiros.map((passageiro, index) => (
-                  <div key={index} className="flex items-center gap-2">
+                  <div
+                    key={index}
+                    className={cn(
+                      "flex items-center gap-2",
+                      "max-sm:flex-col max-sm:items-stretch max-sm:rounded-xl max-sm:border max-sm:border-[hsl(var(--border))] max-sm:bg-slate-50/80 max-sm:p-3",
+                    )}
+                  >
+                    <div className="flex min-w-0 items-center gap-2 max-sm:w-full">
+                      <select
+                        value={passageiro.posto}
+                        onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
+                        aria-label={
+                          index === 0 ? "Posto/Grad do passageiro" : `Posto/Grad do passageiro ${index + 1}`
+                        }
+                        className="h-11 w-[7.25rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:text-sm"
+                      >
+                        <option value="">Posto/Grad</option>
+                        {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
+                          <option key={posto} value={posto}>
+                            {posto}
+                          </option>
+                        ))}
+                      </select>
+                      {index === 0 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:hidden"
+                          aria-label="Adicionar outro passageiro"
+                          onClick={handleAddPassageiro}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:hidden"
+                          aria-label={`Remover passageiro ${index + 1}`}
+                          onClick={() => handleRemovePassageiro(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     <input
                       id={index === 0 ? passageirosFieldId : undefined}
                       type="text"
@@ -818,24 +872,11 @@ export function SiadQuickDepartureFormPage() {
                         submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
                       )}
                     />
-                    <select
-                      value={passageiro.posto}
-                      onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
-                      aria-label={index === 0 ? "Posto do passageiro" : `Posto do passageiro ${index + 1}`}
-                      className="h-11 w-[5.75rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[6.25rem]"
-                    >
-                      <option value="">Posto</option>
-                      {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
-                        <option key={posto} value={posto}>
-                          {posto}
-                        </option>
-                      ))}
-                    </select>
                     {index === 0 ? (
                       <Button
                         type="button"
                         size="icon"
-                        className="h-11 w-11 shrink-0 rounded-xl"
+                        className="siad-pwa-touch-target hidden h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:inline-flex"
                         aria-label="Adicionar outro passageiro"
                         onClick={handleAddPassageiro}
                       >
@@ -846,7 +887,7 @@ export function SiadQuickDepartureFormPage() {
                         type="button"
                         variant="outline"
                         size="icon"
-                        className="h-11 w-11 shrink-0 rounded-xl"
+                        className="siad-pwa-touch-target hidden h-11 w-11 shrink-0 rounded-xl touch-manipulation sm:inline-flex"
                         aria-label={`Remover passageiro ${index + 1}`}
                         onClick={() => handleRemovePassageiro(index)}
                       >
@@ -857,24 +898,30 @@ export function SiadQuickDepartureFormPage() {
                 ))}
               </div>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Cada passageiro cadastrado conta como um no sistema. Selecione o posto à direita do nome, se aplicável.
+                Cada passageiro cadastrado conta como um no sistema. Selecione o Posto/Grad à esquerda do nome, se aplicável.
               </p>
               {submitAttempted && passageirosInvalid ? (
                 <p className="text-xs text-red-600">Informe ao menos um passageiro.</p>
               ) : null}
             </div>
-
-            <Button
-              type="submit"
-              className="h-12 w-full rounded-xl text-base font-semibold shadow-md"
-              disabled={submitting}
-            >
-              <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-              {submitting ? "Cadastrando…" : "Cadastrar saída"}
-            </Button>
           </form>
         </CardContent>
       </Card>
+      </div>
+      </div>
+
+      <div className="siad-pwa-submit-bar border-t border-[hsl(var(--border)/0.65)]">
+        <div className="mx-auto w-full max-w-2xl">
+          <Button
+            type="submit"
+            form={SIAD_DEPARTURE_FORM_ID}
+            className="siad-pwa-touch-target h-12 w-full rounded-xl text-base font-semibold shadow-md touch-manipulation"
+            disabled={submitting || !isUnlocked}
+          >
+            <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
+            {submitting ? "Cadastrando…" : "Cadastrar saída"}
+          </Button>
+        </div>
       </div>
     </div>
   );

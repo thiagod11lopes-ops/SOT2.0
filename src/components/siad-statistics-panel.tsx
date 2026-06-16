@@ -160,18 +160,22 @@ export function SiadStatisticsPanel({
       role="dialog"
       aria-modal="true"
       aria-labelledby="siad-stats-title"
+      style={{
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
     >
       <button
         type="button"
-        className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+        className="absolute inset-0 bg-slate-950/70 backdrop-blur-md touch-manipulation"
         aria-label="Fechar estatísticas"
         onClick={onClose}
       />
-      <div className="relative flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-white/15 bg-gradient-to-br from-slate-950 via-slate-900 to-[hsl(var(--primary)/0.35)] shadow-[0_40px_120px_-30px_rgba(0,0,0,0.85)] sm:rounded-3xl">
+      <div className="siad-stats-sheet relative flex w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-white/15 bg-gradient-to-br from-slate-950 via-slate-900 to-[hsl(var(--primary)/0.35)] shadow-[0_40px_120px_-30px_rgba(0,0,0,0.85)] sm:max-h-[94dvh] sm:rounded-3xl">
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/25 sm:hidden" aria-hidden />
         <div className="pointer-events-none absolute -left-16 top-0 h-48 w-48 rounded-full bg-[hsl(var(--primary)/0.25)] blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -right-10 h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl" />
 
-        <header className="relative flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+        <header className="relative flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] sm:px-6 sm:py-4">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-cyan-300/90">
               <Scale className="h-4 w-4" aria-hidden />
@@ -188,7 +192,7 @@ export function SiadStatisticsPanel({
             type="button"
             variant="outline"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20"
+            className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 touch-manipulation sm:h-9 sm:w-9"
             aria-label="Fechar painel de estatísticas"
             onClick={onClose}
           >
@@ -196,16 +200,16 @@ export function SiadStatisticsPanel({
           </Button>
         </header>
 
-        <div className="relative flex-1 space-y-5 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
-          <section className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
+        <div className="relative flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-5">
+          <section className="rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-sm sm:p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Filtros</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="siad-stats-filters-scroll">
               {FILTER_MODES.map((mode) => (
                 <button
                   key={mode.value}
                   type="button"
                   className={cn(
-                    "rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors",
+                    "rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors touch-manipulation",
                     filters.mode === mode.value
                       ? "bg-white text-slate-900 shadow-md"
                       : "bg-white/10 text-slate-200 hover:bg-white/15",
@@ -224,7 +228,7 @@ export function SiadStatisticsPanel({
                   <select
                     value={filters.year}
                     onChange={(e) => setFilters((prev) => ({ ...prev, year: e.target.value }))}
-                    className={cn(sotFormInputCompactClass, "h-10 w-full border-white/15 bg-slate-900/80 text-white")}
+                    className={cn(sotFormInputCompactClass, "h-11 w-full border-white/15 bg-slate-900/80 text-base text-white sm:h-10 sm:text-sm")}
                   >
                     {availableYears.map((year) => (
                       <option key={year} value={String(year)}>
@@ -241,7 +245,7 @@ export function SiadStatisticsPanel({
                   <select
                     value={filters.month}
                     onChange={(e) => setFilters((prev) => ({ ...prev, month: e.target.value }))}
-                    className={cn(sotFormInputCompactClass, "h-10 w-full border-white/15 bg-slate-900/80 text-white")}
+                    className={cn(sotFormInputCompactClass, "h-11 w-full border-white/15 bg-slate-900/80 text-base text-white sm:h-10 sm:text-sm")}
                   >
                     {SIAD_STATS_MONTH_OPTIONS.map((month) => (
                       <option key={month.value} value={month.value}>
@@ -268,7 +272,7 @@ export function SiadStatisticsPanel({
                       const [y, m, d] = v.split("-");
                       setFilters((prev) => ({ ...prev, date: `${d}/${m}/${y}` }));
                     }}
-                    className={cn(sotFormInputCompactClass, "h-10 w-full border-white/15 bg-slate-900/80 text-white")}
+                    className={cn(sotFormInputCompactClass, "h-11 w-full border-white/15 bg-slate-900/80 text-base text-white sm:h-10 sm:text-sm")}
                   />
                 </label>
               )}
@@ -290,7 +294,7 @@ export function SiadStatisticsPanel({
                         const [y, m, d] = v.split("-");
                         setFilters((prev) => ({ ...prev, dateStart: `${d}/${m}/${y}` }));
                       }}
-                      className={cn(sotFormInputCompactClass, "h-10 w-full border-white/15 bg-slate-900/80 text-white")}
+                      className={cn(sotFormInputCompactClass, "h-11 w-full border-white/15 bg-slate-900/80 text-base text-white sm:h-10 sm:text-sm")}
                     />
                   </label>
                   <label className="space-y-1.5 text-xs text-slate-300">
@@ -308,7 +312,7 @@ export function SiadStatisticsPanel({
                         const [y, m, d] = v.split("-");
                         setFilters((prev) => ({ ...prev, dateEnd: `${d}/${m}/${y}` }));
                       }}
-                      className={cn(sotFormInputCompactClass, "h-10 w-full border-white/15 bg-slate-900/80 text-white")}
+                      className={cn(sotFormInputCompactClass, "h-11 w-full border-white/15 bg-slate-900/80 text-base text-white sm:h-10 sm:text-sm")}
                     />
                   </label>
                 </>
