@@ -13,6 +13,17 @@
     <title>sot-react</title>
     <script>
       (function () {
+        function applySiadDocumentTitle() {
+          if (/^#\/siad-saida(\/|$)/.test(window.location.hash)) {
+            document.title = "Saídas SIAD";
+          }
+        }
+        applySiadDocumentTitle();
+        window.addEventListener("hashchange", applySiadDocumentTitle);
+      })();
+    </script>
+    <script>
+      (function () {
         try {
           var raw = localStorage.getItem("sot-appearance");
           if (!raw) return;

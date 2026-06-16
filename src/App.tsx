@@ -166,6 +166,12 @@ function App() {
   );
 
   useEffect(() => {
+    if (isSiadSaidaRoute) {
+      document.title = "Saídas SIAD";
+    }
+  }, [isSiadSaidaRoute]);
+
+  useEffect(() => {
     const onDetalheServicoEditing = (event: Event) => {
       const custom = event as CustomEvent<{ editing?: boolean }>;
       setDetalheServicoEditingActive(Boolean(custom.detail?.editing));

@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Settings, Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Settings, Users, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
@@ -53,6 +53,18 @@ function formatWeekdayCommaDatePtBr(d: Date): string {
   return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
 }
 
+function dedupeBairrosPreserveOrder(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const key = item.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item.trim());
+  }
+  return out;
+}
+
 function buildSiadQuickDeparturePayload(params: {
   dataSaida: string;
   horaSaida: string;
@@ -96,7 +108,7 @@ export function SiadQuickDepartureFormPage() {
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
   const [horaSaida, setHoraSaida] = useState("08:00");
-  const [endereco, setEndereco] = useState("");
+  const [bairros, setBairros] = useState<string[]>([""]);
   const [numeroPassageiros, setNumeroPassageiros] = useState("");
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -128,11 +140,16 @@ export function SiadQuickDepartureFormPage() {
   const neighborhoodOptions = useMemo(() => getMetroRioNeighborhoodSuggestions(), []);
   const selectedDate = useMemo(() => parsePtBrToDate(dataSaida), [dataSaida]);
 
+  const bairrosPreenchidos = useMemo(
+    () => dedupeBairrosPreserveOrder(bairros),
+    [bairros],
+  );
+
   const dateInvalid = !isCompleteDatePtBr(dataSaida) || !selectedDate;
   const horaSaidaInvalid = parseHhMm(horaSaida) === null;
-  const enderecoInvalid = endereco.trim().length === 0;
+  const bairrosInvalid = bairrosPreenchidos.length === 0;
   const passageirosInvalid = numeroPassageiros.trim().length === 0;
-  const canSubmit = !dateInvalid && !horaSaidaInvalid && !enderecoInvalid && !passageirosInvalid;
+  const canSubmit = !dateInvalid && !horaSaidaInvalid && !bairrosInvalid && !passageirosInvalid;
 
   if (pendingDateCaret.current !== null && dateInputRef.current) {
     const caret = pendingDateCaret.current;
@@ -147,6 +164,18 @@ export function SiadQuickDepartureFormPage() {
     addCatalogItem("responsaveis", "SIAD");
     addCatalogItem("viaturasAdministrativas", "ASD");
     addCatalogItem("motoristas", "ASD");
+  }
+
+  function handleAddBairro() {
+    setBairros((prev) => [...prev, ""]);
+  }
+
+  function handleBairroChange(index: number, value: string) {
+    setBairros((prev) => prev.map((b, i) => (i === index ? value : b)));
+  }
+
+  function handleRemoveBairro(index: number) {
+    setBairros((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
   function handleLogin(event: FormEvent) {
@@ -210,15 +239,26 @@ export function SiadQuickDepartureFormPage() {
     setSubmitting(true);
     try {
       ensureSiadCatalogDefaults();
-      const payload = buildSiadQuickDeparturePayload({
+      const base = {
         dataSaida: dataSaida.trim(),
         horaSaida: horaSaida.trim(),
-        endereco,
         numeroPassageiros: numeroPassageiros.trim(),
-      });
-      addDeparture(payload);
-      setSuccessMessage(`Saída cadastrada para ${payload.dataSaida} às ${payload.horaSaida}.`);
-      setEndereco("");
+      };
+      for (const bairro of bairrosPreenchidos) {
+        addDeparture(
+          buildSiadQuickDeparturePayload({
+            ...base,
+            endereco: bairro,
+          }),
+        );
+      }
+      const count = bairrosPreenchidos.length;
+      setSuccessMessage(
+        count === 1
+          ? `Saída cadastrada para ${base.dataSaida} às ${base.horaSaida}.`
+          : `${count} saídas agrupadas cadastradas para ${base.dataSaida} às ${base.horaSaida}.`,
+      );
+      setBairros([""]);
       setNumeroPassageiros("");
       setSubmitAttempted(false);
     } finally {
@@ -523,31 +563,60 @@ export function SiadQuickDepartureFormPage() {
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium" htmlFor={enderecoFieldId}>
                 <MapPin className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-                Bairro
+                Bairro{bairros.length > 1 ? "s" : ""}
               </label>
-              <input
-                id={enderecoFieldId}
-                type="text"
-                list={enderecoListId}
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-                placeholder="Bairro na RM-RJ"
-                autoComplete="off"
-                className={cn(
-                  "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                  submitAttempted && enderecoInvalid && "border-red-500/90",
-                )}
-              />
+              <div className="space-y-2">
+                {bairros.map((bairro, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      id={index === 0 ? enderecoFieldId : undefined}
+                      type="text"
+                      list={enderecoListId}
+                      value={bairro}
+                      onChange={(e) => handleBairroChange(index, e.target.value)}
+                      placeholder="Bairro na RM-RJ"
+                      autoComplete="off"
+                      aria-label={index === 0 ? "Bairro" : `Bairro ${index + 1}`}
+                      className={cn(
+                        "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                        submitAttempted && bairrosInvalid && index === 0 && "border-red-500/90",
+                      )}
+                    />
+                    {index === 0 ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 rounded-xl"
+                        aria-label="Adicionar outro bairro"
+                        onClick={handleAddBairro}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 rounded-xl"
+                        aria-label={`Remover bairro ${index + 1}`}
+                        onClick={() => handleRemoveBairro(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
               <datalist id={enderecoListId}>
                 {neighborhoodOptions.map((opt) => (
                   <option key={opt} value={opt} />
                 ))}
               </datalist>
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Sugestões de bairros do Rio de Janeiro e região metropolitana. Você também pode digitar livremente.
+                Use o botão + para cadastrar vários bairros na mesma saída agrupada (mesma data, hora e viatura).
               </p>
-              {submitAttempted && enderecoInvalid ? (
-                <p className="text-xs text-red-600">Informe o bairro de destino.</p>
+              {submitAttempted && bairrosInvalid ? (
+                <p className="text-xs text-red-600">Informe ao menos um bairro de destino.</p>
               ) : null}
             </div>
 
