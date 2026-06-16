@@ -1,5 +1,5 @@
-import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Users } from "lucide-react";
-import { useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Settings, Users } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import {
@@ -14,10 +14,23 @@ import {
   resolveMetroRioCityForNeighborhood,
 } from "../lib/metroRioLocations";
 import { normalize24hTime, parseHhMm } from "../lib/timeInput";
+import {
+  getSiadFormPassword,
+  setSiadFormPassword,
+  verifySiadFormPassword,
+} from "../lib/siadFormPassword";
 import type { DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 
@@ -89,6 +102,17 @@ export function SiadQuickDepartureFormPage() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [setorPassword, setSetorPassword] = useState(getSiadFormPassword);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [senhaNova, setSenhaNova] = useState("");
+  const [senhaNovaConfirmacao, setSenhaNovaConfirmacao] = useState("");
+  const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
+  const [passwordFormSuccess, setPasswordFormSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSetorPassword(getSiadFormPassword());
+  }, [passwordDialogOpen]);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const pendingDateCaret = useRef<number | null>(null);
@@ -122,6 +146,48 @@ export function SiadQuickDepartureFormPage() {
     addCatalogItem("motoristas", "ASD");
   }
 
+  function resetPasswordForm() {
+    setSenhaAtual("");
+    setSenhaNova("");
+    setSenhaNovaConfirmacao("");
+    setPasswordFormError(null);
+    setPasswordFormSuccess(null);
+  }
+
+  function handlePasswordDialogChange(open: boolean) {
+    setPasswordDialogOpen(open);
+    if (!open) resetPasswordForm();
+  }
+
+  function handleChangePassword(event: FormEvent) {
+    event.preventDefault();
+    setPasswordFormError(null);
+    setPasswordFormSuccess(null);
+
+    if (!verifySiadFormPassword(senhaAtual.trim())) {
+      setPasswordFormError("Senha atual incorreta.");
+      return;
+    }
+    const nova = senhaNova.trim();
+    const confirmacao = senhaNovaConfirmacao.trim();
+    if (nova.length < 4) {
+      setPasswordFormError("A nova senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+    if (nova !== confirmacao) {
+      setPasswordFormError("A confirmação não coincide com a nova senha.");
+      return;
+    }
+
+    setSiadFormPassword(nova);
+    setSetorPassword(nova);
+    setSenhaAtual("");
+    setSenhaNova("");
+    setSenhaNovaConfirmacao("");
+    setPasswordFormError(null);
+    setPasswordFormSuccess("Senha alterada com sucesso.");
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitAttempted(true);
@@ -147,7 +213,83 @@ export function SiadQuickDepartureFormPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
+    <div className="relative flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="fixed right-4 top-4 z-20 h-10 w-10 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-md"
+        aria-label="Configurar senha do SIAD"
+        onClick={() => setPasswordDialogOpen(true)}
+      >
+        <Settings className="h-5 w-5 text-[hsl(var(--primary))]" />
+      </Button>
+
+      <Dialog open={passwordDialogOpen} onOpenChange={handlePasswordDialogChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar senha</DialogTitle>
+            <DialogDescription>
+              Altere a senha exibida ao lado do campo Setor. A senha inicial é 0000.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleChangePassword}>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="siad-senha-atual">
+                Senha atual
+              </label>
+              <input
+                id="siad-senha-atual"
+                type="password"
+                inputMode="numeric"
+                autoComplete="current-password"
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                className="h-10 w-full rounded-lg border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="siad-senha-nova">
+                Nova senha
+              </label>
+              <input
+                id="siad-senha-nova"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={senhaNova}
+                onChange={(e) => setSenhaNova(e.target.value)}
+                className="h-10 w-full rounded-lg border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="siad-senha-confirmacao">
+                Confirmar nova senha
+              </label>
+              <input
+                id="siad-senha-confirmacao"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={senhaNovaConfirmacao}
+                onChange={(e) => setSenhaNovaConfirmacao(e.target.value)}
+                className="h-10 w-full rounded-lg border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            {passwordFormError ? <p className="text-xs text-red-600">{passwordFormError}</p> : null}
+            {passwordFormSuccess ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">{passwordFormSuccess}</p>
+            ) : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handlePasswordDialogChange(false)}>
+                Fechar
+              </Button>
+              <Button type="submit">Salvar senha</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
       <div className="space-y-1 text-center sm:text-left">
         <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--primary))] sm:text-3xl">
@@ -259,52 +401,61 @@ export function SiadQuickDepartureFormPage() {
               ) : null}
             </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium" htmlFor={horaSaidaFieldId}>
-                <Clock className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-                Hora da Saída
-              </label>
-              <input
-                id={horaSaidaFieldId}
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="HH:MM"
-                aria-label="Hora da saída (HH:MM)"
-                value={horaSaida}
-                onChange={(event) => setHoraSaida(normalize24hTime(event.target.value))}
-                className={cn(
-                  "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-center font-mono text-sm tabular-nums shadow-sm placeholder:font-sans placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                  submitAttempted && horaSaidaInvalid && "border-red-500/90",
-                )}
-              />
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Formato 24 horas (ex.: 08:00, 13:30).
-              </p>
-              {submitAttempted && horaSaidaInvalid ? (
-                <p className="text-xs text-red-600">Informe um horário válido (HH:MM).</p>
-              ) : null}
-            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <div className="flex min-h-[1.25rem] flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm font-medium" htmlFor="siad-setor">
+                    <Lock className="h-4 w-4 text-[hsl(var(--muted-foreground))]" aria-hidden />
+                    Setor
+                  </label>
+                  <span
+                    className="select-all font-mono text-xs text-transparent selection:bg-[hsl(var(--primary)/0.18)] selection:text-[hsl(var(--foreground))]"
+                    title="Selecione para copiar a senha"
+                    aria-label="Senha do setor: selecione para copiar"
+                  >
+                    {setorPassword}
+                  </span>
+                </div>
+                <input
+                  id="siad-setor"
+                  type="text"
+                  value="SIAD"
+                  readOnly
+                  disabled
+                  aria-readonly="true"
+                  aria-describedby="siad-setor-hint"
+                  className="h-11 w-full cursor-not-allowed rounded-xl border border-[hsl(var(--border))] bg-slate-100 px-3 text-sm font-medium text-[hsl(var(--muted-foreground))] shadow-sm opacity-90"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium" htmlFor="siad-setor">
-                <Lock className="h-4 w-4 text-[hsl(var(--muted-foreground))]" aria-hidden />
-                Setor
-              </label>
-              <input
-                id="siad-setor"
-                type="text"
-                value="SIAD"
-                readOnly
-                disabled
-                aria-readonly="true"
-                aria-describedby="siad-setor-hint"
-                className="h-11 w-full cursor-not-allowed rounded-xl border border-[hsl(var(--border))] bg-slate-100 px-3 text-sm font-medium text-[hsl(var(--muted-foreground))] shadow-sm opacity-90"
-              />
-              <p id="siad-setor-hint" className="text-xs text-[hsl(var(--muted-foreground))]">
-                Setor bloqueado: este formulário é exclusivo para <strong>SIAD</strong> e o setor não pode ser alterado.
-              </p>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium" htmlFor={horaSaidaFieldId}>
+                  <Clock className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
+                  Hora da Saída
+                </label>
+                <input
+                  id={horaSaidaFieldId}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="HH:MM"
+                  aria-label="Hora da saída (HH:MM)"
+                  value={horaSaida}
+                  onChange={(event) => setHoraSaida(normalize24hTime(event.target.value))}
+                  className={cn(
+                    "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-center font-mono text-sm tabular-nums shadow-sm placeholder:font-sans placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                    submitAttempted && horaSaidaInvalid && "border-red-500/90",
+                  )}
+                />
+                {submitAttempted && horaSaidaInvalid ? (
+                  <p className="text-xs text-red-600">Informe um horário válido (HH:MM).</p>
+                ) : null}
+              </div>
             </div>
+            <p id="siad-setor-hint" className="text-xs text-[hsl(var(--muted-foreground))]">
+              Setor bloqueado: este formulário é exclusivo para <strong>SIAD</strong> e o setor não pode ser alterado.
+              A senha ao lado do título fica invisível, mas pode ser selecionada para copiar.
+            </p>
 
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium" htmlFor={enderecoFieldId}>
