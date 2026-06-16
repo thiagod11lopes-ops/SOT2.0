@@ -177,7 +177,8 @@ function App() {
     if (hash.startsWith("#/saidas")) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
-      if (/^#\/(carro-quebrado|siad-saida)(\/|$)/.test(window.location.hash)) {
+      // Não limpar `#/siad-saida` para manter o deep-link direto ao formulário.
+      if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
         window.location.hash = "";
       }
       setActiveTab("Cadastrar Saída");
