@@ -811,8 +811,6 @@ export function SiadQuickDepartureFormPage() {
               ) : null}
             </div>
 
-            <SiadDeparturesDayList departures={departures} dateSaida={dataSaida} />
-
             <div className="space-y-0">
               <button
                 type="button"
@@ -1043,6 +1041,8 @@ export function SiadQuickDepartureFormPage() {
                 </div>
               ) : null}
             </div>
+
+            <SiadDeparturesDayList departures={departures} dateSaida={dataSaida} />
           </form>
         </CardContent>
       </Card>
