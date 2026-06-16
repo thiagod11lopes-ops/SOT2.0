@@ -58,7 +58,7 @@ import {
   useVistoriaProblemasMarcadosRefresh,
 } from "../lib/vistoriaSituacaoVtr";
 import { groupDeparturesForListDisplay, listRowFromRecord, type DepartureRecord } from "../types/departure";
-import { saidasEmAndamentoHojeRecords } from "../lib/homeSaidasEmAndamento";
+import { saidasEmAndamentoGruposHoje } from "../lib/homeSaidasEmAndamento";
 import { cn } from "../lib/utils";
 import { DailyAlarmCard } from "./daily-alarm-card";
 import { VistoriaNotificacaoAlarmCard } from "./vistoria-notificacao-alarm-card";
@@ -396,8 +396,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
 
   const emAndamento = useMemo(() => {
     const hoje = getCurrentDatePtBr();
-    const rows = saidasEmAndamentoHojeRecords(departuresAtivas, hoje);
-    return groupDeparturesForListDisplay(rows);
+    return saidasEmAndamentoGruposHoje(departuresAtivas, hoje);
   }, [departuresAtivas]);
 
   const comAtraso = useMemo(() => {

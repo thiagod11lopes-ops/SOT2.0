@@ -9,6 +9,8 @@ import type { DepartureRecord } from "../types/departure";
 import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
+import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
+import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
 import { isRubricaImageDataUrl } from "../lib/rubricaDrawing";
@@ -124,7 +126,7 @@ export function DeparturesDataTable({
   onEdit,
   unlinkedOccurrences = [],
 }: DeparturesDataTableProps) {
-  const { updateDeparture } = useDepartures();
+  const { departures, updateDeparture } = useDepartures();
   const [kmUnlocked, setKmUnlocked] = useState(() => isKmEditSessionUnlocked());
   const [kmPasswordOpen, setKmPasswordOpen] = useState(false);
   const [pendingKmPatch, setPendingKmPatch] = useState<{
@@ -153,6 +155,14 @@ export function DeparturesDataTable({
     }
     setPendingKmPatch({ id, patch });
     setKmPasswordOpen(true);
+  }
+
+  function tryPrefillKmSaidaOnFocus(record: DepartureRecord) {
+    if (!onUpdateKmFields || record.kmSaida.trim().length > 0) return;
+    const placa = primaryPlacaFromViaturasField(record.viaturas) || record.viaturas.trim();
+    const km = formatKmSaidaPrefillFromKmAtualViatura(departures, placa);
+    if (!km) return;
+    applyKmFieldsPatch(record.id, { kmSaida: km });
   }
 
   function handleKmPasswordSuccess() {
@@ -345,6 +355,7 @@ export function DeparturesDataTable({
                       autoComplete="off"
                       aria-label="KM saída"
                       value={formatKmThousandsPtBr(row.kmSaida)}
+                      onFocus={() => tryPrefillKmSaidaOnFocus(row)}
                       onChange={(e) =>
                         applyKmFieldsPatch(row.id, {
                           kmSaida: formatKmThousandsPtBr(e.target.value),

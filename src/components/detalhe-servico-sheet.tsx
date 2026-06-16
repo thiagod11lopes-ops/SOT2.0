@@ -23,6 +23,8 @@ import {
   type DetalheServicoRodapeAssinatura,
   type DetalheServicoSheetSnapshot,
 } from "../lib/generateDetalheServicoMotoristaPdf";
+import { sotFormFieldBaseClass, sotFormInputClass } from "../lib/sotFormFieldClasses";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 function monthInputValue(d: Date): string {
@@ -1791,7 +1793,7 @@ export function DetalheServicoSheet() {
             value={monthYear}
             onChange={(e) => handleMonthYearChange(e.target.value)}
             aria-label="Mês e ano"
-            className="h-10 rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className={sotFormInputClass}
           />
         </div>
       </div>
@@ -2479,7 +2481,10 @@ export function DetalheServicoSheet() {
                   type="text"
                   name="detalhe-rodape-nome"
                   autoComplete="off"
-                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  className={cn(
+                    "sot-form-control w-full px-2 py-1.5 text-center text-sm",
+                    sotFormFieldBaseClass,
+                  )}
                   value={rodapeAssinatura.nome}
                   onChange={(e) =>
                     setRodapeAssinatura((p) => ({ ...p, nome: e.target.value }))
@@ -2498,7 +2503,10 @@ export function DetalheServicoSheet() {
                   type="text"
                   name="detalhe-rodape-posto"
                   autoComplete="off"
-                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  className={cn(
+                    "sot-form-control w-full px-2 py-1.5 text-center text-sm",
+                    sotFormFieldBaseClass,
+                  )}
                   value={rodapeAssinatura.postoGraduacao}
                   onChange={(e) =>
                     setRodapeAssinatura((p) => ({ ...p, postoGraduacao: e.target.value }))
@@ -2517,7 +2525,10 @@ export function DetalheServicoSheet() {
                   type="text"
                   name="detalhe-rodape-funcao"
                   autoComplete="off"
-                  className="w-full rounded-md border border-[hsl(var(--border))] bg-white px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  className={cn(
+                    "sot-form-control w-full px-2 py-1.5 text-center text-sm",
+                    sotFormFieldBaseClass,
+                  )}
                   value={rodapeAssinatura.funcao}
                   onChange={(e) =>
                     setRodapeAssinatura((p) => ({ ...p, funcao: e.target.value }))

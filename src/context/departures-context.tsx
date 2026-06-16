@@ -39,7 +39,7 @@ import { useSyncPreference } from "./sync-preference-context";
 export type { DepartureUpdatePatch } from "../lib/mergeDepartureUpdate";
 
 export type DepartureKmFieldsPatch = Partial<
-  Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada">
+  Pick<DepartureRecord, "kmSaida" | "kmChegada" | "chegada" | "ficouNaOficina">
 >;
 
 export type CloudDeparturesSyncState = {

@@ -52,6 +52,8 @@ import {
 } from "../lib/vistoriaCloudState";
 import { buildVistoriaSituacaoImprimirPdf, type VistoriaSituacaoImprimirPdfRow } from "../lib/generateVistoriaSituacaoPdf";
 import { buildViaturasPorMotoristaMap, getVistoriaCalendarDayTintForIso } from "../lib/vistoriaCalendarTint";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -1509,7 +1511,7 @@ export function VistoriaPage() {
                   <select
                     value={selectedMotorista}
                     onChange={(e) => setSelectedMotorista(e.target.value)}
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={sotFormInputClass}
                   >
                     <option value="">Selecione um motorista…</option>
                     {items.motoristas.map((motorista) => (
@@ -1525,7 +1527,7 @@ export function VistoriaPage() {
                   <select
                     value={selectedViatura}
                     onChange={(e) => setSelectedViatura(e.target.value)}
-                    className="h-10 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={sotFormInputClass}
                   >
                     <option value="">Selecione uma viatura…</option>
                     {viaturas.map((viatura) => {
@@ -2073,7 +2075,7 @@ export function VistoriaPage() {
                               void handleToggleEstadoViaturaControl(row, "problemMarked", e.target.checked);
                             }}
                             aria-label={`Marcar ${row.viatura}`}
-                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -2084,7 +2086,7 @@ export function VistoriaPage() {
                               void handleToggleEstadoViaturaControl(row, "priorityMarked", e.target.checked);
                             }}
                             aria-label={`Prioridade ${row.viatura}`}
-                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -2095,7 +2097,7 @@ export function VistoriaPage() {
                               void handleToggleEstadoViaturaControl(row, "printMarked", e.target.checked);
                             }}
                             aria-label={`Imprimir ${row.viatura}`}
-                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-white align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
+                            className="h-4 w-4 cursor-default appearance-none rounded border border-[hsl(var(--border))] bg-[hsl(var(--card))] align-middle accent-[hsl(var(--primary))] checked:appearance-auto"
                           />
                         </TableCell>
                         <TableCell>
@@ -2411,7 +2413,7 @@ export function VistoriaPage() {
                           }}
                           disabled={inspectionChecklist[item.key] === "OK"}
                           placeholder="Escreva observações deste item..."
-                          className={`h-9 w-full rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-60`}
+                          className={cn(sotFormInputClass, "h-9")}
                         />
                       </div>
                     </div>

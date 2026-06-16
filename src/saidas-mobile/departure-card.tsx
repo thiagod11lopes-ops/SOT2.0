@@ -9,7 +9,7 @@ import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-
 import { useDepartures } from "../context/departures-context";
 import type { DepartureKmFieldsPatch, DepartureUpdatePatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
-import { parseKmCampo } from "../lib/oilMaintenance";
+import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
 import { normalize24hTime } from "../lib/timeInput";
 import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
 import { listRowFromRecord } from "../types/departure";
@@ -198,12 +198,8 @@ export function DepartureCard({
   }
 
   function marcarViaturaNaOficina() {
-    if (!editavel || !updateDeparture) return;
-    updateDeparture(record.id, {
-      kmChegada: "",
-      chegada: "",
-      ficouNaOficina: true,
-    });
+    if (!editavel) return;
+    onPatchKm({ kmChegada: "", chegada: "", ficouNaOficina: true });
     setOficinaConfirmModalOpen(false);
     setRubricaModalOpen(true);
   }
@@ -238,34 +234,11 @@ export function DepartureCard({
     }
   }
 
-  function getKmSaidaPrefillOnClickFromLastNormal(): string | null {
-    const placaKey = record.viaturas.trim().toLowerCase();
-    if (!placaKey) return null;
-    let latest: DepartureRecord | null = null;
-    for (const d of departures) {
-      if (d.id === record.id) continue;
-      if (d.viaturas.trim().toLowerCase() !== placaKey) continue;
-      if (!latest) {
-        latest = d;
-        continue;
-      }
-      const da = d.updatedAt ?? d.createdAt ?? 0;
-      const la = latest.updatedAt ?? latest.createdAt ?? 0;
-      if (da >= la) latest = d;
-    }
-    if (!latest) return null;
-    const latestOficinaRubricada =
-      latest.ficouNaOficina === true && latest.rubrica.trim().length > 0 && latest.kmSaida.trim().length > 0;
-    if (latestOficinaRubricada) return null;
-    const km = parseKmCampo(latest.kmChegada) ?? parseKmCampo(latest.kmSaida);
-    if (km === null) return null;
-    return formatKmThousandsPtBr(String(km));
-  }
-
   function handleKmSaidaFieldTapPrefill(onApply: (km: string) => void): boolean {
     if (!editavel) return false;
     if (record.kmSaida.trim().length > 0) return false;
-    const km = getKmSaidaPrefillOnClickFromLastNormal();
+    const placa = primaryPlacaFromViaturasField(record.viaturas) || record.viaturas.trim();
+    const km = formatKmSaidaPrefillFromKmAtualViatura(departures, placa);
     if (!km) return false;
     onApply(km);
     return true;
@@ -515,8 +488,8 @@ export function DepartureCard({
                 <MobileEditableTextField
                   label="KM saída"
                   value={formatKmThousandsPtBr(record.kmSaida)}
-                  onCommit={(v) => applyAmbPatch({ kmSaida: v })}
-                  onBeforeOpen={() => handleKmSaidaFieldTapPrefill((km) => applyAmbPatch({ kmSaida: km }))}
+                  onCommit={(v) => onPatchKm({ kmSaida: v })}
+                  onBeforeOpen={() => handleKmSaidaFieldTapPrefill((km) => onPatchKm({ kmSaida: km }))}
                   transform={formatKmThousandsPtBr}
                   inputMode="numeric"
                   mono
@@ -537,7 +510,10 @@ export function DepartureCard({
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
               onCommit={(v) =>
-                applyAmbPatch({ kmChegada: v, ficouNaOficina: v.trim().length > 0 ? false : record.ficouNaOficina })
+                onPatchKm({
+                  kmChegada: v,
+                  ficouNaOficina: v.trim().length > 0 ? false : record.ficouNaOficina,
+                })
               }
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
@@ -550,7 +526,7 @@ export function DepartureCard({
                   label="Hora da chegada"
                   value={record.chegada}
                   onCommit={(v) =>
-                    applyAmbPatch({
+                    onPatchKm({
                       chegada: v,
                       ficouNaOficina: normalize24hTime(v).trim().length > 0 ? false : record.ficouNaOficina,
                     })
@@ -687,12 +663,13 @@ export function DepartureCard({
             <MobileEditableTextField
               label="KM chegada"
               value={formatKmThousandsPtBr(record.kmChegada)}
-              onCommit={(v) =>
-                applyAdminCadastroPatch({
-                  kmChegada: formatKmThousandsPtBr(v),
-                  ficouNaOficina: formatKmThousandsPtBr(v).trim().length > 0 ? false : record.ficouNaOficina,
-                })
-              }
+              onCommit={(v) => {
+                const km = formatKmThousandsPtBr(v);
+                onPatchKm({
+                  kmChegada: km,
+                  ficouNaOficina: km.trim().length > 0 ? false : record.ficouNaOficina,
+                });
+              }}
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
@@ -703,12 +680,13 @@ export function DepartureCard({
                 <MobileEditableTextField
                   label="Hora da chegada"
                   value={record.chegada}
-                  onCommit={(v) =>
-                    applyAdminCadastroPatch({
-                      chegada: normalize24hTime(v),
-                      ficouNaOficina: normalize24hTime(v).trim().length > 0 ? false : record.ficouNaOficina,
-                    })
-                  }
+                  onCommit={(v) => {
+                    const chegada = normalize24hTime(v);
+                    onPatchKm({
+                      chegada,
+                      ficouNaOficina: chegada.trim().length > 0 ? false : record.ficouNaOficina,
+                    });
+                  }}
                   time24h
                   disabled={!editavel}
                 />

@@ -7,9 +7,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[hsl(var(--primary))] text-white hover:brightness-105",
-        outline: "border border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]",
-        ghost: "hover:bg-[hsl(var(--muted))]",
+        default:
+          "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:brightness-105",
+        outline:
+          "border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
+        ghost:
+          "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]",
       },
       size: {
         default: "h-10 px-4",

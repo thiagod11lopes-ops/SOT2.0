@@ -4,13 +4,14 @@
 @custom-variant dark (&:where(html[data-appearance="dark"] *));
 
 :root {
+  color-scheme: light;
   --background: 210 20% 96%;
   --foreground: 222 47% 11%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
   --border: 214 25% 88%;
   --muted: 214 22% 92%;
-  --muted-foreground: 215 16% 46%;
+  --muted-foreground: 215 16% 42%;
   --primary: 204 58% 32%;
   --primary-foreground: 210 40% 98%;
   --ring: 204 58% 40%;
@@ -35,13 +36,14 @@
 }
 
 html[data-appearance="dark"] {
+  color-scheme: dark;
   --background: 222 32% 7%;
   --foreground: 210 36% 98%;
   --card: 222 30% 10%;
   --card-foreground: 210 36% 98%;
   --border: 217 22% 17%;
   --muted: 217 22% 14%;
-  --muted-foreground: 215 18% 72%;
+  --muted-foreground: 215 20% 76%;
   --primary: 187 72% 52%;
   --primary-foreground: 222 40% 8%;
   --ring: 187 80% 58%;
@@ -56,13 +58,14 @@ html[data-appearance="dark"] {
 }
 
 html[data-appearance="ultra-modern"] {
+  color-scheme: light;
   --background: 220 22% 97%;
   --foreground: 224 64% 7%;
   --card: 0 0% 100%;
   --card-foreground: 224 64% 7%;
   --border: 220 16% 88%;
   --muted: 220 16% 96%;
-  --muted-foreground: 220 10% 38%;
+  --muted-foreground: 220 10% 36%;
   --primary: 201 90% 44%;
   --primary-foreground: 0 0% 100%;
   --ring: 201 90% 48%;
@@ -101,8 +104,340 @@ html[data-appearance="ultra-modern"] header {
   border-color: hsl(var(--border) / 0.75);
 }
 
+html[data-appearance="radar"] {
+  color-scheme: dark;
+  --background: 125 42% 5%;
+  --foreground: 120 90% 62%;
+  --card: 125 38% 8%;
+  --card-foreground: 120 92% 68%;
+  --border: 120 55% 24%;
+  --muted: 125 35% 10%;
+  --muted-foreground: 120 48% 48%;
+  --primary: 120 100% 42%;
+  --primary-foreground: 125 45% 6%;
+  --ring: 120 100% 50%;
+  --input: 125 36% 9%;
+  --header-shadow:
+    0 0 0 1px hsl(120 80% 40% / 0.22),
+    0 0 24px -6px hsl(120 100% 45% / 0.35);
+
+  --chart-1: hsl(120 95% 52%);
+  --chart-2: hsl(145 80% 48%);
+  --chart-3: hsl(95 90% 46%);
+  --chart-4: hsl(160 70% 44%);
+  --chart-5: hsl(80 85% 50%);
+}
+
+html[data-appearance="radar"] body {
+  font-family: "JetBrains Mono", "Consolas", "Courier New", monospace;
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% 0%, hsl(120 80% 18% / 0.22), transparent 55%),
+    linear-gradient(hsl(120 80% 45% / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(120 80% 45% / 0.07) 1px, transparent 1px);
+  background-size:
+    auto,
+    52px 52px,
+    52px 52px;
+  background-attachment: fixed;
+  text-shadow: 0 0 8px hsl(120 100% 50% / 0.18);
+}
+
+html[data-appearance="radar"] header {
+  box-shadow: var(--header-shadow);
+  border-color: hsl(120 70% 35% / 0.45);
+  background-color: hsl(var(--card) / 0.92);
+}
+
+html[data-appearance="radar"] .desktop-brasao-watermark img {
+  opacity: 0.045;
+  filter: sepia(1) hue-rotate(68deg) saturate(5) brightness(0.9);
+}
+
 html[data-appearance="dark"] body {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Overlay de varredura — tema Radar */
+.sot-radar-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(hsl(120 100% 50% / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(120 100% 50% / 0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 48%, black 15%, transparent 72%);
+}
+
+.sot-radar-rings {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: min(140vmax, 2200px);
+  height: min(140vmax, 2200px);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(
+      circle at center,
+      transparent 0,
+      transparent 78px,
+      hsl(120 90% 45% / 0.09) 79px,
+      hsl(120 90% 45% / 0.09) 80px
+    );
+  mask-image: radial-gradient(circle at center, black 8%, transparent 68%);
+  opacity: 0.55;
+}
+
+.sot-radar-sweep {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: min(160vmax, 2400px);
+  height: min(160vmax, 2400px);
+  margin-left: calc(min(160vmax, 2400px) / -2);
+  margin-top: calc(min(160vmax, 2400px) / -2);
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    transparent 346deg,
+    hsl(120 100% 50% / 0.04) 352deg,
+    hsl(120 100% 55% / 0.22) 358deg,
+    hsl(120 100% 65% / 0.55) 360deg
+  );
+  animation: sot-radar-sweep-spin 5.5s linear infinite;
+  transform-origin: 50% 50%;
+  mask-image: radial-gradient(circle at center, black 4%, transparent 62%);
+}
+
+.sot-radar-sweep-trail {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: min(160vmax, 2400px);
+  height: min(160vmax, 2400px);
+  margin-left: calc(min(160vmax, 2400px) / -2);
+  margin-top: calc(min(160vmax, 2400px) / -2);
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    hsl(120 100% 50% / 0.12) 28deg,
+    transparent 56deg
+  );
+  animation: sot-radar-sweep-spin 5.5s linear infinite;
+  transform-origin: 50% 50%;
+  mask-image: radial-gradient(circle at center, black 6%, transparent 58%);
+  opacity: 0.75;
+}
+
+@keyframes sot-radar-sweep-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sot-radar-blips {
+  position: absolute;
+  inset: 0;
+}
+
+.sot-radar-blip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  transform: translate(-50%, -50%);
+  color: hsl(120 85% 42% / 0.38);
+  opacity: 0.55;
+  transition:
+    left 0.45s linear,
+    top 0.45s linear,
+    opacity 0.2s ease,
+    color 0.2s ease,
+    filter 0.2s ease;
+}
+
+.sot-radar-blip-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.sot-radar-blip--ping {
+  opacity: 1;
+  color: hsl(120 100% 68%);
+  filter: drop-shadow(0 0 6px hsl(120 100% 55% / 0.95)) drop-shadow(0 0 14px hsl(120 100% 50% / 0.55));
+  animation: sot-radar-blip-ping 0.52s ease-out;
+}
+
+.sot-radar-blip-ring {
+  position: absolute;
+  inset: -0.45rem;
+  border-radius: 50%;
+  border: 1px solid hsl(120 100% 55% / 0.75);
+  animation: sot-radar-blip-ring 0.65s ease-out forwards;
+}
+
+@keyframes sot-radar-blip-ping {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes sot-radar-blip-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sot-radar-sweep,
+  .sot-radar-sweep-trail,
+  .sot-radar-preview::after {
+    animation: none;
+  }
+
+  .sot-radar-blip {
+    transition:
+      opacity 0.2s ease,
+      color 0.2s ease,
+      filter 0.2s ease;
+  }
+
+  .sot-radar-blip--ping {
+    animation: none;
+  }
+
+  .sot-radar-blip-ring {
+    display: none;
+  }
+}
+
+/* Pré-visualização na aba Aparência */
+.sot-radar-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.sot-radar-preview::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  left: 50%;
+  top: 55%;
+  width: 180%;
+  height: 180%;
+  margin-left: -90%;
+  margin-top: -90%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    transparent 350deg,
+    hsl(120 100% 55% / 0.35) 358deg,
+    hsl(120 100% 70% / 0.7) 360deg
+  );
+  animation: sot-radar-sweep-spin 3.2s linear infinite;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at center, black 8%, transparent 55%);
+}
+
+html[data-appearance="radar"] .home-marquee-track {
+  animation-duration: 48s;
+  filter: drop-shadow(0 0 6px hsl(120 100% 50% / 0.35));
+}
+
+html[data-appearance="radar"] .sot-alarm-card-blink {
+  animation: sot-alarm-radar-blink 1.05s ease-in-out infinite;
+}
+
+@keyframes sot-alarm-radar-blink {
+  0%,
+  100% {
+    background-color: hsl(120 35% 10%);
+    border-color: hsl(120 80% 38%);
+    box-shadow: 0 0 0 1px hsl(120 90% 45% / 0.35);
+  }
+  50% {
+    background-color: hsl(120 40% 14%);
+    border-color: hsl(120 100% 48%);
+    box-shadow:
+      0 0 0 2px hsl(120 100% 50% / 0.45),
+      0 0 18px -4px hsl(120 100% 50% / 0.4);
+  }
+}
+
+/* Campos editáveis no modo escuro — fundo sem branco (como «Data do pedido»). */
+html[data-appearance="dark"]:not(.saidas-mobile-shell) :where(
+    input.sot-form-control,
+    select.sot-form-control,
+    textarea.sot-form-control,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="color"]),
+    select,
+    textarea
+  ) {
+  background-color: hsl(var(--card) / 0.42) !important;
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) select option {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) :where(input, textarea)::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-appearance="dark"]:not(.saidas-mobile-shell) input[type="checkbox"],
+html[data-appearance="dark"]:not(.saidas-mobile-shell) input[type="radio"] {
+  background-color: hsl(var(--card) / 0.42);
+  border-color: hsl(var(--border));
+}
+
+html[data-appearance="radar"]:not(.saidas-mobile-shell) :where(
+    input.sot-form-control,
+    select.sot-form-control,
+    textarea.sot-form-control,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="color"]),
+    select,
+    textarea
+  ) {
+  background-color: hsl(var(--card) / 0.5) !important;
+  color: hsl(var(--foreground));
+  border-color: hsl(120 70% 32% / 0.75);
+  box-shadow: inset 0 0 12px hsl(120 100% 45% / 0.06);
+}
+
+html[data-appearance="radar"]:not(.saidas-mobile-shell) select option {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+html[data-appearance="radar"]:not(.saidas-mobile-shell) :where(input, textarea)::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-appearance="radar"]:not(.saidas-mobile-shell) input[type="checkbox"],
+html[data-appearance="radar"]:not(.saidas-mobile-shell) input[type="radio"] {
+  background-color: hsl(var(--card) / 0.5);
+  border-color: hsl(120 70% 32% / 0.75);
 }
 
 /* react-day-picker: dia selecionado usa as cores do sistema */

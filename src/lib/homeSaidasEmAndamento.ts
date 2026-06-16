@@ -1,4 +1,4 @@
-import type { DepartureRecord } from "../types/departure";
+import { groupDeparturesForListDisplay, type DepartureRecord } from "../types/departure";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "./dateFormat";
 import { parseHhMm } from "./timeInput";
 import { primaryPlacaFromViaturasField } from "./viaturaPlaca";
@@ -49,6 +49,25 @@ export function saidasEmAndamentoHojeRecords(
       if (ka !== kb) return ka - kb;
       return a.id.localeCompare(b.id);
     });
+}
+
+/**
+ * Grupos em andamento na home — agrupa antes de filtrar (mesma viatura, motorista e horário),
+ * usando o registo primário do grupo (alinhado com as listas de saídas).
+ */
+export function saidasEmAndamentoGruposHoje(
+  rows: readonly DepartureRecord[],
+  hojeDdMmYyyy: string,
+): ReturnType<typeof groupDeparturesForListDisplay> {
+  const doDia = rows
+    .filter((r) => isDepartureDateSameLocalDay(r.dataSaida, hojeDdMmYyyy))
+    .sort((a, b) => {
+      const ka = sortKeyHoraSaida(a.horaSaida);
+      const kb = sortKeyHoraSaida(b.horaSaida);
+      if (ka !== kb) return ka - kb;
+      return a.id.localeCompare(b.id);
+    });
+  return groupDeparturesForListDisplay(doDia).filter((g) => saidaEmAndamentoHomeCard(g.primary));
 }
 
 function normalizePlacaKey(p: string): string {

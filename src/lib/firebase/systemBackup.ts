@@ -18,6 +18,13 @@ import {
   loadRastreamentoMotoristasFromLocalStorage,
 } from "../driverTrackingConfig";
 import { RDV_LOCAL_STORAGE_KEY } from "../relatorioDiarioViaturasStorage";
+import {
+  APPEARANCE_IDB_KEY,
+  defaultAppearanceRecord,
+  parseAppearanceRecord,
+  writeAppearanceToLocalStorage,
+  type AppearanceRecord,
+} from "../appearanceStorage";
 
 const DEPARTURES_IDB_KEY = "sot-departures-v1";
 const CATALOG_IDB_KEY = "sot-catalog-items-v1";
@@ -28,7 +35,6 @@ const OIL_IDB_KEY = "sot-oil-maintenance-v1";
 const ESCALA_IDB_KEY = "sot-escala-pao-v2";
 const INTEGRANTES_IDB_KEY = "sot-escala-pao-integrantes-v1";
 const MOTORISTA_PAO_IDB_KEY = "sot-motorista-pao-v1";
-const APPEARANCE_IDB_KEY = "sot-appearance";
 const REPORT_EMAIL_IDB_KEY = "sot_departures_report_email";
 const ALARM_DISMISS_IDB_KEY = "sot-alarm-dismiss-v2";
 const DETALHE_SERVICO_IDB_KEY = "sot-detalhe-servico-bundle-v2";
@@ -152,7 +158,10 @@ export async function restoreFullBackupToLocal(backup: FirebaseFullBackup): Prom
   await idbSetJson(MOTORISTA_PAO_IDB_KEY, String(motoristaPao.nome ?? ""), { maxAttempts: 6 });
 
   const appearance = toRecordMap(sot.appearance);
-  await idbSetJson(APPEARANCE_IDB_KEY, String(appearance.mode ?? "original"), { maxAttempts: 6 });
+  const appearanceRecord: AppearanceRecord =
+    parseAppearanceRecord(appearance) ?? defaultAppearanceRecord();
+  await idbSetJson(APPEARANCE_IDB_KEY, appearanceRecord, { maxAttempts: 6 });
+  writeAppearanceToLocalStorage(appearanceRecord);
 
   const reportEmail = toRecordMap(sot.departuresReportEmail);
   await idbSetJson(REPORT_EMAIL_IDB_KEY, String(reportEmail.email ?? ""), { maxAttempts: 6 });
@@ -252,8 +261,9 @@ export async function pushLocalOperationalStateToFirebase(): Promise<void> {
   const motoristaPaoNome = String((await getIdb<string>(MOTORISTA_PAO_IDB_KEY)) ?? "").trim();
   await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: motoristaPaoNome });
 
-  const appearanceMode = String((await getIdb<string>(APPEARANCE_IDB_KEY)) ?? "").trim() || "original";
-  await setSotStateDocWithRetry(SOT_STATE_DOC.appearance, { mode: appearanceMode });
+  const appearanceRecord =
+    parseAppearanceRecord(await getIdb<unknown>(APPEARANCE_IDB_KEY)) ?? defaultAppearanceRecord();
+  await setSotStateDocWithRetry(SOT_STATE_DOC.appearance, appearanceRecord);
 
   const reportEmail = String((await getIdb<string>(REPORT_EMAIL_IDB_KEY)) ?? "").trim();
   await setSotStateDocWithRetry(SOT_STATE_DOC.departuresReportEmail, { email: reportEmail });

@@ -76,8 +76,10 @@ import {
   resolveDriverLocationPostUrl,
 } from "../lib/driverLocationPost";
 import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
+import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
+import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { DesktopDriverLocationsMapHeaderButton } from "./desktop-driver-locations-map";
 import { Button } from "./ui/button";
@@ -95,6 +97,7 @@ type AlarmesConfig = {
 };
 
 const SETTINGS_SECTIONS = [
+  { id: "settings-aparencia", label: "Aparência" },
   { id: "settings-sync", label: "Modo de sincronização" },
   { id: "settings-senha-km", label: "Senha — KM e chegada" },
   { id: "settings-saidas", label: "Saídas" },
@@ -1066,6 +1069,10 @@ export function SettingsPage() {
             </nav>
 
             <div className="min-h-[min(28rem,70vh)] min-w-0 flex-1 p-4 sm:p-6">
+              {activeSectionId === "settings-aparencia" ? (
+                <SettingsAppearanceSection panelClass={SETTINGS_PANEL_CLASS} />
+              ) : null}
+
               {activeSectionId === "settings-sync" ? (
               <section className={SETTINGS_PANEL_CLASS} aria-labelledby="settings-heading-sync">
                 <h3 id="settings-heading-sync" className="text-base font-semibold text-[hsl(var(--foreground))]">
@@ -1226,7 +1233,7 @@ export function SettingsPage() {
               id="save-period-mode"
               value={savePeriodMode}
               onChange={(e) => setSavePeriodMode(e.target.value as SavePeriodMode)}
-              className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+              className={cn(sotFormInputClass, "max-w-sm")}
             >
               <option value="full">Completo (todas as saídas)</option>
               <option value="month">Por mês</option>
@@ -1242,7 +1249,7 @@ export function SettingsPage() {
                   type="month"
                   value={saveMonthValue}
                   onChange={(e) => setSaveMonthValue(e.target.value)}
-                  className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                  className={cn(sotFormInputClass, "max-w-sm")}
                 />
               </div>
             ) : null}
@@ -1259,7 +1266,7 @@ export function SettingsPage() {
                   step={1}
                   value={saveYearValue}
                   onChange={(e) => setSaveYearValue(e.target.value)}
-                  className="h-10 w-full max-w-sm rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+                  className={cn(sotFormInputClass, "max-w-sm")}
                 />
               </div>
             ) : null}
@@ -1315,7 +1322,7 @@ export function SettingsPage() {
               value={reportEmailDest}
               onChange={(e) => setReportEmailDest(e.target.value)}
               onBlur={() => setReportEmailStored(reportEmailDest)}
-              className="h-10 w-full max-w-md rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm"
+              className={cn(sotFormInputClass, "max-w-md")}
                 />
               </div>
               </section>

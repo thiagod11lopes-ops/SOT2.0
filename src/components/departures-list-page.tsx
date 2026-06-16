@@ -25,6 +25,7 @@ import { downloadDeparturesListPdfsInSequence } from "../lib/generateDeparturesP
 import { resolveDeparturesAssinanteDisplay } from "../lib/departuresAssinanteDisplay";
 import { rubricaThiagoPublicUrl } from "../lib/rubricaAssinanteThiago";
 import { openGmailComposeWithDeparturesPdfList } from "../lib/sendDeparturesListPdfEmail";
+import { sotFormSelectClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { AssinarOpcoesModal, AssinarPeriodosCalendarModal } from "./departures-assinar-modals";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
@@ -464,7 +465,7 @@ export function DeparturesListPage({
                 value={selectedMotoristaAssinatura}
                 onChange={(e) => setSelectedMotoristaAssinatura(e.target.value)}
                 disabled={catalogItems.motoristas.length === 0}
-                className="h-10 w-full max-w-[22rem] rounded-md border border-[hsl(var(--border))] bg-white px-3 text-sm text-[hsl(var(--foreground))] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--muted))]"
+                className={cn(sotFormSelectClass, "max-w-[22rem]")}
               >
                 <option value="">Selecione o motorista…</option>
                 {catalogItems.motoristas.map((m) => (
