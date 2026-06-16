@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useDepartures } from "../context/departures-context";
 import {
   confirmSiadDriver,
-  getSiadDriverRequestForSlot,
   readSiadDriverRequestStore,
   requestSiadDriver,
+  resolveSiadDriverRequestForSlot,
   subscribeSiadDriverRequestChanges,
   parseSiadDriverRequestSlotKey,
   type SiadDriverRequestRecord,
@@ -11,13 +12,14 @@ import {
 } from "../lib/siadDriverRequest";
 
 export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
+  const { departures } = useDepartures();
   const [record, setRecord] = useState<SiadDriverRequestRecord | null>(() =>
-    getSiadDriverRequestForSlot(dateSaida, horaSaida),
+    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, []),
   );
 
   const refresh = useCallback(() => {
-    setRecord(getSiadDriverRequestForSlot(dateSaida, horaSaida));
-  }, [dateSaida, horaSaida]);
+    setRecord(resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures));
+  }, [dateSaida, horaSaida, departures]);
 
   useEffect(() => {
     refresh();
@@ -25,8 +27,8 @@ export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
   }, [refresh]);
 
   const request = useCallback(
-    (hora?: string) => requestSiadDriver(dateSaida, hora ?? horaSaida),
-    [dateSaida, horaSaida],
+    (hora?: string) => requestSiadDriver(dateSaida, hora ?? horaSaida, departures),
+    [dateSaida, horaSaida, departures],
   );
   const confirm = useCallback(
     () => confirmSiadDriver(dateSaida, horaSaida),
@@ -46,37 +48,27 @@ export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
 }
 
 export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
-  const [pending, setPending] = useState<SiadDriverRequestSlot[]>(() => {
-    const store = readSiadDriverRequestStore();
-    return Object.entries(store)
-      .filter(([, row]) => row.status === "requested")
-      .map(([key, record]) => {
-        const slot = parseSiadDriverRequestSlotKey(key);
-        return {
-          dateSaida: slot.dateSaida,
-          horaSaida: slot.horaSaida,
-          record,
-        };
-      })
-      .sort((a, b) => b.record.requestedAt - a.record.requestedAt);
-  });
+  const { departures } = useDepartures();
+  const [pending, setPending] = useState<SiadDriverRequestSlot[]>([]);
 
   const refresh = useCallback(() => {
     const store = readSiadDriverRequestStore();
-    setPending(
-      Object.entries(store)
-        .filter(([, row]) => row.status === "requested")
-        .map(([key, record]) => {
-          const slot = parseSiadDriverRequestSlotKey(key);
-          return {
-            dateSaida: slot.dateSaida,
-            horaSaida: slot.horaSaida,
-            record,
-          };
-        })
-        .sort((a, b) => b.record.requestedAt - a.record.requestedAt),
-    );
-  }, []);
+    const next = Object.entries(store)
+      .map(([key]) => {
+        const slot = parseSiadDriverRequestSlotKey(key);
+        const hora = slot.horaSaida ?? "";
+        const resolved = resolveSiadDriverRequestForSlot(slot.dateSaida, hora, departures);
+        if (!resolved || resolved.status !== "requested") return null;
+        return {
+          dateSaida: slot.dateSaida,
+          horaSaida: slot.horaSaida,
+          record: resolved,
+        };
+      })
+      .filter((slot): slot is SiadDriverRequestSlot => slot !== null)
+      .sort((a, b) => b.record.requestedAt - a.record.requestedAt);
+    setPending(next);
+  }, [departures]);
 
   useEffect(() => {
     refresh();

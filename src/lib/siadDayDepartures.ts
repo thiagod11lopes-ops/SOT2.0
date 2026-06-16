@@ -1,7 +1,7 @@
 import {
-  getSiadDriverRequestForSlot,
   isSiadDeparture,
   normalizeSiadDriverRequestHora,
+  resolveSiadDriverRequestForSlot,
 } from "./siadDriverRequest";
 import { parsePassageirosFromObjetivo } from "./siadStatistics";
 import type { DepartureRecord } from "../types/departure";
@@ -61,7 +61,7 @@ export function groupSiadDeparturesForDay(
       const motoristasEscalados = dedupePreserveOrder(
         records.map((r) => r.motoristas).filter((m) => !isPlaceholderMotorista(m)),
       );
-      const slot = getSiadDriverRequestForSlot(date, horaSaida);
+      const slot = resolveSiadDriverRequestForSlot(date, horaSaida, departures);
       let motoristaStatus: SiadDayDepartureGroup["motoristaStatus"] = "none";
       if (slot?.status === "confirmed") motoristaStatus = "confirmed";
       else if (slot?.status === "requested") motoristaStatus = "requested";

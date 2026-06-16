@@ -173,6 +173,56 @@ export function getSiadDriverRequestForSlot(
   return readSiadDriverRequestStore()[key] ?? null;
 }
 
+/** Saídas SIAD ativas (não canceladas) para data + horário. */
+export function collectSiadDeparturesForSlot(
+  departures: DepartureRecord[],
+  dateSaida: string,
+  horaSaida: string,
+): DepartureRecord[] {
+  const date = dateSaida.trim();
+  const targetHora = normalizeSiadDriverRequestHora(horaSaida);
+  if (!date || !targetHora) return [];
+  return departures.filter((row) => {
+    if (!isSiadDeparture(row) || row.cancelada) return false;
+    if (row.dataSaida.trim() !== date) return false;
+    const rowHora = normalizeSiadDriverRequestHora(row.horaSaida) ?? row.horaSaida.trim();
+    return rowHora === targetHora;
+  });
+}
+
+/**
+ * Pedido de motorista anterior a um novo cadastro no mesmo horário (ex.: após exclusão)
+ * não deve reaparecer como confirmado/solicitado.
+ */
+export function isSiadDriverRequestStale(
+  record: SiadDriverRequestRecord,
+  slotDepartures: DepartureRecord[],
+): boolean {
+  if (slotDepartures.length === 0) return true;
+  const oldestCreated = Math.min(...slotDepartures.map((row) => row.createdAt));
+  return record.requestedAt < oldestCreated;
+}
+
+/** Lê o pedido do slot e remove automaticamente se for de uma saída já excluída/substituída. */
+export function resolveSiadDriverRequestForSlot(
+  dateSaida: string,
+  horaSaida: string,
+  departures: DepartureRecord[],
+): SiadDriverRequestRecord | null {
+  const key = getSiadDriverRequestSlotKey(dateSaida, horaSaida);
+  if (!key) return null;
+  const store = readSiadDriverRequestStore();
+  const record = store[key];
+  if (!record) return null;
+
+  const slotDepartures = collectSiadDeparturesForSlot(departures, dateSaida, horaSaida);
+  if (!isSiadDriverRequestStale(record, slotDepartures)) return record;
+
+  delete store[key];
+  writeSiadDriverRequestStore(store);
+  return null;
+}
+
 /** Compatível com pedidos antigos gravados só por data. */
 export function getSiadDriverRequestForDate(dateSaida: string): SiadDriverRequestRecord | null {
   const date = dateSaida.trim();
@@ -238,7 +288,14 @@ export function getLatestPendingSiadDriverRequest(): SiadDriverRequestSlot | nul
   return best;
 }
 
-export function requestSiadDriver(dateSaida: string, horaSaida: string): boolean {
+export function requestSiadDriver(
+  dateSaida: string,
+  horaSaida: string,
+  departures?: DepartureRecord[],
+): boolean {
+  if (departures) {
+    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures);
+  }
   const key = getSiadDriverRequestSlotKey(dateSaida, horaSaida);
   if (!key) return false;
   const store = readSiadDriverRequestStore();
