@@ -103,6 +103,9 @@ export function SiadQuickDepartureFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [setorPassword, setSetorPassword] = useState(getSiadFormPassword);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [loginSenha, setLoginSenha] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [senhaAtual, setSenhaAtual] = useState("");
   const [senhaNova, setSenhaNova] = useState("");
@@ -144,6 +147,17 @@ export function SiadQuickDepartureFormPage() {
     addCatalogItem("responsaveis", "SIAD");
     addCatalogItem("viaturasAdministrativas", "ASD");
     addCatalogItem("motoristas", "ASD");
+  }
+
+  function handleLogin(event: FormEvent) {
+    event.preventDefault();
+    if (!verifySiadFormPassword(loginSenha.trim())) {
+      setLoginError("Senha incorreta.");
+      return;
+    }
+    setLoginError(null);
+    setLoginSenha("");
+    setIsUnlocked(true);
   }
 
   function resetPasswordForm() {
@@ -214,16 +228,43 @@ export function SiadQuickDepartureFormPage() {
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="fixed right-4 top-4 z-20 h-10 w-10 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-md"
-        aria-label="Configurar senha do SIAD"
-        onClick={() => setPasswordDialogOpen(true)}
-      >
-        <Settings className="h-5 w-5 text-[hsl(var(--primary))]" />
-      </Button>
+      <Dialog open={!isUnlocked}>
+        <DialogContent
+          hideCloseButton
+          className="max-w-sm"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Acesso ao SIAD</DialogTitle>
+            <DialogDescription>Informe a senha para usar o formulário de saídas.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleLogin}>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="siad-login-senha">
+                Senha
+              </label>
+              <input
+                id="siad-login-senha"
+                type="password"
+                inputMode="numeric"
+                autoComplete="current-password"
+                autoFocus
+                value={loginSenha}
+                onChange={(e) => setLoginSenha(e.target.value)}
+                className="h-10 w-full rounded-lg border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              />
+            </div>
+            {loginError ? <p className="text-xs text-red-600">{loginError}</p> : null}
+            <DialogFooter>
+              <Button type="submit" className="w-full sm:w-auto">
+                Entrar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={passwordDialogOpen} onOpenChange={handlePasswordDialogChange}>
         <DialogContent className="max-w-md">
@@ -309,10 +350,32 @@ export function SiadQuickDepartureFormPage() {
         </div>
       ) : null}
 
-      <Card className="overflow-hidden border-[hsl(var(--border))] shadow-[0_24px_60px_-18px_rgba(0,0,0,0.35)]">
-        <CardHeader className="border-b border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.12)] to-transparent pb-5">
-          <CardTitle className="text-lg">Novo registro</CardTitle>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Setor SIAD — data, hora, bairro e passageiros</p>
+      <Card
+        className={cn(
+          "overflow-hidden border-[hsl(var(--border))] shadow-[0_24px_60px_-18px_rgba(0,0,0,0.35)]",
+          !isUnlocked && "pointer-events-none opacity-60",
+        )}
+      >
+        <CardHeader className="relative border-b border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.12)] to-transparent pb-5">
+          <div className="flex items-start justify-between gap-3 pr-1">
+            <div className="min-w-0 space-y-1">
+              <CardTitle className="text-lg">Novo registro</CardTitle>
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Setor SIAD — data, hora, bairro e passageiros
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm"
+              aria-label="Configurar senha do SIAD"
+              disabled={!isUnlocked}
+              onClick={() => setPasswordDialogOpen(true)}
+            >
+              <Settings className="h-4 w-4 text-[hsl(var(--primary))]" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="pt-6">
           <form className="space-y-6" onSubmit={handleSubmit} noValidate>
