@@ -43,6 +43,7 @@ export function groupSiadDeparturesForDay(
   const byHora = new Map<string, DepartureRecord[]>();
   for (const row of departures) {
     if (!isSiadDeparture(row)) continue;
+    if (row.cancelada) continue;
     if (row.dataSaida.trim() !== date) continue;
     const normalized = normalizeSiadDriverRequestHora(row.horaSaida);
     const hora = normalized ?? (row.horaSaida.trim() || "—");
@@ -75,4 +76,29 @@ export function groupSiadDeparturesForDay(
       };
     })
     .sort((a, b) => a.horaSaida.localeCompare(b.horaSaida, "pt-BR"));
+}
+
+/** Motorista escalado no SOT 2.0 para a saída SIAD (data + horário), se houver. */
+export function resolveSiadEscalatedMotorista(
+  departures: DepartureRecord[],
+  dateSaida: string,
+  horaSaida: string | null,
+): string | null {
+  const date = dateSaida.trim();
+  if (!date) return null;
+
+  const targetHora = horaSaida ? normalizeSiadDriverRequestHora(horaSaida) : null;
+
+  for (const row of departures) {
+    if (!isSiadDeparture(row) || row.cancelada) continue;
+    if (row.dataSaida.trim() !== date) continue;
+    if (targetHora) {
+      const rowHora = normalizeSiadDriverRequestHora(row.horaSaida) ?? row.horaSaida.trim();
+      if (rowHora !== targetHora) continue;
+    }
+    const motorista = row.motoristas.trim();
+    if (!isPlaceholderMotorista(motorista)) return motorista;
+  }
+
+  return null;
 }

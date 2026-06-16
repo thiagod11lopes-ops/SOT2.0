@@ -1,32 +1,46 @@
 import { CarFront, CheckCircle2, Radio, Sparkles, Volume2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useDepartures } from "../context/departures-context";
 import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
 import { confirmSiadDriverSlot } from "../lib/siadDriverRequest";
+import { resolveSiadEscalatedMotorista } from "../lib/siadDayDepartures";
 import {
-  SIAD_DRIVER_REQUEST_SPEECH_TEXT,
+  buildSiadDriverRequestSpeechText,
   startSiadDriverRequestSpeechLoop,
   stopSiadDriverRequestSpeech,
 } from "../lib/siadDriverRequestSpeech";
 import { Button } from "./ui/button";
 
 export function SiadDriverRequestAlertModal() {
+  const { departures } = useDepartures();
   const pending = usePendingSiadDriverRequests();
   const active = pending[0] ?? null;
   const open = Boolean(active);
-  const activeDate = active?.dateSaida ?? null;
+
+  const motoristaEscalado = useMemo(() => {
+    if (!active) return null;
+    return resolveSiadEscalatedMotorista(departures, active.dateSaida, active.horaSaida);
+  }, [departures, active]);
+
+  const speechText = useMemo(
+    () => buildSiadDriverRequestSpeechText(motoristaEscalado),
+    [motoristaEscalado],
+  );
+
+  const speechSlotKey = active ? `${active.dateSaida}|${active.horaSaida ?? ""}` : "";
 
   useEffect(() => {
     if (!open) {
       stopSiadDriverRequestSpeech();
       return;
     }
-    const stopSpeech = startSiadDriverRequestSpeechLoop();
+    const stopSpeech = startSiadDriverRequestSpeechLoop(speechText);
     return () => {
       stopSpeech();
       stopSiadDriverRequestSpeech();
     };
-  }, [open, activeDate]);
+  }, [open, speechSlotKey, speechText]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,9 +53,11 @@ export function SiadDriverRequestAlertModal() {
 
   if (!open || !active) return null;
 
+  const activeSlot = active;
+
   function handleConfirm() {
     stopSiadDriverRequestSpeech();
-    confirmSiadDriverSlot(active);
+    confirmSiadDriverSlot(activeSlot);
   }
 
   return createPortal(
@@ -86,11 +102,17 @@ export function SiadDriverRequestAlertModal() {
                 às <strong className="font-semibold text-slate-900 dark:text-white">{active.horaSaida}</strong>
               </>
             ) : null}
+            {motoristaEscalado ? (
+              <>
+                {" "}
+                — motorista <strong className="font-semibold text-slate-900 dark:text-white">{motoristaEscalado}</strong>
+              </>
+            ) : null}
             . Confirme para avisar o formulário de Saídas SIAD.
           </p>
           <p className="mx-auto mt-3 flex max-w-sm items-start justify-center gap-2 rounded-xl border border-orange-200/80 bg-orange-50/90 px-3 py-2.5 text-left text-sm font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
             <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-300" aria-hidden />
-            <span>{SIAD_DRIVER_REQUEST_SPEECH_TEXT}</span>
+            <span>{speechText}</span>
           </p>
         </div>
 

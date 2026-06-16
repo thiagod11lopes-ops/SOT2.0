@@ -1,5 +1,9 @@
-export const SIAD_DRIVER_REQUEST_SPEECH_TEXT =
-  "Motorista (Motorista escalado) SIAD solicitou viatura no bloco B";
+const FALLBACK_MOTORISTA_LABEL = "Motorista escalado";
+
+export function buildSiadDriverRequestSpeechText(motoristaEscalado: string | null | undefined): string {
+  const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
+  return `Motorista (${nome}) SIAD solicitou viatura no bloco B`;
+}
 
 let voicesReady = false;
 
@@ -41,13 +45,15 @@ export function stopSiadDriverRequestSpeech() {
 }
 
 /** Repete a frase de alerta até `stopSiadDriverRequestSpeech` ou retorno do cleanup. */
-export function startSiadDriverRequestSpeechLoop(): () => void {
+export function startSiadDriverRequestSpeechLoop(speechText: string): () => void {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     return () => undefined;
   }
 
   let cancelled = false;
   let retryTimeout: number | null = null;
+  let resumeInterval: number | null = null;
+  let currentText = speechText.trim() || buildSiadDriverRequestSpeechText(null);
 
   const clearRetry = () => {
     if (retryTimeout !== null) {
@@ -64,8 +70,15 @@ export function startSiadDriverRequestSpeechLoop(): () => void {
 
   const speakOnce = () => {
     if (cancelled) return;
+    const synth = window.speechSynthesis;
     try {
-      const utter = new SpeechSynthesisUtterance(SIAD_DRIVER_REQUEST_SPEECH_TEXT);
+      if (synth.paused) synth.resume();
+      if (synth.speaking) {
+        scheduleNext(600);
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(currentText);
       utter.lang = "pt-BR";
       utter.rate = 0.92;
       utter.pitch = 1.08;
@@ -73,18 +86,36 @@ export function startSiadDriverRequestSpeechLoop(): () => void {
       if (voice) utter.voice = voice;
       utter.onend = () => scheduleNext(500);
       utter.onerror = () => scheduleNext(1400);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utter);
+      synth.speak(utter);
     } catch {
       scheduleNext(1400);
     }
   };
 
-  ensureVoicesReady(speakOnce);
+  const startSpeaking = () => {
+    if (cancelled) return;
+    currentText = speechText.trim() || buildSiadDriverRequestSpeechText(null);
+    window.setTimeout(speakOnce, 120);
+  };
+
+  ensureVoicesReady(startSpeaking);
+
+  resumeInterval = window.setInterval(() => {
+    if (cancelled) return;
+    try {
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    } catch {
+      /* ignore */
+    }
+  }, 8000);
 
   return () => {
     cancelled = true;
     clearRetry();
+    if (resumeInterval !== null) {
+      window.clearInterval(resumeInterval);
+      resumeInterval = null;
+    }
     stopSiadDriverRequestSpeech();
   };
 }

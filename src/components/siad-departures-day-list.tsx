@@ -2,6 +2,7 @@ import { CarFront, Clock3, MapPin, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useDepartures } from "../context/departures-context";
 import { groupSiadDeparturesForDay, type SiadDayDepartureGroup } from "../lib/siadDayDepartures";
+import { deleteSiadDepartureGroupCompletely } from "../lib/siadDepartureDelete";
 import { subscribeSiadDriverRequestChanges } from "../lib/siadDriverRequest";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
@@ -79,7 +80,7 @@ function SiadDepartureDeleteConfirmModal({
           ) : group.bairros.length > 0 ? (
             <> — {formatDestinosListaPt(group.bairros)}</>
           ) : null}
-          ? Esta ação não pode ser desfeita.
+          ? Esta ação não pode ser desfeita. Os registros serão removidos do SOT 2.0 e o pedido de motorista deste horário também será apagado.
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel}>
@@ -122,9 +123,12 @@ export function SiadDeparturesDayList({
 
   function handleConfirmDelete() {
     if (!deleteGroup) return;
-    for (const id of deleteGroup.recordIds) {
-      removeDeparture(id);
-    }
+    deleteSiadDepartureGroupCompletely({
+      group: deleteGroup,
+      dateSaida,
+      departures,
+      removeDeparture,
+    });
     setDeleteGroup(null);
   }
 
