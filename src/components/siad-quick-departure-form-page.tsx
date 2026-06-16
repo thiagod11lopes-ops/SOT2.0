@@ -1,5 +1,6 @@
-import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Settings, Users, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, Lock, MapPin, Plus, Settings, Sparkles, Users, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import {
@@ -19,7 +20,7 @@ import {
   setSiadFormPassword,
   verifySiadFormPassword,
 } from "../lib/siadFormPassword";
-import type { DepartureRecord } from "../types/departure";
+import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -53,7 +54,7 @@ function formatWeekdayCommaDatePtBr(d: Date): string {
   return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
 }
 
-function dedupeBairrosPreserveOrder(items: string[]): string[] {
+function dedupeTextosPreserveOrder(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of items) {
@@ -65,13 +66,24 @@ function dedupeBairrosPreserveOrder(items: string[]): string[] {
   return out;
 }
 
+function dedupeBairrosPreserveOrder(items: string[]): string[] {
+  return dedupeTextosPreserveOrder(items);
+}
+
+function formatSiadObjetivoComPassageiros(nomes: string[]): string {
+  const base = "Atendimento domiciliar";
+  if (nomes.length === 0) return base;
+  return `${base} — Passageiros: ${formatDestinosListaPt(nomes)}`;
+}
+
 function buildSiadQuickDeparturePayload(params: {
   dataSaida: string;
   horaSaida: string;
   endereco: string;
-  numeroPassageiros: string;
+  passageirosNomes: string[];
 }): Omit<DepartureRecord, "id" | "createdAt"> {
   const endereco = params.endereco.trim();
+  const nomes = dedupeTextosPreserveOrder(params.passageirosNomes);
   return {
     tipo: "Administrativa",
     dataPedido: getCurrentDatePtBr(),
@@ -80,8 +92,8 @@ function buildSiadQuickDeparturePayload(params: {
     horaSaida: params.horaSaida,
     setor: "SIAD",
     ramal: "",
-    objetivoSaida: "Atendimento domiciliar",
-    numeroPassageiros: params.numeroPassageiros,
+    objetivoSaida: formatSiadObjetivoComPassageiros(nomes),
+    numeroPassageiros: String(nomes.length),
     responsavelPedido: "SIAD",
     om: "",
     viaturas: "ASD",
@@ -102,6 +114,76 @@ function buildSiadQuickDeparturePayload(params: {
   };
 }
 
+function SiadCadastroSuccessModal({
+  open,
+  message,
+  onClose,
+}: {
+  open: boolean;
+  message: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="siad-success-title"
+      aria-describedby="siad-success-desc"
+      aria-live="polite"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+        aria-label="Fechar confirmação"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/25 bg-gradient-to-br from-white via-white to-emerald-50/90 p-8 text-center shadow-[0_40px_100px_-24px_rgba(16,185,129,0.55),0_0_0_1px_rgba(255,255,255,0.5)_inset] dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/40">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-12 -left-8 h-36 w-36 rounded-full bg-[hsl(var(--primary)/0.15)] blur-3xl" />
+        <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+          <div className="absolute inset-0 animate-ping rounded-full bg-emerald-400/25" />
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/40">
+            <CheckCircle2 className="h-10 w-10 text-white" strokeWidth={2.25} aria-hidden />
+          </div>
+        </div>
+        <div className="relative mt-6 space-y-2">
+          <div className="flex items-center justify-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+            <Sparkles className="h-4 w-4" aria-hidden />
+            <span className="text-xs font-semibold uppercase tracking-[0.2em]">Sucesso</span>
+            <Sparkles className="h-4 w-4" aria-hidden />
+          </div>
+          <h2 id="siad-success-title" className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Saída cadastrada
+          </h2>
+          <p id="siad-success-desc" className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {message}
+          </p>
+        </div>
+        <Button
+          type="button"
+          className="relative mt-8 h-11 min-w-[9rem] rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-base font-semibold shadow-md shadow-emerald-500/30 hover:brightness-105"
+          onClick={onClose}
+        >
+          OK
+        </Button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function SiadQuickDepartureFormPage() {
   const { addDeparture } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
@@ -109,11 +191,12 @@ export function SiadQuickDepartureFormPage() {
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
   const [horaSaida, setHoraSaida] = useState("08:00");
   const [bairros, setBairros] = useState<string[]>([""]);
-  const [numeroPassageiros, setNumeroPassageiros] = useState("");
+  const [passageirosNomes, setPassageirosNomes] = useState<string[]>([""]);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [setorPassword, setSetorPassword] = useState(getSiadFormPassword);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [loginSenha, setLoginSenha] = useState("");
@@ -139,16 +222,19 @@ export function SiadQuickDepartureFormPage() {
 
   const neighborhoodOptions = useMemo(() => getMetroRioNeighborhoodSuggestions(), []);
   const selectedDate = useMemo(() => parsePtBrToDate(dataSaida), [dataSaida]);
-
   const bairrosPreenchidos = useMemo(
     () => dedupeBairrosPreserveOrder(bairros),
     [bairros],
+  );
+  const passageirosPreenchidos = useMemo(
+    () => dedupeTextosPreserveOrder(passageirosNomes),
+    [passageirosNomes],
   );
 
   const dateInvalid = !isCompleteDatePtBr(dataSaida) || !selectedDate;
   const horaSaidaInvalid = parseHhMm(horaSaida) === null;
   const bairrosInvalid = bairrosPreenchidos.length === 0;
-  const passageirosInvalid = numeroPassageiros.trim().length === 0;
+  const passageirosInvalid = passageirosPreenchidos.length === 0;
   const canSubmit = !dateInvalid && !horaSaidaInvalid && !bairrosInvalid && !passageirosInvalid;
 
   if (pendingDateCaret.current !== null && dateInputRef.current) {
@@ -176,6 +262,18 @@ export function SiadQuickDepartureFormPage() {
 
   function handleRemoveBairro(index: number) {
     setBairros((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  function handleAddPassageiro() {
+    setPassageirosNomes((prev) => [...prev, ""]);
+  }
+
+  function handlePassageiroChange(index: number, value: string) {
+    setPassageirosNomes((prev) => prev.map((nome, i) => (i === index ? value : nome)));
+  }
+
+  function handleRemovePassageiro(index: number) {
+    setPassageirosNomes((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
   function handleLogin(event: FormEvent) {
@@ -242,7 +340,7 @@ export function SiadQuickDepartureFormPage() {
       const base = {
         dataSaida: dataSaida.trim(),
         horaSaida: horaSaida.trim(),
-        numeroPassageiros: numeroPassageiros.trim(),
+        passageirosNomes: passageirosPreenchidos,
       };
       for (const bairro of bairrosPreenchidos) {
         addDeparture(
@@ -253,21 +351,34 @@ export function SiadQuickDepartureFormPage() {
         );
       }
       const count = bairrosPreenchidos.length;
+      const passCount = passageirosPreenchidos.length;
+      const passLabel = passCount === 1 ? "1 passageiro" : `${passCount} passageiros`;
       setSuccessMessage(
         count === 1
-          ? `Saída cadastrada para ${base.dataSaida} às ${base.horaSaida}.`
-          : `${count} saídas agrupadas cadastradas para ${base.dataSaida} às ${base.horaSaida}.`,
+          ? `Saída registrada para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`
+          : `${count} saídas agrupadas registradas para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`,
       );
+      setSuccessModalOpen(true);
       setBairros([""]);
-      setNumeroPassageiros("");
+      setPassageirosNomes([""]);
       setSubmitAttempted(false);
     } finally {
       setSubmitting(false);
     }
   }
 
+  function handleCloseSuccessModal() {
+    setSuccessModalOpen(false);
+    setSuccessMessage(null);
+  }
+
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-[hsl(var(--background))]">
+      <SiadCadastroSuccessModal
+        open={successModalOpen}
+        message={successMessage ?? ""}
+        onClose={handleCloseSuccessModal}
+      />
       <Dialog open={!isUnlocked}>
         <DialogContent
           hideCloseButton
@@ -380,15 +491,6 @@ export function SiadQuickDepartureFormPage() {
           Cadastro rápido de saídas do setor SIAD.
         </p>
       </div>
-
-      {successMessage ? (
-        <div
-          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100"
-          role="status"
-        >
-          {successMessage}
-        </div>
-      ) : null}
 
       <Card
         className={cn(
@@ -621,25 +723,64 @@ export function SiadQuickDepartureFormPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium" htmlFor={passageirosFieldId}>
-                <Users className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
-                Número de Passageiros
-              </label>
-              <input
-                id={passageirosFieldId}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={numeroPassageiros}
-                onChange={(e) => setNumeroPassageiros(e.target.value.replace(/\D/g, ""))}
-                placeholder="Somente números"
-                className={cn(
-                  "h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-white px-3 font-mono text-sm tabular-nums shadow-sm placeholder:font-sans placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                  submitAttempted && passageirosInvalid && "border-red-500/90",
-                )}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm font-medium" htmlFor={passageirosFieldId}>
+                  <Users className="h-4 w-4 text-[hsl(var(--primary))]" aria-hidden />
+                  Passageiros
+                </label>
+                {passageirosPreenchidos.length > 0 ? (
+                  <span className="rounded-full bg-[hsl(var(--primary)/0.12)] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--primary))]">
+                    {passageirosPreenchidos.length}{" "}
+                    {passageirosPreenchidos.length === 1 ? "passageiro" : "passageiros"}
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                {passageirosNomes.map((nome, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      id={index === 0 ? passageirosFieldId : undefined}
+                      type="text"
+                      value={nome}
+                      onChange={(e) => handlePassageiroChange(index, e.target.value)}
+                      placeholder="Nome do passageiro"
+                      autoComplete="name"
+                      aria-label={index === 0 ? "Passageiro" : `Passageiro ${index + 1}`}
+                      className={cn(
+                        "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                        submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
+                      )}
+                    />
+                    {index === 0 ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 rounded-xl"
+                        aria-label="Adicionar outro passageiro"
+                        onClick={handleAddPassageiro}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 rounded-xl"
+                        aria-label={`Remover passageiro ${index + 1}`}
+                        onClick={() => handleRemovePassageiro(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                Cada nome cadastrado conta como um passageiro no sistema. Use o botão + para incluir mais pessoas.
+              </p>
               {submitAttempted && passageirosInvalid ? (
-                <p className="text-xs text-red-600">Informe o número de passageiros.</p>
+                <p className="text-xs text-red-600">Informe ao menos um passageiro.</p>
               ) : null}
             </div>
 
