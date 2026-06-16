@@ -11,6 +11,7 @@ import { SettingsPage } from "./components/settings-page";
 import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { SiadQuickDepartureFormPage } from "./components/siad-quick-departure-form-page";
 import { RelatorioDiarioViaturasCalendarPage } from "./components/relatorio-diario-viaturas-calendar-page";
 import { RelatorioDiarioViaturasPage } from "./components/relatorio-diario-viaturas-page";
 import { RdvRouteErrorBoundary } from "./components/rdv-route-error-boundary";
@@ -140,7 +141,7 @@ function App() {
 
   const handleTabChange = useCallback(
     (tab: string) => {
-      if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
+      if (/^#\/(carro-quebrado|siad-saida)(\/|$)/.test(window.location.hash)) {
         window.location.hash = "";
       }
       setActiveTab(tab);
@@ -151,13 +152,14 @@ function App() {
   const handleIdleReturnHome = useCallback(() => {
     setActiveTab(null);
     setHomeRemountKey((k) => k + 1);
-    if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
+    if (/^#\/(carro-quebrado|siad-saida)(\/|$)/.test(window.location.hash)) {
       window.location.hash = "";
     }
   }, [setActiveTab]);
 
   const isMobileRoute = hash.startsWith("#/saidas");
   const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
+  const isSiadSaidaRoute = /^#\/siad-saida(\/|$)/.test(hash);
   useIdleResetToHome(!isMobileRoute && !detalheServicoEditingActive, handleIdleReturnHome);
 
   useEffect(() => {
@@ -175,7 +177,7 @@ function App() {
     if (hash.startsWith("#/saidas")) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
-      if (/^#\/carro-quebrado(\/|$)/.test(window.location.hash)) {
+      if (/^#\/(carro-quebrado|siad-saida)(\/|$)/.test(window.location.hash)) {
         window.location.hash = "";
       }
       setActiveTab("Cadastrar Saída");
@@ -231,6 +233,9 @@ function App() {
   }
 
   const content = useMemo(() => {
+    if (isSiadSaidaRoute) {
+      return <SiadQuickDepartureFormPage />;
+    }
     if (isCarroQuebradoRoute) {
       const m = /^#\/carro-quebrado\/dia\/(\d{4}-\d{2}-\d{2})$/.exec(hash);
       return (
@@ -277,9 +282,10 @@ function App() {
     pendingDeparturesFilterDatePtBr,
     departuresListMountKey,
     isCarroQuebradoRoute,
+    isSiadSaidaRoute,
   ]);
 
-  const isHome = !activeTab && !isCarroQuebradoRoute;
+  const isHome = !activeTab && !isCarroQuebradoRoute && !isSiadSaidaRoute;
   const showHomeAvisosTicker =
     isHome && (Boolean(avisoPrincipal.trim()) || avisosGeraisLinhas.length > 0);
 
