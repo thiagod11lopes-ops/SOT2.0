@@ -146,13 +146,26 @@ function drawKpiRow(doc: jsPDF, y: number, stats: SiadStatisticsSnapshot): numbe
   return y + cardH + 8;
 }
 
-function drawSectionTitle(doc: jsPDF, y: number, title: string, accent: readonly [number, number, number]): number {
+function drawSectionTitle(
+  doc: jsPDF,
+  y: number,
+  title: string,
+  accent: readonly [number, number, number],
+  marginLeft = PAGE_MARGIN,
+  maxWidth?: number,
+): number {
   setFill(doc, accent);
-  doc.circle(PAGE_MARGIN + 1.5, y + 1.5, 1.5, "F");
+  doc.circle(marginLeft + 1.5, y + 1.5, 1.5, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   setText(doc, COLORS.ink);
-  doc.text(title, PAGE_MARGIN + 6, y + 2.5);
+  const textX = marginLeft + 6;
+  if (maxWidth) {
+    const lines = doc.splitTextToSize(title, maxWidth - 6) as string[];
+    doc.text(lines, textX, y + 2.5);
+    return y + 8 + Math.max(0, lines.length - 1) * 4;
+  }
+  doc.text(title, textX, y + 2.5);
   return y + 8;
 }
 
@@ -169,7 +182,7 @@ function drawRankingTable(
   const pageW = doc.internal.pageSize.getWidth();
   const contentW = tableWidth ?? pageW - PAGE_MARGIN * 2;
 
-  const y = drawSectionTitle(doc, startY, title, accent);
+  const y = drawSectionTitle(doc, startY, title, accent, marginLeft, contentW);
 
   if (entries.length === 0) {
     doc.setFont("helvetica", "italic");
