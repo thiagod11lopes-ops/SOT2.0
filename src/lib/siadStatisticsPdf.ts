@@ -169,7 +169,7 @@ function drawRankingTable(
   const pageW = doc.internal.pageSize.getWidth();
   const contentW = tableWidth ?? pageW - PAGE_MARGIN * 2;
 
-  let y = drawSectionTitle(doc, startY, title, accent);
+  const y = drawSectionTitle(doc, startY, title, accent);
 
   if (entries.length === 0) {
     doc.setFont("helvetica", "italic");
