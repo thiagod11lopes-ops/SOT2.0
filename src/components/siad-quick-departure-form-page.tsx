@@ -697,25 +697,7 @@ export function SiadQuickDepartureFormPage() {
                 >
                   <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
                   <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-[hsl(var(--primary))]/30 blur-2xl" />
-                  <div className="relative space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
-                        Data da saída
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl border-white/25 bg-white/15 text-white hover:bg-white/25"
-                        onClick={() => {
-                          const hoje = getCurrentDatePtBr();
-                          setDataSaida(hoje);
-                          setCalendarOpen(false);
-                        }}
-                      >
-                        Hoje
-                      </Button>
-                    </div>
+                  <div className="relative">
                     <div className="flex items-center gap-2">
                       <input
                         ref={dateInputRef}
