@@ -23,6 +23,7 @@ import {
 import { useSiadPwaShell } from "../lib/useSiadPwaShell";
 import {
   describeSiadDriverRequestsForDate,
+  purgeOrphanedSiadDriverRequests,
   resetSiadDriverRequestForDate,
 } from "../lib/siadDriverRequest";
 import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
@@ -278,8 +279,17 @@ export function SiadQuickDepartureFormPage() {
   const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate, horaSaida);
 
   useEffect(() => {
+    purgeOrphanedSiadDriverRequests(departures);
+  }, [departures]);
+
+  useEffect(() => {
     setSetorPassword(getSiadFormPassword());
   }, [passwordDialogOpen]);
+
+  const motoristaResetSituacao = useMemo(
+    () => describeSiadDriverRequestsForDate(motoristaResetDate, departures),
+    [motoristaResetDate, departures],
+  );
 
   useEffect(() => {
     if (!passwordDialogOpen) return;
@@ -613,7 +623,7 @@ export function SiadQuickDepartureFormPage() {
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
                 Situação:{" "}
                 <strong className="text-[hsl(var(--foreground))]">
-                  {describeSiadDriverRequestsForDate(motoristaResetDate)}
+                  {motoristaResetSituacao}
                 </strong>
               </p>
               <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleResetMotoristaRequest}>

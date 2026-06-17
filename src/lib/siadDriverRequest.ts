@@ -208,6 +208,47 @@ export function isSiadDriverRequestStale(
   return record.requestedAt < oldestCreated;
 }
 
+/** Pedido sem saída SIAD correspondente (ex.: saídas excluídas). */
+export function isSiadDriverRequestOrphaned(
+  slot: { dateSaida: string; horaSaida: string | null },
+  departures: DepartureRecord[],
+): boolean {
+  const date = slot.dateSaida.trim();
+  if (!date) return true;
+  if (!slot.horaSaida) {
+    return getSiadDepartureTimesForDate(departures, date).length === 0;
+  }
+  return collectSiadDeparturesForSlot(departures, date, slot.horaSaida).length === 0;
+}
+
+/** Remove pedidos cujo horário/data já não tem saída SIAD cadastrada. */
+export function purgeOrphanedSiadDriverRequests(departures: DepartureRecord[]): number {
+  const store = readSiadDriverRequestStore();
+  let removed = 0;
+  for (const key of Object.keys(store)) {
+    const slot = parseSiadDriverRequestSlotKey(key);
+    if (isSiadDriverRequestOrphaned(slot, departures)) {
+      delete store[key];
+      removed += 1;
+    }
+  }
+  if (removed > 0) writeSiadDriverRequestStore(store);
+  return removed;
+}
+
+/** Após excluir saída SIAD, limpa o pedido do slot se não restou nenhuma saída no horário. */
+export function syncSiadDriverRequestAfterDepartureRemoved(
+  removed: DepartureRecord,
+  departuresAfterRemove: DepartureRecord[],
+): void {
+  if (!isSiadDeparture(removed) || removed.cancelada) return;
+  const date = removed.dataSaida.trim();
+  const hora = normalizeSiadDriverRequestHora(removed.horaSaida);
+  if (!date || !hora) return;
+  if (collectSiadDeparturesForSlot(departuresAfterRemove, date, hora).length > 0) return;
+  resetSiadDriverRequest(date, hora);
+}
+
 /** Lê o pedido do slot e remove automaticamente se for de uma saída já excluída/substituída. */
 export function resolveSiadDriverRequestForSlot(
   dateSaida: string,
@@ -240,14 +281,21 @@ export function getSiadDriverRequestForDate(dateSaida: string): SiadDriverReques
   return null;
 }
 
-export function listSiadDriverRequestsForDate(dateSaida: string): SiadDriverRequestSlot[] {
+export function listSiadDriverRequestsForDate(
+  dateSaida: string,
+  departures?: DepartureRecord[],
+): SiadDriverRequestSlot[] {
   const date = dateSaida.trim();
   if (!date) return [];
+  if (departures) {
+    purgeOrphanedSiadDriverRequests(departures);
+  }
   const store = readSiadDriverRequestStore();
   const out: SiadDriverRequestSlot[] = [];
   for (const [key, record] of Object.entries(store)) {
     const slot = parseSiadDriverRequestSlotKey(key);
     if (slot.dateSaida !== date) continue;
+    if (departures && isSiadDriverRequestOrphaned(slot, departures)) continue;
     out.push({ dateSaida: slot.dateSaida, horaSaida: slot.horaSaida, record });
   }
   return out.sort((a, b) => {
@@ -383,8 +431,11 @@ export function describeSiadDriverRequestStatus(
   return "Saída confirmada";
 }
 
-export function describeSiadDriverRequestsForDate(dateSaida: string): string {
-  const items = listSiadDriverRequestsForDate(dateSaida);
+export function describeSiadDriverRequestsForDate(
+  dateSaida: string,
+  departures?: DepartureRecord[],
+): string {
+  const items = listSiadDriverRequestsForDate(dateSaida, departures);
   if (items.length === 0) return "Nenhum pedido registrado";
   if (items.length === 1) {
     const item = items[0]!;

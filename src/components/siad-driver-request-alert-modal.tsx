@@ -1,5 +1,5 @@
 import { CarFront, CheckCircle2, Radio, Sparkles, Volume2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDepartures } from "../context/departures-context";
 import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
@@ -7,8 +7,10 @@ import { confirmSiadDriverSlot } from "../lib/siadDriverRequest";
 import { resolveSiadEscalatedMotorista } from "../lib/siadDayDepartures";
 import {
   buildSiadDriverRequestSpeechText,
+  primeSiadDriverRequestSpeech,
   startSiadDriverRequestSpeechLoop,
   stopSiadDriverRequestSpeech,
+  type SiadDriverRequestSpeechHandle,
 } from "../lib/siadDriverRequestSpeech";
 import { Button } from "./ui/button";
 
@@ -29,18 +31,31 @@ export function SiadDriverRequestAlertModal() {
   );
 
   const speechSlotKey = active ? `${active.dateSaida}|${active.horaSaida ?? ""}` : "";
+  const speechHandleRef = useRef<SiadDriverRequestSpeechHandle | null>(null);
+  const speechTextRef = useRef(speechText);
+  speechTextRef.current = speechText;
 
   useEffect(() => {
     if (!open) {
+      speechHandleRef.current?.stop();
+      speechHandleRef.current = null;
       stopSiadDriverRequestSpeech();
       return;
     }
-    const stopSpeech = startSiadDriverRequestSpeechLoop(speechText);
+    primeSiadDriverRequestSpeech();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = startSiadDriverRequestSpeechLoop(speechTextRef.current);
     return () => {
-      stopSpeech();
+      speechHandleRef.current?.stop();
+      speechHandleRef.current = null;
       stopSiadDriverRequestSpeech();
     };
-  }, [open, speechSlotKey, speechText]);
+  }, [open, speechSlotKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    speechHandleRef.current?.setText(speechText);
+  }, [open, speechText]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +72,8 @@ export function SiadDriverRequestAlertModal() {
 
   function handleConfirm() {
     stopSiadDriverRequestSpeech();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = null;
     confirmSiadDriverSlot(activeSlot);
   }
 
@@ -68,6 +85,7 @@ export function SiadDriverRequestAlertModal() {
       aria-labelledby="siad-driver-alert-title"
       aria-describedby="siad-driver-alert-desc"
       aria-live="assertive"
+      onPointerDown={() => primeSiadDriverRequestSpeech()}
     >
       <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-md" aria-hidden />
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-orange-300/30 bg-gradient-to-br from-white via-orange-50 to-amber-100 p-8 text-center shadow-[0_40px_100px_-24px_rgba(249,115,22,0.65)] dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/50">

@@ -32,6 +32,7 @@ import {
   type DepartureUpdatePatch,
 } from "../lib/mergeDepartureUpdate";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
+import { syncSiadDriverRequestAfterDepartureRemoved } from "../lib/siadDriverRequest";
 import type { DepartureRecord } from "../types/departure";
 import { mergeGroupKey } from "../types/departure";
 import { useSyncPreference } from "./sync-preference-context";
@@ -654,9 +655,16 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         const motorista = loadActiveMobileMotorista();
         if (motorista) void clearMotoristaActiveAssignmentIfDeparture(motorista, id);
       }
+      const applyRemove = (prev: DepartureRecord[]) => {
+        const next = prev.filter((d) => d.id !== id);
+        if (removed) {
+          syncSiadDriverRequestAfterDepartureRemoved(removed, next);
+        }
+        return next;
+      };
       if (useCloud) {
         bumpLocalMutation();
-        setDepartures((prev) => prev.filter((d) => d.id !== id));
+        setDepartures(applyRemove);
         markDeleted(id);
         enqueueWrite(
           () => deleteDepartureDocument(id),
@@ -664,7 +672,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         );
         return;
       }
-      setDepartures((prev) => prev.filter((d) => d.id !== id));
+      setDepartures(applyRemove);
     },
     [departures, useCloud, bumpLocalMutation, markDeleted, enqueueWrite],
   );

@@ -25,6 +25,7 @@ import { exportFullBackupFromFirebase } from "./lib/firebase/systemBackup";
 import { ensureVistoriaCloudStateSyncStarted } from "./lib/vistoriaCloudState";
 import { useIdleResetToHome } from "./lib/useIdleResetToHome";
 import { isSettingsTab } from "./lib/tabMatch";
+import { primeSiadDriverRequestSpeech } from "./lib/siadDriverRequestSpeech";
 import {
   DesktopDriverLocationsMapProvider,
 } from "./components/desktop-driver-locations-map";
@@ -161,6 +162,17 @@ function App() {
   const isMobileRoute = hash.startsWith("#/saidas");
   const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
   const isSiadSaidaRoute = /^#\/siad-saida(\/|$)/.test(hash);
+
+  useEffect(() => {
+    if (isMobileRoute || isSiadSaidaRoute) return;
+    const prime = () => primeSiadDriverRequestSpeech();
+    window.addEventListener("pointerdown", prime, { once: true, passive: true });
+    window.addEventListener("keydown", prime, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", prime);
+      window.removeEventListener("keydown", prime);
+    };
+  }, [isMobileRoute, isSiadSaidaRoute]);
   useIdleResetToHome(
     !isMobileRoute && !isSiadSaidaRoute && !detalheServicoEditingActive,
     handleIdleReturnHome,
