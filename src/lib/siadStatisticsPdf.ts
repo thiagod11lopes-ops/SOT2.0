@@ -304,34 +304,16 @@ export function buildSiadStatisticsPdf(params: SiadStatisticsPdfParams): { doc: 
   let y = HEADER_H + 10;
   y = drawKpiRow(doc, y, params.stats);
 
-  const pageW = doc.internal.pageSize.getWidth();
-  const gap = 6;
-  const colW = (pageW - PAGE_MARGIN * 2 - gap) / 2;
-
-  const afterPassageiros = drawRankingTable(
-    doc,
-    y,
-    "Ranque de Passageiros",
-    params.stats.topPassageiros,
-    COLORS.cyan,
-    "Nenhum passageiro nomeado no período.",
-    PAGE_MARGIN,
-    colW,
-  );
-
-  const afterBairros = drawRankingTable(
+  y = drawRankingTable(
     doc,
     y,
     "Bairros mais visitados",
     params.stats.topBairros,
     COLORS.violet,
     "Nenhum bairro registrado no período.",
-    PAGE_MARGIN + colW + gap,
-    colW,
   );
 
-  y = Math.max(afterPassageiros, afterBairros) + 6;
-  y = ensureSpace(doc, y, 50);
+  y = ensureSpace(doc, y + 6, 50);
 
   y = drawRankingTable(
     doc,
@@ -364,6 +346,16 @@ export function buildSiadStatisticsPdf(params: SiadStatisticsPdfParams): { doc: 
 
   y = ensureSpace(doc, y + 4, 55);
   y = drawMonthlyEvolution(doc, y, params.stats.evolucaoMensal);
+
+  y = ensureSpace(doc, y + 4, 50);
+  drawRankingTable(
+    doc,
+    y,
+    "Ranque de Profissionais",
+    params.stats.topPassageiros,
+    COLORS.cyan,
+    "Nenhum profissional nomeado no período.",
+  );
 
   addFooter(doc);
 

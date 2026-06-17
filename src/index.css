@@ -1252,12 +1252,60 @@ html.siad-mobile-shell #root {
 }
 
 /* Embaçar conteúdo durante sync/carregamento */
-.saidas-mobile-scope--sync-blur {
+.saidas-mobile-scope--sync-blur,
+.sot-app-root--firebase-loading {
   pointer-events: none;
   user-select: none;
-  filter: blur(7px) saturate(0.92);
+  filter: blur(7px) saturate(0.88) brightness(0.92);
   transform: translateZ(0);
-  transition: filter 0.22s ease;
+  transition: filter 0.28s ease, opacity 0.28s ease;
+  opacity: 0.72;
+}
+
+.firebase-sync-overlay-orb {
+  pointer-events: none;
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.45;
+  animation: firebase-sync-orb-float 5s ease-in-out infinite;
+}
+
+.firebase-sync-overlay-orb--a {
+  top: 18%;
+  left: 12%;
+  width: 14rem;
+  height: 14rem;
+  background: hsl(var(--primary) / 0.35);
+}
+
+.firebase-sync-overlay-orb--b {
+  bottom: 16%;
+  right: 10%;
+  width: 11rem;
+  height: 11rem;
+  background: rgb(34 211 238 / 0.28);
+  animation-delay: -2.2s;
+}
+
+@keyframes firebase-sync-orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(12px, -10px) scale(1.06);
+  }
+}
+
+.firebase-sync-overlay-spinner {
+  animation: firebase-sync-spinner 0.9s linear infinite;
+}
+
+@keyframes firebase-sync-spinner {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mobile-sync-overlay-shimmer {

@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AppFirebaseLoadingShell } from "./components/app-firebase-loading-shell";
 import { BackupDeparturesLoader } from "./components/backup-departures-loader";
 import { AlarmDismissProvider } from "./context/alarm-dismiss-context";
 import { AppTabProvider } from "./context/app-tab-context";
@@ -42,6 +43,7 @@ createRoot(rootEl).render(
                 <AppTabProvider>
                   <BackupDeparturesLoader />
                   <CatalogItemsProvider>
+                    <AppFirebaseLoadingShell>
                     <LimpezaPendenteProvider>
                       <ViaturasInoperantesProvider>
                         <OficinaVisitasProvider>
@@ -58,6 +60,7 @@ createRoot(rootEl).render(
                         </OficinaVisitasProvider>
                       </ViaturasInoperantesProvider>
                     </LimpezaPendenteProvider>
+                    </AppFirebaseLoadingShell>
                   </CatalogItemsProvider>
                 </AppTabProvider>
                 </UnlinkedOccurrencesProvider>

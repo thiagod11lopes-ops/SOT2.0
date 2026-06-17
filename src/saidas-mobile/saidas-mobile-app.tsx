@@ -6,9 +6,7 @@ import { cn } from "../lib/utils";
 import { SaidasLayout } from "./saidas-layout";
 import { SaidasMobileFilterDateProvider } from "./saidas-mobile-filter-date-context";
 import { SaidasPage } from "./saidas-page";
-import { MobileLoadingOverlayHost, MobileLoadingOverlayProvider } from "./mobile-loading-overlay";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
-import { MobileSystemSyncBridge } from "./mobile-system-sync-bridge";
 
 function SaidasMobileRoutes() {
   const { overlayActive } = useMobileLoadingOverlay();
@@ -57,11 +55,5 @@ export function SaidasMobileApp() {
     };
   }, []);
 
-  return (
-    <MobileLoadingOverlayProvider>
-      <MobileSystemSyncBridge />
-      <SaidasMobileRoutes />
-      <MobileLoadingOverlayHost />
-    </MobileLoadingOverlayProvider>
-  );
+  return <SaidasMobileRoutes />;
 }

@@ -147,8 +147,7 @@ export function MobileLoadingOverlayHost() {
     <MobileProgressOverlayPanel
       progress={overlayProgress}
       label={overlayLabel}
-      subtitle="Sincronização"
-      className="z-[980]"
+      subtitle="Firebase"
     />
   );
 }

@@ -385,22 +385,13 @@ export function SiadStatisticsPanel({
                 />
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <RankedList
-                  title="Ranque de Passageiros"
-                  icon={<Users className="h-4 w-4 text-white" />}
-                  entries={stats.topPassageiros}
-                  emptyLabel="Nenhum passageiro nomeado no período."
-                  accentClass="bg-gradient-to-r from-cyan-400 to-blue-500"
-                />
-                <RankedList
-                  title="Bairros mais visitados"
-                  icon={<MapPin className="h-4 w-4 text-white" />}
-                  entries={stats.topBairros}
-                  emptyLabel="Nenhum bairro registrado no período."
-                  accentClass="bg-gradient-to-r from-violet-400 to-fuchsia-500"
-                />
-              </div>
+              <RankedList
+                title="Bairros mais visitados"
+                icon={<MapPin className="h-4 w-4 text-white" />}
+                entries={stats.topBairros}
+                emptyLabel="Nenhum bairro registrado no período."
+                accentClass="bg-gradient-to-r from-violet-400 to-fuchsia-500"
+              />
 
               <div className="grid gap-4 lg:grid-cols-3">
                 <RankedList
@@ -452,6 +443,14 @@ export function SiadStatisticsPanel({
                   </div>
                 </section>
               ) : null}
+
+              <RankedList
+                title="Ranque de Profissionais"
+                icon={<Users className="h-4 w-4 text-white" />}
+                entries={stats.topPassageiros}
+                emptyLabel="Nenhum profissional nomeado no período."
+                accentClass="bg-gradient-to-r from-cyan-400 to-blue-500"
+              />
             </>
           ) : null}
         </div>
