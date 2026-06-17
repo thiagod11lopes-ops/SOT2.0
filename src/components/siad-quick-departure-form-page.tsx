@@ -231,7 +231,7 @@ function SiadCadastroSuccessModal({
 
 export function SiadQuickDepartureFormPage() {
   useSiadPwaShell();
-  const { addDeparture, departures } = useDepartures();
+  const { addDeparture, departures, initialLoadComplete } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
@@ -261,16 +261,17 @@ export function SiadQuickDepartureFormPage() {
   const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate, horaSaida);
 
   useEffect(() => {
-    purgeOrphanedSiadDriverRequests(departures);
-  }, [departures]);
+    if (!initialLoadComplete) return;
+    purgeOrphanedSiadDriverRequests(departures, true);
+  }, [departures, initialLoadComplete]);
 
   useEffect(() => {
     setSetorPassword(getSiadFormPassword());
   }, [passwordDialogOpen]);
 
   const motoristaResetSituacao = useMemo(
-    () => describeSiadDriverRequestsForDate(motoristaResetDate, departures),
-    [motoristaResetDate, departures],
+    () => describeSiadDriverRequestsForDate(motoristaResetDate, departures, initialLoadComplete),
+    [motoristaResetDate, departures, initialLoadComplete],
   );
 
   useEffect(() => {

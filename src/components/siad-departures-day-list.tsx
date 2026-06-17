@@ -106,7 +106,7 @@ export function SiadDeparturesDayList({
   departures: DepartureRecord[];
   dateSaida: string;
 }) {
-  const { removeDeparture } = useDepartures();
+  const { removeDeparture, initialLoadComplete } = useDepartures();
   const [driverRequestTick, setDriverRequestTick] = useState(0);
   const [deleteGroup, setDeleteGroup] = useState<SiadDayDepartureGroup | null>(null);
 
@@ -118,8 +118,8 @@ export function SiadDeparturesDayList({
 
   const groups = useMemo(() => {
     void driverRequestTick;
-    return groupSiadDeparturesForDay(departures, dateSaida);
-  }, [departures, dateSaida, driverRequestTick]);
+    return groupSiadDeparturesForDay(departures, dateSaida, initialLoadComplete);
+  }, [departures, dateSaida, driverRequestTick, initialLoadComplete]);
 
   function handleConfirmDelete() {
     if (!deleteGroup) return;

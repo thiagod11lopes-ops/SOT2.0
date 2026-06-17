@@ -36,6 +36,7 @@ function dedupePreserveOrder(items: string[]): string[] {
 export function groupSiadDeparturesForDay(
   departures: DepartureRecord[],
   dateSaida: string,
+  departuresLoaded = false,
 ): SiadDayDepartureGroup[] {
   const date = dateSaida.trim();
   if (!date) return [];
@@ -61,7 +62,7 @@ export function groupSiadDeparturesForDay(
       const motoristasEscalados = dedupePreserveOrder(
         records.map((r) => r.motoristas).filter((m) => !isPlaceholderMotorista(m)),
       );
-      const slot = resolveSiadDriverRequestForSlot(date, horaSaida, departures);
+      const slot = resolveSiadDriverRequestForSlot(date, horaSaida, departures, departuresLoaded);
       let motoristaStatus: SiadDayDepartureGroup["motoristaStatus"] = "none";
       if (slot?.status === "confirmed") motoristaStatus = "confirmed";
       else if (slot?.status === "requested") motoristaStatus = "requested";
