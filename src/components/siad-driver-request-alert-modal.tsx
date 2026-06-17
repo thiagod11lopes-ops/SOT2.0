@@ -120,8 +120,8 @@ export function SiadDriverRequestAlertModal() {
           >
             {horaPedido ? (
               <>
-                SIAD SOLICITADO ÀS{" "}
-                <span className="tabular-nums text-orange-700 dark:text-orange-300">{horaPedido}</span>
+                SIAD SOLICITADO{" "}
+                <span className="tabular-nums text-orange-700 dark:text-orange-300">({horaPedido})</span>
               </>
             ) : (
               "SIAD SOLICITADO"
