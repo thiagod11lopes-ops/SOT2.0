@@ -2,13 +2,14 @@ import {
   BarChart3,
   CalendarRange,
   Clock3,
+  FileDown,
   MapPin,
   Scale,
   TrendingUp,
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useDepartures } from "../context/departures-context";
 import { getCurrentDatePtBr } from "../lib/dateFormat";
@@ -22,6 +23,7 @@ import {
   type SiadStatsFilters,
   type SiadStatsRankEntry,
 } from "../lib/siadStatistics";
+import { downloadSiadStatisticsPdf } from "../lib/siadStatisticsPdf";
 import { sotFormInputCompactClass } from "../lib/sotFormFieldClasses";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
@@ -135,6 +137,7 @@ export function SiadStatisticsPanel({
 }) {
   const { departures } = useDepartures();
   const [filters, setFilters] = useState<SiadStatsFilters>(defaultFilters);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -151,6 +154,22 @@ export function SiadStatisticsPanel({
     () => (filterValid ? computeSiadStatistics(departures, filters) : null),
     [departures, filters, filterValid],
   );
+
+  const handleGeneratePdf = useCallback(async () => {
+    if (!filterValid || !stats || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const now = new Date();
+      const generatedAtLabel = `Gerado em ${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+      await downloadSiadStatisticsPdf({
+        filterLabel: describeSiadStatsFilter(filters),
+        generatedAtLabel,
+        stats,
+      });
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [filterValid, filters, pdfLoading, stats]);
 
   if (!open) return null;
 
@@ -188,16 +207,29 @@ export function SiadStatisticsPanel({
               {filterValid && stats ? describeSiadStatsFilter(filters) : "Ajuste os filtros para visualizar os dados"}
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 touch-manipulation sm:h-9 sm:w-9"
-            aria-label="Fechar painel de estatísticas"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="siad-pwa-touch-target h-11 gap-2 rounded-xl border-white/20 bg-white/10 px-3 text-white hover:bg-white/20 touch-manipulation sm:h-9 sm:px-3"
+              disabled={!filterValid || !stats || pdfLoading}
+              aria-label="Gerar PDF do balanço"
+              onClick={() => void handleGeneratePdf()}
+            >
+              <FileDown className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="text-xs font-semibold sm:text-sm">{pdfLoading ? "Gerando…" : "Gerar PDF"}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 touch-manipulation sm:h-9 sm:w-9"
+              aria-label="Fechar painel de estatísticas"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </header>
 
         <div className="relative flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-5">

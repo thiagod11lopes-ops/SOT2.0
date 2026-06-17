@@ -1,4 +1,4 @@
-import { CarFront, Clock3, MapPin, Trash2, Users } from "lucide-react";
+import { CarFront, Clock3, MapPin, Pencil, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useDepartures } from "../context/departures-context";
 import { groupSiadDeparturesForDay, type SiadDayDepartureGroup } from "../lib/siadDayDepartures";
@@ -102,9 +102,11 @@ function SiadDepartureDeleteConfirmModal({
 export function SiadDeparturesDayList({
   departures,
   dateSaida,
+  onEditGroup,
 }: {
   departures: DepartureRecord[];
   dateSaida: string;
+  onEditGroup?: (group: SiadDayDepartureGroup) => void;
 }) {
   const { removeDeparture } = useDepartures();
   const [driverRequestTick, setDriverRequestTick] = useState(0);
@@ -160,8 +162,20 @@ export function SiadDeparturesDayList({
                     <Clock3 className="h-4 w-4 shrink-0 text-[hsl(var(--primary))]" aria-hidden />
                     {group.horaSaida}
                   </span>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-1">
                     <MotoristaBadge status={group.motoristaStatus} />
+                    {onEditGroup ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="siad-pwa-touch-target h-9 w-9 rounded-xl text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.1)]"
+                        aria-label={`Editar saída das ${group.horaSaida}`}
+                        onClick={() => onEditGroup(group)}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"

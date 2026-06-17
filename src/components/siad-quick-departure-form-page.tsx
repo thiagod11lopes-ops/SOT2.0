@@ -10,11 +10,18 @@ import {
   normalizeDatePtBrWithCaret,
   parsePtBrToDate,
 } from "../lib/dateFormat";
-import {
-  getMetroRioNeighborhoodSuggestions,
-  resolveMetroRioCityForNeighborhood,
-} from "../lib/metroRioLocations";
 import { normalize24hTime, parseHhMm } from "../lib/timeInput";
+import {
+  buildSiadQuickDeparturePayload,
+  dedupeBairrosPreserveOrder,
+  dedupePassageirosPreserveOrder,
+  EMPTY_SIAD_PASSAGEIRO,
+  getSiadNeighborhoodOptions,
+  SIAD_PASSAGEIRO_POSTOS,
+  type SiadPassageiroRow,
+} from "../lib/siadDepartureForm";
+import { applySiadGroupEdit, groupToSiadFormState } from "../lib/siadDepartureEdit";
+import type { SiadDayDepartureGroup } from "../lib/siadDayDepartures";
 import {
   getSiadFormPassword,
   setSiadFormPassword,
@@ -26,7 +33,6 @@ import {
   resetSiadDriverRequestForDate,
 } from "../lib/siadDriverRequest";
 import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
-import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -56,124 +62,12 @@ const WEEKDAY_NAMES_PT = [
   "sábado",
 ] as const;
 
-function getCurrentTime(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
 function formatWeekdayCommaDatePtBr(d: Date): string {
   return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
 }
 
 function formatWeekdayPtBr(d: Date): string {
   return WEEKDAY_NAMES_PT[d.getDay()];
-}
-
-function dedupeTextosPreserveOrder(items: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of items) {
-    const key = item.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(item.trim());
-  }
-  return out;
-}
-
-function dedupeBairrosPreserveOrder(items: string[]): string[] {
-  return dedupeTextosPreserveOrder(items);
-}
-
-const SIAD_PASSAGEIRO_POSTOS = [
-  "Alte",
-  "CMG",
-  "CF",
-  "CC",
-  "CT",
-  "1°TEN",
-  "2°TEN",
-  "GM",
-  "SO",
-  "1°SG",
-  "2°SG",
-  "3°SG",
-  "CB",
-  "MN",
-] as const;
-
-type SiadPassageiroRow = {
-  nome: string;
-  posto: string;
-};
-
-const EMPTY_SIAD_PASSAGEIRO: SiadPassageiroRow = { nome: "", posto: "" };
-
-function formatPassageiroComPosto(row: SiadPassageiroRow): string {
-  const nome = row.nome.trim();
-  const posto = row.posto.trim();
-  if (!nome) return "";
-  return posto ? `${posto} ${nome}` : nome;
-}
-
-function dedupePassageirosPreserveOrder(items: SiadPassageiroRow[]): SiadPassageiroRow[] {
-  const seen = new Set<string>();
-  const out: SiadPassageiroRow[] = [];
-  for (const item of items) {
-    const nome = item.nome.trim();
-    if (!nome) continue;
-    const posto = item.posto.trim();
-    const key = `${posto.toLowerCase()}|${nome.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ nome, posto });
-  }
-  return out;
-}
-
-function formatSiadObjetivoComPassageiros(passageiros: SiadPassageiroRow[]): string {
-  const base = "Atendimento domiciliar";
-  const labels = passageiros.map(formatPassageiroComPosto).filter(Boolean);
-  if (labels.length === 0) return base;
-  return `${base} — Passageiros: ${formatDestinosListaPt(labels)}`;
-}
-
-function buildSiadQuickDeparturePayload(params: {
-  dataSaida: string;
-  horaSaida: string;
-  endereco: string;
-  passageiros: SiadPassageiroRow[];
-}): Omit<DepartureRecord, "id" | "createdAt"> {
-  const endereco = params.endereco.trim();
-  const passageiros = dedupePassageirosPreserveOrder(params.passageiros);
-  return {
-    tipo: "Administrativa",
-    dataPedido: getCurrentDatePtBr(),
-    horaPedido: getCurrentTime(),
-    dataSaida: params.dataSaida,
-    horaSaida: params.horaSaida,
-    setor: "SIAD",
-    ramal: "",
-    objetivoSaida: formatSiadObjetivoComPassageiros(passageiros),
-    numeroPassageiros: String(passageiros.length),
-    responsavelPedido: "SIAD",
-    om: "",
-    viaturas: "ASD",
-    motoristas: "ASD",
-    hospitalDestino: "",
-    tipoSaidaInterHospitalar: false,
-    tipoSaidaAlta: false,
-    tipoSaidaOutros: false,
-    kmSaida: "",
-    kmChegada: "",
-    chegada: "",
-    cidade: resolveMetroRioCityForNeighborhood(endereco),
-    bairro: endereco,
-    rubrica: "",
-    cancelada: false,
-    ocorrencias: "",
-    ocorrenciasRubrica: "",
-  };
 }
 
 function SiadCadastroSuccessModal({
@@ -248,7 +142,7 @@ function SiadCadastroSuccessModal({
 
 export function SiadQuickDepartureFormPage() {
   useSiadPwaShell();
-  const { addDeparture, departures } = useDepartures();
+  const { addDeparture, departures, updateDeparture, removeDeparture } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
@@ -272,6 +166,7 @@ export function SiadQuickDepartureFormPage() {
   const [passwordFormSuccess, setPasswordFormSuccess] = useState<string | null>(null);
   const [statsPanelOpen, setStatsPanelOpen] = useState(false);
   const [addSaidaExpanded, setAddSaidaExpanded] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<SiadDayDepartureGroup | null>(null);
   const [motoristaResetDate, setMotoristaResetDate] = useState(getCurrentDatePtBr);
   const [motoristaResetMessage, setMotoristaResetMessage] = useState<string | null>(null);
 
@@ -295,7 +190,7 @@ export function SiadQuickDepartureFormPage() {
   const enderecoFieldId = useId();
   const passageirosFieldId = useId();
 
-  const neighborhoodOptions = useMemo(() => getMetroRioNeighborhoodSuggestions(), []);
+  const neighborhoodOptions = useMemo(() => getSiadNeighborhoodOptions(), []);
   const selectedDate = useMemo(() => parsePtBrToDate(dataSaida), [dataSaida]);
   const bairrosPreenchidos = useMemo(
     () => dedupeBairrosPreserveOrder(bairros),
@@ -428,6 +323,32 @@ export function SiadQuickDepartureFormPage() {
     setPasswordFormSuccess("Senha alterada com sucesso.");
   }
 
+  function resetCadastroForm() {
+    setHoraSaida("08:00");
+    setBairros([""]);
+    setPassageiros([{ ...EMPTY_SIAD_PASSAGEIRO }]);
+    setSubmitAttempted(false);
+    setEditingGroup(null);
+  }
+
+  function handleEditGroup(group: SiadDayDepartureGroup) {
+    const formState = groupToSiadFormState(group, departures);
+    setHoraSaida(formState.horaSaida || "08:00");
+    setBairros(formState.bairros);
+    setPassageiros(formState.passageiros);
+    setEditingGroup(group);
+    setSubmitAttempted(false);
+    setAddSaidaExpanded(true);
+    requestAnimationFrame(() => {
+      document.getElementById("siad-add-saida-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function handleCancelEdit() {
+    resetCadastroForm();
+    setAddSaidaExpanded(false);
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitAttempted(true);
@@ -441,26 +362,47 @@ export function SiadQuickDepartureFormPage() {
         horaSaida: horaSaida.trim(),
         passageiros: passageirosPreenchidos,
       };
-      for (const bairro of bairrosPreenchidos) {
-        addDeparture(
-          buildSiadQuickDeparturePayload({
-            ...base,
-            endereco: bairro,
-          }),
+
+      if (editingGroup) {
+        applySiadGroupEdit({
+          group: editingGroup,
+          dateSaida: base.dataSaida,
+          horaSaida: base.horaSaida,
+          bairros: bairrosPreenchidos,
+          passageiros: passageirosPreenchidos,
+          departures,
+          addDeparture,
+          updateDeparture,
+          removeDeparture,
+        });
+        const passLabel =
+          passageirosPreenchidos.length === 1
+            ? "1 passageiro"
+            : `${passageirosPreenchidos.length} passageiros`;
+        setSuccessMessage(
+          `Saída das ${base.horaSaida} atualizada com ${passLabel}.`,
+        );
+      } else {
+        for (const bairro of bairrosPreenchidos) {
+          addDeparture(
+            buildSiadQuickDeparturePayload({
+              ...base,
+              endereco: bairro,
+            }),
+          );
+        }
+        const count = bairrosPreenchidos.length;
+        const passCount = passageirosPreenchidos.length;
+        const passLabel = passCount === 1 ? "1 passageiro" : `${passCount} passageiros`;
+        setSuccessMessage(
+          count === 1
+            ? `Saída registrada para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`
+            : `${count} saídas agrupadas registradas para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`,
         );
       }
-      const count = bairrosPreenchidos.length;
-      const passCount = passageirosPreenchidos.length;
-      const passLabel = passCount === 1 ? "1 passageiro" : `${passCount} passageiros`;
-      setSuccessMessage(
-        count === 1
-          ? `Saída registrada para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`
-          : `${count} saídas agrupadas registradas para ${base.dataSaida} às ${base.horaSaida} com ${passLabel}.`,
-      );
+
       setSuccessModalOpen(true);
-      setBairros([""]);
-      setPassageiros([{ ...EMPTY_SIAD_PASSAGEIRO }]);
-      setSubmitAttempted(false);
+      resetCadastroForm();
       setAddSaidaExpanded(false);
     } finally {
       setSubmitting(false);
@@ -814,7 +756,13 @@ export function SiadQuickDepartureFormPage() {
             <div className="space-y-0">
               <button
                 type="button"
-                onClick={() => setAddSaidaExpanded((expanded) => !expanded)}
+                onClick={() => {
+                  if (addSaidaExpanded && editingGroup) {
+                    handleCancelEdit();
+                    return;
+                  }
+                  setAddSaidaExpanded((expanded) => !expanded);
+                }}
                 className={cn(
                   "flex w-full items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.1)] px-4 py-3.5 text-left shadow-sm transition-colors hover:bg-[hsl(var(--muted)/0.16)]",
                   addSaidaExpanded && "rounded-b-none border-b-transparent",
@@ -822,7 +770,9 @@ export function SiadQuickDepartureFormPage() {
                 aria-expanded={addSaidaExpanded}
                 aria-controls="siad-add-saida-panel"
               >
-                <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Adicionar Saída</span>
+                <span className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                  {editingGroup ? "Editar Saída" : "Adicionar Saída"}
+                </span>
                 <ChevronDown
                   className={cn(
                     "h-5 w-5 shrink-0 text-[hsl(var(--primary))] transition-transform duration-200",
@@ -1036,13 +986,34 @@ export function SiadQuickDepartureFormPage() {
               disabled={submitting || !isUnlocked}
             >
               <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-              {submitting ? "Cadastrando…" : "Cadastrar saída"}
+              {submitting
+                ? editingGroup
+                  ? "Salvando…"
+                  : "Cadastrando…"
+                : editingGroup
+                  ? "Salvar alterações"
+                  : "Cadastrar saída"}
             </Button>
+            {editingGroup ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="siad-pwa-touch-target h-11 w-full rounded-xl touch-manipulation"
+                disabled={submitting}
+                onClick={handleCancelEdit}
+              >
+                Cancelar edição
+              </Button>
+            ) : null}
                 </div>
               ) : null}
             </div>
 
-            <SiadDeparturesDayList departures={departures} dateSaida={dataSaida} />
+            <SiadDeparturesDayList
+              departures={departures}
+              dateSaida={dataSaida}
+              onEditGroup={handleEditGroup}
+            />
           </form>
         </CardContent>
       </Card>
