@@ -95,7 +95,7 @@ export function startSiadDriverRequestSpeechLoop(speechText: string): SiadDriver
         try {
           const utter = new SpeechSynthesisUtterance(currentText);
           utter.lang = "pt-BR";
-          utter.rate = 0.46;
+          utter.rate = 0.23;
           utter.pitch = 1.08;
           const voice = pickFemalePortugueseVoice();
           if (voice) utter.voice = voice;
