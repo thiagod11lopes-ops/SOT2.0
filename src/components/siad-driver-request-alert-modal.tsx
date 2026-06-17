@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDepartures } from "../context/departures-context";
 import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
-import { confirmSiadDriverSlot } from "../lib/siadDriverRequest";
+import { confirmSiadDriverSlot, formatSiadDriverRequestRequestedTime } from "../lib/siadDriverRequest";
 import { resolveSiadEscalatedMotorista } from "../lib/siadDayDepartures";
 import {
   buildSiadDriverRequestDisplayText,
@@ -35,6 +35,8 @@ export function SiadDriverRequestAlertModal() {
     () => buildSiadDriverRequestSpeechText(motoristaEscalado),
     [motoristaEscalado],
   );
+
+  const horaPedido = active ? formatSiadDriverRequestRequestedTime(active.record.requestedAt) : null;
 
   const speechSlotKey = active ? `${active.dateSaida}|${active.horaSaida ?? ""}` : "";
   const speechHandleRef = useRef<SiadDriverRequestSpeechHandle | null>(null);
@@ -118,6 +120,12 @@ export function SiadDriverRequestAlertModal() {
           >
             SIAD SOLICITADO
           </h2>
+          {horaPedido ? (
+            <p className="text-[clamp(1.1rem,2.8vmin,2rem)] font-semibold tabular-nums text-orange-700 dark:text-orange-300">
+              Solicitação pedida às{" "}
+              <strong className="font-bold text-slate-900 dark:text-white">{horaPedido}</strong>
+            </p>
+          ) : null}
           <p
             id="siad-driver-alert-desc"
             className="max-w-5xl text-[clamp(1rem,2.4vmin,1.75rem)] leading-relaxed text-slate-600 dark:text-slate-300"

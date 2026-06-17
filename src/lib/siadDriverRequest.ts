@@ -459,6 +459,30 @@ export function resetSiadDriverRequest(dateSaida: string, horaSaida?: string): b
   return true;
 }
 
+export function formatSiadDriverRequestRequestedTime(requestedAt: number): string {
+  if (!Number.isFinite(requestedAt)) return "—";
+  return new Date(requestedAt).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+const SIAD_BLOCO_B_ETA_MINUTES = 10;
+
+/** Horário previsto no Bloco B (10 min após o pedido). */
+export function formatSiadDriverBlocoBArrivalTime(requestedAt: number): string {
+  if (!Number.isFinite(requestedAt)) return "—";
+  return new Date(requestedAt + SIAD_BLOCO_B_ETA_MINUTES * 60_000).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function describeSiadDriverBlocoBArrival(requestedAt: number): string {
+  return `Motorista estará no Bloco B às ${formatSiadDriverBlocoBArrivalTime(requestedAt)}`;
+}
+
 export function describeSiadDriverRequestStatus(
   record: SiadDriverRequestRecord | null | undefined,
 ): string {
