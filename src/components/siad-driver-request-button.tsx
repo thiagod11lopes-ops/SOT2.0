@@ -129,13 +129,13 @@ export function SiadDriverRequestButton({
         </span>
         <div className="min-w-0 space-y-0.5">
           <p className="text-base font-bold leading-tight sm:text-lg">Solicitar motorista</p>
-          <p className="text-xs text-orange-50/90">
-            {!hasSaidasCadastradas
-              ? "Cadastre uma saída no dia antes de solicitar"
-              : horariosDoDia.length >= 2
-                ? "Várias saídas no dia — escolha o horário"
-                : `Avisar o SOT 2.0${horaHint || " para a data selecionada"}`}
-          </p>
+          {!hasSaidasCadastradas ? (
+            <p className="text-xs text-orange-50/90">Cadastre uma saída no dia antes de solicitar</p>
+          ) : horariosDoDia.length >= 2 ? (
+            <p className="text-xs text-orange-50/90">Várias saídas no dia — escolha o horário</p>
+          ) : horaHint ? (
+            <p className="text-xs text-orange-50/90">Horário{horaHint}</p>
+          ) : null}
         </div>
       </div>
       <span className="relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-orange-600 shadow-md sm:min-w-[11rem]">

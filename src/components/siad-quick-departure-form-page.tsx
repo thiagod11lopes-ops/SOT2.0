@@ -802,7 +802,6 @@ export function SiadQuickDepartureFormPage() {
                   readOnly
                   disabled
                   aria-readonly="true"
-                  aria-describedby="siad-setor-hint"
                   className="h-11 w-full cursor-not-allowed rounded-xl border border-[hsl(var(--border))] bg-slate-100 px-3 text-sm font-medium text-[hsl(var(--muted-foreground))] shadow-sm opacity-90"
                 />
               </div>
@@ -831,10 +830,6 @@ export function SiadQuickDepartureFormPage() {
                 ) : null}
               </div>
             </div>
-            <p id="siad-setor-hint" className="text-xs text-[hsl(var(--muted-foreground))]">
-              Setor bloqueado: este formulário é exclusivo para <strong>SIAD</strong> e o setor não pode ser alterado.
-              A senha ao lado do título fica invisível, mas pode ser selecionada para copiar.
-            </p>
 
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium" htmlFor={enderecoFieldId}>
