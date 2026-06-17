@@ -116,16 +116,17 @@ export function SiadDriverRequestAlertModal() {
           </div>
           <h2
             id="siad-driver-alert-title"
-            className="text-[clamp(2.5rem,9vmin,7.5rem)] font-black leading-none tracking-tight text-slate-900 dark:text-white"
+            className="text-[clamp(2rem,8vmin,6.5rem)] font-black leading-tight tracking-tight text-slate-900 dark:text-white"
           >
-            SIAD SOLICITADO
+            {horaPedido ? (
+              <>
+                SIAD SOLICITADO ÀS{" "}
+                <span className="tabular-nums text-orange-700 dark:text-orange-300">{horaPedido}</span>
+              </>
+            ) : (
+              "SIAD SOLICITADO"
+            )}
           </h2>
-          {horaPedido ? (
-            <p className="text-[clamp(1.1rem,2.8vmin,2rem)] font-semibold tabular-nums text-orange-700 dark:text-orange-300">
-              Solicitação pedida às{" "}
-              <strong className="font-bold text-slate-900 dark:text-white">{horaPedido}</strong>
-            </p>
-          ) : null}
           <p
             id="siad-driver-alert-desc"
             className="max-w-5xl text-[clamp(1rem,2.4vmin,1.75rem)] leading-relaxed text-slate-600 dark:text-slate-300"
