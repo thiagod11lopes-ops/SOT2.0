@@ -906,14 +906,14 @@ export function SiadQuickDepartureFormPage() {
               </div>
               <div className="space-y-2">
                 {passageiros.map((passageiro, index) => (
-                  <div key={index} className="flex items-center gap-2">
+                  <div key={index} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <select
                       value={passageiro.posto}
                       onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
                       aria-label={
                         index === 0 ? "Posto/Grad do passageiro" : `Posto/Grad do passageiro ${index + 1}`
                       }
-                      className="h-11 w-[6.75rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[7.25rem]"
+                      className="h-11 w-full shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[7.25rem]"
                     >
                       <option value="">Posto/Grad</option>
                       {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
@@ -922,41 +922,43 @@ export function SiadQuickDepartureFormPage() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      id={index === 0 ? passageirosFieldId : undefined}
-                      type="text"
-                      value={passageiro.nome}
-                      onChange={(e) => handlePassageiroNomeChange(index, e.target.value)}
-                      placeholder="Nome do passageiro"
-                      autoComplete="name"
-                      aria-label={index === 0 ? "Nome do passageiro" : `Nome do passageiro ${index + 1}`}
-                      className={cn(
-                        "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                        submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={index === 0 ? passageirosFieldId : undefined}
+                        type="text"
+                        value={passageiro.nome}
+                        onChange={(e) => handlePassageiroNomeChange(index, e.target.value)}
+                        placeholder="Nome do passageiro"
+                        autoComplete="name"
+                        aria-label={index === 0 ? "Nome do passageiro" : `Nome do passageiro ${index + 1}`}
+                        className={cn(
+                          "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                          submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
+                        )}
+                      />
+                      {index === 0 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
+                          aria-label="Adicionar outro passageiro"
+                          onClick={handleAddPassageiro}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
+                          aria-label={`Remover passageiro ${index + 1}`}
+                          onClick={() => handleRemovePassageiro(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       )}
-                    />
-                    {index === 0 ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
-                        aria-label="Adicionar outro passageiro"
-                        onClick={handleAddPassageiro}
-                      >
-                        <Plus className="h-5 w-5" />
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
-                        aria-label={`Remover passageiro ${index + 1}`}
-                        onClick={() => handleRemovePassageiro(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>

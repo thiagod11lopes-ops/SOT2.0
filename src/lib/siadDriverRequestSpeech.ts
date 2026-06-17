@@ -2,7 +2,7 @@ const FALLBACK_MOTORISTA_LABEL = "Motorista escalado";
 
 export function buildSiadDriverRequestSpeechText(motoristaEscalado: string | null | undefined): string {
   const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
-  return `Motorista (${nome}) SIAD solicitou viatura no bloco B`;
+  return `Motorista ${nome} SIAD solicitou viatura no bloco B`;
 }
 
 let speechPrimed = false;

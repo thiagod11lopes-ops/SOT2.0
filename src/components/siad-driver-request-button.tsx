@@ -70,17 +70,8 @@ export function SiadDriverRequestButton({
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
           <CheckCircle2 className="h-5 w-5" aria-hidden />
         </span>
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-base font-bold leading-tight sm:text-lg">Motorista confirmado</p>
-          <p className="text-xs text-emerald-100/90">
-            Motorista avisado pelo SOT 2.0{horaHint}
-          </p>
-        </div>
+        <p className="text-base font-bold leading-tight sm:text-lg">Motorista confirmado</p>
       </div>
-      <span className="relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-emerald-700 shadow-md sm:min-w-[11rem]">
-        <CheckCircle2 className="h-4 w-4" aria-hidden />
-        Motorista confirmado
-      </span>
     </div>
   ) : isRequested ? (
     <div
@@ -96,12 +87,7 @@ export function SiadDriverRequestButton({
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
           <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
         </span>
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-base font-bold leading-tight sm:text-lg">Solicitação enviada</p>
-          <p className="text-xs text-orange-100/90">
-            Aguardando confirmação no SOT 2.0{horaHint}
-          </p>
-        </div>
+        <p className="text-base font-bold leading-tight sm:text-lg">Solicitação enviada</p>
       </div>
       <span className="relative flex h-11 shrink-0 items-center justify-center rounded-xl bg-white/20 px-4 text-sm font-semibold text-white/95 sm:min-w-[11rem]">
         Aguardando confirmação
