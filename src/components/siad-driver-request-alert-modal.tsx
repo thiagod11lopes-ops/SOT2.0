@@ -6,6 +6,7 @@ import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
 import { confirmSiadDriverSlot } from "../lib/siadDriverRequest";
 import { resolveSiadEscalatedMotorista } from "../lib/siadDayDepartures";
 import {
+  buildSiadDriverRequestDisplayText,
   buildSiadDriverRequestSpeechText,
   primeSiadDriverRequestSpeech,
   startSiadDriverRequestSpeechLoop,
@@ -24,6 +25,11 @@ export function SiadDriverRequestAlertModal() {
     if (!active) return null;
     return resolveSiadEscalatedMotorista(departures, active.dateSaida, active.horaSaida);
   }, [departures, active]);
+
+  const displayText = useMemo(
+    () => buildSiadDriverRequestDisplayText(motoristaEscalado),
+    [motoristaEscalado],
+  );
 
   const speechText = useMemo(
     () => buildSiadDriverRequestSpeechText(motoristaEscalado),
@@ -137,7 +143,7 @@ export function SiadDriverRequestAlertModal() {
               className="mt-1 h-[4vmin] w-[4vmin] min-h-6 min-w-6 shrink-0 text-orange-600 dark:text-orange-300"
               aria-hidden
             />
-            <span>{speechText}</span>
+            <span>{displayText}</span>
           </p>
         </div>
 

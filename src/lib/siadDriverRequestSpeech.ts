@@ -1,8 +1,15 @@
 const FALLBACK_MOTORISTA_LABEL = "Motorista escalado";
 
-export function buildSiadDriverRequestSpeechText(motoristaEscalado: string | null | undefined): string {
+/** Texto exibido no modal de alerta. */
+export function buildSiadDriverRequestDisplayText(motoristaEscalado: string | null | undefined): string {
   const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
   return `Motorista ${nome} Siadi solicitou viatura no bloco B`;
+}
+
+/** Texto falado pelo TTS (pronúncia estendida de SIAD). */
+export function buildSiadDriverRequestSpeechText(motoristaEscalado: string | null | undefined): string {
+  const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
+  return `Motorista ${nome} SIIIAAADIII solicitou viatura no bloco B`;
 }
 
 let speechPrimed = false;

@@ -42,7 +42,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { SiadStatisticsPanel } from "./siad-statistics-panel";
-import { SiadDriverRequestButton } from "./siad-driver-request-button";
 import { SiadDeparturesDayList } from "./siad-departures-day-list";
 
 const SIAD_DEPARTURE_FORM_ID = "siad-departure-form";
@@ -741,11 +740,6 @@ export function SiadQuickDepartureFormPage() {
                   />
                 </PopoverContent>
               </Popover>
-              <SiadDriverRequestButton
-                dateSaida={dataSaida}
-                horaSaida={horaSaida}
-                disabled={!isUnlocked || dateInvalid}
-              />
               {submitAttempted && dateInvalid ? (
                 <p className="text-xs text-red-600">Informe uma data válida (dd/mm/aaaa).</p>
               ) : null}
@@ -979,7 +973,11 @@ export function SiadQuickDepartureFormPage() {
               ) : null}
             </div>
 
-            <SiadDeparturesDayList departures={departures} dateSaida={dataSaida} />
+            <SiadDeparturesDayList
+              departures={departures}
+              dateSaida={dataSaida}
+              driverRequestDisabled={!isUnlocked || dateInvalid}
+            />
           </form>
         </CardContent>
       </Card>

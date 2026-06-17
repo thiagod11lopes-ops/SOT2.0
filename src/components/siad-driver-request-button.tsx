@@ -1,147 +1,110 @@
 import { CarFront, CheckCircle2, Loader2, Radio } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useDepartures } from "../context/departures-context";
-import { useSiadDriverRequestForDate } from "../hooks/useSiadDriverRequest";
-import {
-  getSiadDepartureTimesForDate,
-  normalizeSiadDriverRequestHora,
-} from "../lib/siadDriverRequest";
+import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
 import { cn } from "../lib/utils";
-import { SiadDriverRequestTimePickerModal } from "./siad-driver-request-time-picker-modal";
 
 export function SiadDriverRequestButton({
   dateSaida,
-  horaSaida: _horaSaida,
+  horaSaida,
   disabled = false,
+  layout = "embedded",
 }: {
   dateSaida: string;
   horaSaida: string;
   disabled?: boolean;
+  layout?: "embedded" | "standalone";
 }) {
-  const { departures } = useDepartures();
-  const { isConfirmed, isRequested, canRequest, request, horaSaida: activeHora } =
-    useSiadDriverRequestForDate(dateSaida);
-  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const { isConfirmed, isRequested, canRequest, request } = useSiadDriverRequest(dateSaida, horaSaida);
 
-  const horariosDoDia = useMemo(
-    () => getSiadDepartureTimesForDate(departures, dateSaida),
-    [departures, dateSaida],
+  const embedded = layout === "embedded";
+  const shell = cn(
+    "relative flex w-full overflow-hidden rounded-xl text-white shadow-sm",
+    embedded ? "min-h-11 flex-row items-center justify-between gap-2 p-2.5 sm:p-3" : "flex-col gap-3 p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4",
   );
 
-  const horaLabel = activeHora ?? normalizeSiadDriverRequestHora(_horaSaida);
-  const hasSaidasCadastradas = horariosDoDia.length > 0;
-  const canSendRequest = canRequest && hasSaidasCadastradas;
-
-  function submitRequest(hora: string) {
-    const normalized = normalizeSiadDriverRequestHora(hora);
-    if (!normalized || !horariosDoDia.includes(normalized)) return;
-    request(hora);
-    setTimePickerOpen(false);
-  }
-
   function handleClick() {
-    if (disabled || !canSendRequest) return;
-    if (horariosDoDia.length >= 2) {
-      setTimePickerOpen(true);
-      return;
-    }
-    submitRequest(horariosDoDia[0]!);
+    if (disabled || !canRequest) return;
+    request(horaSaida);
   }
 
-  function handleSelectHorario(hora: string) {
-    submitRequest(hora);
+  if (isConfirmed) {
+    return (
+      <div
+        className={cn(shell, "border border-emerald-400/35 bg-gradient-to-r from-emerald-600 to-teal-700")}
+        aria-live="polite"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={cn("flex shrink-0 items-center justify-center rounded-lg bg-white/15", embedded ? "h-8 w-8" : "h-10 w-10")}>
+            <CheckCircle2 className={embedded ? "h-4 w-4" : "h-5 w-5"} aria-hidden />
+          </span>
+          <p className={cn("font-bold leading-tight", embedded ? "text-sm" : "text-base sm:text-lg")}>
+            Motorista confirmado
+          </p>
+        </div>
+      </div>
+    );
   }
 
-  const horaHint = horaLabel ? ` às ${horaLabel}` : "";
-
-  const cardShell = "relative flex w-full flex-col gap-3 overflow-hidden rounded-2xl p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4";
-
-  const card = isConfirmed ? (
-    <div
-      className={cn(
-        cardShell,
-        "border border-emerald-400/35 text-white",
-        "bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700",
-      )}
-      aria-live="polite"
-    >
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
-      <div className="relative flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-          <CheckCircle2 className="h-5 w-5" aria-hidden />
-        </span>
-        <p className="text-base font-bold leading-tight sm:text-lg">Motorista confirmado</p>
+  if (isRequested) {
+    return (
+      <div
+        className={cn(
+          shell,
+          "border border-orange-300/30 bg-gradient-to-r from-orange-600/95 via-amber-600 to-orange-700",
+        )}
+        aria-live="polite"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={cn("flex shrink-0 items-center justify-center rounded-lg bg-white/15", embedded ? "h-8 w-8" : "h-10 w-10")}>
+            <Loader2 className={cn("animate-spin", embedded ? "h-4 w-4" : "h-5 w-5")} aria-hidden />
+          </span>
+          <p className={cn("font-bold leading-tight", embedded ? "text-sm" : "text-base sm:text-lg")}>
+            Solicitação enviada
+          </p>
+        </div>
+        {!embedded ? (
+          <span className="flex h-11 shrink-0 items-center justify-center rounded-xl bg-white/20 px-4 text-sm font-semibold text-white/95 sm:min-w-[11rem]">
+            Aguardando confirmação
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-lg bg-white/20 px-2.5 py-1 text-[11px] font-semibold text-white/95">
+            Aguardando
+          </span>
+        )}
       </div>
-    </div>
-  ) : isRequested ? (
-    <div
-      className={cn(
-        cardShell,
-        "border border-orange-300/30 text-white",
-        "bg-gradient-to-br from-orange-600/95 via-amber-600 to-orange-700",
-      )}
-      aria-live="polite"
-    >
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
-      <div className="relative flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-        </span>
-        <p className="text-base font-bold leading-tight sm:text-lg">Solicitação enviada</p>
-      </div>
-      <span className="relative flex h-11 shrink-0 items-center justify-center rounded-xl bg-white/20 px-4 text-sm font-semibold text-white/95 sm:min-w-[11rem]">
-        Aguardando confirmação
-      </span>
-    </div>
-  ) : (
+    );
+  }
+
+  return (
     <button
       type="button"
-      disabled={disabled || !hasSaidasCadastradas}
+      disabled={disabled}
       onClick={handleClick}
       className={cn(
-        cardShell,
-        "group border border-orange-300/40 text-left text-white shadow-[0_20px_50px_-18px_rgba(249,115,22,0.75)] transition-transform active:scale-[0.99]",
-        "bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 hover:brightness-105",
+        shell,
+        "group border border-orange-300/40 text-left shadow-[0_12px_32px_-14px_rgba(249,115,22,0.75)] transition-transform active:scale-[0.99]",
+        "bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:brightness-105",
         "disabled:pointer-events-none disabled:opacity-55",
         "touch-manipulation",
       )}
-      aria-label="Solicitar motorista ao SOT 2.0"
+      aria-label={`Solicitar motorista para saída às ${horaSaida}`}
     >
-      <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/20 blur-2xl transition-opacity group-hover:opacity-100" />
-      <div className="pointer-events-none absolute -bottom-10 -left-8 h-24 w-24 rounded-full bg-yellow-300/20 blur-2xl" />
-      <div className="relative flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 shadow-inner">
-          <Radio className="h-5 w-5" aria-hidden />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className={cn("flex shrink-0 items-center justify-center rounded-lg bg-white/20 shadow-inner", embedded ? "h-8 w-8" : "h-10 w-10")}>
+          <Radio className={embedded ? "h-4 w-4" : "h-5 w-5"} aria-hidden />
         </span>
-        <div className="min-w-0 space-y-0.5">
-          <p className="text-base font-bold leading-tight sm:text-lg">Solicitar motorista</p>
-          {!hasSaidasCadastradas ? (
-            <p className="text-xs text-orange-50/90">Cadastre uma saída no dia antes de solicitar</p>
-          ) : horariosDoDia.length >= 2 ? (
-            <p className="text-xs text-orange-50/90">Várias saídas no dia — escolha o horário</p>
-          ) : horaHint ? (
-            <p className="text-xs text-orange-50/90">Horário{horaHint}</p>
-          ) : null}
-        </div>
+        <p className={cn("font-bold leading-tight", embedded ? "text-sm" : "text-base sm:text-lg")}>
+          Solicitar motorista
+        </p>
       </div>
-      <span className="relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-orange-600 shadow-md sm:min-w-[11rem]">
-        <CarFront className="h-4 w-4" aria-hidden />
-        Enviar solicitação
+      <span
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-white font-bold text-orange-600 shadow-md",
+          embedded ? "h-8 px-2.5 text-[11px]" : "h-11 px-4 text-sm sm:min-w-[11rem]",
+        )}
+      >
+        <CarFront className={embedded ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden />
+        Enviar
       </span>
     </button>
-  );
-
-  return (
-    <>
-      {card}
-      <SiadDriverRequestTimePickerModal
-        open={timePickerOpen}
-        dateSaida={dateSaida}
-        departures={departures}
-        horarios={horariosDoDia}
-        onClose={() => setTimePickerOpen(false)}
-        onSelect={handleSelectHorario}
-      />
-    </>
   );
 }

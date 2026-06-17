@@ -5,24 +5,8 @@ import { groupSiadDeparturesForDay, type SiadDayDepartureGroup } from "../lib/si
 import { deleteSiadDepartureGroupCompletely } from "../lib/siadDepartureDelete";
 import { subscribeSiadDriverRequestChanges } from "../lib/siadDriverRequest";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
-import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
-
-function MotoristaBadge({ status }: { status: SiadDayDepartureGroup["motoristaStatus"] }) {
-  if (status === "none") return null;
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-        status === "confirmed"
-          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
-          : "bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300",
-      )}
-    >
-      {status === "confirmed" ? "Motorista confirmado" : "Motorista solicitado"}
-    </span>
-  );
-}
+import { SiadDriverRequestButton } from "./siad-driver-request-button";
 
 function SiadDepartureDeleteConfirmModal({
   open,
@@ -102,9 +86,11 @@ function SiadDepartureDeleteConfirmModal({
 export function SiadDeparturesDayList({
   departures,
   dateSaida,
+  driverRequestDisabled = false,
 }: {
   departures: DepartureRecord[];
   dateSaida: string;
+  driverRequestDisabled?: boolean;
 }) {
   const { removeDeparture, initialLoadComplete } = useDepartures();
   const [driverRequestTick, setDriverRequestTick] = useState(0);
@@ -161,7 +147,6 @@ export function SiadDeparturesDayList({
                     {group.horaSaida}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
-                    <MotoristaBadge status={group.motoristaStatus} />
                     <Button
                       type="button"
                       variant="ghost"
@@ -198,16 +183,22 @@ export function SiadDeparturesDayList({
                       </span>
                     </p>
                   ) : group.motoristaStatus === "none" ? (
-                    <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      <CarFront className="h-3.5 w-3.5" aria-hidden />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       Motorista ainda não escalado no SOT 2.0
                     </p>
                   ) : (
-                    <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      <CarFront className="h-3.5 w-3.5" aria-hidden />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       Aguardando escala de motorista no SOT 2.0
                     </p>
                   )}
+                </div>
+                <div className="border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.06)] px-3 py-2.5 sm:px-4">
+                  <SiadDriverRequestButton
+                    dateSaida={dateSaida}
+                    horaSaida={group.horaSaida}
+                    disabled={driverRequestDisabled}
+                    layout="embedded"
+                  />
                 </div>
               </li>
             ))}
