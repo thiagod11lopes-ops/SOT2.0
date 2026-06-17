@@ -684,7 +684,7 @@ export function SiadQuickDepartureFormPage() {
         </CardHeader>
         <CardContent className="pt-6">
           <form id={SIAD_DEPARTURE_FORM_ID} className="flex flex-col gap-6" onSubmit={handleSubmit} noValidate>
-            <div className="order-1 space-y-3">
+            <div className="space-y-3">
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <div
                   className={cn(
@@ -745,7 +745,7 @@ export function SiadQuickDepartureFormPage() {
               ) : null}
             </div>
 
-            <div className="order-3 space-y-0 sm:order-2">
+            <div className="space-y-0">
               <button
                 type="button"
                 onClick={() => setAddSaidaExpanded((expanded) => !expanded)}
@@ -973,13 +973,11 @@ export function SiadQuickDepartureFormPage() {
               ) : null}
             </div>
 
-            <div className="order-2 sm:order-3">
-              <SiadDeparturesDayList
-                departures={departures}
-                dateSaida={dataSaida}
-                driverRequestDisabled={!isUnlocked || dateInvalid}
-              />
-            </div>
+            <SiadDeparturesDayList
+              departures={departures}
+              dateSaida={dataSaida}
+              driverRequestDisabled={!isUnlocked || dateInvalid}
+            />
           </form>
         </CardContent>
       </Card>
