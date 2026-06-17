@@ -142,20 +142,31 @@ export function mergeSiadDriverRequestStores(
   return out;
 }
 
-let cloudPushListener: ((store: SiadDriverRequestStore) => void) | null = null;
+export type SiadDriverRequestWriteOptions = {
+  skipCloud?: boolean;
+  /** Chaves removidas localmente (reset/exclusão) — devem sumir também na nuvem. */
+  removedKeys?: string[];
+};
+
+let cloudPushListener:
+  | ((store: SiadDriverRequestStore, options?: SiadDriverRequestWriteOptions) => void)
+  | null = null;
 
 export function setSiadDriverRequestCloudPushListener(
-  listener: ((store: SiadDriverRequestStore) => void) | null,
+  listener: ((store: SiadDriverRequestStore, options?: SiadDriverRequestWriteOptions) => void) | null,
 ): void {
   cloudPushListener = listener;
 }
 
-function writeSiadDriverRequestStore(store: SiadDriverRequestStore, options?: { skipCloud?: boolean }) {
+function writeSiadDriverRequestStore(
+  store: SiadDriverRequestStore,
+  options?: SiadDriverRequestWriteOptions,
+) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SIAD_DRIVER_REQUEST_STORAGE_KEY, JSON.stringify(store));
   notifyChanged();
   if (!options?.skipCloud && cloudPushListener) {
-    cloudPushListener(store);
+    cloudPushListener(store, options);
   }
 }
 
@@ -200,12 +211,61 @@ export function collectSiadDeparturesForSlot(
 export function isSiadDriverRequestStale(
   record: SiadDriverRequestRecord,
   slotDepartures: DepartureRecord[],
+  departuresLoaded = false,
 ): boolean {
   if (slotDepartures.length === 0) {
+    if (!departuresLoaded) return false;
     return record.status === "confirmed";
   }
   const oldestCreated = Math.min(...slotDepartures.map((row) => row.createdAt));
   return record.requestedAt < oldestCreated;
+}
+
+/** Pedido sem saída SIAD correspondente (ex.: saídas excluídas). */
+export function isSiadDriverRequestOrphaned(
+  slot: { dateSaida: string; horaSaida: string | null },
+  departures: DepartureRecord[],
+  departuresLoaded = false,
+): boolean {
+  if (!departuresLoaded) return false;
+  const date = slot.dateSaida.trim();
+  if (!date) return true;
+  if (!slot.horaSaida) {
+    return getSiadDepartureTimesForDate(departures, date).length === 0;
+  }
+  return collectSiadDeparturesForSlot(departures, date, slot.horaSaida).length === 0;
+}
+
+/** Remove pedidos cujo horário/data já não tem saída SIAD cadastrada. */
+export function purgeOrphanedSiadDriverRequests(
+  departures: DepartureRecord[],
+  departuresLoaded = false,
+): number {
+  if (!departuresLoaded) return 0;
+  const store = readSiadDriverRequestStore();
+  const removedKeys: string[] = [];
+  for (const key of Object.keys(store)) {
+    const slot = parseSiadDriverRequestSlotKey(key);
+    if (isSiadDriverRequestOrphaned(slot, departures, true)) {
+      delete store[key];
+      removedKeys.push(key);
+    }
+  }
+  if (removedKeys.length > 0) writeSiadDriverRequestStore(store, { removedKeys });
+  return removedKeys.length;
+}
+
+/** Após excluir saída SIAD, limpa o pedido do slot se não restou nenhuma saída no horário. */
+export function syncSiadDriverRequestAfterDepartureRemoved(
+  removed: DepartureRecord,
+  departuresAfterRemove: DepartureRecord[],
+): void {
+  if (!isSiadDeparture(removed) || removed.cancelada) return;
+  const date = removed.dataSaida.trim();
+  const hora = normalizeSiadDriverRequestHora(removed.horaSaida);
+  if (!date || !hora) return;
+  if (collectSiadDeparturesForSlot(departuresAfterRemove, date, hora).length > 0) return;
+  resetSiadDriverRequest(date, hora);
 }
 
 /** Lê o pedido do slot e remove automaticamente se for de uma saída já excluída/substituída. */
@@ -213,6 +273,7 @@ export function resolveSiadDriverRequestForSlot(
   dateSaida: string,
   horaSaida: string,
   departures: DepartureRecord[],
+  departuresLoaded = false,
 ): SiadDriverRequestRecord | null {
   const key = getSiadDriverRequestSlotKey(dateSaida, horaSaida);
   if (!key) return null;
@@ -221,10 +282,10 @@ export function resolveSiadDriverRequestForSlot(
   if (!record) return null;
 
   const slotDepartures = collectSiadDeparturesForSlot(departures, dateSaida, horaSaida);
-  if (!isSiadDriverRequestStale(record, slotDepartures)) return record;
+  if (!isSiadDriverRequestStale(record, slotDepartures, departuresLoaded)) return record;
 
   delete store[key];
-  writeSiadDriverRequestStore(store);
+  writeSiadDriverRequestStore(store, { removedKeys: [key] });
   return null;
 }
 
@@ -240,7 +301,11 @@ export function getSiadDriverRequestForDate(dateSaida: string): SiadDriverReques
   return null;
 }
 
-export function listSiadDriverRequestsForDate(dateSaida: string): SiadDriverRequestSlot[] {
+export function listSiadDriverRequestsForDate(
+  dateSaida: string,
+  departures?: DepartureRecord[],
+  departuresLoaded = false,
+): SiadDriverRequestSlot[] {
   const date = dateSaida.trim();
   if (!date) return [];
   const store = readSiadDriverRequestStore();
@@ -248,6 +313,7 @@ export function listSiadDriverRequestsForDate(dateSaida: string): SiadDriverRequ
   for (const [key, record] of Object.entries(store)) {
     const slot = parseSiadDriverRequestSlotKey(key);
     if (slot.dateSaida !== date) continue;
+    if (departuresLoaded && departures && isSiadDriverRequestOrphaned(slot, departures, true)) continue;
     out.push({ dateSaida: slot.dateSaida, horaSaida: slot.horaSaida, record });
   }
   return out.sort((a, b) => {
@@ -255,6 +321,24 @@ export function listSiadDriverRequestsForDate(dateSaida: string): SiadDriverRequ
     const hb = b.horaSaida ?? "";
     return ha.localeCompare(hb, "pt-BR");
   });
+}
+
+/** Pedido ativo do dia (confirmado prevalece; depois o mais recente). */
+export function getActiveSiadDriverRequestForDate(
+  dateSaida: string,
+  departures: DepartureRecord[],
+  departuresLoaded = false,
+): SiadDriverRequestSlot | null {
+  const items = listSiadDriverRequestsForDate(dateSaida, departures, departuresLoaded);
+  if (!items.length) return null;
+  return items.reduce<SiadDriverRequestSlot | null>((best, item) => {
+    if (!best) return item;
+    const rank = (slot: SiadDriverRequestSlot) => (slot.record.status === "confirmed" ? 2 : 1);
+    const delta = rank(item) - rank(best);
+    if (delta > 0) return item;
+    if (delta < 0) return best;
+    return item.record.requestedAt > best.record.requestedAt ? item : best;
+  }, null);
 }
 
 export function getSiadDepartureTimesForDate(
@@ -296,7 +380,7 @@ export function requestSiadDriver(
   departures?: DepartureRecord[],
 ): boolean {
   if (departures) {
-    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures);
+    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures, true);
     if (collectSiadDeparturesForSlot(departures, dateSaida, horaSaida).length === 0) {
       return false;
     }
@@ -349,15 +433,15 @@ export function resetSiadDriverRequestForDate(dateSaida: string): number {
   const date = dateSaida.trim();
   if (!date) return 0;
   const store = readSiadDriverRequestStore();
-  let removed = 0;
+  const removedKeys: string[] = [];
   for (const key of Object.keys(store)) {
     const slot = parseSiadDriverRequestSlotKey(key);
     if (slot.dateSaida !== date) continue;
     delete store[key];
-    removed += 1;
+    removedKeys.push(key);
   }
-  if (removed > 0) writeSiadDriverRequestStore(store);
-  return removed;
+  if (removedKeys.length > 0) writeSiadDriverRequestStore(store, { removedKeys });
+  return removedKeys.length;
 }
 
 export function resetSiadDriverRequest(dateSaida: string, horaSaida?: string): boolean {
@@ -371,8 +455,32 @@ export function resetSiadDriverRequest(dateSaida: string, horaSaida?: string): b
   const store = readSiadDriverRequestStore();
   if (!(key in store)) return false;
   delete store[key];
-  writeSiadDriverRequestStore(store);
+  writeSiadDriverRequestStore(store, { removedKeys: [key] });
   return true;
+}
+
+export function formatSiadDriverRequestRequestedTime(requestedAt: number): string {
+  if (!Number.isFinite(requestedAt)) return "—";
+  return new Date(requestedAt).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+const SIAD_BLOCO_B_ETA_MINUTES = 10;
+
+/** Horário previsto no Bloco B (10 min após o pedido). */
+export function formatSiadDriverBlocoBArrivalTime(requestedAt: number): string {
+  if (!Number.isFinite(requestedAt)) return "—";
+  return new Date(requestedAt + SIAD_BLOCO_B_ETA_MINUTES * 60_000).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function describeSiadDriverBlocoBArrival(requestedAt: number): string {
+  return `Motorista estará no Bloco B às ${formatSiadDriverBlocoBArrivalTime(requestedAt)}`;
 }
 
 export function describeSiadDriverRequestStatus(
@@ -383,8 +491,12 @@ export function describeSiadDriverRequestStatus(
   return "Saída confirmada";
 }
 
-export function describeSiadDriverRequestsForDate(dateSaida: string): string {
-  const items = listSiadDriverRequestsForDate(dateSaida);
+export function describeSiadDriverRequestsForDate(
+  dateSaida: string,
+  departures?: DepartureRecord[],
+  departuresLoaded = false,
+): string {
+  const items = listSiadDriverRequestsForDate(dateSaida, departures, departuresLoaded);
   if (items.length === 0) return "Nenhum pedido registrado";
   if (items.length === 1) {
     const item = items[0]!;

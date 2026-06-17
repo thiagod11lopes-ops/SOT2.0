@@ -3,6 +3,7 @@ import { useDepartures } from "../context/departures-context";
 import {
   collectSiadDeparturesForSlot,
   confirmSiadDriver,
+  getActiveSiadDriverRequestForDate,
   isSiadDriverRequestStale,
   readSiadDriverRequestStore,
   requestSiadDriver,
@@ -14,14 +15,14 @@ import {
 } from "../lib/siadDriverRequest";
 
 export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
-  const { departures } = useDepartures();
+  const { departures, initialLoadComplete } = useDepartures();
   const [record, setRecord] = useState<SiadDriverRequestRecord | null>(() =>
-    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, []),
+    resolveSiadDriverRequestForSlot(dateSaida, horaSaida, [], false),
   );
 
   const refresh = useCallback(() => {
-    setRecord(resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures));
-  }, [dateSaida, horaSaida, departures]);
+    setRecord(resolveSiadDriverRequestForSlot(dateSaida, horaSaida, departures, initialLoadComplete));
+  }, [dateSaida, horaSaida, departures, initialLoadComplete]);
 
   useEffect(() => {
     refresh();
@@ -49,8 +50,44 @@ export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
   };
 }
 
+/** Estado do pedido de motorista para a data (qualquer horário ativo no dia). */
+export function useSiadDriverRequestForDate(dateSaida: string) {
+  const { departures, initialLoadComplete } = useDepartures();
+  const [active, setActive] = useState<SiadDriverRequestSlot | null>(() =>
+    getActiveSiadDriverRequestForDate(dateSaida, [], false),
+  );
+
+  const refresh = useCallback(() => {
+    setActive(getActiveSiadDriverRequestForDate(dateSaida, departures, initialLoadComplete));
+  }, [dateSaida, departures, initialLoadComplete]);
+
+  useEffect(() => {
+    refresh();
+    return subscribeSiadDriverRequestChanges(refresh);
+  }, [refresh]);
+
+  const request = useCallback(
+    (hora: string) => requestSiadDriver(dateSaida, hora, departures),
+    [dateSaida, departures],
+  );
+
+  const record = active?.record ?? null;
+
+  return {
+    active,
+    record,
+    horaSaida: active?.horaSaida ?? null,
+    status: record?.status ?? null,
+    canRequest: !record,
+    isRequested: record?.status === "requested",
+    isConfirmed: record?.status === "confirmed",
+    request,
+    refresh,
+  };
+}
+
 export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
-  const { departures } = useDepartures();
+  const { departures, initialLoadComplete } = useDepartures();
   const [pending, setPending] = useState<SiadDriverRequestSlot[]>([]);
 
   const refresh = useCallback(() => {
@@ -61,7 +98,7 @@ export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
         const slot = parseSiadDriverRequestSlotKey(key);
         const hora = slot.horaSaida ?? "";
         const slotDepartures = collectSiadDeparturesForSlot(departures, slot.dateSaida, hora);
-        if (isSiadDriverRequestStale(record, slotDepartures)) return null;
+        if (isSiadDriverRequestStale(record, slotDepartures, initialLoadComplete)) return null;
         return {
           dateSaida: slot.dateSaida,
           horaSaida: slot.horaSaida,
@@ -71,7 +108,7 @@ export function usePendingSiadDriverRequests(): SiadDriverRequestSlot[] {
       .filter((slot): slot is SiadDriverRequestSlot => slot !== null)
       .sort((a, b) => b.record.requestedAt - a.record.requestedAt);
     setPending(next);
-  }, [departures]);
+  }, [departures, initialLoadComplete]);
 
   useEffect(() => {
     refresh();

@@ -74,7 +74,7 @@ export function SiadDriverRequestTimePickerModal({
 
         <ul className="relative space-y-2">
           {horarios.map((hora) => {
-            const slot = resolveSiadDriverRequestForSlot(dateSaida, hora, departures);
+            const slot = resolveSiadDriverRequestForSlot(dateSaida, hora, departures, true);
             const blocked = slot?.status === "requested" || slot?.status === "confirmed";
             const statusLabel =
               slot?.status === "confirmed"

@@ -30,6 +30,7 @@ import {
 import { useSiadPwaShell } from "../lib/useSiadPwaShell";
 import {
   describeSiadDriverRequestsForDate,
+  purgeOrphanedSiadDriverRequests,
   resetSiadDriverRequestForDate,
 } from "../lib/siadDriverRequest";
 import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
@@ -47,28 +48,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import { SiadStatisticsPanel } from "./siad-statistics-panel";
-import { SiadDriverRequestButton } from "./siad-driver-request-button";
 import { SiadDeparturesDayList } from "./siad-departures-day-list";
 
 const SIAD_DEPARTURE_FORM_ID = "siad-departure-form";
-
-const WEEKDAY_NAMES_PT = [
-  "domingo",
-  "segunda-feira",
-  "terça-feira",
-  "quarta-feira",
-  "quinta-feira",
-  "sexta-feira",
-  "sábado",
-] as const;
-
-function formatWeekdayCommaDatePtBr(d: Date): string {
-  return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
-}
-
-function formatWeekdayPtBr(d: Date): string {
-  return WEEKDAY_NAMES_PT[d.getDay()];
-}
 
 function SiadCadastroSuccessModal({
   open,
@@ -142,7 +124,7 @@ function SiadCadastroSuccessModal({
 
 export function SiadQuickDepartureFormPage() {
   useSiadPwaShell();
-  const { addDeparture, departures, updateDeparture, removeDeparture } = useDepartures();
+  const { addDeparture, departures, updateDeparture, removeDeparture, initialLoadComplete } = useDepartures();
   const { addItem: addCatalogItem } = useCatalogItems();
 
   const [dataSaida, setDataSaida] = useState(getCurrentDatePtBr);
@@ -173,8 +155,18 @@ export function SiadQuickDepartureFormPage() {
   const motoristaResetStatus = useSiadDriverRequest(motoristaResetDate, horaSaida);
 
   useEffect(() => {
+    if (!initialLoadComplete) return;
+    purgeOrphanedSiadDriverRequests(departures, true);
+  }, [departures, initialLoadComplete]);
+
+  useEffect(() => {
     setSetorPassword(getSiadFormPassword());
   }, [passwordDialogOpen]);
+
+  const motoristaResetSituacao = useMemo(
+    () => describeSiadDriverRequestsForDate(motoristaResetDate, departures, initialLoadComplete),
+    [motoristaResetDate, departures, initialLoadComplete],
+  );
 
   useEffect(() => {
     if (!passwordDialogOpen) return;
@@ -527,9 +519,6 @@ export function SiadQuickDepartureFormPage() {
 
             <div className="space-y-3 rounded-xl border border-orange-200/80 bg-orange-50/50 p-4 dark:border-orange-500/20 dark:bg-orange-950/20">
               <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedido de motorista</h3>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Resetar o pedido de uma data para voltar a solicitar motorista e remover o alerta no SOT 2.0.
-              </p>
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="siad-motorista-reset-date">
                   Data da saída
@@ -555,7 +544,7 @@ export function SiadQuickDepartureFormPage() {
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
                 Situação:{" "}
                 <strong className="text-[hsl(var(--foreground))]">
-                  {describeSiadDriverRequestsForDate(motoristaResetDate)}
+                  {motoristaResetSituacao}
                 </strong>
               </p>
               <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={handleResetMotoristaRequest}>
@@ -636,12 +625,8 @@ export function SiadQuickDepartureFormPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <form id={SIAD_DEPARTURE_FORM_ID} className="space-y-6" onSubmit={handleSubmit} noValidate>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor={dateFieldId}>
-                Data
-              </label>
-              <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-[minmax(0,1fr)_minmax(10.5rem,12.5rem)]">
+          <form id={SIAD_DEPARTURE_FORM_ID} className="flex flex-col gap-6" onSubmit={handleSubmit} noValidate>
+            <div className="space-y-3">
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <div
                   className={cn(
@@ -651,63 +636,8 @@ export function SiadQuickDepartureFormPage() {
                 >
                   <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
                   <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-[hsl(var(--primary))]/30 blur-2xl" />
-                  <div className="relative space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
-                          Data da saída
-                        </p>
-                        {selectedDate ? (
-                          <>
-                            <p className="text-sm font-medium capitalize leading-snug text-white/85 sm:text-base">
-                              {formatWeekdayPtBr(selectedDate)}
-                            </p>
-                            <p className="break-words text-2xl font-bold leading-tight tabular-nums tracking-tight sm:text-[1.75rem]">
-                              {formatDateToPtBr(selectedDate)}
-                            </p>
-                            <p className="text-xs leading-relaxed text-white/55 sm:text-sm">
-                              {formatWeekdayCommaDatePtBr(selectedDate)}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="text-lg font-semibold leading-snug text-white/90 sm:text-xl">
-                            Selecione a data da saída
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-white/25 bg-white/15 text-white hover:bg-white/25"
-                          onClick={() => {
-                            const hoje = getCurrentDatePtBr();
-                            setDataSaida(hoje);
-                            setCalendarOpen(false);
-                          }}
-                        >
-                          Hoje
-                        </Button>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            size="icon"
-                            className="h-11 w-11 rounded-xl bg-white text-[hsl(var(--primary))] shadow-md hover:bg-white/90"
-                            aria-label="Abrir calendário"
-                          >
-                            <CalendarDays className="h-5 w-5" />
-                          </Button>
-                        </PopoverTrigger>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/20 bg-black/25 p-3">
-                      <label
-                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/60"
-                        htmlFor={dateFieldId}
-                      >
-                        Editar data (dd/mm/aaaa)
-                      </label>
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
                       <input
                         ref={dateInputRef}
                         id={dateFieldId}
@@ -724,8 +654,18 @@ export function SiadQuickDepartureFormPage() {
                           pendingDateCaret.current = caret;
                           setDataSaida(value);
                         }}
-                        className="h-11 w-full rounded-xl border border-white/20 bg-black/30 px-3 text-center font-mono text-base tabular-nums text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-white/20 bg-black/30 px-3 text-center font-mono text-base tabular-nums text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
                       />
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="h-11 w-11 shrink-0 rounded-xl bg-white text-[hsl(var(--primary))] shadow-md hover:bg-white/90"
+                          aria-label="Abrir calendário"
+                        >
+                          <CalendarDays className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
                     </div>
                   </div>
                 </div>
@@ -742,12 +682,6 @@ export function SiadQuickDepartureFormPage() {
                   />
                 </PopoverContent>
               </Popover>
-              <SiadDriverRequestButton
-                dateSaida={dataSaida}
-                horaSaida={horaSaida}
-                disabled={!isUnlocked || dateInvalid}
-              />
-              </div>
               {submitAttempted && dateInvalid ? (
                 <p className="text-xs text-red-600">Informe uma data válida (dd/mm/aaaa).</p>
               ) : null}
@@ -809,7 +743,6 @@ export function SiadQuickDepartureFormPage() {
                   readOnly
                   disabled
                   aria-readonly="true"
-                  aria-describedby="siad-setor-hint"
                   className="h-11 w-full cursor-not-allowed rounded-xl border border-[hsl(var(--border))] bg-slate-100 px-3 text-sm font-medium text-[hsl(var(--muted-foreground))] shadow-sm opacity-90"
                 />
               </div>
@@ -838,10 +771,6 @@ export function SiadQuickDepartureFormPage() {
                 ) : null}
               </div>
             </div>
-            <p id="siad-setor-hint" className="text-xs text-[hsl(var(--muted-foreground))]">
-              Setor bloqueado: este formulário é exclusivo para <strong>SIAD</strong> e o setor não pode ser alterado.
-              A senha ao lado do título fica invisível, mas pode ser selecionada para copiar.
-            </p>
 
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium" htmlFor={enderecoFieldId}>
@@ -918,14 +847,14 @@ export function SiadQuickDepartureFormPage() {
               </div>
               <div className="space-y-2">
                 {passageiros.map((passageiro, index) => (
-                  <div key={index} className="flex items-center gap-2">
+                  <div key={index} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <select
                       value={passageiro.posto}
                       onChange={(e) => handlePassageiroPostoChange(index, e.target.value)}
                       aria-label={
                         index === 0 ? "Posto/Grad do passageiro" : `Posto/Grad do passageiro ${index + 1}`
                       }
-                      className="h-11 w-[6.75rem] shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[7.25rem]"
+                      className="h-11 w-full shrink-0 rounded-xl border border-[hsl(var(--border))] bg-white px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] sm:w-[7.25rem]"
                     >
                       <option value="">Posto/Grad</option>
                       {SIAD_PASSAGEIRO_POSTOS.map((posto) => (
@@ -934,41 +863,43 @@ export function SiadQuickDepartureFormPage() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      id={index === 0 ? passageirosFieldId : undefined}
-                      type="text"
-                      value={passageiro.nome}
-                      onChange={(e) => handlePassageiroNomeChange(index, e.target.value)}
-                      placeholder="Nome do passageiro"
-                      autoComplete="name"
-                      aria-label={index === 0 ? "Nome do passageiro" : `Nome do passageiro ${index + 1}`}
-                      className={cn(
-                        "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                        submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={index === 0 ? passageirosFieldId : undefined}
+                        type="text"
+                        value={passageiro.nome}
+                        onChange={(e) => handlePassageiroNomeChange(index, e.target.value)}
+                        placeholder="Nome do passageiro"
+                        autoComplete="name"
+                        aria-label={index === 0 ? "Nome do passageiro" : `Nome do passageiro ${index + 1}`}
+                        className={cn(
+                          "h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-white px-3 text-sm shadow-sm placeholder:text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                          submitAttempted && passageirosInvalid && index === 0 && "border-red-500/90",
+                        )}
+                      />
+                      {index === 0 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
+                          aria-label="Adicionar outro passageiro"
+                          onClick={handleAddPassageiro}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
+                          aria-label={`Remover passageiro ${index + 1}`}
+                          onClick={() => handleRemovePassageiro(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       )}
-                    />
-                    {index === 0 ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
-                        aria-label="Adicionar outro passageiro"
-                        onClick={handleAddPassageiro}
-                      >
-                        <Plus className="h-5 w-5" />
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="siad-pwa-touch-target h-11 w-11 shrink-0 rounded-xl touch-manipulation"
-                        aria-label={`Remover passageiro ${index + 1}`}
-                        onClick={() => handleRemovePassageiro(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1013,6 +944,7 @@ export function SiadQuickDepartureFormPage() {
               departures={departures}
               dateSaida={dataSaida}
               onEditGroup={handleEditGroup}
+              driverRequestDisabled={!isUnlocked || dateInvalid}
             />
           </form>
         </CardContent>

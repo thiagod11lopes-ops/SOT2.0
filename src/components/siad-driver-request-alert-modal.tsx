@@ -1,14 +1,17 @@
 import { CarFront, CheckCircle2, Radio, Sparkles, Volume2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDepartures } from "../context/departures-context";
 import { usePendingSiadDriverRequests } from "../hooks/useSiadDriverRequest";
-import { confirmSiadDriverSlot } from "../lib/siadDriverRequest";
+import { confirmSiadDriverSlot, formatSiadDriverRequestRequestedTime } from "../lib/siadDriverRequest";
 import { resolveSiadEscalatedMotorista } from "../lib/siadDayDepartures";
 import {
+  buildSiadDriverRequestDisplayText,
   buildSiadDriverRequestSpeechText,
+  primeSiadDriverRequestSpeech,
   startSiadDriverRequestSpeechLoop,
   stopSiadDriverRequestSpeech,
+  type SiadDriverRequestSpeechHandle,
 } from "../lib/siadDriverRequestSpeech";
 import { Button } from "./ui/button";
 
@@ -23,24 +26,44 @@ export function SiadDriverRequestAlertModal() {
     return resolveSiadEscalatedMotorista(departures, active.dateSaida, active.horaSaida);
   }, [departures, active]);
 
+  const displayText = useMemo(
+    () => buildSiadDriverRequestDisplayText(motoristaEscalado),
+    [motoristaEscalado],
+  );
+
   const speechText = useMemo(
     () => buildSiadDriverRequestSpeechText(motoristaEscalado),
     [motoristaEscalado],
   );
 
+  const horaPedido = active ? formatSiadDriverRequestRequestedTime(active.record.requestedAt) : null;
+
   const speechSlotKey = active ? `${active.dateSaida}|${active.horaSaida ?? ""}` : "";
+  const speechHandleRef = useRef<SiadDriverRequestSpeechHandle | null>(null);
+  const speechTextRef = useRef(speechText);
+  speechTextRef.current = speechText;
 
   useEffect(() => {
     if (!open) {
+      speechHandleRef.current?.stop();
+      speechHandleRef.current = null;
       stopSiadDriverRequestSpeech();
       return;
     }
-    const stopSpeech = startSiadDriverRequestSpeechLoop(speechText);
+    primeSiadDriverRequestSpeech();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = startSiadDriverRequestSpeechLoop(speechTextRef.current);
     return () => {
-      stopSpeech();
+      speechHandleRef.current?.stop();
+      speechHandleRef.current = null;
       stopSiadDriverRequestSpeech();
     };
-  }, [open, speechSlotKey, speechText]);
+  }, [open, speechSlotKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    speechHandleRef.current?.setText(speechText);
+  }, [open, speechText]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,43 +80,57 @@ export function SiadDriverRequestAlertModal() {
 
   function handleConfirm() {
     stopSiadDriverRequestSpeech();
+    speechHandleRef.current?.stop();
+    speechHandleRef.current = null;
     confirmSiadDriverSlot(activeSlot);
   }
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[320] flex items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
+      className="fixed inset-0 z-[320] flex min-h-dvh w-full flex-col overflow-hidden bg-gradient-to-br from-white via-orange-50 to-amber-100 text-center dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/50"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="siad-driver-alert-title"
       aria-describedby="siad-driver-alert-desc"
       aria-live="assertive"
+      onPointerDown={() => primeSiadDriverRequestSpeech()}
     >
-      <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-md" aria-hidden />
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-orange-300/30 bg-gradient-to-br from-white via-orange-50 to-amber-100 p-8 text-center shadow-[0_40px_100px_-24px_rgba(249,115,22,0.65)] dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/50">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-orange-400/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-12 -left-8 h-36 w-36 rounded-full bg-amber-400/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-[18vw] -top-[18vw] h-[55vmin] w-[55vmin] rounded-full bg-orange-400/25 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-[16vw] -left-[14vw] h-[50vmin] w-[50vmin] rounded-full bg-amber-400/20 blur-3xl" />
 
-        <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[4vmin] px-[5vw] py-[max(1.5rem,env(safe-area-inset-top,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+        <div className="relative flex h-[22vmin] w-[22vmin] min-h-28 min-w-28 max-h-80 max-w-80 items-center justify-center">
           <div className="absolute inset-0 animate-ping rounded-full bg-orange-400/25" />
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-600 shadow-lg shadow-orange-500/40">
-            <Radio className="h-10 w-10 text-white" strokeWidth={2.1} aria-hidden />
+          <div className="relative flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-600 shadow-lg shadow-orange-500/40">
+            <Radio className="h-[45%] w-[45%] text-white" strokeWidth={2.1} aria-hidden />
           </div>
         </div>
 
-        <div className="relative mt-6 space-y-2">
-          <div className="flex items-center justify-center gap-1.5 text-orange-600 dark:text-orange-400">
-            <Sparkles className="h-4 w-4" aria-hidden />
-            <span className="text-xs font-semibold uppercase tracking-[0.22em]">Alerta operacional</span>
-            <Sparkles className="h-4 w-4" aria-hidden />
+        <div className="flex w-full max-w-6xl flex-col items-center gap-[2.5vmin]">
+          <div className="flex items-center justify-center gap-3 text-orange-600 dark:text-orange-400">
+            <Sparkles className="h-[4vmin] w-[4vmin] min-h-5 min-w-5" aria-hidden />
+            <span className="text-[clamp(0.7rem,1.6vmin,1rem)] font-semibold uppercase tracking-[0.22em]">
+              Alerta operacional
+            </span>
+            <Sparkles className="h-[4vmin] w-[4vmin] min-h-5 min-w-5" aria-hidden />
           </div>
           <h2
             id="siad-driver-alert-title"
-            className="text-3xl font-black tracking-tight text-slate-900 dark:text-white"
+            className="text-[clamp(2rem,8vmin,6.5rem)] font-black leading-tight tracking-tight text-slate-900 dark:text-white"
           >
-            SIAD SOLICITADO
+            {horaPedido ? (
+              <>
+                SIAD SOLICITADO{" "}
+                <span className="tabular-nums text-orange-700 dark:text-orange-300">({horaPedido})</span>
+              </>
+            ) : (
+              "SIAD SOLICITADO"
+            )}
           </h2>
-          <p id="siad-driver-alert-desc" className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <p
+            id="siad-driver-alert-desc"
+            className="max-w-5xl text-[clamp(1rem,2.4vmin,1.75rem)] leading-relaxed text-slate-600 dark:text-slate-300"
+          >
             Saída de{" "}
             <strong className="font-semibold text-slate-900 dark:text-white">{active.dateSaida}</strong>
             {active.horaSaida ? (
@@ -110,25 +147,26 @@ export function SiadDriverRequestAlertModal() {
             ) : null}
             . Confirme para avisar o formulário de Saídas SIAD.
           </p>
-          <p className="mx-auto mt-3 flex max-w-sm items-start justify-center gap-2 rounded-xl border border-orange-200/80 bg-orange-50/90 px-3 py-2.5 text-left text-sm font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
-            <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-300" aria-hidden />
-            <span>{speechText}</span>
+          <p className="flex w-full max-w-5xl items-start justify-center gap-4 rounded-2xl border border-orange-200/80 bg-orange-50/90 px-[4vmin] py-[3vmin] text-left text-[clamp(1rem,2.2vmin,1.75rem)] font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
+            <Volume2
+              className="mt-1 h-[4vmin] w-[4vmin] min-h-6 min-w-6 shrink-0 text-orange-600 dark:text-orange-300"
+              aria-hidden
+            />
+            <span>{displayText}</span>
           </p>
         </div>
 
-        <div className="relative mt-8 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Button
-            type="button"
-            className="h-12 min-w-[11rem] rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 text-base font-semibold text-white shadow-md shadow-orange-500/35 hover:brightness-105"
-            onClick={handleConfirm}
-          >
-            <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-            Confirmar saída
-          </Button>
-        </div>
+        <Button
+          type="button"
+          className="h-[clamp(3.5rem,10vmin,8rem)] w-full max-w-3xl rounded-2xl bg-gradient-to-r from-orange-500 to-amber-600 text-[clamp(1.1rem,2.8vmin,2rem)] font-semibold text-white shadow-md shadow-orange-500/35 hover:brightness-105"
+          onClick={handleConfirm}
+        >
+          <CheckCircle2 className="mr-3 h-[clamp(1.25rem,4vmin,3rem)] w-[clamp(1.25rem,4vmin,3rem)]" aria-hidden />
+          Confirmar motorista
+        </Button>
 
-        <p className="relative mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-          <CarFront className="h-3.5 w-3.5" aria-hidden />
+        <p className="inline-flex items-center justify-center gap-3 text-[clamp(0.75rem,1.6vmin,1rem)] text-slate-500 dark:text-slate-400">
+          <CarFront className="h-[clamp(1rem,3.5vmin,2.5rem)] w-[clamp(1rem,3.5vmin,2.5rem)]" aria-hidden />
           Integração Saídas SIAD ↔ SOT 2.0
         </p>
       </div>

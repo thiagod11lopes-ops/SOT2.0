@@ -7,6 +7,7 @@ import { subscribeSiadDriverRequestChanges } from "../lib/siadDriverRequest";
 import { formatDestinosListaPt, type DepartureRecord } from "../types/departure";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { SiadDriverRequestButton } from "./siad-driver-request-button";
 
 function MotoristaBadge({ status }: { status: SiadDayDepartureGroup["motoristaStatus"] }) {
   if (status === "none") return null;
@@ -103,12 +104,14 @@ export function SiadDeparturesDayList({
   departures,
   dateSaida,
   onEditGroup,
+  driverRequestDisabled = false,
 }: {
   departures: DepartureRecord[];
   dateSaida: string;
   onEditGroup?: (group: SiadDayDepartureGroup) => void;
+  driverRequestDisabled?: boolean;
 }) {
-  const { removeDeparture } = useDepartures();
+  const { removeDeparture, initialLoadComplete } = useDepartures();
   const [driverRequestTick, setDriverRequestTick] = useState(0);
   const [deleteGroup, setDeleteGroup] = useState<SiadDayDepartureGroup | null>(null);
 
@@ -120,8 +123,8 @@ export function SiadDeparturesDayList({
 
   const groups = useMemo(() => {
     void driverRequestTick;
-    return groupSiadDeparturesForDay(departures, dateSaida);
-  }, [departures, dateSaida, driverRequestTick]);
+    return groupSiadDeparturesForDay(departures, dateSaida, initialLoadComplete);
+  }, [departures, dateSaida, driverRequestTick, initialLoadComplete]);
 
   function handleConfirmDelete() {
     if (!deleteGroup) return;
@@ -212,16 +215,22 @@ export function SiadDeparturesDayList({
                       </span>
                     </p>
                   ) : group.motoristaStatus === "none" ? (
-                    <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      <CarFront className="h-3.5 w-3.5" aria-hidden />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       Motorista ainda não escalado no SOT 2.0
                     </p>
                   ) : (
-                    <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                      <CarFront className="h-3.5 w-3.5" aria-hidden />
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       Aguardando escala de motorista no SOT 2.0
                     </p>
                   )}
+                </div>
+                <div className="border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.06)] px-3 py-3 sm:px-4 sm:py-2.5">
+                  <SiadDriverRequestButton
+                    dateSaida={dateSaida}
+                    horaSaida={group.horaSaida}
+                    disabled={driverRequestDisabled}
+                    layout="embedded"
+                  />
                 </div>
               </li>
             ))}

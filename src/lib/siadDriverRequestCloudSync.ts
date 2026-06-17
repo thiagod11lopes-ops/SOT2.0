@@ -13,6 +13,7 @@ import {
   readSiadDriverRequestStore,
   setSiadDriverRequestCloudPushListener,
   type SiadDriverRequestStore,
+  type SiadDriverRequestWriteOptions,
 } from "./siadDriverRequest";
 
 const SUPPRESS_REMOTE_MS = 5000;
@@ -43,17 +44,33 @@ function storesEqual(a: SiadDriverRequestStore, b: SiadDriverRequestStore): bool
   return true;
 }
 
-function enqueueCloudPush(localStore: SiadDriverRequestStore) {
+function applyRemovedKeys(
+  store: SiadDriverRequestStore,
+  removedKeys: string[] | undefined,
+): SiadDriverRequestStore {
+  if (!removedKeys?.length) return store;
+  const out = { ...store };
+  for (const key of removedKeys) {
+    delete out[key];
+  }
+  return out;
+}
+
+function enqueueCloudPush(localStore: SiadDriverRequestStore, options?: SiadDriverRequestWriteOptions) {
   if (!useCloudEnabled || applyingRemote) return;
+  const removedKeys = options?.removedKeys ?? [];
   suppressRemoteUntil = Date.now() + SUPPRESS_REMOTE_MS;
   pushQueue = pushQueue
     .then(async () => {
       const remoteRaw = await readSotStateDocFromServer(SOT_STATE_DOC.siadDriverRequest);
       const remoteStore = parseSiadDriverRequestStore(remoteRaw);
-      const merged = mergeSiadDriverRequestStores(remoteStore, localStore);
+      // Local primeiro: alterações deste dispositivo prevalecem; depois slots só na nuvem.
+      let merged = mergeSiadDriverRequestStores(localStore, remoteStore);
+      merged = applyRemovedKeys(merged, removedKeys);
       await setSotStateDocWithRetry(SOT_STATE_DOC.siadDriverRequest, merged);
       const currentLocal = readSiadDriverRequestStore();
-      const reconciled = mergeSiadDriverRequestStores(currentLocal, merged);
+      let reconciled = mergeSiadDriverRequestStores(currentLocal, merged);
+      reconciled = applyRemovedKeys(reconciled, removedKeys);
       if (!storesEqual(currentLocal, reconciled)) {
         applyingRemote = true;
         applySiadDriverRequestStoreFromRemote(reconciled);
