@@ -47,27 +47,9 @@ import { SiadDeparturesDayList } from "./siad-departures-day-list";
 
 const SIAD_DEPARTURE_FORM_ID = "siad-departure-form";
 
-const WEEKDAY_NAMES_PT = [
-  "domingo",
-  "segunda-feira",
-  "terça-feira",
-  "quarta-feira",
-  "quinta-feira",
-  "sexta-feira",
-  "sábado",
-] as const;
-
 function getCurrentTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function formatWeekdayCommaDatePtBr(d: Date): string {
-  return `${WEEKDAY_NAMES_PT[d.getDay()]}, ${formatDateToPtBr(d)}`;
-}
-
-function formatWeekdayPtBr(d: Date): string {
-  return WEEKDAY_NAMES_PT[d.getDay()];
 }
 
 function dedupeTextosPreserveOrder(items: string[]): string[] {
@@ -705,11 +687,7 @@ export function SiadQuickDepartureFormPage() {
         </CardHeader>
         <CardContent className="pt-6">
           <form id={SIAD_DEPARTURE_FORM_ID} className="space-y-6" onSubmit={handleSubmit} noValidate>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor={dateFieldId}>
-                Data
-              </label>
-              <div className="space-y-3">
+            <div className="space-y-3">
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <div
                   className={cn(
@@ -719,63 +697,26 @@ export function SiadQuickDepartureFormPage() {
                 >
                   <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
                   <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-[hsl(var(--primary))]/30 blur-2xl" />
-                  <div className="relative space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
-                          Data da saída
-                        </p>
-                        {selectedDate ? (
-                          <>
-                            <p className="text-sm font-medium capitalize leading-snug text-white/85 sm:text-base">
-                              {formatWeekdayPtBr(selectedDate)}
-                            </p>
-                            <p className="break-words text-2xl font-bold leading-tight tabular-nums tracking-tight sm:text-[1.75rem]">
-                              {formatDateToPtBr(selectedDate)}
-                            </p>
-                            <p className="text-xs leading-relaxed text-white/55 sm:text-sm">
-                              {formatWeekdayCommaDatePtBr(selectedDate)}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="text-lg font-semibold leading-snug text-white/90 sm:text-xl">
-                            Selecione a data da saída
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-white/25 bg-white/15 text-white hover:bg-white/25"
-                          onClick={() => {
-                            const hoje = getCurrentDatePtBr();
-                            setDataSaida(hoje);
-                            setCalendarOpen(false);
-                          }}
-                        >
-                          Hoje
-                        </Button>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            size="icon"
-                            className="h-11 w-11 rounded-xl bg-white text-[hsl(var(--primary))] shadow-md hover:bg-white/90"
-                            aria-label="Abrir calendário"
-                          >
-                            <CalendarDays className="h-5 w-5" />
-                          </Button>
-                        </PopoverTrigger>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/20 bg-black/25 p-3">
-                      <label
-                        className="mb-2 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/60"
-                        htmlFor={dateFieldId}
+                  <div className="relative space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
+                        Data da saída
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl border-white/25 bg-white/15 text-white hover:bg-white/25"
+                        onClick={() => {
+                          const hoje = getCurrentDatePtBr();
+                          setDataSaida(hoje);
+                          setCalendarOpen(false);
+                        }}
                       >
-                        Editar data (dd/mm/aaaa)
-                      </label>
+                        Hoje
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <input
                         ref={dateInputRef}
                         id={dateFieldId}
@@ -792,8 +733,18 @@ export function SiadQuickDepartureFormPage() {
                           pendingDateCaret.current = caret;
                           setDataSaida(value);
                         }}
-                        className="h-11 w-full rounded-xl border border-white/20 bg-black/30 px-3 text-center font-mono text-base tabular-nums text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-white/20 bg-black/30 px-3 text-center font-mono text-base tabular-nums text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
                       />
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          className="h-11 w-11 shrink-0 rounded-xl bg-white text-[hsl(var(--primary))] shadow-md hover:bg-white/90"
+                          aria-label="Abrir calendário"
+                        >
+                          <CalendarDays className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
                     </div>
                   </div>
                 </div>
@@ -815,7 +766,6 @@ export function SiadQuickDepartureFormPage() {
                 horaSaida={horaSaida}
                 disabled={!isUnlocked || dateInvalid}
               />
-              </div>
               {submitAttempted && dateInvalid ? (
                 <p className="text-xs text-red-600">Informe uma data válida (dd/mm/aaaa).</p>
               ) : null}
