@@ -141,7 +141,7 @@ export function SiadDriverRequestAlertModal() {
             onClick={handleConfirm}
           >
             <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
-            Confirmar saída
+            Confirmar motorista
           </Button>
         </div>
 

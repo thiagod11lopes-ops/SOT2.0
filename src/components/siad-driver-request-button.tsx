@@ -1,7 +1,7 @@
 import { CarFront, CheckCircle2, Loader2, Radio } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDepartures } from "../context/departures-context";
-import { useSiadDriverRequest } from "../hooks/useSiadDriverRequest";
+import { useSiadDriverRequestForDate } from "../hooks/useSiadDriverRequest";
 import {
   getSiadDepartureTimesForDate,
   normalizeSiadDriverRequestHora,
@@ -11,7 +11,7 @@ import { SiadDriverRequestTimePickerModal } from "./siad-driver-request-time-pic
 
 export function SiadDriverRequestButton({
   dateSaida,
-  horaSaida,
+  horaSaida: _horaSaida,
   disabled = false,
 }: {
   dateSaida: string;
@@ -19,7 +19,8 @@ export function SiadDriverRequestButton({
   disabled?: boolean;
 }) {
   const { departures } = useDepartures();
-  const { isConfirmed, isRequested, canRequest, request } = useSiadDriverRequest(dateSaida, horaSaida);
+  const { isConfirmed, isRequested, canRequest, request, horaSaida: activeHora } =
+    useSiadDriverRequestForDate(dateSaida);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
 
   const horariosDoDia = useMemo(
@@ -27,7 +28,7 @@ export function SiadDriverRequestButton({
     [departures, dateSaida],
   );
 
-  const horaLabel = normalizeSiadDriverRequestHora(horaSaida);
+  const horaLabel = activeHora ?? normalizeSiadDriverRequestHora(_horaSaida);
   const hasSaidasCadastradas = horariosDoDia.length > 0;
   const canSendRequest = canRequest && hasSaidasCadastradas;
 
@@ -71,7 +72,7 @@ export function SiadDriverRequestButton({
         </span>
       </div>
       <div className="relative space-y-1">
-        <p className="text-lg font-bold leading-tight">Saída confirmada</p>
+        <p className="text-lg font-bold leading-tight">Motorista confirmado</p>
         <p className="text-xs text-emerald-100/90">
           Motorista avisado pelo SOT 2.0{horaHint}
         </p>
@@ -79,9 +80,10 @@ export function SiadDriverRequestButton({
       <button
         type="button"
         disabled
-        className="relative mt-3 h-11 w-full cursor-not-allowed rounded-xl bg-white/20 text-sm font-semibold text-white/95"
+        className="relative mt-3 flex h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-emerald-700 shadow-md"
       >
-        Saída confirmada
+        <CheckCircle2 className="h-4 w-4" aria-hidden />
+        Motorista confirmado
       </button>
     </div>
   ) : isRequested ? (

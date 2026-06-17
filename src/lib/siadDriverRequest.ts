@@ -316,6 +316,23 @@ export function listSiadDriverRequestsForDate(
   });
 }
 
+/** Pedido ativo do dia (confirmado prevalece; depois o mais recente). */
+export function getActiveSiadDriverRequestForDate(
+  dateSaida: string,
+  departures: DepartureRecord[],
+): SiadDriverRequestSlot | null {
+  const items = listSiadDriverRequestsForDate(dateSaida, departures);
+  if (!items.length) return null;
+  return items.reduce<SiadDriverRequestSlot | null>((best, item) => {
+    if (!best) return item;
+    const rank = (slot: SiadDriverRequestSlot) => (slot.record.status === "confirmed" ? 2 : 1);
+    const delta = rank(item) - rank(best);
+    if (delta > 0) return item;
+    if (delta < 0) return best;
+    return item.record.requestedAt > best.record.requestedAt ? item : best;
+  }, null);
+}
+
 export function getSiadDepartureTimesForDate(
   departures: DepartureRecord[],
   dateSaida: string,

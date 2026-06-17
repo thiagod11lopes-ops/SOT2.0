@@ -3,6 +3,7 @@ import { useDepartures } from "../context/departures-context";
 import {
   collectSiadDeparturesForSlot,
   confirmSiadDriver,
+  getActiveSiadDriverRequestForDate,
   isSiadDriverRequestStale,
   readSiadDriverRequestStore,
   requestSiadDriver,
@@ -45,6 +46,42 @@ export function useSiadDriverRequest(dateSaida: string, horaSaida: string) {
     isConfirmed: record?.status === "confirmed",
     request,
     confirm,
+    refresh,
+  };
+}
+
+/** Estado do pedido de motorista para a data (qualquer horário ativo no dia). */
+export function useSiadDriverRequestForDate(dateSaida: string) {
+  const { departures } = useDepartures();
+  const [active, setActive] = useState<SiadDriverRequestSlot | null>(() =>
+    getActiveSiadDriverRequestForDate(dateSaida, []),
+  );
+
+  const refresh = useCallback(() => {
+    setActive(getActiveSiadDriverRequestForDate(dateSaida, departures));
+  }, [dateSaida, departures]);
+
+  useEffect(() => {
+    refresh();
+    return subscribeSiadDriverRequestChanges(refresh);
+  }, [refresh]);
+
+  const request = useCallback(
+    (hora: string) => requestSiadDriver(dateSaida, hora, departures),
+    [dateSaida, departures],
+  );
+
+  const record = active?.record ?? null;
+
+  return {
+    active,
+    record,
+    horaSaida: active?.horaSaida ?? null,
+    status: record?.status ?? null,
+    canRequest: !record,
+    isRequested: record?.status === "requested",
+    isConfirmed: record?.status === "confirmed",
+    request,
     refresh,
   };
 }
