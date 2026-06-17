@@ -578,9 +578,6 @@ export function SiadQuickDepartureFormPage() {
 
             <div className="space-y-3 rounded-xl border border-orange-200/80 bg-orange-50/50 p-4 dark:border-orange-500/20 dark:bg-orange-950/20">
               <h3 className="text-sm font-semibold text-[hsl(var(--foreground))]">Pedido de motorista</h3>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                Resetar o pedido de uma data para voltar a solicitar motorista e remover o alerta no SOT 2.0.
-              </p>
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="siad-motorista-reset-date">
                   Data da saída

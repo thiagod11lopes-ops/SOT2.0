@@ -2,7 +2,7 @@ const FALLBACK_MOTORISTA_LABEL = "Motorista escalado";
 
 export function buildSiadDriverRequestSpeechText(motoristaEscalado: string | null | undefined): string {
   const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
-  return `Motorista ${nome} SIAD solicitou viatura no bloco B`;
+  return `Motorista ${nome} Siadi solicitou viatura no bloco B`;
 }
 
 let speechPrimed = false;
@@ -95,7 +95,7 @@ export function startSiadDriverRequestSpeechLoop(speechText: string): SiadDriver
         try {
           const utter = new SpeechSynthesisUtterance(currentText);
           utter.lang = "pt-BR";
-          utter.rate = 0.92;
+          utter.rate = 0.46;
           utter.pitch = 1.08;
           const voice = pickFemalePortugueseVoice();
           if (voice) utter.voice = voice;

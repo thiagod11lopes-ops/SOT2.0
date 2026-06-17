@@ -88,30 +88,30 @@ export function SiadDriverRequestAlertModal() {
       onPointerDown={() => primeSiadDriverRequestSpeech()}
     >
       <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-md" aria-hidden />
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-orange-300/30 bg-gradient-to-br from-white via-orange-50 to-amber-100 p-8 text-center shadow-[0_40px_100px_-24px_rgba(249,115,22,0.65)] dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/50">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-orange-400/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-12 -left-8 h-36 w-36 rounded-full bg-amber-400/20 blur-3xl" />
+      <div className="relative w-full max-w-4xl overflow-hidden rounded-[2rem] border border-orange-300/30 bg-gradient-to-br from-white via-orange-50 to-amber-100 p-16 text-center shadow-[0_40px_100px_-24px_rgba(249,115,22,0.65)] dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/50">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-orange-400/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-amber-400/20 blur-3xl" />
 
-        <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+        <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
           <div className="absolute inset-0 animate-ping rounded-full bg-orange-400/25" />
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-600 shadow-lg shadow-orange-500/40">
-            <Radio className="h-10 w-10 text-white" strokeWidth={2.1} aria-hidden />
+          <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-600 shadow-lg shadow-orange-500/40">
+            <Radio className="h-20 w-20 text-white" strokeWidth={2.1} aria-hidden />
           </div>
         </div>
 
-        <div className="relative mt-6 space-y-2">
-          <div className="flex items-center justify-center gap-1.5 text-orange-600 dark:text-orange-400">
-            <Sparkles className="h-4 w-4" aria-hidden />
-            <span className="text-xs font-semibold uppercase tracking-[0.22em]">Alerta operacional</span>
-            <Sparkles className="h-4 w-4" aria-hidden />
+        <div className="relative mt-12 space-y-4">
+          <div className="flex items-center justify-center gap-3 text-orange-600 dark:text-orange-400">
+            <Sparkles className="h-8 w-8" aria-hidden />
+            <span className="text-sm font-semibold uppercase tracking-[0.22em]">Alerta operacional</span>
+            <Sparkles className="h-8 w-8" aria-hidden />
           </div>
           <h2
             id="siad-driver-alert-title"
-            className="text-3xl font-black tracking-tight text-slate-900 dark:text-white"
+            className="text-6xl font-black tracking-tight text-slate-900 dark:text-white"
           >
             SIAD SOLICITADO
           </h2>
-          <p id="siad-driver-alert-desc" className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <p id="siad-driver-alert-desc" className="text-lg leading-relaxed text-slate-600 dark:text-slate-300">
             Saída de{" "}
             <strong className="font-semibold text-slate-900 dark:text-white">{active.dateSaida}</strong>
             {active.horaSaida ? (
@@ -128,25 +128,25 @@ export function SiadDriverRequestAlertModal() {
             ) : null}
             . Confirme para avisar o formulário de Saídas SIAD.
           </p>
-          <p className="mx-auto mt-3 flex max-w-sm items-start justify-center gap-2 rounded-xl border border-orange-200/80 bg-orange-50/90 px-3 py-2.5 text-left text-sm font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
-            <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-orange-600 dark:text-orange-300" aria-hidden />
+          <p className="mx-auto mt-6 flex max-w-2xl items-start justify-center gap-4 rounded-2xl border border-orange-200/80 bg-orange-50/90 px-6 py-5 text-left text-lg font-medium leading-snug text-orange-900 dark:border-orange-500/25 dark:bg-orange-950/40 dark:text-orange-100">
+            <Volume2 className="mt-1 h-8 w-8 shrink-0 text-orange-600 dark:text-orange-300" aria-hidden />
             <span>{speechText}</span>
           </p>
         </div>
 
-        <div className="relative mt-8 flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <div className="relative mt-16 flex flex-col gap-4 sm:flex-row sm:justify-center">
           <Button
             type="button"
-            className="h-12 min-w-[11rem] rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 text-base font-semibold text-white shadow-md shadow-orange-500/35 hover:brightness-105"
+            className="h-24 min-w-[22rem] rounded-2xl bg-gradient-to-r from-orange-500 to-amber-600 text-xl font-semibold text-white shadow-md shadow-orange-500/35 hover:brightness-105"
             onClick={handleConfirm}
           >
-            <CheckCircle2 className="mr-2 h-5 w-5" aria-hidden />
+            <CheckCircle2 className="mr-3 h-10 w-10" aria-hidden />
             Confirmar motorista
           </Button>
         </div>
 
-        <p className="relative mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-          <CarFront className="h-3.5 w-3.5" aria-hidden />
+        <p className="relative mt-8 inline-flex items-center justify-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <CarFront className="h-7 w-7" aria-hidden />
           Integração Saídas SIAD ↔ SOT 2.0
         </p>
       </div>
