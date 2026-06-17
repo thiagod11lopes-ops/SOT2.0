@@ -142,20 +142,31 @@ export function mergeSiadDriverRequestStores(
   return out;
 }
 
-let cloudPushListener: ((store: SiadDriverRequestStore) => void) | null = null;
+export type SiadDriverRequestWriteOptions = {
+  skipCloud?: boolean;
+  /** Chaves removidas localmente (reset/exclusão) — devem sumir também na nuvem. */
+  removedKeys?: string[];
+};
+
+let cloudPushListener:
+  | ((store: SiadDriverRequestStore, options?: SiadDriverRequestWriteOptions) => void)
+  | null = null;
 
 export function setSiadDriverRequestCloudPushListener(
-  listener: ((store: SiadDriverRequestStore) => void) | null,
+  listener: ((store: SiadDriverRequestStore, options?: SiadDriverRequestWriteOptions) => void) | null,
 ): void {
   cloudPushListener = listener;
 }
 
-function writeSiadDriverRequestStore(store: SiadDriverRequestStore, options?: { skipCloud?: boolean }) {
+function writeSiadDriverRequestStore(
+  store: SiadDriverRequestStore,
+  options?: SiadDriverRequestWriteOptions,
+) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SIAD_DRIVER_REQUEST_STORAGE_KEY, JSON.stringify(store));
   notifyChanged();
   if (!options?.skipCloud && cloudPushListener) {
-    cloudPushListener(store);
+    cloudPushListener(store, options);
   }
 }
 
@@ -224,16 +235,16 @@ export function isSiadDriverRequestOrphaned(
 /** Remove pedidos cujo horário/data já não tem saída SIAD cadastrada. */
 export function purgeOrphanedSiadDriverRequests(departures: DepartureRecord[]): number {
   const store = readSiadDriverRequestStore();
-  let removed = 0;
+  const removedKeys: string[] = [];
   for (const key of Object.keys(store)) {
     const slot = parseSiadDriverRequestSlotKey(key);
     if (isSiadDriverRequestOrphaned(slot, departures)) {
       delete store[key];
-      removed += 1;
+      removedKeys.push(key);
     }
   }
-  if (removed > 0) writeSiadDriverRequestStore(store);
-  return removed;
+  if (removedKeys.length > 0) writeSiadDriverRequestStore(store, { removedKeys });
+  return removedKeys.length;
 }
 
 /** Após excluir saída SIAD, limpa o pedido do slot se não restou nenhuma saída no horário. */
@@ -265,7 +276,7 @@ export function resolveSiadDriverRequestForSlot(
   if (!isSiadDriverRequestStale(record, slotDepartures)) return record;
 
   delete store[key];
-  writeSiadDriverRequestStore(store);
+  writeSiadDriverRequestStore(store, { removedKeys: [key] });
   return null;
 }
 
@@ -397,15 +408,15 @@ export function resetSiadDriverRequestForDate(dateSaida: string): number {
   const date = dateSaida.trim();
   if (!date) return 0;
   const store = readSiadDriverRequestStore();
-  let removed = 0;
+  const removedKeys: string[] = [];
   for (const key of Object.keys(store)) {
     const slot = parseSiadDriverRequestSlotKey(key);
     if (slot.dateSaida !== date) continue;
     delete store[key];
-    removed += 1;
+    removedKeys.push(key);
   }
-  if (removed > 0) writeSiadDriverRequestStore(store);
-  return removed;
+  if (removedKeys.length > 0) writeSiadDriverRequestStore(store, { removedKeys });
+  return removedKeys.length;
 }
 
 export function resetSiadDriverRequest(dateSaida: string, horaSaida?: string): boolean {
@@ -419,7 +430,7 @@ export function resetSiadDriverRequest(dateSaida: string, horaSaida?: string): b
   const store = readSiadDriverRequestStore();
   if (!(key in store)) return false;
   delete store[key];
-  writeSiadDriverRequestStore(store);
+  writeSiadDriverRequestStore(store, { removedKeys: [key] });
   return true;
 }
 
