@@ -1,5 +1,8 @@
 const FALLBACK_MOTORISTA_LABEL = "Motorista escalado";
 
+/** Velocidade TTS do alerta (1.0 = velocidade padrão do navegador). */
+const SIAD_DRIVER_REQUEST_SPEECH_RATE = 0.92;
+
 /** Texto exibido no modal de alerta. */
 export function buildSiadDriverRequestDisplayText(motoristaEscalado: string | null | undefined): string {
   const nome = motoristaEscalado?.trim() || FALLBACK_MOTORISTA_LABEL;
@@ -102,7 +105,7 @@ export function startSiadDriverRequestSpeechLoop(speechText: string): SiadDriver
         try {
           const utter = new SpeechSynthesisUtterance(currentText);
           utter.lang = "pt-BR";
-          utter.rate = 0.46;
+          utter.rate = SIAD_DRIVER_REQUEST_SPEECH_RATE;
           utter.pitch = 1.08;
           const voice = pickFemalePortugueseVoice();
           if (voice) utter.voice = voice;
