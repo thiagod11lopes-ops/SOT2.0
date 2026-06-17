@@ -709,7 +709,7 @@ export function SiadQuickDepartureFormPage() {
               <label className="text-sm font-medium" htmlFor={dateFieldId}>
                 Data
               </label>
-              <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-[minmax(0,1fr)_minmax(10.5rem,12.5rem)]">
+              <div className="space-y-3">
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <div
                   className={cn(

@@ -54,68 +54,58 @@ export function SiadDriverRequestButton({
 
   const horaHint = horaLabel ? ` às ${horaLabel}` : "";
 
+  const cardShell = "relative flex w-full flex-col gap-3 overflow-hidden rounded-2xl p-4 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4";
+
   const card = isConfirmed ? (
     <div
       className={cn(
-        "relative flex h-full min-h-[11.5rem] w-full flex-col justify-between overflow-hidden rounded-2xl border border-emerald-400/35 p-4 text-white shadow-lg",
+        cardShell,
+        "border border-emerald-400/35 text-white",
         "bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700",
       )}
       aria-live="polite"
     >
       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
-      <div className="relative flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
+      <div className="relative flex min-w-0 flex-1 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
           <CheckCircle2 className="h-5 w-5" aria-hidden />
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
-          Confirmado
-        </span>
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-base font-bold leading-tight sm:text-lg">Motorista confirmado</p>
+          <p className="text-xs text-emerald-100/90">
+            Motorista avisado pelo SOT 2.0{horaHint}
+          </p>
+        </div>
       </div>
-      <div className="relative space-y-1">
-        <p className="text-lg font-bold leading-tight">Motorista confirmado</p>
-        <p className="text-xs text-emerald-100/90">
-          Motorista avisado pelo SOT 2.0{horaHint}
-        </p>
-      </div>
-      <button
-        type="button"
-        disabled
-        className="relative mt-3 flex h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-emerald-700 shadow-md"
-      >
+      <span className="relative flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-emerald-700 shadow-md sm:min-w-[11rem]">
         <CheckCircle2 className="h-4 w-4" aria-hidden />
         Motorista confirmado
-      </button>
+      </span>
     </div>
   ) : isRequested ? (
     <div
       className={cn(
-        "relative flex h-full min-h-[11.5rem] w-full flex-col justify-between overflow-hidden rounded-2xl border border-orange-300/30 p-4 text-white shadow-lg",
+        cardShell,
+        "border border-orange-300/30 text-white",
         "bg-gradient-to-br from-orange-600/95 via-amber-600 to-orange-700",
       )}
       aria-live="polite"
     >
       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
-      <div className="relative flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
+      <div className="relative flex min-w-0 flex-1 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
           <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-100">
-          Aguardando
-        </span>
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-base font-bold leading-tight sm:text-lg">Solicitação enviada</p>
+          <p className="text-xs text-orange-100/90">
+            Aguardando confirmação no SOT 2.0{horaHint}
+          </p>
+        </div>
       </div>
-      <div className="relative space-y-1">
-        <p className="text-lg font-bold leading-tight">Solicitação enviada</p>
-        <p className="text-xs text-orange-100/90">
-          Aguardando confirmação no SOT 2.0{horaHint}
-        </p>
-      </div>
-      <button
-        type="button"
-        disabled
-        className="relative mt-3 h-11 w-full cursor-not-allowed rounded-xl bg-white/20 text-sm font-semibold text-white/95"
-      >
+      <span className="relative flex h-11 shrink-0 items-center justify-center rounded-xl bg-white/20 px-4 text-sm font-semibold text-white/95 sm:min-w-[11rem]">
         Aguardando confirmação
-      </button>
+      </span>
     </div>
   ) : (
     <button
@@ -123,7 +113,8 @@ export function SiadDriverRequestButton({
       disabled={disabled || !hasSaidasCadastradas}
       onClick={handleClick}
       className={cn(
-        "group relative flex h-full min-h-[11.5rem] w-full flex-col justify-between overflow-hidden rounded-2xl border border-orange-300/40 p-4 text-left text-white shadow-[0_20px_50px_-18px_rgba(249,115,22,0.75)] transition-transform active:scale-[0.99]",
+        cardShell,
+        "group border border-orange-300/40 text-left text-white shadow-[0_20px_50px_-18px_rgba(249,115,22,0.75)] transition-transform active:scale-[0.99]",
         "bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 hover:brightness-105",
         "disabled:pointer-events-none disabled:opacity-55",
         "touch-manipulation",
@@ -132,25 +123,22 @@ export function SiadDriverRequestButton({
     >
       <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/20 blur-2xl transition-opacity group-hover:opacity-100" />
       <div className="pointer-events-none absolute -bottom-10 -left-8 h-24 w-24 rounded-full bg-yellow-300/20 blur-2xl" />
-      <div className="relative flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 shadow-inner">
+      <div className="relative flex min-w-0 flex-1 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 shadow-inner">
           <Radio className="h-5 w-5" aria-hidden />
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-50">
-          Motorista
-        </span>
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-base font-bold leading-tight sm:text-lg">Solicitar motorista</p>
+          <p className="text-xs text-orange-50/90">
+            {!hasSaidasCadastradas
+              ? "Cadastre uma saída no dia antes de solicitar"
+              : horariosDoDia.length >= 2
+                ? "Várias saídas no dia — escolha o horário"
+                : `Avisar o SOT 2.0${horaHint || " para a data selecionada"}`}
+          </p>
+        </div>
       </div>
-      <div className="relative space-y-1">
-        <p className="text-lg font-bold leading-tight">Solicitar motorista</p>
-        <p className="text-xs text-orange-50/90">
-          {!hasSaidasCadastradas
-            ? "Cadastre uma saída no dia antes de solicitar"
-            : horariosDoDia.length >= 2
-              ? "Várias saídas no dia — escolha o horário"
-              : `Avisar o SOT 2.0${horaHint || " para a data selecionada"}`}
-        </p>
-      </div>
-      <span className="relative mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-orange-600 shadow-md">
+      <span className="relative inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-orange-600 shadow-md sm:min-w-[11rem]">
         <CarFront className="h-4 w-4" aria-hidden />
         Enviar solicitação
       </span>
