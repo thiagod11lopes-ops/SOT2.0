@@ -61,6 +61,8 @@ jobs:
           VITE_DRIVER_LOCATION_POST_URL: ${{ secrets.VITE_DRIVER_LOCATION_POST_URL }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+          VITE_GEMINI_MODEL: ${{ secrets.VITE_GEMINI_MODEL }}
         run: |
           npm ci
           npm run build
