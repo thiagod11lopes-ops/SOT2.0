@@ -1,19 +1,30 @@
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
+import { isSotAiChatUnlocked } from "../lib/sotAiChatAccess";
 import { cn } from "../lib/utils";
 import { SotAiChatModal } from "./sot-ai-chat-modal";
+import { SotAiChatPasswordModal } from "./sot-ai-chat-password-modal";
 
 export function SotAiChatButton({ variant = "desktop" }: { variant?: "desktop" | "mobile" }) {
-  const [open, setOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const isMobile = variant === "mobile";
+
+  function requestOpenChat() {
+    if (isSotAiChatUnlocked()) {
+      setChatOpen(true);
+      return;
+    }
+    setPasswordOpen(true);
+  }
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={requestOpenChat}
         aria-haspopup="dialog"
-        aria-expanded={open}
+        aria-expanded={chatOpen || passwordOpen}
         aria-label="Abrir assistente de inteligência artificial do SOT"
         title="Assistente IA — perguntas ao banco de dados"
         className={cn(
@@ -24,7 +35,12 @@ export function SotAiChatButton({ variant = "desktop" }: { variant?: "desktop" |
       >
         <Sparkles className={cn(isMobile ? "h-[1.05rem] w-[1.05rem]" : "h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]")} aria-hidden />
       </button>
-      <SotAiChatModal open={open} onClose={() => setOpen(false)} />
+      <SotAiChatPasswordModal
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        onSuccess={() => setChatOpen(true)}
+      />
+      <SotAiChatModal open={chatOpen} onClose={() => setChatOpen(false)} />
     </>
   );
 }

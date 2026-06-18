@@ -63,6 +63,7 @@ jobs:
           VITE_GOOGLE_MAP_ID: ${{ secrets.VITE_GOOGLE_MAP_ID }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_GEMINI_MODEL: ${{ secrets.VITE_GEMINI_MODEL }}
+          VITE_SOT_AI_CHAT_PASSWORD: ${{ secrets.VITE_SOT_AI_CHAT_PASSWORD }}
         run: |
           npm ci
           npm run build
