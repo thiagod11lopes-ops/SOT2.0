@@ -1,7 +1,13 @@
 import { Bot, Loader2, SendHorizontal, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDepartures } from "../context/departures-context";
 import { useSotRagKnowledge } from "../hooks/useSotRagKnowledge";
+import {
+  BEST_ADMIN_DEPARTURE_DAY_QUESTION,
+  buildBestAdminDepartureDayAnswer,
+  isBestAdminDepartureDayQuestion,
+} from "../lib/sotBestAdminDay";
 import { askSotAiChat, isSotAiChatConfigured, type SotAiChatMessage } from "../lib/sotAiChat";
 import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS } from "../lib/sotRag";
 import { cn } from "../lib/utils";
@@ -9,9 +15,7 @@ import { Button } from "./ui/button";
 
 const SUGGESTED_QUESTIONS = [
   "Quais saídas existem hoje?",
-  "Saídas administrativas nos próximos 7 dias",
-  "Qual o ranking de motoristas nas estatísticas?",
-  "Quem leva o pão em seguida?",
+  BEST_ADMIN_DEPARTURE_DAY_QUESTION,
 ];
 
 function newMessageId(): string {
@@ -20,6 +24,7 @@ function newMessageId(): string {
 
 export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const rag = useSotRagKnowledge();
+  const { departures } = useDepartures();
   const [messages, setMessages] = useState<SotAiChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,6 +77,12 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
     setError(null);
 
     try {
+      if (isBestAdminDepartureDayQuestion(question)) {
+        const answer = buildBestAdminDepartureDayAnswer(departures);
+        setMessages((prev) => [...prev, { id: newMessageId(), role: "assistant", content: answer }]);
+        return;
+      }
+
       const ragChunks = rag.retrieve(question, 20);
       const history = [...messages, userMessage].filter((m) => m.id !== "welcome");
       const answer = await askSotAiChat({
