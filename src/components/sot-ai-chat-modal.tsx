@@ -9,7 +9,6 @@ import {
   isBestAdminDepartureDayQuestion,
 } from "../lib/sotBestAdminDay";
 import { askSotAiChat, isSotAiChatConfigured, type SotAiChatMessage } from "../lib/sotAiChat";
-import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS } from "../lib/sotRag";
 import { cn } from "../lib/utils";
 import { MarkdownBoldText } from "./markdown-bold-text";
 import { Button } from "./ui/button";
@@ -37,8 +36,8 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
       id: "welcome",
       role: "assistant",
       content: geminiReady
-        ? `Olá! Sou a IA do SOT 2.0. Pergunte sobre saídas (${RAG_BACKWARD_DAYS} dias atrás até ${RAG_FORWARD_DAYS} à frente, incluindo canceladas), estatísticas, motoristas, viaturas, escala do pão ou avisos.`
-        : "Olá! Sou a IA do SOT 2.0. Posso buscar dados no sistema (modo RAG). Para respostas em linguagem natural, configure `VITE_GEMINI_API_KEY` no `.env`.",
+        ? "Fala Zé do que que tu ta precisando?"
+        : "Fala Zé! Tô no modo RAG local. Configura `VITE_GEMINI_API_KEY` no `.env` pra eu ficar mais solto — valeu!",
     }),
     [geminiReady],
   );

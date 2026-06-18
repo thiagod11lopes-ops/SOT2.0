@@ -1,5 +1,6 @@
 import type { SotRagChunk } from "./sotRag";
 import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS, formatSotRagContext } from "./sotRag";
+import { getSotAiOfflineIntro, getSotAiOfflineNoDataMessage, getSotAiSlangInstructions, SOT_AI_PERSONA_NAME } from "./sotAiPersona";
 
 export type SotAiChatMessage = {
   id: string;
@@ -16,17 +17,17 @@ export function isSotAiChatConfigured(): boolean {
 
 export function buildOfflineRagAnswer(chunks: SotRagChunk[]): string {
   if (!chunks.length) {
-    return "Não encontrei dados relevantes no banco do SOT para essa pergunta. Tente mencionar data, motorista, viatura ou setor.";
+    return getSotAiOfflineNoDataMessage();
   }
   const lines = chunks.map((chunk) => `• **${chunk.category}:** ${chunk.text.replace(/\n/g, " ")}`);
   return [
-    "Encontrei estes registros no sistema:",
+    getSotAiOfflineIntro(),
     "",
     ...lines,
     "",
     isSotAiChatConfigured()
       ? ""
-      : "_Para respostas em linguagem natural, configure `VITE_GEMINI_API_KEY` no arquivo `.env`._",
+      : "_Pra resposta mais natural, configura `VITE_GEMINI_API_KEY` no `.env` — valeu!_",
   ]
     .filter(Boolean)
     .join("\n");
@@ -48,13 +49,9 @@ export async function askSotAiChat(params: {
     return buildOfflineRagAnswer(params.ragChunks);
   }
 
-  const systemPrompt = `Você é o assistente do SOT 2.0 (Sistema de Organização de Transporte), como um colega experiente da operação que ajuda motoristas e despachantes no dia a dia.
+  const systemPrompt = `Você é o ${SOT_AI_PERSONA_NAME}, assistente do SOT 2.0 (Sistema de Organização de Transporte).
 
-Tom e estilo:
-- Fale em português do Brasil, de forma natural e humana — como numa conversa no rádio ou no WhatsApp do setor, sem soar robótico.
-- Seja direto, mas cordial. Pode usar frases curtas, conectores naturais ("olha", "então", "no caso de hoje") quando fizer sentido.
-- Evite listas numeradas ou formatação excessiva quando uma resposta em texto corrido for mais natural.
-- Não repita a pergunta do usuário nem comece sempre com "Com base nos dados...".
+${getSotAiSlangInstructions()}
 
 Regras sobre os dados:
 - Use APENAS as informações do contexto RAG abaixo (saídas, catálogos, escala do pão, avisos, resumos agregados da aba Estatística).
@@ -87,8 +84,8 @@ ${ragContext}
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
         generationConfig: {
-          temperature: 0.65,
-          topP: 0.9,
+          temperature: 0.78,
+          topP: 0.92,
           maxOutputTokens: 2048,
         },
       }),

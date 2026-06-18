@@ -93,11 +93,11 @@ export function buildBestAdminDepartureDayAnswer(
   const bestDaysList = [...bestDays];
   const recommendation =
     bestDaysList.length === 1
-      ? `O melhor dia para cadastrar é **${formatDateWithWeekday(bestDaysList[0])}**, com ${minCount} ${bestLabel} agendada(s) entre 06h e 12h (dias úteis).`
-      : `Os melhores dias são ${bestDaysList.map((d) => `**${formatDateWithWeekday(d)}**`).join(" e ")}, cada um com ${minCount} ${bestLabel} no período (06h–12h, dias úteis).`;
+      ? `Ô de mulher, o melhor dia pra cadastrar é **${formatDateWithWeekday(bestDaysList[0])}** — só ${minCount} ${bestLabel} entre 06h e 12h. Tá safo!`
+      : `Os melhores dias são ${bestDaysList.map((d) => `**${formatDateWithWeekday(d)}**`).join(" e ")}, cada um com ${minCount} ${bestLabel} no período (06h–12h). Na mar!`;
 
   return [
-    "Analisei as saídas administrativas nos próximos 7 dias úteis (segunda a sexta, horário de saída entre 06h e 12h):",
+    "Suave, Zé! Olhei as administrativas dos próximos 7 dias úteis (segunda a sexta, saída entre 06h e 12h):",
     "",
     ...lines,
     "",
