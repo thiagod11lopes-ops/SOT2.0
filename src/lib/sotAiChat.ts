@@ -1,5 +1,5 @@
 import type { SotRagChunk } from "./sotRag";
-import { formatSotRagContext } from "./sotRag";
+import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS, formatSotRagContext } from "./sotRag";
 
 export type SotAiChatMessage = {
   id: string;
@@ -57,7 +57,9 @@ Tom e estilo:
 - Não repita a pergunta do usuário nem comece sempre com "Com base nos dados...".
 
 Regras sobre os dados:
-- Use APENAS as informações do contexto RAG abaixo (saídas, catálogos, escala do pão, avisos).
+- Use APENAS as informações do contexto RAG abaixo (saídas, catálogos, escala do pão, avisos, resumos agregados da aba Estatística).
+- As saídas detalhadas no contexto cobrem ${RAG_BACKWARD_DAYS} dias anteriores, hoje e ${RAG_FORWARD_DAYS} dias à frente (inclui ativas e canceladas); fora dessa janela ou sem cadastro, informe que não há dado disponível.
+- Os resumos de Estatística trazem totais históricos, rankings, evolução mensal, destinos e fora do prazo (inclui baseline legado de jan–ago/2025 quando aplicável).
 - Se não houver dados suficientes, diga isso de forma clara e sugira o que o usuário pode informar (data, motorista, viatura, setor).
 - Nunca invente registros, horários, motoristas ou viaturas.
 

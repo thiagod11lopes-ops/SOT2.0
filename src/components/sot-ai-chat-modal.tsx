@@ -3,14 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSotRagKnowledge } from "../hooks/useSotRagKnowledge";
 import { askSotAiChat, isSotAiChatConfigured, type SotAiChatMessage } from "../lib/sotAiChat";
+import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS } from "../lib/sotRag";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 const SUGGESTED_QUESTIONS = [
   "Quais saídas existem hoje?",
+  "Saídas administrativas nos próximos 7 dias",
+  "Qual o ranking de motoristas nas estatísticas?",
   "Quem leva o pão em seguida?",
-  "Liste os motoristas cadastrados",
-  "Resumo das saídas administrativas recentes",
 ];
 
 function newMessageId(): string {
@@ -33,7 +34,7 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
       id: "welcome",
       role: "assistant",
       content: geminiReady
-        ? "Olá! Sou a IA do SOT 2.0. Pergunte sobre saídas, motoristas, viaturas, escala do pão ou avisos — consulto o banco de dados do sistema em tempo real."
+        ? `Olá! Sou a IA do SOT 2.0. Pergunte sobre saídas (${RAG_BACKWARD_DAYS} dias atrás até ${RAG_FORWARD_DAYS} à frente, incluindo canceladas), estatísticas, motoristas, viaturas, escala do pão ou avisos.`
         : "Olá! Sou a IA do SOT 2.0. Posso buscar dados no sistema (modo RAG). Para respostas em linguagem natural, configure `VITE_GEMINI_API_KEY` no `.env`.",
     }),
     [geminiReady],
@@ -71,7 +72,7 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
     setError(null);
 
     try {
-      const ragChunks = rag.retrieve(question, 10);
+      const ragChunks = rag.retrieve(question, 14);
       const history = [...messages, userMessage].filter((m) => m.id !== "welcome");
       const answer = await askSotAiChat({
         question,
