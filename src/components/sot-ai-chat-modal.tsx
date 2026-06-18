@@ -72,7 +72,7 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
     setError(null);
 
     try {
-      const ragChunks = rag.retrieve(question, 14);
+      const ragChunks = rag.retrieve(question, 20);
       const history = [...messages, userMessage].filter((m) => m.id !== "welcome");
       const answer = await askSotAiChat({
         question,

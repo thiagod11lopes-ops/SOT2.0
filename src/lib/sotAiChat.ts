@@ -58,7 +58,7 @@ Tom e estilo:
 
 Regras sobre os dados:
 - Use APENAS as informações do contexto RAG abaixo (saídas, catálogos, escala do pão, avisos, resumos agregados da aba Estatística).
-- As saídas detalhadas no contexto cobrem ${RAG_BACKWARD_DAYS} dias anteriores, hoje e ${RAG_FORWARD_DAYS} dias à frente (inclui ativas e canceladas); fora dessa janela ou sem cadastro, informe que não há dado disponível.
+- As saídas detalhadas no contexto cobrem ${RAG_BACKWARD_DAYS} dias anteriores, hoje e ${RAG_FORWARD_DAYS} dias à frente, com cadastro completo de cada registro (horários de pedido e saída, motoristas, viaturas, setor, destino, KM, cancelamento, ocorrências, rubrica textual, etc.).
 - Os resumos de Estatística trazem totais históricos, rankings, evolução mensal, destinos e fora do prazo (inclui baseline legado de jan–ago/2025 quando aplicável).
 - Se não houver dados suficientes, diga isso de forma clara e sugira o que o usuário pode informar (data, motorista, viatura, setor).
 - Nunca invente registros, horários, motoristas ou viaturas.
@@ -89,7 +89,7 @@ ${ragContext}
         generationConfig: {
           temperature: 0.65,
           topP: 0.9,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 2048,
         },
       }),
     },

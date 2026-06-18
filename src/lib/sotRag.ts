@@ -114,14 +114,61 @@ function compareDeparturesChronologically(a: DepartureRecord, b: DepartureRecord
   return da.localeCompare(db, "pt-BR");
 }
 
-function formatDepartureLine(row: DepartureRecord): string {
-  const cancelada = row.cancelada ? " [cancelada]" : "";
-  const km =
-    row.kmSaida || row.kmChegada
-      ? ` | KM saída ${row.kmSaida || "—"} / chegada ${row.kmChegada || "—"}`
-      : "";
-  const ocorrencias = row.ocorrencias?.trim() ? ` | ocorrências: ${row.ocorrencias.trim()}` : "";
-  return `${row.tipo} | ${row.dataSaida} ${row.horaSaida} | setor ${row.setor} | viatura ${row.viaturas} | motorista ${row.motoristas} | bairro ${row.bairro} | objetivo ${row.objetivoSaida}${km}${ocorrencias}${cancelada}`;
+function formatAmbulanceTypes(row: DepartureRecord): string {
+  if (row.tipo !== "Ambulância") return "";
+  const types: string[] = [];
+  if (row.tipoSaidaInterHospitalar) types.push("inter-hospitalar");
+  if (row.tipoSaidaAlta) types.push("alta");
+  if (row.tipoSaidaOutros) types.push("outros");
+  return types.length ? `Tipos ambulância: ${types.join(", ")}` : "";
+}
+
+/** Cadastro completo da saída para o RAG (texto; sem imagens de rubrica). */
+export function formatDepartureFullForRag(row: DepartureRecord): string {
+  const lines = [
+    `[Saída ${row.tipo} | id: ${row.id}]`,
+    `Cancelada: ${row.cancelada ? "sim" : "não"}`,
+    `Pedido: ${row.dataPedido || "—"} ${row.horaPedido || ""}`.trim(),
+    `Saída: ${row.dataSaida || "—"} ${row.horaSaida || ""}`.trim(),
+    row.chegada?.trim() ? `Chegada: ${row.chegada.trim()}` : "",
+    row.setor?.trim() ? `Setor: ${row.setor.trim()}` : "",
+    row.ramal?.trim() ? `Ramal: ${row.ramal.trim()}` : "",
+    row.responsavelPedido?.trim() ? `Responsável pelo pedido: ${row.responsavelPedido.trim()}` : "",
+    row.om?.trim() ? `OM: ${row.om.trim()}` : "",
+    row.objetivoSaida?.trim() ? `Objetivo: ${row.objetivoSaida.trim()}` : "",
+    row.numeroPassageiros?.trim() ? `Passageiros: ${row.numeroPassageiros.trim()}` : "",
+    row.viaturas?.trim() ? `Viatura(s): ${row.viaturas.trim()}` : "",
+    row.motoristas?.trim() ? `Motorista(s): ${row.motoristas.trim()}` : "",
+    row.hospitalDestino?.trim() ? `Hospital destino: ${row.hospitalDestino.trim()}` : "",
+    formatAmbulanceTypes(row),
+    row.cidade?.trim() ? `Cidade: ${row.cidade.trim()}` : "",
+    row.bairro?.trim() ? `Bairro: ${row.bairro.trim()}` : "",
+    row.kmSaida?.trim() || row.kmChegada?.trim()
+      ? `KM saída: ${row.kmSaida?.trim() || "—"} | KM chegada: ${row.kmChegada?.trim() || "—"}`
+      : "",
+    row.ficouNaOficina ? "Ficou na oficina: sim" : "",
+    row.rubrica?.trim() ? `Rubrica: ${row.rubrica.trim()}` : "",
+    row.ocorrencias?.trim() ? `Ocorrências: ${row.ocorrencias.trim()}` : "",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+function departureRegistroChunkId(row: DepartureRecord): string {
+  return `saida-registro-${row.id}`;
+}
+
+function isDepartureChunkId(id: string): boolean {
+  return id.startsWith("saidas-data-") || id.startsWith("saida-registro-");
+}
+
+function departureChunkMatchesDate(chunk: SotRagChunk, datePtBr: string): boolean {
+  if (chunk.id === dateChunkId(datePtBr)) return true;
+  if (!chunk.id.startsWith("saida-registro-")) return false;
+  return chunk.text.includes(`Saída: ${datePtBr}`);
+}
+
+function departureChunkHasCancelada(chunk: SotRagChunk): boolean {
+  return chunk.text.includes("Cancelada: sim");
 }
 
 function dateChunkId(datePtBr: string): string {
@@ -222,14 +269,15 @@ export function buildSotRagKnowledgeBase(input: SotRagKnowledgeInput): SotRagChu
       `Tipos ativos na janela: ${ativasNaJanela.filter((r) => r.tipo === "Administrativa").length} administrativas, ${ativasNaJanela.filter((r) => r.tipo === "Ambulância").length} ambulância.`,
       `Saídas de hoje (${hoje}): ${hojeRows.length} (${hojeRows.filter((r) => r.cancelada).length} canceladas).`,
       `Dias com registro na janela: ${porData.size}.`,
+      "Os chunks por data e por registro trazem o cadastro completo (horários, motoristas, viaturas, cancelamento, ocorrências, KM, etc.).",
     ].join(" "),
   });
 
   if (hojeRows.length > 0) {
     chunks.push({
       id: "saidas-hoje",
-      category: "Saídas de hoje",
-      text: hojeRows.map(formatDepartureLine).join("\n"),
+      category: "Saídas de hoje (cadastro completo)",
+      text: hojeRows.map(formatDepartureFullForRag).join("\n\n---\n\n"),
     });
   }
 
@@ -238,8 +286,16 @@ export function buildSotRagKnowledgeBase(input: SotRagKnowledgeInput): SotRagChu
     if (!rows?.length) continue;
     chunks.push({
       id: dateChunkId(data),
-      category: `Saídas em ${data}`,
-      text: rows.map(formatDepartureLine).join("\n"),
+      category: `Saídas em ${data} (cadastro completo)`,
+      text: rows.map(formatDepartureFullForRag).join("\n\n---\n\n"),
+    });
+  }
+
+  for (const row of naJanela) {
+    chunks.push({
+      id: departureRegistroChunkId(row),
+      category: `Cadastro saída ${departureDatePtBr(row)}`,
+      text: formatDepartureFullForRag(row),
     });
   }
 
@@ -320,15 +376,44 @@ function mergeChunksUnique(primary: SotRagChunk[], extra: SotRagChunk[], limit: 
   return out;
 }
 
+function collectDepartureChunksForDates(chunks: SotRagChunk[], dates: string[]): SotRagChunk[] {
+  const out: SotRagChunk[] = [];
+  const seen = new Set<string>();
+
+  for (const date of dates) {
+    const dateChunk = chunks.find((c) => c.id === dateChunkId(date));
+    if (dateChunk && !seen.has(dateChunk.id)) {
+      seen.add(dateChunk.id);
+      out.push(dateChunk);
+    }
+  }
+
+  for (const date of dates) {
+    for (const chunk of chunks) {
+      if (!chunk.id.startsWith("saida-registro-")) continue;
+      if (!departureChunkMatchesDate(chunk, date)) continue;
+      if (seen.has(chunk.id)) continue;
+      seen.add(chunk.id);
+      out.push(chunk);
+    }
+  }
+
+  return out;
+}
+
 export function retrieveSotRagChunks(query: string, chunks: SotRagChunk[], limit = 12): SotRagChunk[] {
   const hoje = getCurrentDatePtBr();
-  const pinned = chunks.filter((c) => c.id === "resumo-janela" || c.id === "saidas-hoje");
   const dateHints = extractQueryDateHints(query, hoje);
   const tipoHint = isTipoQuery(query);
   const canceladaQuery = isCanceladaQuery(query);
   const statsQuery = isStatisticsRagQuery(query);
+  const hasDateHints = dateHints.length > 0;
+  const pinned = hasDateHints
+    ? []
+    : chunks.filter((c) => c.id === "resumo-janela" || c.id === "saidas-hoje");
+  const effectiveLimit = hasDateHints ? Math.max(limit, 24) : limit;
 
-  if (statsQuery && !dateHints.length && !isBroadScheduleQuery(query)) {
+  if (statsQuery && !hasDateHints && !isBroadScheduleQuery(query)) {
     const statsChunks = chunks.filter((c) => c.id.startsWith("stats-"));
     const statsPinned = statsChunks.filter((c) => c.id === "stats-totais-geral");
     const terms = tokenize(query);
@@ -356,34 +441,24 @@ export function retrieveSotRagChunks(query: string, chunks: SotRagChunk[], limit
     return mergeChunksUnique(statsPinned, statsChunks.filter((c) => c.id !== "stats-totais-geral"), limit);
   }
 
-  const hintedDateChunks = dateHints
-    .map((d) => chunks.find((c) => c.id === dateChunkId(d)))
-    .filter((c): c is SotRagChunk => Boolean(c));
-
-  if (isBroadScheduleQuery(query) && !dateHints.length) {
-    const scheduleChunks = pickDateChunksInOrder(chunks, Math.max(0, limit - pinned.length));
-    return mergeChunksUnique(pinned, scheduleChunks, limit);
-  }
-
-  if (hintedDateChunks.length) {
-    let selected = mergeChunksUnique(pinned, hintedDateChunks, limit);
+  if (hasDateHints) {
+    let selected = collectDepartureChunksForDates(chunks, dateHints);
     if (tipoHint) {
-      const filtered = selected.filter(
-        (c) => !c.id.startsWith("saidas-data-") || c.text.includes(tipoHint),
-      );
-      if (filtered.some((c) => c.id.startsWith("saidas-data-"))) {
-        selected = mergeChunksUnique(pinned, filtered, limit);
-      }
+      selected = selected.filter((c) => !isDepartureChunkId(c.id) || c.text.includes(tipoHint));
     }
     if (canceladaQuery) {
-      const withCanceladas = selected.filter(
-        (c) => !c.id.startsWith("saidas-data-") || c.text.includes("[cancelada]"),
-      );
-      if (withCanceladas.some((c) => c.id.startsWith("saidas-data-"))) {
-        selected = mergeChunksUnique(pinned, withCanceladas, limit);
-      }
+      selected = selected.filter((c) => !isDepartureChunkId(c.id) || departureChunkHasCancelada(c));
     }
-    if (selected.length >= 2) return selected.slice(0, limit);
+    if (selected.length) {
+      return selected.slice(0, effectiveLimit);
+    }
+    const resumo = chunks.find((c) => c.id === "resumo-janela");
+    return resumo ? [resumo] : [];
+  }
+
+  if (isBroadScheduleQuery(query)) {
+    const scheduleChunks = pickDateChunksInOrder(chunks, Math.max(0, effectiveLimit - pinned.length));
+    return mergeChunksUnique(pinned, scheduleChunks, effectiveLimit);
   }
 
   const terms = tokenize(query);
@@ -400,12 +475,12 @@ export function retrieveSotRagChunks(query: string, chunks: SotRagChunk[], limit
         const re = new RegExp(`\\b${term}`, "i");
         if (re.test(chunk.category)) score += 4;
       }
-      if (tipoHint && chunk.id.startsWith("saidas-data-") && chunk.text.includes(tipoHint)) score += 6;
-      if (canceladaQuery && chunk.id.startsWith("saidas-data-") && chunk.text.includes("[cancelada]")) score += 8;
+      if (tipoHint && isDepartureChunkId(chunk.id) && chunk.text.includes(tipoHint)) score += 6;
+      if (canceladaQuery && isDepartureChunkId(chunk.id) && departureChunkHasCancelada(chunk)) score += 8;
+      if (chunk.id.startsWith("saida-registro-")) score += 2;
       if (statsQuery && chunk.id.startsWith("stats-")) score += 5;
       for (const date of dateHints) {
-        if (chunk.id === dateChunkId(date)) score += 12;
-        if (chunk.text.includes(date)) score += 5;
+        if (departureChunkMatchesDate(chunk, date)) score += 12;
       }
       return { chunk, score };
     })
@@ -413,11 +488,11 @@ export function retrieveSotRagChunks(query: string, chunks: SotRagChunk[], limit
     .sort((a, b) => b.score - a.score);
 
   if (!scored.length) {
-    return mergeChunksUnique(pinned, pickDateChunksInOrder(chunks, limit - pinned.length), limit);
+    return mergeChunksUnique(pinned, pickDateChunksInOrder(chunks, effectiveLimit - pinned.length), effectiveLimit);
   }
 
   const ranked = scored.map((row) => row.chunk);
-  return mergeChunksUnique(pinned, ranked, limit);
+  return mergeChunksUnique(pinned, ranked, effectiveLimit);
 }
 
 export function formatSotRagContext(chunks: SotRagChunk[]): string {
