@@ -11,12 +11,10 @@ import {
 import { askSotAiChat, isSotAiChatConfigured, type SotAiChatMessage } from "../lib/sotAiChat";
 import { RAG_BACKWARD_DAYS, RAG_FORWARD_DAYS } from "../lib/sotRag";
 import { cn } from "../lib/utils";
+import { MarkdownBoldText } from "./markdown-bold-text";
 import { Button } from "./ui/button";
 
-const SUGGESTED_QUESTIONS = [
-  "Quais saídas existem hoje?",
-  BEST_ADMIN_DEPARTURE_DAY_QUESTION,
-];
+const SUGGESTED_QUESTIONS = [BEST_ADMIN_DEPARTURE_DAY_QUESTION];
 
 function newMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -177,7 +175,11 @@ export function SotAiChatModal({ open, onClose }: { open: boolean; onClose: () =
                     : "border border-white/10 bg-white/[0.06] text-slate-100",
                 )}
               >
-                {message.content}
+                {message.role === "assistant" ? (
+                  <MarkdownBoldText content={message.content} strongClassName="font-semibold text-white" />
+                ) : (
+                  message.content
+                )}
               </div>
             </div>
           ))}

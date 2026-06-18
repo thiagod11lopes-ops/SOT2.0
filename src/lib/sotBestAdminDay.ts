@@ -1,13 +1,49 @@
-import { addDaysPtBr, getCurrentDatePtBr, normalizeLegacyDateToPtBr } from "./dateFormat";
+import { addDaysPtBr, getCurrentDatePtBr, normalizeLegacyDateToPtBr, parsePtBrToDate } from "./dateFormat";
 import { parseHhMm } from "./timeInput";
 import type { DepartureRecord } from "../types/departure";
 
 export const BEST_ADMIN_DEPARTURE_DAY_QUESTION =
   "Qual o melhor dia para cadastro de uma saída administrativa?";
 
-const WINDOW_DAYS = 7;
+const WINDOW_WEEKDAYS = 7;
 const HOUR_START = 6;
 const HOUR_END = 12;
+
+const WEEKDAY_NAMES_PT = [
+  "Domingo",
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+] as const;
+
+function formatDateWithWeekday(datePtBr: string): string {
+  const d = parsePtBrToDate(datePtBr);
+  if (!d) return datePtBr;
+  return `${WEEKDAY_NAMES_PT[d.getDay()]} ${datePtBr}`;
+}
+
+function isWeekday(datePtBr: string): boolean {
+  const d = parsePtBrToDate(datePtBr);
+  if (!d) return false;
+  const day = d.getDay();
+  return day !== 0 && day !== 6;
+}
+
+/** Próximos N dias úteis a partir de `startPtBr` (inclui hoje se for dia útil). */
+function getNextWeekdays(startPtBr: string, count: number): string[] {
+  const out: string[] = [];
+  let cursor = startPtBr;
+  let guard = 0;
+  while (out.length < count && guard < 90) {
+    if (isWeekday(cursor)) out.push(cursor);
+    cursor = addDaysPtBr(cursor, 1);
+    guard += 1;
+  }
+  return out;
+}
 
 function normalizeQuestion(text: string): string {
   return text.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
@@ -32,7 +68,7 @@ export function buildBestAdminDepartureDayAnswer(
   departures: DepartureRecord[],
   hoje = getCurrentDatePtBr(),
 ): string {
-  const windowDates = Array.from({ length: WINDOW_DAYS }, (_, i) => addDaysPtBr(hoje, i));
+  const windowDates = getNextWeekdays(hoje, WINDOW_WEEKDAYS);
   const counts = new Map<string, number>(windowDates.map((d) => [d, 0]));
 
   for (const row of departures) {
@@ -42,23 +78,26 @@ export function buildBestAdminDepartureDayAnswer(
     counts.set(data, (counts.get(data) ?? 0) + 1);
   }
 
+  const minCount = Math.min(...windowDates.map((d) => counts.get(d) ?? 0));
+  const bestDays = new Set(windowDates.filter((d) => (counts.get(d) ?? 0) === minCount));
+
   const lines = windowDates.map((date) => {
     const total = counts.get(date) ?? 0;
     const label = total === 1 ? "saída" : "saídas";
-    return `• ${date}: ${total} ${label}`;
+    const formatted = formatDateWithWeekday(date);
+    const dateLabel = bestDays.has(date) ? `**${formatted}**` : formatted;
+    return `• ${dateLabel}: ${total} ${label}`;
   });
 
-  const minCount = Math.min(...windowDates.map((d) => counts.get(d) ?? 0));
-  const bestDays = windowDates.filter((d) => (counts.get(d) ?? 0) === minCount);
-
   const bestLabel = minCount === 1 ? "saída" : "saídas";
+  const bestDaysList = [...bestDays];
   const recommendation =
-    bestDays.length === 1
-      ? `O melhor dia para cadastrar é ${bestDays[0]}, com ${minCount} ${bestLabel} agendada(s) entre 06h e 12h.`
-      : `Os melhores dias são ${bestDays.join(" e ")}, cada um com ${minCount} ${bestLabel} no período (06h–12h).`;
+    bestDaysList.length === 1
+      ? `O melhor dia para cadastrar é **${formatDateWithWeekday(bestDaysList[0])}**, com ${minCount} ${bestLabel} agendada(s) entre 06h e 12h (dias úteis).`
+      : `Os melhores dias são ${bestDaysList.map((d) => `**${formatDateWithWeekday(d)}**`).join(" e ")}, cada um com ${minCount} ${bestLabel} no período (06h–12h, dias úteis).`;
 
   return [
-    "Analisei as saídas administrativas nos próximos 7 dias (horário de saída entre 06h e 12h):",
+    "Analisei as saídas administrativas nos próximos 7 dias úteis (segunda a sexta, horário de saída entre 06h e 12h):",
     "",
     ...lines,
     "",
