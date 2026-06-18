@@ -8,7 +8,7 @@ export type SotAiChatMessage = {
 };
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? "";
-const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 
 export function isSotAiChatConfigured(): boolean {
   return GEMINI_API_KEY.length > 0;
