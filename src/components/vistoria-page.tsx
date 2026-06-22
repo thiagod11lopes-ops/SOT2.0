@@ -1,16 +1,8 @@
 import { CalendarDays, ChevronLeft, ChevronRight, GripVertical, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import {
-  loadDetalheServicoBundleFromIdb,
-  normalizeDetalheServicoBundle,
-  type DetalheServicoBundle,
-} from "../lib/detalheServicoBundle";
-import { ensureFirebaseAuth } from "../lib/firebase/auth";
-import { loadVistoriaRubricaFromRef } from "../lib/firebase/vistoriaRubricaFirestore";
-import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import {
   CHECKLIST_ITEMS,
   checklistComOkPorDefeito,
@@ -51,6 +43,8 @@ import {
   updateVistoriaCloudState,
 } from "../lib/vistoriaCloudState";
 import { buildVistoriaSituacaoImprimirPdf, type VistoriaSituacaoImprimirPdfRow } from "../lib/generateVistoriaSituacaoPdf";
+import { loadVistoriaRubricaFromRef } from "../lib/firebase/vistoriaRubricaFirestore";
+import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { buildViaturasPorMotoristaMap, getVistoriaCalendarDayTintForIso } from "../lib/vistoriaCalendarTint";
 import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
@@ -404,7 +398,7 @@ export function VistoriaPage() {
   const [resolvedIssues, setResolvedIssues] = useState<ResolvedIssue[]>(() => getVistoriaCloudState().resolvedIssues);
   const [issueControls, setIssueControls] = useState<IssueControl[]>(() => getVistoriaCloudState().issueControls);
   const [priorityOrderKeys, setPriorityOrderKeys] = useState<string[]>(() => getVistoriaCloudState().priorityOrderKeys);
-  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
+  const { bundle: detalheServicoBundle, initialLoadComplete: detalheServicoReady } = useDetalheServico();
   const [selectedInspectionDate, setSelectedInspectionDate] = useState(() => isoDateFromDate(new Date()));
   const [calendarCursorMonth, setCalendarCursorMonth] = useState(() => startOfLocalMonth(new Date()));
   const [driversModalOpen, setDriversModalOpen] = useState(false);
@@ -511,52 +505,14 @@ export function VistoriaPage() {
   }, [activeSubTab, selectedInspectionDate]);
 
   useEffect(() => {
-    if (activeSubTab !== "Vistoriar") return;
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    if (isOnline && isFirebaseOnlyOnlineActive()) {
-      void (async () => {
-        try {
-          await ensureFirebaseAuth();
-          if (cancelled) return;
-          unsub = subscribeSotStateDoc(
-            SOT_STATE_DOC.detalheServico,
-            (payload) => {
-              if (cancelled) return;
-              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
-            },
-            (err) => console.error("[SOT] Firestore detalhe serviço (vistoria):", err),
-            { ignoreCachedSnapshotWhenOnline: true },
-          );
-        } catch (e) {
-          console.error("[SOT] Firebase auth (detalhe serviço vistoria):", e);
-          if (cancelled) return;
-          const fallback = await loadDetalheServicoBundleFromIdb();
-          if (cancelled) return;
-          setDetalheServicoBundle(fallback);
-        }
-      })();
-    } else {
-      void loadDetalheServicoBundleFromIdb().then((bundle) => {
-        if (cancelled) return;
-        setDetalheServicoBundle(bundle);
-      });
-    }
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [activeSubTab, isOnline]);
-
-  useEffect(() => {
-    if (activeSubTab !== "Vistoriar" || !detalheServicoBundle) return;
+    if (activeSubTab !== "Vistoriar" || !detalheServicoReady) return;
     setLoadingServicoData(true);
     const marcados = listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, selectedInspectionDate);
     const somenteComS = marcados.filter((item) => item.servico).map((item) => item.motorista.trim());
     const unicos = [...new Set(somenteComS)].filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
     setMotoristasComServicoData(unicos);
     setLoadingServicoData(false);
-  }, [activeSubTab, detalheServicoBundle, selectedInspectionDate]);
+  }, [activeSubTab, detalheServicoBundle, detalheServicoReady, selectedInspectionDate]);
 
   /** Uma linha por motorista; placas agrupadas na mesma célula (lado a lado). */
   const assignmentsGroupedByDriver = useMemo(() => {
@@ -581,7 +537,7 @@ export function VistoriaPage() {
   /** Cores do calendário por estado das placas no modal «Motoristas com S...». */
   const calendarDayStateByIso = useMemo(() => {
     const map = new Map<string, "neutral" | "green" | "orange" | "red">();
-    if (!detalheServicoBundle) return map;
+    if (!detalheServicoReady) return map;
     const y = calendarCursorMonth.getFullYear();
     const m = calendarCursorMonth.getMonth();
     const daysInMonth = new Date(y, m + 1, 0).getDate();

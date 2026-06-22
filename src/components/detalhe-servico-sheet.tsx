@@ -2,21 +2,16 @@ import { AlertTriangle, FileDown, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useCatalogItems } from "../context/catalog-items-context";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import {
-  loadDetalheServicoBundleFromIdb,
-  saveDetalheServicoBundleToIdb,
-  normalizeDetalheServicoBundle,
+  canonicalizeMotoristaPostoName,
   emptyRodapeAssinatura,
-  emptyDetalheServicoBundle,
-  type DetalheServicoBundle,
   type DetalheServicoFeriasPeriodo,
   type DetalheServicoPortraitRow,
 } from "../lib/detalheServicoBundle";
 import { DetalheServicoFeriasModal, type FeriasDraftByMotorKey } from "./detalhe-servico-ferias-modal";
-import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   downloadDetalheServicoMotoristaPdf,
   downloadDetalheServicoMotoristaPortraitPdf,
@@ -354,76 +349,6 @@ function normalizeMotoristaName(value: string): string {
     .toLowerCase();
 }
 
-function canonicalizeMotoristaPostoName(value: string): string {
-  const t = value.trim();
-  if (!t) return t;
-  const up = t.toUpperCase();
-  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
-  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
-    return "2°SG Thiago Lopes";
-  }
-  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
-    return "2°SG Gerson Rocha";
-  }
-  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
-  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
-  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
-  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
-  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
-  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
-    return "2°SG RM1 Daniel Gomes";
-  }
-  return t;
-}
-
-function migrateBundleMotoristaNames(bundle: DetalheServicoBundle): DetalheServicoBundle {
-  let changed = false;
-  const nextSheets: DetalheServicoBundle["sheets"] = {};
-  for (const [month, sheet] of Object.entries(bundle.sheets)) {
-    const nextCells: Record<string, Record<string, string>> = {};
-    for (const rowId of sheet.rows) {
-      const row = { ...(sheet.cells[rowId] ?? {}) };
-      if (typeof row[KEY_MOTORISTA] === "string") {
-        const canonical = canonicalizeMotoristaPostoName(row[KEY_MOTORISTA] ?? "");
-        if (canonical !== row[KEY_MOTORISTA]) {
-          row[KEY_MOTORISTA] = canonical;
-          changed = true;
-        }
-      }
-      nextCells[rowId] = row;
-    }
-    nextSheets[month] = { rows: [...sheet.rows], cells: nextCells };
-  }
-
-  const portraitByMonth = bundle.portraitByMonth ?? {};
-  const nextPortraitByMonth: NonNullable<DetalheServicoBundle["portraitByMonth"]> = {};
-  for (const [month, monthRows] of Object.entries(portraitByMonth)) {
-    const nextMonthRows: Record<string, DetalheServicoPortraitRow> = {};
-    for (const [isoDate, row] of Object.entries(monthRows)) {
-      const motorista1 = canonicalizeMotoristaPostoName(row.motorista1 ?? "");
-      const motorista2 = canonicalizeMotoristaPostoName(row.motorista2 ?? "");
-      const retem = canonicalizeMotoristaPostoName(row.retem ?? "");
-      if (
-        motorista1 !== (row.motorista1 ?? "") ||
-        motorista2 !== (row.motorista2 ?? "") ||
-        retem !== (row.retem ?? "")
-      ) {
-        changed = true;
-      }
-      nextMonthRows[isoDate] = { motorista1, motorista2, retem };
-    }
-    nextPortraitByMonth[month] = nextMonthRows;
-  }
-
-  if (!changed) return bundle;
-  return {
-    ...bundle,
-    version: 1,
-    sheets: nextSheets,
-    portraitByMonth: nextPortraitByMonth,
-  };
-}
-
 function parseIsoDateLocal(iso: string): Date | null {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
@@ -598,28 +523,6 @@ function buildServicosInvalidosPorDiaMap(args: {
   return out;
 }
 
-function mergeRemoteBundlePreservingLocalMonths(
-  localBundle: DetalheServicoBundle,
-  remoteBundle: DetalheServicoBundle,
-): DetalheServicoBundle {
-  return {
-    ...remoteBundle,
-    version: 1,
-    sheets: { ...localBundle.sheets, ...remoteBundle.sheets },
-    rodapes: { ...localBundle.rodapes, ...remoteBundle.rodapes },
-    columnGrayByMonth: { ...localBundle.columnGrayByMonth, ...remoteBundle.columnGrayByMonth },
-    feriasByMonth: { ...localBundle.feriasByMonth, ...remoteBundle.feriasByMonth },
-    portraitByMonth: {
-      ...(localBundle.portraitByMonth ?? {}),
-      ...(remoteBundle.portraitByMonth ?? {}),
-    },
-    originalSheetBeforeFirstXByMonth: {
-      ...(localBundle.originalSheetBeforeFirstXByMonth ?? {}),
-      ...(remoteBundle.originalSheetBeforeFirstXByMonth ?? {}),
-    },
-  };
-}
-
 type RowContextMenu =
   | { x: number; y: number; kind: "row"; rowIndex: number }
   | { x: number; y: number; kind: "empty" }
@@ -639,8 +542,6 @@ type IntervaloMinimoModalState = {
   dataMinimaPermitida: Date;
 };
 
-type CloudSyncStatus = "idle" | "syncing" | "synced" | "error";
-
 function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -652,13 +553,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function DetalheServicoSheet() {
   const { items: catalogItems } = useCatalogItems();
+  const {
+    bundle,
+    setBundle,
+    awaitingFirstCloudSnapshot,
+    cloudSyncStatus,
+    cloudSyncAt,
+    setRemoteSyncPaused,
+    flushCloudWrite,
+  } = useDetalheServico();
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
-  const applyingRemoteRef = useRef(false);
-  const hydratedRef = useRef(!useCloud);
 
-  const [bundle, setBundle] = useState<DetalheServicoBundle>(emptyDetalheServicoBundle);
-  const [idbReady, setIdbReady] = useState(false);
   const [monthYear, setMonthYear] = useState(() => monthInputValue(new Date()));
   const [, setUndoStack] = useState<DetalheServicoSheetSnapshot[]>([]);
   const [menu, setMenu] = useState<RowContextMenu | null>(null);
@@ -670,9 +576,6 @@ export function DetalheServicoSheet() {
   const [mostrarAlteracoesAposX, setMostrarAlteracoesAposX] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(useCloud ? "idle" : "synced");
-  const [cloudSyncAt, setCloudSyncAt] = useState<Date | null>(null);
-  const [awaitingFirstCloudSnapshot, setAwaitingFirstCloudSnapshot] = useState(useCloud);
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
@@ -723,8 +626,6 @@ export function DetalheServicoSheet() {
   viewingOriginalRef.current = viewingOriginal;
   const cellEditBeforeRef = useRef<DetalheServicoSheetSnapshot | null>(null);
   const tableInputsRootRef = useRef<HTMLDivElement>(null);
-  const cloudWriteInFlightRef = useRef(false);
-  const pendingCloudBundleRef = useRef<DetalheServicoBundle | null>(null);
 
   const { year, monthIndex } = useMemo(() => parseMonthInput(monthYear), [monthYear]);
   const days = useMemo(() => buildMonthDays(year, monthIndex), [year, monthIndex]);
@@ -777,22 +678,6 @@ export function DetalheServicoSheet() {
     [prevMonthParsed],
   );
 
-  useEffect(() => {
-    setAwaitingFirstCloudSnapshot(useCloud);
-    // Mesmo em modo Firebase-only, hidrata do IDB para evitar "sumiço" visual
-    // durante a transição até o primeiro snapshot remoto.
-    let cancelled = false;
-    void loadDetalheServicoBundleFromIdb().then((b) => {
-      if (cancelled) return;
-      setBundle(migrateBundleMotoristaNames(b));
-      setIdbReady(true);
-      hydratedRef.current = true;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [useCloud]);
-
   const prevMonthSheet = useMemo(() => {
     const raw = bundle.sheets[prevMonthKey];
     if (!raw) return null;
@@ -803,116 +688,13 @@ export function DetalheServicoSheet() {
   }, [bundle, prevMonthKey]);
 
   useEffect(() => {
-    if (!useCloud || !idbReady) return;
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    setAwaitingFirstCloudSnapshot(true);
-    void (async () => {
-      try {
-        await ensureFirebaseAuth();
-        if (cancelled) return;
-        unsub = subscribeSotStateDoc(
-          SOT_STATE_DOC.detalheServico,
-          (payload) => {
-            void (async () => {
-              setAwaitingFirstCloudSnapshot(false);
-              if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
-                return;
-              }
-              // Evita sobrescrever alterações locais em andamento por snapshot remoto atrasado.
-              if (tableEditableRef.current) return;
-              applyingRemoteRef.current = true;
-              const next = normalizeDetalheServicoBundle(payload);
-              const merged = migrateBundleMotoristaNames(
-                mergeRemoteBundlePreservingLocalMonths(bundleRef.current, next),
-              );
-              setBundle(merged);
-              setCloudSyncStatus("synced");
-              setCloudSyncAt(new Date());
-              void saveDetalheServicoBundleToIdb(merged);
-            })();
-          },
-          (err) => {
-            setAwaitingFirstCloudSnapshot(false);
-            setCloudSyncStatus("error");
-            console.error("[SOT] Firestore detalhe serviço:", err);
-          },
-          { ignoreCachedSnapshotWhenOnline: true },
-        );
-      } catch (e) {
-        setAwaitingFirstCloudSnapshot(false);
-        setCloudSyncStatus("error");
-        console.error("[SOT] Firebase auth (detalhe serviço):", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [useCloud, idbReady]);
+    setRemoteSyncPaused(tableEditable);
+  }, [tableEditable, setRemoteSyncPaused]);
 
   useEffect(() => {
-    if (!idbReady) return;
-    void saveDetalheServicoBundleToIdb(bundle);
-  }, [bundle, idbReady]);
-
-  const pushBundleToCloud = useCallback(
-    async (nextBundle: DetalheServicoBundle) => {
-      if (!useCloud || !hydratedRef.current || !idbReady) return;
-      pendingCloudBundleRef.current = nextBundle;
-      if (cloudWriteInFlightRef.current) return;
-      cloudWriteInFlightRef.current = true;
-      try {
-        while (pendingCloudBundleRef.current) {
-          const toSend = pendingCloudBundleRef.current;
-          pendingCloudBundleRef.current = null;
-          setCloudSyncStatus("syncing");
-          try {
-            await setSotStateDoc(SOT_STATE_DOC.detalheServico, toSend);
-            setCloudSyncStatus("synced");
-            setCloudSyncAt(new Date());
-          } catch (e) {
-            setCloudSyncStatus("error");
-            console.error("[SOT] Gravar detalhe serviço na nuvem:", e);
-          }
-        }
-      } finally {
-        cloudWriteInFlightRef.current = false;
-      }
-    },
-    [useCloud, idbReady],
-  );
-
-  useEffect(() => {
-    if (!useCloud || !hydratedRef.current || !idbReady) return;
-    if (applyingRemoteRef.current) {
-      applyingRemoteRef.current = false;
-      return;
-    }
-    if (tableEditable) {
-      void pushBundleToCloud(bundle);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      void pushBundleToCloud(bundle);
-    }, 450);
-    return () => window.clearTimeout(t);
-  }, [bundle, useCloud, idbReady, tableEditable, pushBundleToCloud]);
-
-  useEffect(() => {
-    if (!useCloud || !idbReady || !hydratedRef.current) return;
     if (tableEditable) return;
-    // Ao bloquear a edição, força uma gravação imediata para evitar perda por debounce pendente.
-    void pushBundleToCloud(bundle);
-  }, [tableEditable, useCloud, idbReady, bundle, pushBundleToCloud]);
-
-  useEffect(() => {
-    if (useCloud) return;
-    setCloudSyncStatus("synced");
-    setCloudSyncAt(null);
-    setAwaitingFirstCloudSnapshot(false);
-  }, [useCloud]);
+    void flushCloudWrite();
+  }, [tableEditable, flushCloudWrite, bundle]);
 
   useEffect(() => {
     window.dispatchEvent(

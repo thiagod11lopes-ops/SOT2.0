@@ -3,15 +3,10 @@ import { useDeparturesReportEmail } from "../context/departures-report-email-con
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import { useCatalogItems, type CatalogItemsState } from "../context/catalog-items-context";
-import {
-  loadDetalheServicoBundleFromIdb,
-  normalizeDetalheServicoBundle,
-  type DetalheServicoBundle,
-} from "../lib/detalheServicoBundle";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
 import { getDepartureReferenceDate } from "../lib/dateFormat";
 import {
   DEFAULT_KM_EDIT_PASSWORD,
@@ -332,7 +327,7 @@ export function SettingsPage() {
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
-  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
+  const { bundle: detalheServicoBundle, initialLoadComplete: detalheServicoReady } = useDetalheServico();
   const [vistoriaCloudTick, setVistoriaCloudTick] = useState(0);
   const [vistoriaClearModalOpen, setVistoriaClearModalOpen] = useState(false);
   const [kmSenhaNova, setKmSenhaNova] = useState("");
@@ -407,42 +402,6 @@ export function SettingsPage() {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    if (isOnline && isFirebaseOnlyOnlineActive()) {
-      void (async () => {
-        try {
-          await ensureFirebaseAuth();
-          if (cancelled) return;
-          unsub = subscribeSotStateDoc(
-            SOT_STATE_DOC.detalheServico,
-            (payload) => {
-              if (cancelled) return;
-              setDetalheServicoBundle(normalizeDetalheServicoBundle(payload));
-            },
-            (err) => console.error("[SOT] Firestore detalhe serviço (settings):", err),
-            { ignoreCachedSnapshotWhenOnline: true },
-          );
-        } catch (e) {
-          console.error("[SOT] Firebase auth (detalhe serviço settings):", e);
-          if (cancelled) return;
-          void loadDetalheServicoBundleFromIdb().then((b) => {
-            if (!cancelled) setDetalheServicoBundle(b);
-          });
-        }
-      })();
-    } else {
-      void loadDetalheServicoBundleFromIdb().then((b) => {
-        if (!cancelled) setDetalheServicoBundle(b);
-      });
-    }
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [isOnline]);
 
   const administrativas = useMemo(
     () => departures.filter((d) => d.tipo === "Administrativa"),
@@ -754,7 +713,7 @@ export function SettingsPage() {
       window.alert("Aguarde a sincronização dos dados da Vistoria (Firebase).");
       return;
     }
-    if (!detalheServicoBundle) {
+    if (!detalheServicoReady) {
       window.alert(
         "Ainda não foi possível carregar o detalhe de serviço (escala). Verifique a ligação à rede e tente de novo.",
       );
@@ -1797,13 +1756,13 @@ export function SettingsPage() {
           <Button
             type="button"
             variant="outline"
-            disabled={!detalheServicoBundle}
+            disabled={!detalheServicoReady}
             className="border-amber-600/80 text-amber-900 hover:bg-amber-50 dark:text-amber-100 dark:hover:bg-amber-950/40"
             onClick={handleAbrirModalLimparVistoriasCalendario}
           >
             Apagar vistorias por dia (calendário)
           </Button>
-          {!detalheServicoBundle ? (
+          {!detalheServicoReady ? (
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
               Aguarde o carregamento da escala (detalhe de serviço) para usar o calendário.
             </p>
@@ -1870,7 +1829,7 @@ export function SettingsPage() {
         </div>
       ) : null}
 
-      {detalheServicoBundle ? (
+      {detalheServicoReady ? (
         <SettingsVistoriaClearCalendarModal
           open={vistoriaClearModalOpen}
           onOpenChange={setVistoriaClearModalOpen}

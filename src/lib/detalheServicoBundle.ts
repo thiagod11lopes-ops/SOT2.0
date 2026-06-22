@@ -296,3 +296,76 @@ export async function loadDetalheServicoBundleFromIdb(): Promise<DetalheServicoB
 export async function saveDetalheServicoBundleToIdb(bundle: DetalheServicoBundle): Promise<void> {
   await idbSetJson(IDB_KEY, bundle, { allowWhenFirebaseOnlyOnline: true });
 }
+
+const KEY_MOTORISTA = "motorista";
+
+export function canonicalizeMotoristaPostoName(value: string): string {
+  const t = value.trim();
+  if (!t) return t;
+  const up = t.toUpperCase();
+  if (up === "SG GODINHO" || up === "1°SG GODINHO") return "1°SG Godinho";
+  if (up === "SG THIAGO" || up === "SG THIAGO LOPES" || up === "2°SG THIAGO LOPES") {
+    return "2°SG Thiago Lopes";
+  }
+  if (up === "SG GERSON" || up === "SG GERSON ROCHA" || up === "2°SG GERSON ROCHA") {
+    return "2°SG Gerson Rocha";
+  }
+  if (up === "SG SILVA MARTINS" || up === "3°SG SILVA MARTINS") return "3°SG Silva Martins";
+  if (up === "SG PACHECO" || up === "3°SG PACHECO") return "3°SG Pacheco";
+  if (up === "SG CATROLI" || up === "3°SG CATROLI") return "3°SG Catroli";
+  if (up === "SG FERNANDO" || up === "3°SG FERNANDO") return "3°SG Fernando";
+  if (up === "SG RM1 CORDEIRO" || up === "2°SG RM1 CORDEIRO") return "2°SG RM1 Cordeiro";
+  if (up === "SG RM1 DANIEL GOMES" || up === "2°SG RM1 DANIEL GOMES") {
+    return "2°SG RM1 Daniel Gomes";
+  }
+  return t;
+}
+
+/** Normaliza grafias de motoristas no bundle (grelha e modo retrato). */
+export function migrateDetalheServicoBundleMotoristaNames(bundle: DetalheServicoBundle): DetalheServicoBundle {
+  let changed = false;
+  const nextSheets: DetalheServicoBundle["sheets"] = {};
+  for (const [month, sheet] of Object.entries(bundle.sheets)) {
+    const nextCells: Record<string, Record<string, string>> = {};
+    for (const rowId of sheet.rows) {
+      const row = { ...(sheet.cells[rowId] ?? {}) };
+      if (typeof row[KEY_MOTORISTA] === "string") {
+        const canonical = canonicalizeMotoristaPostoName(row[KEY_MOTORISTA] ?? "");
+        if (canonical !== row[KEY_MOTORISTA]) {
+          row[KEY_MOTORISTA] = canonical;
+          changed = true;
+        }
+      }
+      nextCells[rowId] = row;
+    }
+    nextSheets[month] = { rows: [...sheet.rows], cells: nextCells };
+  }
+
+  const portraitByMonth = bundle.portraitByMonth ?? {};
+  const nextPortraitByMonth: NonNullable<DetalheServicoBundle["portraitByMonth"]> = {};
+  for (const [month, monthRows] of Object.entries(portraitByMonth)) {
+    const nextMonthRows: Record<string, DetalheServicoPortraitRow> = {};
+    for (const [isoDate, row] of Object.entries(monthRows)) {
+      const motorista1 = canonicalizeMotoristaPostoName(row.motorista1 ?? "");
+      const motorista2 = canonicalizeMotoristaPostoName(row.motorista2 ?? "");
+      const retem = canonicalizeMotoristaPostoName(row.retem ?? "");
+      if (
+        motorista1 !== (row.motorista1 ?? "") ||
+        motorista2 !== (row.motorista2 ?? "") ||
+        retem !== (row.retem ?? "")
+      ) {
+        changed = true;
+      }
+      nextMonthRows[isoDate] = { motorista1, motorista2, retem };
+    }
+    nextPortraitByMonth[month] = nextMonthRows;
+  }
+
+  if (!changed) return bundle;
+  return {
+    ...bundle,
+    version: 1,
+    sheets: nextSheets,
+    portraitByMonth: nextPortraitByMonth,
+  };
+}

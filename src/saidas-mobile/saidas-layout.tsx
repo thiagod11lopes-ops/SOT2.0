@@ -13,7 +13,7 @@ import {
 } from "../lib/mobileMotoristaCredentials";
 import { VISTORIA_ADMINISTRATIVA_SENHA_PADRAO } from "../lib/vistoriaAdminMobile";
 import { cn } from "../lib/utils";
-import { loadDetalheServicoBundleFromIdb } from "../lib/detalheServicoBundle";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
 import { getVistoriaCloudState, subscribeVistoriaCloudStateChange } from "../lib/vistoriaCloudState";
 import { normalizeDriverKey, nomesMotoristaVistoriaEquivalentes, resolveViaturasParaMotoristaEscala } from "../lib/vistoriaInspectionShared";
@@ -111,6 +111,7 @@ export function SaidasLayout() {
    */
   const navigationActive = useMobileNavigationActive();
   const { departures } = useDepartures();
+  const { bundle: detalheServicoBundle } = useDetalheServico();
   const { items: catalogItems } = useCatalogItems();
   const { filterDatePtBr } = useSaidasMobileFilterDate();
   const [detalheServicoOpen, setDetalheServicoOpen] = useState(false);
@@ -413,8 +414,7 @@ export function SaidasLayout() {
         const [hh, mm] = config.vistoriaPendenteTime.split(":").map(Number);
         const shouldCheckNow = now.getHours() === hh && now.getMinutes() === mm;
         if (shouldCheckNow) {
-          const bundle = await loadDetalheServicoBundleFromIdb();
-          const marcados = listMotoristasComServicoOuRotinaNoDia(bundle, dayIso);
+          const marcados = listMotoristasComServicoOuRotinaNoDia(detalheServicoBundle, dayIso);
           const hasServicoHoje = marcados.some(
             (m) => m.servico && normalizeDriverKey(m.motorista) === normalizeDriverKey(motorista),
           );
@@ -465,7 +465,7 @@ export function SaidasLayout() {
       if (timer) window.clearTimeout(timer);
       unsubVistoria();
     };
-  }, [motoristaLogadoMobile, departures, notifyAlarm]);
+  }, [motoristaLogadoMobile, departures, notifyAlarm, detalheServicoBundle]);
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden bg-[hsl(var(--background))]">

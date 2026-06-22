@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import {
   listMotoristasComServicoOuRotinaNoDia,
   type DetalheServicoMotoristaMarcacao,
 } from "../lib/detalheServicoDayMarkers";
-import { loadDetalheServicoBundleFromIdb } from "../lib/detalheServicoBundle";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "./ui/button";
 
@@ -20,6 +20,7 @@ function isCompleteDatePtBr(value: string) {
 
 export function DetalheServicoServicoModal({ open, onOpenChange, filterDatePtBr }: Props) {
   const titleId = useId();
+  const { bundle, initialLoadComplete } = useDetalheServico();
   const [items, setItems] = useState<DetalheServicoMotoristaMarcacao[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -28,29 +29,19 @@ export function DetalheServicoServicoModal({ open, onOpenChange, filterDatePtBr 
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-    setLoading(true);
-    void loadDetalheServicoBundleFromIdb()
-      .then((bundle) => {
-        if (cancelled) return;
-        if (!dateOk) {
-          setItems([]);
-          setLoading(false);
-          return;
-        }
-        setItems(listMotoristasComServicoOuRotinaNoDia(bundle, isoDate));
-        setLoading(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setItems([]);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, isoDate, dateOk]);
+    setLoading(!initialLoadComplete);
+    if (!initialLoadComplete) {
+      setItems([]);
+      return;
+    }
+    if (!dateOk) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+    setItems(listMotoristasComServicoOuRotinaNoDia(bundle, isoDate));
+    setLoading(false);
+  }, [open, isoDate, dateOk, bundle, initialLoadComplete]);
 
   if (!open) return null;
 

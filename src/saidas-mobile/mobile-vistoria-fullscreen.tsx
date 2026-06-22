@@ -2,14 +2,8 @@ import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { isCompleteDatePtBr, isoDateToPtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import {
-  loadDetalheServicoBundleFromIdb,
-  normalizeDetalheServicoBundle,
-  type DetalheServicoBundle,
-} from "../lib/detalheServicoBundle";
-import { ensureFirebaseAuth } from "../lib/firebase/auth";
-import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
+import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import {
   appendVistoriaInspection,
   CHECKLIST_ITEMS,
@@ -40,7 +34,6 @@ import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { saveVistoriaRubricaByInspectionId } from "../lib/firebase/vistoriaRubricaFirestore";
 import { buildVistoriaRubricaRef } from "../lib/rubricaDrawing";
-import { mergeViaturasCatalog, isValueInCatalog, useCatalogItems } from "../context/catalog-items-context";
 import { useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
@@ -162,11 +155,8 @@ export function MobileVistoriaFullscreen({
     isoDateToPtBr(isoDateFromDate(new Date())),
   );
   const [rubricaPadKey, setRubricaPadKey] = useState(0);
-  const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
-  const [bundleLoading, setBundleLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
+  const { bundle, awaitingFirstCloudSnapshot } = useDetalheServico();
+  const bundleLoading = awaitingFirstCloudSnapshot;
 
   const [formMotorista, setFormMotorista] = useState("");
   const [formViatura, setFormViatura] = useState("");
@@ -329,62 +319,6 @@ export function MobileVistoriaFullscreen({
     const vtrs = resolveViaturasParaMotoristaEscala(m, viaturasPorMotorista);
     setAdminViaturaDraft((prev) => (prev.trim() ? prev : vtrs.length === 1 ? vtrs[0] : ""));
   }, [open, administrativeVistoriadorMotorista, viaturasPorMotorista, view]);
-
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    setBundleLoading(true);
-    if (isOnline && isFirebaseOnlyOnlineActive()) {
-      void (async () => {
-        try {
-          await ensureFirebaseAuth();
-          if (cancelled) return;
-          unsub = subscribeSotStateDoc(
-            SOT_STATE_DOC.detalheServico,
-            (payload) => {
-              if (cancelled) return;
-              setBundle(normalizeDetalheServicoBundle(payload));
-              setBundleLoading(false);
-            },
-            (err) => {
-              console.error("[SOT] Firestore detalhe serviço (vistoria mobile):", err);
-              if (!cancelled) setBundleLoading(false);
-            },
-            { ignoreCachedSnapshotWhenOnline: true },
-          );
-        } catch (e) {
-          console.error("[SOT] Firebase auth (detalhe serviço vistoria mobile):", e);
-          if (cancelled) return;
-          const b = await loadDetalheServicoBundleFromIdb();
-          if (cancelled) return;
-          setBundle(b);
-          setBundleLoading(false);
-        }
-      })();
-    } else {
-      void loadDetalheServicoBundleFromIdb().then((b) => {
-        if (cancelled) return;
-        setBundle(b);
-        setBundleLoading(false);
-      });
-    }
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [open, isOnline]);
 
   useEffect(() => {
     if (!open) return;

@@ -1,22 +1,12 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { useSyncPreference } from "../context/sync-preference-context";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import {
-  emptyRodapeAssinatura,
-  loadDetalheServicoBundleFromIdb,
-  normalizeDetalheServicoBundle,
-  saveDetalheServicoBundleToIdb,
-  type DetalheServicoBundle,
-} from "../lib/detalheServicoBundle";
-import { ensureFirebaseAuth } from "../lib/firebase/auth";
-import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { emptyRodapeAssinatura } from "../lib/detalheServicoBundle";
 import { ptBrToIsoDate } from "../lib/dateFormat";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { DetalheServicoReadonlyTable } from "./detalhe-servico-readonly-table";
-import { clampMobileProgress } from "./mobileProgressUtils";
 import { MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
 
 type Props = {
@@ -26,21 +16,14 @@ type Props = {
 };
 
 const LOAD_LABEL = "A carregar Detalhe de Serviço…";
-const MIN_OVERLAY_MS = 450;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 function isCompleteDatePtBr(value: string) {
   return /^\d{2}\/\d{2}\/\d{4}$/.test(value);
 }
 
 export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDatePtBr }: Props) {
-  const { firebaseOnlyEnabled } = useSyncPreference();
+  const { bundle, awaitingFirstCloudSnapshot } = useDetalheServico();
   const titleId = useId();
-  const [bundle, setBundle] = useState<DetalheServicoBundle | null>(null);
-  const [loading, setLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [progressOverlayVisible, setProgressOverlayVisible] = useState(false);
   const [fullDetail, setFullDetail] = useState(false);
@@ -50,9 +33,9 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
   const monthKey = isoDate.slice(0, 7);
 
   const marcados = useMemo(() => {
-    if (!bundle || !dateOk) return [];
+    if (!dateOk || awaitingFirstCloudSnapshot) return [];
     return listMotoristasComServicoOuRotinaNoDia(bundle, isoDate);
-  }, [bundle, dateOk, isoDate]);
+  }, [bundle, dateOk, isoDate, awaitingFirstCloudSnapshot]);
 
   const comS = useMemo(() => marcados.filter((m) => m.servico), [marcados]);
   const comRo = useMemo(() => marcados.filter((m) => m.rotina), [marcados]);
@@ -64,90 +47,24 @@ export function SaidasMobileDetalheServicoModal({ open, onOpenChange, filterDate
       setLoadProgress(0);
       return;
     }
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    const startedAt = Date.now();
-
-    const bumpProgress = (pct: number) => {
-      setLoadProgress((prev) => Math.max(prev, clampMobileProgress(pct)));
-    };
-
-    const finishLoad = async () => {
-      bumpProgress(100);
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < MIN_OVERLAY_MS) {
-        await sleep(MIN_OVERLAY_MS - elapsed);
-      }
-      if (cancelled) return;
-      await sleep(160);
-      if (cancelled) return;
-      setLoading(false);
+    if (!awaitingFirstCloudSnapshot) {
       setProgressOverlayVisible(false);
       setLoadProgress(0);
-    };
-
-    setLoading(true);
+      return;
+    }
     setProgressOverlayVisible(true);
-    bumpProgress(12);
-    void (async () => {
-      try {
-        bumpProgress(28);
-        const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
-        if (!useCloud) {
-          const local = await loadDetalheServicoBundleFromIdb();
-          if (cancelled) return;
-          bumpProgress(82);
-          setBundle(local);
-          await finishLoad();
-          return;
-        }
+    setLoadProgress((prev) => Math.max(prev, 42));
+    const t = window.setInterval(() => {
+      setLoadProgress((prev) => (prev >= 92 ? prev : prev + 8));
+    }, 120);
+    return () => window.clearInterval(t);
+  }, [open, awaitingFirstCloudSnapshot]);
 
-        bumpProgress(42);
-        await ensureFirebaseAuth();
-        if (cancelled) return;
-        bumpProgress(55);
+  const loading = open && awaitingFirstCloudSnapshot;
 
-        unsub = subscribeSotStateDoc(
-          SOT_STATE_DOC.detalheServico,
-          (payload) => {
-            void (async () => {
-              if (cancelled) return;
-              if (payload === null) {
-                await finishLoad();
-                return;
-              }
-              bumpProgress(72);
-              const next = normalizeDetalheServicoBundle(payload);
-              setBundle(next);
-              await saveDetalheServicoBundleToIdb(next);
-              bumpProgress(88);
-              await finishLoad();
-            })();
-          },
-          (err) => {
-            console.error("[SOT] Firestore detalhe serviço (mobile):", err);
-            if (!cancelled) void finishLoad();
-          },
-          { ignoreCachedSnapshotWhenOnline: true },
-        );
-      } catch (e) {
-        console.error("[SOT] Carregar detalhe serviço (mobile):", e);
-        if (!cancelled) {
-          setBundle(null);
-          await finishLoad();
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [open, firebaseOnlyEnabled]);
-
-  const sheetForMonth = bundle?.sheets[monthKey];
-  const rodapeForMonth = bundle?.rodapes[monthKey] ?? emptyRodapeAssinatura();
-  const columnGray = bundle?.columnGrayByMonth[monthKey] ?? {};
+  const sheetForMonth = bundle.sheets[monthKey];
+  const rodapeForMonth = bundle.rodapes[monthKey] ?? emptyRodapeAssinatura();
+  const columnGray = bundle.columnGrayByMonth[monthKey] ?? {};
 
   if (!open) return null;
 

@@ -22,21 +22,14 @@ import {
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import { getCurrentDatePtBr, isDepartureDateSameLocalDay } from "../lib/dateFormat";
-import { ensureFirebaseAuth } from "../lib/firebase/auth";
-import { SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import {
   buildViaturasPorMotoristaMap,
   listPendenciasVistoriaEscalaSComPlacas,
 } from "../lib/vistoriaCalendarTint";
 import { readVistoriaAssignments, readVistoriaInspections } from "../lib/vistoriaInspectionShared";
 import { ensureVistoriaCloudStateSyncStarted } from "../lib/vistoriaCloudState";
-import { isFirebaseOnlyOnlineActive } from "../lib/firebaseOnlyOnlinePolicy";
+import { useDetalheServico } from "../context/detalhe-servico-context";
 import { listMotoristasComServicoOuRotinaNoDia } from "../lib/detalheServicoDayMarkers";
-import {
-  loadDetalheServicoBundleFromIdb,
-  normalizeDetalheServicoBundle,
-  type DetalheServicoBundle,
-} from "../lib/detalheServicoBundle";
 import { parseHhMm } from "../lib/timeInput";
 import {
   fraseProximaTrocaOleoPorIntervaloTempo,
@@ -152,12 +145,6 @@ function shouldBlinkProximaSaidaRow(r: DepartureRecord, agora: Date): boolean {
   return minutosRestantes >= 0 && minutosRestantes <= 10;
 }
 
-/** Evita apagar o bundle local quando o primeiro snapshot do Firestore ainda vem vazio. */
-function detalheSheetsVazios(b: DetalheServicoBundle | null): boolean {
-  if (!b) return true;
-  return Object.keys(b.sheets).length === 0;
-}
-
 function formatIsoDatePtBrShort(iso: string): string {
   const m = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return iso;
@@ -221,13 +208,11 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     if (!Number.isFinite(parsed)) return 1;
     return Math.min(2, Math.max(0.7, parsed));
   });
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-  const [detalheServicoBundle, setDetalheServicoBundle] = useState<DetalheServicoBundle | null>(null);
+  const [vistoriaEscalaDataTick, setVistoriaEscalaDataTick] = useState(0);
+
+  const { bundle: detalheServicoBundle } = useDetalheServico();
   const { viaturasComProblema, porViatura } = useVistoriaProblemasMarcadosRefresh();
   const [vistoriaProblemaModalKey, setVistoriaProblemaModalKey] = useState<string | null>(null);
-  const [vistoriaEscalaDataTick, setVistoriaEscalaDataTick] = useState(0);
 
   useEffect(() => {
     const b = () => setVistoriaEscalaDataTick((t) => t + 1);
@@ -260,70 +245,6 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     window.addEventListener(RDV_STORAGE_EVENT, on);
     return () => window.removeEventListener(RDV_STORAGE_EVENT, on);
   }, []);
-
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadDetalheServicoBundleFromIdb().then((bundle) => {
-      if (cancelled) return;
-      setDetalheServicoBundle(bundle);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    if (isOnline && isFirebaseOnlyOnlineActive()) {
-      void (async () => {
-        try {
-          await ensureFirebaseAuth();
-          if (cancelled) return;
-          unsub = subscribeSotStateDoc(
-            SOT_STATE_DOC.detalheServico,
-            (payload) => {
-              if (cancelled) return;
-              setDetalheServicoBundle((prev) => {
-                const next = normalizeDetalheServicoBundle(payload);
-                if (detalheSheetsVazios(next) && prev && !detalheSheetsVazios(prev)) {
-                  return prev;
-                }
-                return next;
-              });
-            },
-            (err) => console.error("[SOT] Firestore detalhe serviço (principal):", err),
-            { ignoreCachedSnapshotWhenOnline: true },
-          );
-        } catch (e) {
-          console.error("[SOT] Firebase auth (detalhe serviço principal):", e);
-          if (cancelled) return;
-          void loadDetalheServicoBundleFromIdb().then((b) => {
-            if (!cancelled) setDetalheServicoBundle(b);
-          });
-        }
-      })();
-    } else {
-      void loadDetalheServicoBundleFromIdb().then((b) => {
-        if (!cancelled) setDetalheServicoBundle(b);
-      });
-    }
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [isOnline]);
 
   /** Oficina, Inoperante e Destacada no RDV do último relatório com PDF (fallback: última data gravada). */
   void rdvOficinaTick;

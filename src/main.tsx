@@ -8,6 +8,7 @@ import { AppearanceProvider } from "./context/appearance-context";
 import { CatalogItemsProvider } from "./context/catalog-items-context";
 import { DeparturesReportEmailProvider } from "./context/departures-report-email-context";
 import { DeparturesProvider } from "./context/departures-context";
+import { DetalheServicoProvider } from "./context/detalhe-servico-context";
 import { UnlinkedOccurrencesProvider } from "./context/unlinked-occurrences-context";
 import { AvisosProvider } from "./context/avisos-context";
 import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
@@ -40,6 +41,7 @@ createRoot(rootEl).render(
             <AlarmDismissProvider>
               <DeparturesProvider>
                 <UnlinkedOccurrencesProvider>
+                <DetalheServicoProvider>
                 <AppTabProvider>
                   <BackupDeparturesLoader />
                   <CatalogItemsProvider>
@@ -63,6 +65,7 @@ createRoot(rootEl).render(
                     </AppFirebaseLoadingShell>
                   </CatalogItemsProvider>
                 </AppTabProvider>
+                </DetalheServicoProvider>
                 </UnlinkedOccurrencesProvider>
               </DeparturesProvider>
             </AlarmDismissProvider>
