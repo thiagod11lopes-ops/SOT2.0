@@ -41,7 +41,15 @@ interface EscalaPaoModalProps {
 }
 
 export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
-  const { escala, integrantes, setIntegrantes, setMotoristaNaData, setEscalaCompleta } = useEscalaPao();
+  const {
+    escala,
+    integrantes,
+    setIntegrantes,
+    setMotoristaNaData,
+    setEscalaCompleta,
+    setRemoteSyncPaused,
+    flushCloudWrite,
+  } = useEscalaPao();
 
   const [cursor, setCursor] = useState(() => new Date());
   const [novoIntegrante, setNovoIntegrante] = useState("");
@@ -53,6 +61,16 @@ export function EscalaPaoModal({ open, onClose }: EscalaPaoModalProps) {
   const [modoArrastar, setModoArrastar] = useState(false);
   /** Só este dia mostra o select; o resto mantém a escala até ser clicado. */
   const [diaEditando, setDiaEditando] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setRemoteSyncPaused(modoEdicao);
+  }, [open, modoEdicao, setRemoteSyncPaused]);
+
+  useEffect(() => {
+    if (!open || modoEdicao) return;
+    void flushCloudWrite();
+  }, [open, modoEdicao, flushCloudWrite, escala, integrantes]);
 
   useEffect(() => {
     if (open) {

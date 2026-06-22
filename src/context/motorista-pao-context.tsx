@@ -15,13 +15,11 @@ import { loadMotoristaPaoFromIdb, saveMotoristaPaoToIdb } from "../lib/motorista
 import { useSyncPreference } from "./sync-preference-context";
 
 type MotoristaPaoContextValue = {
-  /** Nome exibido no cabeçalho (motorista que leva o pão). */
   nome: string;
   setNome: (value: string) => void;
 };
 
 const MotoristaPaoContext = createContext<MotoristaPaoContextValue | null>(null);
-const SUPPRESS_REMOTE_MS = 5000;
 
 function normalizeMotoristaPaoDoc(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "";
@@ -30,33 +28,60 @@ function normalizeMotoristaPaoDoc(raw: unknown): string {
 }
 
 export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
-  const [nome, setNomeState] = useState("");
-  const [idbReady, setIdbReady] = useState(false);
-  const applyingRemoteRef = useRef(false);
-  const hydratedRef = useRef(true);
-  const suppressRemoteUntilRef = useRef(0);
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
-  const bumpLocalMutation = useCallback(() => {
-    suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
-  }, []);
+
+  const [nome, setNomeState] = useState("");
+  const applyingRemoteRef = useRef(false);
+  const hydratedRef = useRef(!useCloud);
+  const localPromotionAttemptedRef = useRef(false);
+  const cloudWriteInFlightRef = useRef(false);
+  const pendingNomeRef = useRef<string | null>(null);
+  const nomeRef = useRef(nome);
+  nomeRef.current = nome;
 
   useEffect(() => {
-    if (useCloud) {
-      // Modo estrito Firebase: ignora hidratação inicial por cache local.
-      setIdbReady(true);
-      return;
-    }
+    if (useCloud) return;
+    let cancelled = false;
     void loadMotoristaPaoFromIdb().then((n) => {
+      if (cancelled) return;
       setNomeState(n);
-      setIdbReady(true);
+      hydratedRef.current = true;
     });
+    return () => {
+      cancelled = true;
+    };
   }, [useCloud]);
 
+  const pushNomeToCloud = useCallback(
+    async (nextNome: string) => {
+      if (!useCloud || !hydratedRef.current) return;
+      pendingNomeRef.current = nextNome;
+      if (cloudWriteInFlightRef.current) return;
+      cloudWriteInFlightRef.current = true;
+      try {
+        while (pendingNomeRef.current !== null) {
+          const toSend = pendingNomeRef.current;
+          pendingNomeRef.current = null;
+          try {
+            await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: toSend });
+            await saveMotoristaPaoToIdb(toSend);
+          } catch (e) {
+            console.error("[SOT] Gravar motorista pão na nuvem:", e);
+          }
+        }
+      } finally {
+        cloudWriteInFlightRef.current = false;
+      }
+    },
+    [useCloud],
+  );
+
   useEffect(() => {
-    if (!useCloud || !idbReady) return;
+    if (!useCloud) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
+
     void (async () => {
       try {
         await ensureFirebaseAuth();
@@ -64,17 +89,32 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
         unsub = subscribeSotStateDoc(
           SOT_STATE_DOC.motoristaPao,
           (payload) => {
-            if (cancelled) return;
             void (async () => {
+              if (cancelled) return;
+
               if (payload === null) {
-                // Firebase como fonte da verdade: não promover local->nuvem no bootstrap.
+                if (!localPromotionAttemptedRef.current) {
+                  localPromotionAttemptedRef.current = true;
+                  const local = await loadMotoristaPaoFromIdb();
+                  if (local.trim()) {
+                    try {
+                      await setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome: local });
+                      applyingRemoteRef.current = true;
+                      setNomeState(local);
+                      await saveMotoristaPaoToIdb(local);
+                    } catch (e) {
+                      console.error("[SOT] Promover motorista pão local para nuvem:", e);
+                    }
+                  }
+                }
+                hydratedRef.current = true;
                 return;
               }
-              if (Date.now() < suppressRemoteUntilRef.current) return;
+
               applyingRemoteRef.current = true;
               const n = normalizeMotoristaPaoDoc(payload);
               setNomeState(n);
-              void saveMotoristaPaoToIdb(n);
+              await saveMotoristaPaoToIdb(n);
               hydratedRef.current = true;
             })();
           },
@@ -83,40 +123,40 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
         );
       } catch (e) {
         console.error("[SOT] Firebase auth (motorista pão):", e);
+        hydratedRef.current = true;
       }
     })();
+
     return () => {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud, idbReady]);
+  }, [useCloud]);
 
   useEffect(() => {
-    if (!idbReady) return;
-    void saveMotoristaPaoToIdb(nome);
-  }, [nome, idbReady]);
-
-  useEffect(() => {
-    if (!idbReady || !hydratedRef.current || !useCloud) return;
+    if (!useCloud || !hydratedRef.current) return;
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
       return;
     }
-    void setSotStateDocWithRetry(SOT_STATE_DOC.motoristaPao, { nome }).catch((e) => {
-      console.error("[SOT] Gravar motorista pão na nuvem:", e);
-    });
-  }, [nome, useCloud, idbReady]);
+    const t = window.setTimeout(() => {
+      void pushNomeToCloud(nome);
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [nome, useCloud, pushNomeToCloud]);
+
+  useEffect(() => {
+    if (useCloud || !hydratedRef.current) return;
+    void saveMotoristaPaoToIdb(nome);
+  }, [nome, useCloud]);
 
   const setNome = useCallback((value: string) => {
-    bumpLocalMutation();
     setNomeState(value);
-  }, [bumpLocalMutation]);
+  }, []);
 
   const value = useMemo(() => ({ nome, setNome }), [nome, setNome]);
 
-  return (
-    <MotoristaPaoContext.Provider value={value}>{children}</MotoristaPaoContext.Provider>
-  );
+  return <MotoristaPaoContext.Provider value={value}>{children}</MotoristaPaoContext.Provider>;
 }
 
 export function useMotoristaPao() {
