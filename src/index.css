@@ -1030,6 +1030,12 @@ html.siad-mobile-shell #root {
   background: hsl(var(--muted) / 0.28);
 }
 
+.saidas-mobile-header-icon-btn--ai {
+  background: linear-gradient(135deg, hsl(187 92% 48% / 0.18), hsl(258 90% 66% / 0.16));
+  color: hsl(187 85% 42%);
+  box-shadow: 0 0 0 1px hsl(187 80% 50% / 0.18);
+}
+
 .saidas-mobile-header-chip {
   position: relative;
   display: flex;

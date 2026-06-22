@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import { CalendarDays, CheckCircle2, ClipboardList, Loader2, Search } from "lucide-react";
+import { CalendarDays, CheckCircle2, ClipboardList, HelpCircle, Loader2, Search } from "lucide-react";
 import {
   isValueInCatalog,
   mergeViaturasCatalog,
@@ -63,6 +63,7 @@ import { CatalogItemsPanel } from "./catalog-items-panel";
 import { CatalogComboField } from "./catalog-select";
 import { DepartureDeleteOrCancelModal } from "./departure-delete-or-cancel-modal";
 import { DepartureOcorrenciasCreateModal } from "./departure-ocorrencias-create-modal";
+import { BestAdminDepartureDayModal } from "./best-admin-departure-day-modal";
 import { RegisteredFullDeparturesTable } from "./registered-full-departures-table";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -339,6 +340,7 @@ export function RegisterDeparturePage() {
   >("Todas");
   const [saidaLupaBusca, setSaidaLupaBusca] = useState("");
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
+  const [bestAdminDayModalOpen, setBestAdminDayModalOpen] = useState(false);
 
   const saidaFiltroViaturaOptions = useMemo(() => {
     const fromRows = departures.map((d) => d.viaturas.trim()).filter(Boolean);
@@ -1477,9 +1479,22 @@ export function RegisterDeparturePage() {
             ) : null}
           </div>
           {activeSubTab === "Cadastrar Nova Saída" ? (
-            <Button type="button" variant="default" size="sm" className="shrink-0" onClick={fillExampleDeparture}>
-              Preencher com exemplo
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                aria-label="Qual o melhor dia para cadastro de uma saída administrativa?"
+                title="Melhor dia para saída administrativa"
+                onClick={() => setBestAdminDayModalOpen(true)}
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="default" size="sm" onClick={fillExampleDeparture}>
+                Preencher com exemplo
+              </Button>
+            </div>
           ) : null}
           {activeSubTab === "Saídas Cadastradas" ? (
             <Button
@@ -2679,6 +2694,7 @@ export function RegisterDeparturePage() {
           </div>
         </div>
       ) : null}
+      <BestAdminDepartureDayModal open={bestAdminDayModalOpen} onOpenChange={setBestAdminDayModalOpen} />
     </div>
   );
 }

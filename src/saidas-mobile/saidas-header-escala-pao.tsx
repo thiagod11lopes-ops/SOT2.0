@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { useEscalaPao } from "../context/escala-pao-context";
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { getProximoIntegranteEscalaAposHoje } from "../lib/escalaPaoStorage";
+import { SotAiChatButton } from "../components/sot-ai-chat-button";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 
 /** Próximo a comprar pão: ícone fixo; toque abre modal com o nome (e data) e OK para fechar. */
@@ -39,7 +40,8 @@ export function SaidasHeaderEscalaPao() {
 
   return (
     <>
-      <div className="flex shrink-0 flex-row items-center">
+      <div className="flex shrink-0 flex-row items-center gap-1">
+        <SotAiChatButton variant="mobile" />
         <button
           type="button"
           onClick={() => setModalOpen(true)}

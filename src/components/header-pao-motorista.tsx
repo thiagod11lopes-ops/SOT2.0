@@ -5,6 +5,7 @@ import paoImg from "../../pao.jpg";
 import { useEscalaPao } from "../context/escala-pao-context";
 import { useMotoristaPao } from "../context/motorista-pao-context";
 import { getProximoIntegranteEscalaAposHoje } from "../lib/escalaPaoStorage";
+import { SotAiChatButton } from "./sot-ai-chat-button";
 import { EscalaPaoModal } from "./escala-pao-modal";
 import { HEADER_INFO_CARD_CLASS } from "./header-info-card";
 import { cn } from "../lib/utils";
@@ -33,7 +34,9 @@ export function HeaderPaoMotorista() {
 
   return (
     <>
-      <button
+      <div className="flex items-center gap-2">
+        <SotAiChatButton variant="desktop" />
+        <button
         type="button"
         onClick={() => setModalOpen(true)}
         aria-haspopup="dialog"
@@ -70,6 +73,7 @@ export function HeaderPaoMotorista() {
           </span>
         </div>
       </button>
+      </div>
       <EscalaPaoModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </>
   );
