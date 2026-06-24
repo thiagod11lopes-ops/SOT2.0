@@ -18,9 +18,11 @@ import {
   newMaterialId,
   normalizeMaterialControleDoc,
   saveMaterialControleToIdb,
+  materialMovimentoIsoFromDateKey,
   type MaterialControleDoc,
   type MaterialItem,
   type MaterialMovimento,
+  type MaterialMovimentoInput,
   type MaterialMovimentoTipo,
   type MaterialPlanilha,
 } from "../lib/materialControleStorage";
@@ -61,8 +63,8 @@ type MaterialControleContextValue = {
     patch: Partial<Pick<MaterialItem, "nome" | "quantidade" | "unidade" | "observacao">>,
   ) => void;
   deleteItem: (planilhaId: string, itemId: string) => void;
-  entradaItem: (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => void;
-  saidaItem: (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => void;
+  entradaItem: (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => void;
+  saidaItem: (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => void;
   darBaixaItem: (planilhaId: string, itemId: string, motivo?: string) => void;
   reativarItem: (planilhaId: string, itemId: string) => void;
 };
@@ -76,21 +78,21 @@ function touchPlanilha(planilha: MaterialPlanilha, patch: Partial<MaterialPlanil
 function appendMovimento(
   item: MaterialItem,
   tipo: MaterialMovimentoTipo,
-  quantidade: number,
-  responsavel: string,
+  input: MaterialMovimentoInput,
 ): MaterialItem {
-  const at = new Date().toISOString();
+  const at = materialMovimentoIsoFromDateKey(input.dataIso);
   const movimento: MaterialMovimento = {
     id: newMaterialId(),
     tipo,
-    quantidade,
-    responsavel: responsavel.trim(),
+    quantidade: input.quantidade,
+    responsavel: input.responsavel.trim(),
     at,
+    observacao: (input.observacao ?? "").trim(),
   };
   return {
     ...item,
     movimentos: [movimento, ...item.movimentos],
-    updatedAt: at,
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -381,16 +383,16 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   );
 
   const entradaItem = useCallback(
-    (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => {
-      const delta = Math.max(0, quantidade);
-      const resp = responsavel.trim();
-      if (delta <= 0 || !resp) return;
+    (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => {
+      const delta = Math.max(0, input.quantidade);
+      const resp = input.responsavel.trim();
+      if (delta <= 0 || !resp || !input.dataIso.trim()) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
             items: p.items.map((it) => {
               if (it.id !== itemId || it.status !== "ativo") return it;
-              const withMov = appendMovimento(it, "entrada", delta, resp);
+              const withMov = appendMovimento(it, "entrada", input);
               return { ...withMov, quantidade: it.quantidade + delta };
             }),
           }),
@@ -401,16 +403,16 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   );
 
   const saidaItem = useCallback(
-    (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => {
-      const delta = Math.max(0, quantidade);
-      const resp = responsavel.trim();
-      if (delta <= 0 || !resp) return;
+    (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => {
+      const delta = Math.max(0, input.quantidade);
+      const resp = input.responsavel.trim();
+      if (delta <= 0 || !resp || !input.dataIso.trim()) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
             items: p.items.map((it) => {
               if (it.id !== itemId || it.status !== "ativo") return it;
-              const withMov = appendMovimento(it, "saida", delta, resp);
+              const withMov = appendMovimento(it, "saida", input);
               return { ...withMov, quantidade: Math.max(0, it.quantidade - delta) };
             }),
           }),

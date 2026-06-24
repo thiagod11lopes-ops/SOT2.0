@@ -11,8 +11,26 @@ export type MaterialMovimento = {
   tipo: MaterialMovimentoTipo;
   quantidade: number;
   responsavel: string;
+  /** Data/hora da operação (ISO). */
   at: string;
+  observacao: string;
 };
+
+export type MaterialMovimentoInput = {
+  quantidade: number;
+  responsavel: string;
+  /** Data da operação em `yyyy-mm-dd`. */
+  dataIso: string;
+  observacao?: string;
+};
+
+/** Converte `yyyy-mm-dd` para ISO ao meio-dia local (evita mudança de dia por fuso). */
+export function materialMovimentoIsoFromDateKey(dataIso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dataIso.trim());
+  if (!m) return new Date().toISOString();
+  const [, y, mo, d] = m;
+  return new Date(Number(y), Number(mo) - 1, Number(d), 12, 0, 0, 0).toISOString();
+}
 
 export type MaterialItem = {
   id: string;
@@ -61,7 +79,14 @@ function normalizeMovimento(raw: unknown): MaterialMovimento | null {
   const quantidade =
     typeof o.quantidade === "number" && Number.isFinite(o.quantidade) ? Math.max(0, o.quantidade) : 0;
   const at = typeof o.at === "string" ? o.at : new Date().toISOString();
-  return { id, tipo, quantidade, responsavel, at };
+  return {
+    id,
+    tipo,
+    quantidade,
+    responsavel,
+    at,
+    observacao: typeof o.observacao === "string" ? o.observacao.trim() : "",
+  };
 }
 
 function normalizeItem(raw: unknown): MaterialItem | null {
