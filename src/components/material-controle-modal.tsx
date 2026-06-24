@@ -262,40 +262,42 @@ export function MaterialControleModal({ open, onClose }: Props) {
           aria-hidden
         />
 
-        <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[hsl(var(--border))]/80 px-4 py-4 sm:px-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/10 shadow-[0_0_24px_hsl(var(--primary)/0.2)]">
-            <Boxes className="h-5 w-5 text-[hsl(var(--primary))]" strokeWidth={1.75} />
+        <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[hsl(var(--border))]/50 bg-[hsl(var(--muted))]/25 px-4 py-2.5 sm:px-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[hsl(var(--primary))]/25 bg-[hsl(var(--primary))]/10">
+            <Boxes className="h-4 w-4 text-[hsl(var(--primary))]" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-lg font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-xl">
+            <h2 id={titleId} className="text-sm font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-base">
               Controle de Material
             </h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] sm:text-sm">
-              Organize por planilhas — cada local com o seu inventário
-            </p>
           </div>
-          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Fechar">
-            <X className="h-5 w-5" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Fechar">
+            <X className="h-4 w-4" />
           </Button>
         </header>
 
-        {/* Abas horizontais estilo Excel */}
+        {/* Barra de abas horizontal — estilo Excel moderno */}
         <div
-          className="relative z-10 shrink-0 bg-[hsl(var(--muted))]/20"
+          className="relative z-20 shrink-0 border-b border-[hsl(var(--border))]/70 bg-[hsl(var(--muted))]/35 shadow-[inset_0_1px_0_hsla(0,0%,100%,0.05)]"
           role="tablist"
           aria-label="Planilhas de material"
         >
-          <div className="flex items-end gap-0.5 overflow-x-auto px-3 pb-0 pt-2 [scrollbar-width:thin]">
-            {doc.planilhas.map((p) => {
+          <div className="flex min-h-[2.75rem] items-stretch gap-px overflow-x-auto px-2 pt-1.5 [scrollbar-width:thin] sm:px-3">
+            {doc.planilhas.map((p, index) => {
               const active = p.id === activePlanilhaId;
               const itemCount = p.items.filter((it) => it.status === "ativo").length;
               const isRenaming = renamingPlanilhaId === p.id;
+              const isFirst = index === 0;
 
               if (isRenaming) {
                 return (
                   <div
                     key={p.id}
-                    className="mb-[-1px] flex min-w-[9rem] max-w-[14rem] shrink-0 items-center gap-1 rounded-t-xl border border-b-0 border-[hsl(var(--primary))]/40 bg-[hsl(var(--card))] px-2 py-2 shadow-[0_-4px_20px_hsl(var(--primary)/0.08)]"
+                    className={cn(
+                      "relative z-20 flex min-w-[10rem] max-w-[15rem] shrink-0 items-center gap-1 self-stretch border border-b-0 px-2",
+                      "rounded-t-lg border-[hsl(var(--primary))]/45 bg-[hsl(var(--card))]",
+                      "shadow-[0_-2px_12px_hsl(var(--primary)/0.1)]",
+                    )}
                   >
                     <input
                       type="text"
@@ -313,7 +315,7 @@ export function MaterialControleModal({ open, onClose }: Props) {
                     />
                     <button
                       type="button"
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
                       onClick={() => {
                         if (renameDraft.trim()) renamePlanilha(p.id, renameDraft);
                         setRenamingPlanilhaId(null);
@@ -340,57 +342,69 @@ export function MaterialControleModal({ open, onClose }: Props) {
                   }}
                   title={`${p.nome} — duplo clique para renomear`}
                   className={cn(
-                    "group relative mb-[-1px] flex max-w-[11rem] shrink-0 items-center gap-2 rounded-t-xl px-3.5 py-2.5 text-left transition-all duration-200",
-                    "border border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1",
+                    "group relative shrink-0 border text-left transition-[background-color,border-color,box-shadow,transform] duration-150",
+                    "focus-visible:z-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
                     active
                       ? cn(
-                          "z-10 border-[hsl(var(--primary))]/35 bg-[hsl(var(--card))]",
-                          "shadow-[0_-6px_24px_hsl(var(--primary)/0.12),inset_0_1px_0_hsla(0,0%,100%,0.06)]",
-                          "after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-[hsl(var(--card))]",
+                          "z-20 -mb-px min-w-[7.5rem] max-w-[12rem] self-stretch",
+                          "rounded-t-lg border-[hsl(var(--border))]/80 border-b-transparent bg-[hsl(var(--card))]",
+                          "shadow-[0_-1px_0_hsl(var(--card)),0_-8px_20px_-6px_hsl(var(--primary)/0.18)]",
+                          "before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:rounded-t-lg",
+                          "before:bg-gradient-to-r before:from-[hsl(142,55%,42%)] before:via-[hsl(var(--primary))] before:to-[hsl(142,55%,42%)]",
                         )
                       : cn(
-                          "z-0 border-transparent bg-[hsl(var(--muted))]/45 text-[hsl(var(--muted-foreground))]",
-                          "hover:border-[hsl(var(--border))]/60 hover:bg-[hsl(var(--muted))]/65 hover:text-[hsl(var(--foreground))]",
+                          "z-10 min-w-[6.5rem] max-w-[11rem] self-end",
+                          "mb-0.5 rounded-t-md border-[hsl(var(--border))]/55 bg-[hsl(var(--muted))]/55",
+                          "hover:z-20 hover:border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/80",
+                          isFirst && "ml-0",
                         ),
                   )}
                 >
-                  {active ? (
+                  <span
+                    className={cn(
+                      "flex h-full items-center gap-2 px-3 py-2",
+                      active ? "pb-2.5" : "py-1.5",
+                    )}
+                  >
                     <span
-                      className="pointer-events-none absolute inset-x-3 top-0 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[hsl(var(--primary))] to-transparent opacity-80"
-                      aria-hidden
-                    />
-                  ) : null}
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-xs font-medium sm:text-sm",
-                      active && "font-semibold text-[hsl(var(--foreground))]",
-                    )}
-                  >
-                    {p.nome}
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-md px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums",
-                      active
-                        ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
-                        : "bg-[hsl(var(--background))]/50 text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]",
-                    )}
-                  >
-                    {itemCount}
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-[0.7rem] font-medium leading-tight sm:text-xs",
+                        active
+                          ? "font-semibold text-[hsl(var(--foreground))]"
+                          : "text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]",
+                      )}
+                    >
+                      {p.nome}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded px-1 py-px text-[0.55rem] font-bold tabular-nums leading-none",
+                        active
+                          ? "bg-[hsl(var(--primary))]/12 text-[hsl(var(--primary))]"
+                          : "bg-[hsl(var(--background))]/40 text-[hsl(var(--muted-foreground))]",
+                      )}
+                    >
+                      {itemCount}
+                    </span>
                   </span>
                 </button>
               );
             })}
 
-            <div className="mb-[-1px] flex shrink-0 items-center gap-1 rounded-t-xl border border-b-0 border-dashed border-[hsl(var(--border))]/80 bg-[hsl(var(--muted))]/25 px-2 py-1.5">
+            <div
+              className={cn(
+                "z-10 mb-0.5 flex shrink-0 self-end items-center gap-0.5 rounded-t-md",
+                "border border-dashed border-[hsl(var(--border))]/70 bg-[hsl(var(--muted))]/40",
+              )}
+            >
               <input
                 type="text"
                 value={novaPlanilhaNome}
                 onChange={(e) => setNovaPlanilhaNome(e.target.value)}
-                placeholder="Nova planilha…"
+                placeholder="+ Planilha"
                 className={cn(
                   sotFormInputClass,
-                  "h-7 w-[7.5rem] border-0 bg-transparent text-xs shadow-none focus-visible:ring-1 sm:w-[9rem]",
+                  "h-8 w-[6.5rem] border-0 bg-transparent px-2 text-[0.7rem] shadow-none focus-visible:ring-0 sm:w-28 sm:text-xs",
                 )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreatePlanilha();
@@ -399,15 +413,14 @@ export function MaterialControleModal({ open, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleCreatePlanilha}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--primary))]/12"
+                className="flex h-8 w-8 shrink-0 items-center justify-center text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
                 aria-label="Adicionar planilha"
                 title="Nova planilha"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
-          <div className="h-px bg-[hsl(var(--border))]/80" aria-hidden />
         </div>
 
         <main
