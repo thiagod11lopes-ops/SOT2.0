@@ -22,7 +22,17 @@ import {
   type MaterialItem,
   type MaterialPlanilha,
 } from "../lib/materialControleStorage";
+import { applyMaterialControleSeeds } from "../lib/materialControleArmario1Seed";
 import { useSyncPreference } from "./sync-preference-context";
+
+async function hydrateDocWithSeeds(raw: MaterialControleDoc): Promise<{
+  doc: MaterialControleDoc;
+  seedApplied: boolean;
+}> {
+  const { doc, changed } = applyMaterialControleSeeds(raw);
+  if (changed) await saveMaterialControleToIdb(doc);
+  return { doc, seedApplied: changed };
+}
 
 type CloudSyncStatus = "idle" | "syncing" | "synced" | "error";
 
@@ -131,9 +141,11 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (useCloud) return;
     let cancelled = false;
-    void loadMaterialControleFromIdb().then((local) => {
+    void loadMaterialControleFromIdb().then(async (local) => {
       if (cancelled) return;
-      setDoc(local);
+      const { doc: seeded } = await hydrateDocWithSeeds(local);
+      if (cancelled) return;
+      setDoc(seeded);
       hydratedRef.current = true;
       setInitialLoadComplete(true);
       setCloudSyncStatus("synced");
@@ -165,18 +177,21 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
               if (payload === null) {
                 if (!localPromotionAttemptedRef.current) {
                   localPromotionAttemptedRef.current = true;
-                  const local = await loadMaterialControleFromIdb();
-                  if (!isMaterialControleDocEmpty(local)) {
+                  const { doc: seeded } = await hydrateDocWithSeeds(await loadMaterialControleFromIdb());
+                  if (!isMaterialControleDocEmpty(seeded)) {
                     try {
-                      await setSotStateDocWithRetry(SOT_STATE_DOC.materialControle, local);
+                      await setSotStateDocWithRetry(SOT_STATE_DOC.materialControle, seeded);
                       applyingRemoteRef.current = true;
-                      setDoc(local);
-                      await saveMaterialControleToIdb(local);
+                      setDoc(seeded);
+                      await saveMaterialControleToIdb(seeded);
                       setCloudSyncStatus("synced");
                     } catch (e) {
                       console.error("[SOT] Promover controle de material local para nuvem:", e);
                       setCloudSyncStatus("error");
                     }
+                  } else {
+                    applyingRemoteRef.current = true;
+                    setDoc(seeded);
                   }
                 }
                 hydratedRef.current = true;
@@ -185,10 +200,12 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
               }
 
               applyingRemoteRef.current = true;
-              const next = normalizeMaterialControleDoc(payload);
-              setDoc(next);
+              const normalized = normalizeMaterialControleDoc(payload);
+              const { doc: seeded, seedApplied } = await hydrateDocWithSeeds(normalized);
+              if (seedApplied) applyingRemoteRef.current = false;
+              setDoc(seeded);
               setCloudSyncStatus("synced");
-              await saveMaterialControleToIdb(next);
+              await saveMaterialControleToIdb(seeded);
               hydratedRef.current = true;
               setInitialLoadComplete(true);
             })();
