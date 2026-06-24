@@ -4,6 +4,16 @@ export const MATERIAL_CONTROLE_IDB_KEY = "sot-material-controle-v1";
 
 export type MaterialItemStatus = "ativo" | "baixa";
 
+export type MaterialMovimentoTipo = "entrada" | "saida";
+
+export type MaterialMovimento = {
+  id: string;
+  tipo: MaterialMovimentoTipo;
+  quantidade: number;
+  responsavel: string;
+  at: string;
+};
+
 export type MaterialItem = {
   id: string;
   nome: string;
@@ -13,6 +23,7 @@ export type MaterialItem = {
   status: MaterialItemStatus;
   baixaAt: string | null;
   baixaMotivo: string;
+  movimentos: MaterialMovimento[];
   createdAt: string;
   updatedAt: string;
 };
@@ -40,6 +51,19 @@ export function newMaterialId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+function normalizeMovimento(raw: unknown): MaterialMovimento | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const tipo = o.tipo === "entrada" || o.tipo === "saida" ? o.tipo : null;
+  const responsavel = typeof o.responsavel === "string" ? o.responsavel.trim() : "";
+  if (!id || !tipo || !responsavel) return null;
+  const quantidade =
+    typeof o.quantidade === "number" && Number.isFinite(o.quantidade) ? Math.max(0, o.quantidade) : 0;
+  const at = typeof o.at === "string" ? o.at : new Date().toISOString();
+  return { id, tipo, quantidade, responsavel, at };
+}
+
 function normalizeItem(raw: unknown): MaterialItem | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -49,6 +73,8 @@ function normalizeItem(raw: unknown): MaterialItem | null {
   const qty = typeof o.quantidade === "number" && Number.isFinite(o.quantidade) ? Math.max(0, o.quantidade) : 0;
   const status: MaterialItemStatus = o.status === "baixa" ? "baixa" : "ativo";
   const now = new Date().toISOString();
+  const movimentosRaw = Array.isArray(o.movimentos) ? o.movimentos : [];
+  const movimentos = movimentosRaw.map(normalizeMovimento).filter((x): x is MaterialMovimento => x !== null);
   return {
     id,
     nome,
@@ -58,6 +84,7 @@ function normalizeItem(raw: unknown): MaterialItem | null {
     status,
     baixaAt: typeof o.baixaAt === "string" ? o.baixaAt : null,
     baixaMotivo: typeof o.baixaMotivo === "string" ? o.baixaMotivo.trim() : "",
+    movimentos,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : now,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : now,
   };

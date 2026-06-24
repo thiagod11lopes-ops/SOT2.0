@@ -5,7 +5,6 @@ import {
   Boxes,
   Check,
   Edit3,
-  FolderOpen,
   Minus,
   Package,
   Plus,
@@ -17,7 +16,7 @@ import {
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMaterialControle } from "../context/material-controle-context";
-import type { MaterialItem } from "../lib/materialControleStorage";
+import type { MaterialItem, MaterialMovimento } from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -47,6 +46,12 @@ function formatBaixaDate(iso: string | null) {
   } catch {
     return iso;
   }
+}
+
+function formatMovimentoLabel(m: MaterialMovimento) {
+  const data = formatBaixaDate(m.at);
+  const acao = m.tipo === "entrada" ? "Entrada" : "Retirada";
+  return `${acao} · ${m.quantidade} un. · ${m.responsavel} · ${data}`;
 }
 
 export function MaterialControleModal({ open, onClose }: Props) {
@@ -80,6 +85,7 @@ export function MaterialControleModal({ open, onClose }: Props) {
   const [formUnidade, setFormUnidade] = useState("");
   const [formObs, setFormObs] = useState("");
   const [formMotivo, setFormMotivo] = useState("");
+  const [formResponsavel, setFormResponsavel] = useState("");
 
   const activePlanilha = useMemo(
     () => doc.planilhas.find((p) => p.id === activePlanilhaId) ?? null,
@@ -156,6 +162,7 @@ export function MaterialControleModal({ open, onClose }: Props) {
     setFormUnidade("");
     setFormObs("");
     setFormMotivo("");
+    setFormResponsavel("");
   }
 
   function openDialog(mode: DialogMode) {
@@ -199,11 +206,11 @@ export function MaterialControleModal({ open, onClose }: Props) {
         observacao: formObs,
       });
     } else if (dialog.kind === "entrada") {
-      if (qty <= 0) return;
-      entradaItem(activePlanilhaId, dialog.item.id, qty);
+      if (qty <= 0 || !formResponsavel.trim()) return;
+      entradaItem(activePlanilhaId, dialog.item.id, qty, formResponsavel);
     } else if (dialog.kind === "saida") {
-      if (qty <= 0) return;
-      saidaItem(activePlanilhaId, dialog.item.id, qty);
+      if (qty <= 0 || !formResponsavel.trim()) return;
+      saidaItem(activePlanilhaId, dialog.item.id, qty, formResponsavel);
     } else if (dialog.kind === "baixa") {
       darBaixaItem(activePlanilhaId, dialog.item.id, formMotivo);
     }
@@ -272,115 +279,157 @@ export function MaterialControleModal({ open, onClose }: Props) {
           </Button>
         </header>
 
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col md:flex-row">
-          <aside className="flex w-full shrink-0 flex-col border-b border-[hsl(var(--border))]/80 md:w-72 md:border-b-0 md:border-r">
-            <div className="border-b border-[hsl(var(--border))]/60 px-4 py-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
-                Planilhas
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={novaPlanilhaNome}
-                  onChange={(e) => setNovaPlanilhaNome(e.target.value)}
-                  placeholder="Ex.: Almoxarifado, Viatura 01…"
-                  className={cn(sotFormInputClass, "min-w-0 flex-1 text-sm")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCreatePlanilha();
+        {/* Abas horizontais estilo Excel */}
+        <div
+          className="relative z-10 shrink-0 bg-[hsl(var(--muted))]/20"
+          role="tablist"
+          aria-label="Planilhas de material"
+        >
+          <div className="flex items-end gap-0.5 overflow-x-auto px-3 pb-0 pt-2 [scrollbar-width:thin]">
+            {doc.planilhas.map((p) => {
+              const active = p.id === activePlanilhaId;
+              const itemCount = p.items.filter((it) => it.status === "ativo").length;
+              const isRenaming = renamingPlanilhaId === p.id;
+
+              if (isRenaming) {
+                return (
+                  <div
+                    key={p.id}
+                    className="mb-[-1px] flex min-w-[9rem] max-w-[14rem] shrink-0 items-center gap-1 rounded-t-xl border border-b-0 border-[hsl(var(--primary))]/40 bg-[hsl(var(--card))] px-2 py-2 shadow-[0_-4px_20px_hsl(var(--primary)/0.08)]"
+                  >
+                    <input
+                      type="text"
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      className={cn(sotFormInputClass, "h-7 min-w-0 flex-1 text-xs")}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && renameDraft.trim()) {
+                          renamePlanilha(p.id, renameDraft);
+                          setRenamingPlanilhaId(null);
+                        }
+                        if (e.key === "Escape") setRenamingPlanilhaId(null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
+                      onClick={() => {
+                        if (renameDraft.trim()) renamePlanilha(p.id, renameDraft);
+                        setRenamingPlanilhaId(null);
+                      }}
+                      aria-label="Confirmar nome"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={`planilha-panel-${p.id}`}
+                  onClick={() => setActivePlanilhaId(p.id)}
+                  onDoubleClick={() => {
+                    setRenameDraft(p.nome);
+                    setRenamingPlanilhaId(p.id);
                   }}
-                />
-                <Button type="button" size="icon" onClick={handleCreatePlanilha} aria-label="Nova planilha">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+                  title={`${p.nome} — duplo clique para renomear`}
+                  className={cn(
+                    "group relative mb-[-1px] flex max-w-[11rem] shrink-0 items-center gap-2 rounded-t-xl px-3.5 py-2.5 text-left transition-all duration-200",
+                    "border border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1",
+                    active
+                      ? cn(
+                          "z-10 border-[hsl(var(--primary))]/35 bg-[hsl(var(--card))]",
+                          "shadow-[0_-6px_24px_hsl(var(--primary)/0.12),inset_0_1px_0_hsla(0,0%,100%,0.06)]",
+                          "after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-[hsl(var(--card))]",
+                        )
+                      : cn(
+                          "z-0 border-transparent bg-[hsl(var(--muted))]/45 text-[hsl(var(--muted-foreground))]",
+                          "hover:border-[hsl(var(--border))]/60 hover:bg-[hsl(var(--muted))]/65 hover:text-[hsl(var(--foreground))]",
+                        ),
+                  )}
+                >
+                  {active ? (
+                    <span
+                      className="pointer-events-none absolute inset-x-3 top-0 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[hsl(var(--primary))] to-transparent opacity-80"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-xs font-medium sm:text-sm",
+                      active && "font-semibold text-[hsl(var(--foreground))]",
+                    )}
+                  >
+                    {p.nome}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-md px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums",
+                      active
+                        ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
+                        : "bg-[hsl(var(--background))]/50 text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]",
+                    )}
+                  >
+                    {itemCount}
+                  </span>
+                </button>
+              );
+            })}
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {doc.planilhas.length === 0 ? (
-                <p className="px-2 py-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                  Crie a primeira planilha para começar.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {doc.planilhas.map((p) => {
-                    const active = p.id === activePlanilhaId;
-                    const itemCount = p.items.filter((it) => it.status === "ativo").length;
-                    return (
-                      <li key={p.id}>
-                        {renamingPlanilhaId === p.id ? (
-                          <div className="flex gap-1 rounded-xl border border-[hsl(var(--primary))]/30 bg-[hsl(var(--muted))]/20 p-2">
-                            <input
-                              type="text"
-                              value={renameDraft}
-                              onChange={(e) => setRenameDraft(e.target.value)}
-                              className={cn(sotFormInputClass, "min-w-0 flex-1 text-sm")}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && renameDraft.trim()) {
-                                  renamePlanilha(p.id, renameDraft);
-                                  setRenamingPlanilhaId(null);
-                                }
-                                if (e.key === "Escape") setRenamingPlanilhaId(null);
-                              }}
-                            />
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                if (renameDraft.trim()) renamePlanilha(p.id, renameDraft);
-                                setRenamingPlanilhaId(null);
-                              }}
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setActivePlanilhaId(p.id)}
-                            className={cn(
-                              "group flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all",
-                              active
-                                ? "border border-[hsl(var(--primary))]/35 bg-[hsl(var(--primary))]/12 shadow-[0_0_20px_hsl(var(--primary)/0.12)]"
-                                : "border border-transparent hover:bg-[hsl(var(--muted))]/30",
-                            )}
-                          >
-                            <FolderOpen
-                              className={cn(
-                                "h-4 w-4 shrink-0",
-                                active ? "text-[hsl(var(--primary))]" : "text-[hsl(var(--muted-foreground))]",
-                              )}
-                            />
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.nome}</span>
-                            <span className="rounded-md bg-[hsl(var(--muted))]/50 px-1.5 py-0.5 text-[0.65rem] tabular-nums text-[hsl(var(--muted-foreground))]">
-                              {itemCount}
-                            </span>
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+            <div className="mb-[-1px] flex shrink-0 items-center gap-1 rounded-t-xl border border-b-0 border-dashed border-[hsl(var(--border))]/80 bg-[hsl(var(--muted))]/25 px-2 py-1.5">
+              <input
+                type="text"
+                value={novaPlanilhaNome}
+                onChange={(e) => setNovaPlanilhaNome(e.target.value)}
+                placeholder="Nova planilha…"
+                className={cn(
+                  sotFormInputClass,
+                  "h-7 w-[7.5rem] border-0 bg-transparent text-xs shadow-none focus-visible:ring-1 sm:w-[9rem]",
+                )}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreatePlanilha();
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCreatePlanilha}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--primary))]/12"
+                aria-label="Adicionar planilha"
+                title="Nova planilha"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
             </div>
-          </aside>
+          </div>
+          <div className="h-px bg-[hsl(var(--border))]/80" aria-hidden />
+        </div>
 
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main
+          id={activePlanilha ? `planilha-panel-${activePlanilha.id}` : undefined}
+          role="tabpanel"
+          className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-[hsl(var(--card))]"
+        >
             {!activePlanilha ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
                 <Package className="h-12 w-12 text-[hsl(var(--muted-foreground))]/40" strokeWidth={1.25} />
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
                   {initialLoadComplete
-                    ? "Selecione ou crie uma planilha para gerir o material."
+                    ? doc.planilhas.length === 0
+                      ? "Crie a primeira planilha na barra de abas acima."
+                      : "Selecione uma planilha para gerir o material."
                     : "A carregar inventário…"}
                 </p>
               </div>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-2 border-b border-[hsl(var(--border))]/60 px-4 py-3 sm:px-5">
+                <div className="flex flex-wrap items-center gap-2 border-b border-[hsl(var(--border))]/40 px-4 py-3 sm:px-5">
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-base font-semibold">{activePlanilha.nome}</h3>
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       {stats.ativos} ativo(s) · {stats.totalQty} un. em stock
                       {stats.baixados > 0 ? ` · ${stats.baixados} baixa(s)` : ""}
@@ -493,6 +542,28 @@ export function MaterialControleModal({ open, onClose }: Props) {
                           {item.observacao ? (
                             <p className="mb-2 line-clamp-2 text-xs text-[hsl(var(--muted-foreground))]">{item.observacao}</p>
                           ) : null}
+                          {item.movimentos.length > 0 ? (
+                            <ul className="mb-2 space-y-0.5 border-t border-[hsl(var(--border))]/50 pt-2">
+                              {item.movimentos.slice(0, 3).map((m) => (
+                                <li
+                                  key={m.id}
+                                  className={cn(
+                                    "text-[0.65rem] leading-snug",
+                                    m.tipo === "entrada"
+                                      ? "text-emerald-700 dark:text-emerald-400"
+                                      : "text-amber-700 dark:text-amber-400",
+                                  )}
+                                >
+                                  {formatMovimentoLabel(m)}
+                                </li>
+                              ))}
+                              {item.movimentos.length > 3 ? (
+                                <li className="text-[0.6rem] text-[hsl(var(--muted-foreground))]">
+                                  +{item.movimentos.length - 3} registo(s) anterior(es)
+                                </li>
+                              ) : null}
+                            </ul>
+                          ) : null}
                           {item.status === "baixa" && item.baixaAt ? (
                             <p className="mb-2 text-[0.65rem] text-[hsl(var(--muted-foreground))]">
                               Baixa em {formatBaixaDate(item.baixaAt)}
@@ -578,8 +649,7 @@ export function MaterialControleModal({ open, onClose }: Props) {
                 </div>
               </>
             )}
-          </main>
-        </div>
+        </main>
 
         {dialog ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -632,21 +702,58 @@ export function MaterialControleModal({ open, onClose }: Props) {
                   </>
                 )}
                 {(dialog.kind === "entrada" || dialog.kind === "saida") && (
-                  <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                    Quantidade a {dialog.kind === "entrada" ? "adicionar" : "retirar"}
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={formQty}
-                      onChange={(e) => setFormQty(e.target.value)}
-                      className={cn(sotFormInputClass, "mt-1 w-full")}
-                      autoFocus
-                    />
-                    <span className="mt-1 block text-[0.65rem]">
-                      Stock atual: <strong>{dialog.item.quantidade}</strong>
-                      {dialog.item.unidade ? ` ${dialog.item.unidade}` : ""}
-                    </span>
-                  </label>
+                  <>
+                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                      Quantidade a {dialog.kind === "entrada" ? "adicionar" : "retirar"}
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={formQty}
+                        onChange={(e) => setFormQty(e.target.value)}
+                        className={cn(sotFormInputClass, "mt-1 w-full")}
+                        autoFocus
+                      />
+                      <span className="mt-1 block text-[0.65rem]">
+                        Stock atual: <strong>{dialog.item.quantidade}</strong>
+                        {dialog.item.unidade ? ` ${dialog.item.unidade}` : ""}
+                      </span>
+                    </label>
+                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                      Responsável
+                      <input
+                        type="text"
+                        value={formResponsavel}
+                        onChange={(e) => setFormResponsavel(e.target.value)}
+                        placeholder="Nome de quem fez a operação"
+                        className={cn(sotFormInputClass, "mt-1 w-full")}
+                      />
+                      <span className="mt-1 block text-[0.65rem]">
+                        A data e hora serão registadas automaticamente ao confirmar.
+                      </span>
+                    </label>
+                    {dialog.item.movimentos.length > 0 ? (
+                      <div className="rounded-xl border border-[hsl(var(--border))]/60 bg-[hsl(var(--muted))]/15 p-3">
+                        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                          Histórico recente
+                        </p>
+                        <ul className="max-h-28 space-y-1 overflow-y-auto">
+                          {dialog.item.movimentos.slice(0, 8).map((m) => (
+                            <li
+                              key={m.id}
+                              className={cn(
+                                "text-xs",
+                                m.tipo === "entrada"
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : "text-amber-700 dark:text-amber-400",
+                              )}
+                            >
+                              {formatMovimentoLabel(m)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </>
                 )}
                 {dialog.kind === "baixa" && (
                   <>
@@ -670,7 +777,13 @@ export function MaterialControleModal({ open, onClose }: Props) {
                 <Button type="button" variant="outline" onClick={() => setDialog(null)}>
                   Cancelar
                 </Button>
-                <Button type="button" onClick={handleConfirmDialog}>
+                <Button
+                  type="button"
+                  onClick={handleConfirmDialog}
+                  disabled={
+                    (dialog.kind === "entrada" || dialog.kind === "saida") && !formResponsavel.trim()
+                  }
+                >
                   Confirmar
                 </Button>
               </div>

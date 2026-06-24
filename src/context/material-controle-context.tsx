@@ -20,6 +20,8 @@ import {
   saveMaterialControleToIdb,
   type MaterialControleDoc,
   type MaterialItem,
+  type MaterialMovimento,
+  type MaterialMovimentoTipo,
   type MaterialPlanilha,
 } from "../lib/materialControleStorage";
 import { applyMaterialControleSeeds } from "../lib/materialControleArmario1Seed";
@@ -59,8 +61,8 @@ type MaterialControleContextValue = {
     patch: Partial<Pick<MaterialItem, "nome" | "quantidade" | "unidade" | "observacao">>,
   ) => void;
   deleteItem: (planilhaId: string, itemId: string) => void;
-  entradaItem: (planilhaId: string, itemId: string, quantidade: number) => void;
-  saidaItem: (planilhaId: string, itemId: string, quantidade: number) => void;
+  entradaItem: (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => void;
+  saidaItem: (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => void;
   darBaixaItem: (planilhaId: string, itemId: string, motivo?: string) => void;
   reativarItem: (planilhaId: string, itemId: string) => void;
 };
@@ -69,6 +71,27 @@ const MaterialControleContext = createContext<MaterialControleContextValue | nul
 
 function touchPlanilha(planilha: MaterialPlanilha, patch: Partial<MaterialPlanilha>): MaterialPlanilha {
   return { ...planilha, ...patch, updatedAt: new Date().toISOString() };
+}
+
+function appendMovimento(
+  item: MaterialItem,
+  tipo: MaterialMovimentoTipo,
+  quantidade: number,
+  responsavel: string,
+): MaterialItem {
+  const at = new Date().toISOString();
+  const movimento: MaterialMovimento = {
+    id: newMaterialId(),
+    tipo,
+    quantidade,
+    responsavel: responsavel.trim(),
+    at,
+  };
+  return {
+    ...item,
+    movimentos: [movimento, ...item.movimentos],
+    updatedAt: at,
+  };
 }
 
 function mapPlanilha(
@@ -303,6 +326,7 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
         status: "ativo",
         baixaAt: null,
         baixaMotivo: "",
+        movimentos: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -357,21 +381,18 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   );
 
   const entradaItem = useCallback(
-    (planilhaId: string, itemId: string, quantidade: number) => {
+    (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => {
       const delta = Math.max(0, quantidade);
-      if (delta <= 0) return;
+      const resp = responsavel.trim();
+      if (delta <= 0 || !resp) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
-            items: p.items.map((it) =>
-              it.id === itemId && it.status === "ativo"
-                ? {
-                    ...it,
-                    quantidade: it.quantidade + delta,
-                    updatedAt: new Date().toISOString(),
-                  }
-                : it,
-            ),
+            items: p.items.map((it) => {
+              if (it.id !== itemId || it.status !== "ativo") return it;
+              const withMov = appendMovimento(it, "entrada", delta, resp);
+              return { ...withMov, quantidade: it.quantidade + delta };
+            }),
           }),
         ),
       );
@@ -380,21 +401,18 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   );
 
   const saidaItem = useCallback(
-    (planilhaId: string, itemId: string, quantidade: number) => {
+    (planilhaId: string, itemId: string, quantidade: number, responsavel: string) => {
       const delta = Math.max(0, quantidade);
-      if (delta <= 0) return;
+      const resp = responsavel.trim();
+      if (delta <= 0 || !resp) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
-            items: p.items.map((it) =>
-              it.id === itemId && it.status === "ativo"
-                ? {
-                    ...it,
-                    quantidade: Math.max(0, it.quantidade - delta),
-                    updatedAt: new Date().toISOString(),
-                  }
-                : it,
-            ),
+            items: p.items.map((it) => {
+              if (it.id !== itemId || it.status !== "ativo") return it;
+              const withMov = appendMovimento(it, "saida", delta, resp);
+              return { ...withMov, quantidade: Math.max(0, it.quantidade - delta) };
+            }),
           }),
         ),
       );

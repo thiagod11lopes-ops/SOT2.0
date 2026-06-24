@@ -143,6 +143,7 @@ function buildPlanilhaFromSeed(nome: string, itens: SeedItem[]): MaterialPlanilh
     status: "ativo",
     baixaAt: null,
     baixaMotivo: "",
+    movimentos: [],
     createdAt: now,
     updatedAt: now,
   }));
