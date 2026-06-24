@@ -43,6 +43,8 @@ export const SOT_STATE_DOC = {
   owntracks: "owntracks",
   /** Pedidos de motorista SIAD (alerta «SIAD SOLICITADO» em todos os dispositivos). */
   siadDriverRequest: "siadDriverRequest",
+  /** Controle de material por planilhas (localização / estoque). */
+  materialControle: "materialControle",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

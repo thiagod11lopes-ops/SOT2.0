@@ -1,4 +1,5 @@
 import { HeaderDateTime } from "./header-datetime";
+import { MaterialControleHeaderButton } from "./material-controle-header-button";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
 import { CloudSyncIndicator } from "./cloud-sync-indicator";
 import { BrokenCarIcon } from "./icons/broken-car-icon";
@@ -37,10 +38,11 @@ export function Header({
       <div className="relative mx-auto flex min-h-[5rem] max-w-[1600px] items-center justify-between gap-3 px-6 py-3 sm:min-h-[5.25rem] sm:gap-4">
         <div
           className={cn(
-            "relative z-10 shrink-0 transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            "relative z-10 flex shrink-0 items-center gap-2 transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
             hidden ? "pointer-events-none -translate-y-4 scale-[0.985] opacity-0 blur-[2px]" : "opacity-100",
           )}
         >
+          <MaterialControleHeaderButton />
           <HeaderDateTime />
         </div>
 
