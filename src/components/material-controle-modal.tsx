@@ -16,7 +16,6 @@ import {
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMaterialControle } from "../context/material-controle-context";
-import { isoDateToPtBr } from "../lib/dateFormat";
 import type { MaterialItem, MaterialMovimento } from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
@@ -49,19 +48,11 @@ function formatBaixaDate(iso: string | null) {
   }
 }
 
-function todayIsoLocal(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function formatMovimentoLabel(m: MaterialMovimento) {
-  const data = isoDateToPtBr(m.at.slice(0, 10)) || formatBaixaDate(m.at);
+  const dataHora = formatBaixaDate(m.at);
   const acao = m.tipo === "entrada" ? "Entrada" : "Retirada";
   const obs = m.observacao.trim() ? ` · ${m.observacao.trim()}` : "";
-  return `${acao} · ${m.quantidade} un. · ${m.responsavel} · ${data}${obs}`;
+  return `${acao} · ${m.quantidade} un. · ${m.responsavel} · ${dataHora}${obs}`;
 }
 
 export function MaterialControleModal({ open, onClose }: Props) {
@@ -96,7 +87,8 @@ export function MaterialControleModal({ open, onClose }: Props) {
   const [formObs, setFormObs] = useState("");
   const [formMotivo, setFormMotivo] = useState("");
   const [formResponsavel, setFormResponsavel] = useState("");
-  const [formDataMovimentoIso, setFormDataMovimentoIso] = useState(() => todayIsoLocal());
+  const [formDataMovimentoIso, setFormDataMovimentoIso] = useState("");
+  const [formHoraMovimento, setFormHoraMovimento] = useState("");
   const [formObsMovimento, setFormObsMovimento] = useState("");
 
   const activePlanilha = useMemo(
@@ -175,7 +167,8 @@ export function MaterialControleModal({ open, onClose }: Props) {
     setFormObs("");
     setFormMotivo("");
     setFormResponsavel("");
-    setFormDataMovimentoIso(todayIsoLocal());
+    setFormDataMovimentoIso("");
+    setFormHoraMovimento("");
     setFormObsMovimento("");
   }
 
@@ -187,9 +180,6 @@ export function MaterialControleModal({ open, onClose }: Props) {
       setFormObs(mode.item.observacao);
       if (mode.kind === "edit-item") setFormQty(String(mode.item.quantidade));
       if (mode.kind === "baixa") setFormMotivo(mode.item.baixaMotivo);
-    }
-    if (mode.kind === "entrada" || mode.kind === "saida") {
-      setFormDataMovimentoIso(todayIsoLocal());
     }
     setDialog(mode);
   }
@@ -223,18 +213,20 @@ export function MaterialControleModal({ open, onClose }: Props) {
         observacao: formObs,
       });
     } else if (dialog.kind === "entrada") {
-      if (qty <= 0 || !formResponsavel.trim() || !formDataMovimentoIso) return;
+      if (qty <= 0 || !formResponsavel.trim() || !formDataMovimentoIso || !formHoraMovimento.trim()) return;
       entradaItem(activePlanilhaId, dialog.item.id, {
         quantidade: qty,
         responsavel: formResponsavel,
         dataIso: formDataMovimentoIso,
+        hora: formHoraMovimento,
       });
     } else if (dialog.kind === "saida") {
-      if (qty <= 0 || !formResponsavel.trim() || !formDataMovimentoIso) return;
+      if (qty <= 0 || !formResponsavel.trim() || !formDataMovimentoIso || !formHoraMovimento.trim()) return;
       saidaItem(activePlanilhaId, dialog.item.id, {
         quantidade: qty,
         responsavel: formResponsavel,
         dataIso: formDataMovimentoIso,
+        hora: formHoraMovimento,
         observacao: formObsMovimento,
       });
     } else if (dialog.kind === "baixa") {
@@ -742,16 +734,29 @@ export function MaterialControleModal({ open, onClose }: Props) {
                 )}
                 {(dialog.kind === "entrada" || dialog.kind === "saida") && (
                   <>
-                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                      {dialog.kind === "entrada" ? "Data da entrada" : "Data da saída"}
-                      <input
-                        type="date"
-                        value={formDataMovimentoIso}
-                        onChange={(e) => setFormDataMovimentoIso(e.target.value)}
-                        className={cn(sotFormInputClass, "mt-1 w-full")}
-                        autoFocus
-                      />
-                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                        {dialog.kind === "entrada" ? "Data da entrada" : "Data da saída"}
+                        <input
+                          type="date"
+                          value={formDataMovimentoIso}
+                          onChange={(e) => setFormDataMovimentoIso(e.target.value)}
+                          className={cn(sotFormInputClass, "mt-1 w-full")}
+                          required
+                          autoFocus
+                        />
+                      </label>
+                      <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                        {dialog.kind === "entrada" ? "Horário da entrada" : "Horário da saída"}
+                        <input
+                          type="time"
+                          value={formHoraMovimento}
+                          onChange={(e) => setFormHoraMovimento(e.target.value)}
+                          className={cn(sotFormInputClass, "mt-1 w-full")}
+                          required
+                        />
+                      </label>
+                    </div>
                     <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))]">
                       Quantidade a {dialog.kind === "entrada" ? "adicionar" : "retirar"}
                       <input
@@ -839,7 +844,7 @@ export function MaterialControleModal({ open, onClose }: Props) {
                   onClick={handleConfirmDialog}
                   disabled={
                     (dialog.kind === "entrada" || dialog.kind === "saida") &&
-                    (!formResponsavel.trim() || !formDataMovimentoIso)
+                    (!formResponsavel.trim() || !formDataMovimentoIso || !formHoraMovimento.trim())
                   }
                 >
                   Confirmar

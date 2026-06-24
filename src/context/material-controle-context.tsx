@@ -18,7 +18,7 @@ import {
   newMaterialId,
   normalizeMaterialControleDoc,
   saveMaterialControleToIdb,
-  materialMovimentoIsoFromDateKey,
+  materialMovimentoIsoFromDateAndTime,
   type MaterialControleDoc,
   type MaterialItem,
   type MaterialMovimento,
@@ -79,8 +79,9 @@ function appendMovimento(
   item: MaterialItem,
   tipo: MaterialMovimentoTipo,
   input: MaterialMovimentoInput,
-): MaterialItem {
-  const at = materialMovimentoIsoFromDateKey(input.dataIso);
+): MaterialItem | null {
+  const at = materialMovimentoIsoFromDateAndTime(input.dataIso, input.hora);
+  if (!at) return null;
   const movimento: MaterialMovimento = {
     id: newMaterialId(),
     tipo,
@@ -386,13 +387,15 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
     (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => {
       const delta = Math.max(0, input.quantidade);
       const resp = input.responsavel.trim();
-      if (delta <= 0 || !resp || !input.dataIso.trim()) return;
+      const hora = input.hora.trim();
+      if (delta <= 0 || !resp || !input.dataIso.trim() || !hora) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
             items: p.items.map((it) => {
               if (it.id !== itemId || it.status !== "ativo") return it;
               const withMov = appendMovimento(it, "entrada", input);
+              if (!withMov) return it;
               return { ...withMov, quantidade: it.quantidade + delta };
             }),
           }),
@@ -406,13 +409,15 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
     (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => {
       const delta = Math.max(0, input.quantidade);
       const resp = input.responsavel.trim();
-      if (delta <= 0 || !resp || !input.dataIso.trim()) return;
+      const hora = input.hora.trim();
+      if (delta <= 0 || !resp || !input.dataIso.trim() || !hora) return;
       mutateDoc((prev) =>
         mapPlanilha(prev, planilhaId, (p) =>
           touchPlanilha(p, {
             items: p.items.map((it) => {
               if (it.id !== itemId || it.status !== "ativo") return it;
               const withMov = appendMovimento(it, "saida", input);
+              if (!withMov) return it;
               return { ...withMov, quantidade: Math.max(0, it.quantidade - delta) };
             }),
           }),

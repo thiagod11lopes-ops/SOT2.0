@@ -21,15 +21,23 @@ export type MaterialMovimentoInput = {
   responsavel: string;
   /** Data da operação em `yyyy-mm-dd`. */
   dataIso: string;
+  /** Horário da operação em `HH:mm`. */
+  hora: string;
   observacao?: string;
 };
 
-/** Converte `yyyy-mm-dd` para ISO ao meio-dia local (evita mudança de dia por fuso). */
-export function materialMovimentoIsoFromDateKey(dataIso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dataIso.trim());
-  if (!m) return new Date().toISOString();
-  const [, y, mo, d] = m;
-  return new Date(Number(y), Number(mo) - 1, Number(d), 12, 0, 0, 0).toISOString();
+/** Converte data (`yyyy-mm-dd`) e hora (`HH:mm`) para ISO local. */
+export function materialMovimentoIsoFromDateAndTime(dataIso: string, hora: string): string | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dataIso.trim());
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(hora.trim());
+  if (!dm || !hm) return null;
+  const [, y, mo, d] = dm;
+  const hh = Number(hm[1]);
+  const mm = Number(hm[2]);
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d), hh, mm, 0, 0);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
 }
 
 export type MaterialItem = {
