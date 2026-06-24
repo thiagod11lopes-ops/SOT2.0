@@ -5,21 +5,25 @@ import {
   Boxes,
   Check,
   Edit3,
+  History,
   Minus,
   Package,
   Plus,
   RotateCcw,
   Search,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMaterialControle } from "../context/material-controle-context";
-import type { MaterialItem, MaterialMovimento } from "../lib/materialControleStorage";
+import type { MaterialItem } from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { MaterialControleBalancoPanel } from "./material-controle-balanco-panel";
+import { MaterialControleMovimentosPanel } from "./material-controle-movimentos-panel";
 
 type Props = {
   open: boolean;
@@ -46,13 +50,6 @@ function formatBaixaDate(iso: string | null) {
   } catch {
     return iso;
   }
-}
-
-function formatMovimentoLabel(m: MaterialMovimento) {
-  const dataHora = formatBaixaDate(m.at);
-  const acao = m.tipo === "entrada" ? "Entrada" : "Retirada";
-  const obs = m.observacao.trim() ? ` · ${m.observacao.trim()}` : "";
-  return `${acao} · ${m.quantidade} un. · ${m.responsavel} · ${dataHora}${obs}`;
 }
 
 export function MaterialControleModal({ open, onClose }: Props) {
@@ -90,6 +87,8 @@ export function MaterialControleModal({ open, onClose }: Props) {
   const [formDataMovimentoIso, setFormDataMovimentoIso] = useState("");
   const [formHoraMovimento, setFormHoraMovimento] = useState("");
   const [formObsMovimento, setFormObsMovimento] = useState("");
+  const [movimentosPanelOpen, setMovimentosPanelOpen] = useState(false);
+  const [balancoPanelOpen, setBalancoPanelOpen] = useState(false);
 
   const activePlanilha = useMemo(
     () => doc.planilhas.find((p) => p.id === activePlanilhaId) ?? null,
@@ -138,8 +137,8 @@ export function MaterialControleModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    setRemoteSyncPaused(dialog !== null || renamingPlanilhaId !== null);
-  }, [open, dialog, renamingPlanilhaId, setRemoteSyncPaused]);
+    setRemoteSyncPaused(dialog !== null || renamingPlanilhaId !== null || movimentosPanelOpen || balancoPanelOpen);
+  }, [open, dialog, renamingPlanilhaId, movimentosPanelOpen, balancoPanelOpen, setRemoteSyncPaused]);
 
   useEffect(() => {
     if (!open) return;
@@ -468,6 +467,27 @@ export function MaterialControleModal({ open, onClose }: Props) {
                   </div>
                   <Button
                     type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setMovimentosPanelOpen(true)}
+                    title="Ver movimentação desta planilha"
+                    aria-label="Ver movimentação"
+                  >
+                    <History className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setBalancoPanelOpen(true)}
+                    title="Balanço de todas as planilhas"
+                  >
+                    <Table2 className="mr-1.5 h-3.5 w-3.5" />
+                    Balanço
+                  </Button>
+                  <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => {
@@ -572,28 +592,6 @@ export function MaterialControleModal({ open, onClose }: Props) {
 
                           {item.observacao ? (
                             <p className="mb-2 line-clamp-2 text-xs text-[hsl(var(--muted-foreground))]">{item.observacao}</p>
-                          ) : null}
-                          {item.movimentos.length > 0 ? (
-                            <ul className="mb-2 space-y-0.5 border-t border-[hsl(var(--border))]/50 pt-2">
-                              {item.movimentos.slice(0, 3).map((m) => (
-                                <li
-                                  key={m.id}
-                                  className={cn(
-                                    "text-[0.65rem] leading-snug",
-                                    m.tipo === "entrada"
-                                      ? "text-emerald-700 dark:text-emerald-400"
-                                      : "text-amber-700 dark:text-amber-400",
-                                  )}
-                                >
-                                  {formatMovimentoLabel(m)}
-                                </li>
-                              ))}
-                              {item.movimentos.length > 3 ? (
-                                <li className="text-[0.6rem] text-[hsl(var(--muted-foreground))]">
-                                  +{item.movimentos.length - 3} registo(s) anterior(es)
-                                </li>
-                              ) : null}
-                            </ul>
                           ) : null}
                           {item.status === "baixa" && item.baixaAt ? (
                             <p className="mb-2 text-[0.65rem] text-[hsl(var(--muted-foreground))]">
@@ -793,28 +791,6 @@ export function MaterialControleModal({ open, onClose }: Props) {
                         />
                       </label>
                     ) : null}
-                    {dialog.item.movimentos.length > 0 ? (
-                      <div className="rounded-xl border border-[hsl(var(--border))]/60 bg-[hsl(var(--muted))]/15 p-3">
-                        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                          Histórico recente
-                        </p>
-                        <ul className="max-h-28 space-y-1 overflow-y-auto">
-                          {dialog.item.movimentos.slice(0, 8).map((m) => (
-                            <li
-                              key={m.id}
-                              className={cn(
-                                "text-xs",
-                                m.tipo === "entrada"
-                                  ? "text-emerald-700 dark:text-emerald-400"
-                                  : "text-amber-700 dark:text-amber-400",
-                              )}
-                            >
-                              {formatMovimentoLabel(m)}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
                   </>
                 )}
                 {dialog.kind === "baixa" && (
@@ -853,6 +829,17 @@ export function MaterialControleModal({ open, onClose }: Props) {
             </div>
           </div>
         ) : null}
+
+        <MaterialControleMovimentosPanel
+          open={movimentosPanelOpen}
+          onClose={() => setMovimentosPanelOpen(false)}
+          planilha={activePlanilha}
+        />
+        <MaterialControleBalancoPanel
+          open={balancoPanelOpen}
+          onClose={() => setBalancoPanelOpen(false)}
+          doc={doc}
+        />
       </div>
     </div>,
     document.body,
