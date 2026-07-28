@@ -12,7 +12,6 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { loadMotoristaPaoFromIdb, saveMotoristaPaoToIdb } from "../lib/motoristaPaoStorage";
-import { motoristaNamesMatch, subscribeMotoristaRenamed } from "../lib/motoristaRename";
 import { useSyncPreference } from "./sync-preference-context";
 
 type MotoristaPaoContextValue = {
@@ -150,12 +149,6 @@ export function MotoristaPaoProvider({ children }: { children: ReactNode }) {
     if (useCloud || !hydratedRef.current) return;
     void saveMotoristaPaoToIdb(nome);
   }, [nome, useCloud]);
-
-  useEffect(() => {
-    return subscribeMotoristaRenamed((oldName, newName) => {
-      setNomeState((prev) => (motoristaNamesMatch(prev, oldName) ? newName : prev));
-    });
-  }, []);
 
   const setNome = useCallback((value: string) => {
     setNomeState(value);

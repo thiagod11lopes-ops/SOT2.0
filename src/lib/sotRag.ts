@@ -11,6 +11,7 @@ import { getProximoIntegranteEscalaAposHoje } from "./escalaPaoStorage";
 import type { EscalaPaoStored } from "./escalaPaoStorage";
 import type { CatalogItemsState } from "../context/catalog-items-context";
 import type { DepartureRecord } from "../types/departure";
+import type { MotoristaAliasesMap } from "./motoristaAliases";
 import { buildSotStatisticsRagChunks, isStatisticsRagQuery } from "./sotStatisticsRag";
 
 export type SotRagChunk = {
@@ -22,6 +23,7 @@ export type SotRagChunk = {
 export type SotRagKnowledgeInput = {
   departures: DepartureRecord[];
   catalog: CatalogItemsState;
+  motoristaAliases?: MotoristaAliasesMap;
   escalaPao: EscalaPaoStored;
   integrantesPao: string[];
   motoristaPaoHoje: string;
@@ -352,7 +354,12 @@ export function buildSotRagKnowledgeBase(input: SotRagKnowledgeInput): SotRagChu
     });
   }
 
-  chunks.push(...buildSotStatisticsRagChunks(input.departures));
+  chunks.push(
+    ...buildSotStatisticsRagChunks(input.departures, {
+      motoristaAliases: input.motoristaAliases,
+      catalogMotoristas: input.catalog.motoristas,
+    }),
+  );
 
   return chunks;
 }

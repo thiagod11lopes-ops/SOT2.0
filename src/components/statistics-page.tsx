@@ -11,8 +11,10 @@ import {
   TriangleAlert,
   UserRound,
 } from "lucide-react";
+import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
 import { parseIsoDateToDate, parsePtBrToDate } from "../lib/dateFormat";
+import { resolveMotoristaNameForStats } from "../lib/motoristaAliases";
 import { parseHhMm } from "../lib/timeInput";
 import type { DepartureRecord, DepartureType } from "../types/departure";
 import { Button } from "./ui/button";
@@ -407,6 +409,7 @@ function MetricCard({
 
 export function StatisticsPage() {
   const { departures } = useDepartures();
+  const { items: catalogItems, motoristaAliases } = useCatalogItems();
   const [yearFilter, setYearFilter] = useState("todos");
   const [monthFilter, setMonthFilter] = useState("todos");
   const [driverFilter, setDriverFilter] = useState("todos");
@@ -418,6 +421,11 @@ export function StatisticsPage() {
   const [lateDestinationsExpanded, setLateDestinationsExpanded] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
 
+  const resolveDriverLabel = useCallback(
+    (field: string) => resolveMotoristaNameForStats(field, motoristaAliases, catalogItems.motoristas),
+    [motoristaAliases, catalogItems.motoristas],
+  );
+
   const departuresActive = useMemo(() => departures.filter((row) => row.cancelada !== true), [departures]);
   const departuresForStatistics = useMemo(
     () => departuresActive.filter((row) => !rowHasAsdPlaceholder(row)),
@@ -428,7 +436,7 @@ export function StatisticsPage() {
       const departureDate = parseDepartureDate(row.dataSaida);
       const rowYear = departureDate ? String(departureDate.getFullYear()) : "";
       const rowMonth = departureDate ? String(departureDate.getMonth() + 1) : "";
-      const rowDriver = row.motoristas.trim();
+      const rowDriver = resolveDriverLabel(row.motoristas);
       const rowVehicle = row.viaturas.trim();
       const rowType = row.tipo;
       if (yearFilter !== "todos" && rowYear !== yearFilter) return false;
@@ -438,7 +446,15 @@ export function StatisticsPage() {
       if (typeFilter !== "todos" && rowType !== typeFilter) return false;
       return true;
     });
-  }, [departuresForStatistics, yearFilter, monthFilter, driverFilter, vehicleFilter, typeFilter]);
+  }, [
+    departuresForStatistics,
+    yearFilter,
+    monthFilter,
+    driverFilter,
+    vehicleFilter,
+    typeFilter,
+    resolveDriverLabel,
+  ]);
 
   const baselineFilters = useMemo(
     (): StatisticsBaselineFilters => ({
@@ -466,10 +482,10 @@ export function StatisticsPage() {
   }, [departuresForStatistics]);
 
   const availableDrivers = useMemo(() => {
-    return [...new Set(departuresForStatistics.map((row) => row.motoristas.trim()).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b, "pt-BR"),
-    );
-  }, [departuresForStatistics]);
+    return [
+      ...new Set(departuresForStatistics.map((row) => resolveDriverLabel(row.motoristas)).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [departuresForStatistics, resolveDriverLabel]);
 
   const availableVehicles = useMemo(() => {
     return [...new Set(departuresForStatistics.map((row) => row.viaturas.trim()).filter(Boolean))].sort((a, b) =>
@@ -491,7 +507,10 @@ export function StatisticsPage() {
     };
   }, [filteredDepartures, historicalBaseline]);
 
-  const countMapMotoristas = useMemo(() => toCountMap(filteredDepartures, (row) => row.motoristas), [filteredDepartures]);
+  const countMapMotoristas = useMemo(
+    () => toCountMap(filteredDepartures, (row) => resolveDriverLabel(row.motoristas)),
+    [filteredDepartures, resolveDriverLabel],
+  );
   const rankingMotoristas = useMemo(() => toTopRanking(countMapMotoristas), [countMapMotoristas]);
   const rankingMotoristasFull = useMemo(() => toTopRanking(countMapMotoristas, Number.POSITIVE_INFINITY), [countMapMotoristas]);
 

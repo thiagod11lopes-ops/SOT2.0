@@ -12,7 +12,13 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
-import { dispatchMotoristaRenamed } from "../lib/motoristaRename";
+import {
+  emptyMotoristaAliases,
+  mergeMotoristaAliases,
+  normalizeMotoristaAliases,
+  registerMotoristaRename,
+  type MotoristaAliasesMap,
+} from "../lib/motoristaAliases";
 import { useSyncPreference } from "./sync-preference-context";
 
 export type CatalogCategory =
@@ -25,6 +31,8 @@ export type CatalogCategory =
   | "ambulancias";
 
 export type CatalogItemsState = Record<CatalogCategory, string[]>;
+
+type CatalogPersisted = CatalogItemsState & { motoristaAliases?: MotoristaAliasesMap };
 
 /** Lista única para validação e selects (admin + ambulâncias), sem duplicar por maiúsculas. */
 export function mergeViaturasCatalog(items: CatalogItemsState): string[] {
@@ -60,7 +68,22 @@ const emptyState: CatalogItemsState = {
   ambulancias: [],
 };
 
-type StoredCatalog = Partial<CatalogItemsState> & { viaturas?: string[] };
+type StoredCatalog = Partial<CatalogItemsState> & {
+  viaturas?: string[];
+  motoristaAliases?: MotoristaAliasesMap;
+};
+
+function toPersistedCatalog(items: CatalogItemsState, aliases: MotoristaAliasesMap): CatalogPersisted {
+  return { ...items, motoristaAliases: aliases };
+}
+
+function parsePersistedCatalog(raw: unknown): { items: CatalogItemsState; aliases: MotoristaAliasesMap } {
+  const stored = (raw && typeof raw === "object" ? raw : null) as StoredCatalog | null;
+  return {
+    items: normalizeCatalogState(stored),
+    aliases: normalizeMotoristaAliases(stored?.motoristaAliases),
+  };
+}
 
 function canonicalizeVehiclePlate(value: string): string {
   const t = value.trim();
@@ -197,6 +220,8 @@ function mergeCatalogStates(a: CatalogItemsState, b: CatalogItemsState): Catalog
 
 type CatalogItemsContextValue = {
   items: CatalogItemsState;
+  /** Nomes antigos → nome atual (só para estatísticas / resolução de exibição). */
+  motoristaAliases: MotoristaAliasesMap;
   /** Primeira carga local ou snapshot remoto concluída. */
   initialLoadComplete: boolean;
   /** Retorna `true` se o item foi incluído (novo); `false` se vazio ou duplicado. */
@@ -210,8 +235,11 @@ const CatalogItemsContext = createContext<CatalogItemsContextValue | null>(null)
 
 export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CatalogItemsState>({ ...emptyState });
+  const [motoristaAliases, setMotoristaAliases] = useState<MotoristaAliasesMap>(() => emptyMotoristaAliases());
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const aliasesRef = useRef(motoristaAliases);
+  aliasesRef.current = motoristaAliases;
   /** `true` após a 1.ª leitura do IndexedDB (evita gravar estado vazio antes do merge). */
   const initialIdbLoadDoneRef = useRef(false);
   const hydratedRef = useRef(false);
@@ -238,8 +266,9 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void idbGetJson<StoredCatalog>(STORAGE_KEY).then((stored) => {
       if (cancelled) return;
-      const fromDb = normalizeCatalogState(stored);
-      setItems((prev) => mergeCatalogStates(fromDb, prev));
+      const parsed = parsePersistedCatalog(stored);
+      setItems((prev) => mergeCatalogStates(parsed.items, prev));
+      setMotoristaAliases((prev) => mergeMotoristaAliases(parsed.aliases, prev));
       initialIdbLoadDoneRef.current = true;
       markInitialLoadComplete();
     });
@@ -272,24 +301,18 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
                 return;
               }
               applyingRemoteRef.current = true;
-              const incoming = normalizeCatalogState(payload as StoredCatalog);
+              const parsed = parsePersistedCatalog(payload);
               setItems((prev) => {
-                if (isCatalogEmpty(incoming) && !isCatalogEmpty(prev)) {
+                if (isCatalogEmpty(parsed.items) && !isCatalogEmpty(prev)) {
                   return prev;
                 }
-                // União local + remoto: um snapshot pode chegar antes do write recente
-                // (ou com latência) e substituir `prev` por dados antigos — isso apagava
-                // viaturas/motoristas recém-cadastrados. O merge preserva entradas locais
-                // até o servidor refletir o estado completo.
-                const merged = mergeCatalogStates(prev, incoming);
-                // Se o estado local tinha itens ainda não refletidos no snapshot (ex.: viatura
-                // recém-cadastrada), o efeito que grava na nuvem era ignorado por
-                // `applyingRemoteRef` — enviamos o merge explicitamente.
-                if (!catalogStatesEquivalent(merged, incoming)) {
+                const merged = mergeCatalogStates(prev, parsed.items);
+                if (!catalogStatesEquivalent(merged, parsed.items)) {
                   // Em modo Firebase-only, divergência é resolvida no servidor; cliente não força writeback aqui.
                 }
                 return merged;
               });
+              setMotoristaAliases((prev) => mergeMotoristaAliases(prev, parsed.aliases));
               markInitialLoadComplete();
             })();
           },
@@ -317,14 +340,14 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!initialIdbLoadDoneRef.current && isCatalogEmpty(items)) return;
-    void idbSetJson(STORAGE_KEY, items, { maxAttempts: 6 });
-  }, [items]);
+    void idbSetJson(STORAGE_KEY, toPersistedCatalog(items, motoristaAliases), { maxAttempts: 6 });
+  }, [items, motoristaAliases]);
 
   useEffect(() => {
     const flushToIdb = () => {
       const cur = itemsRef.current;
       if (!initialIdbLoadDoneRef.current && isCatalogEmpty(cur)) return;
-      void idbSetJson(STORAGE_KEY, cur, { maxAttempts: 6 });
+      void idbSetJson(STORAGE_KEY, toPersistedCatalog(cur, aliasesRef.current), { maxAttempts: 6 });
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flushToIdb();
@@ -344,12 +367,12 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       return;
     }
     const t = window.setTimeout(() => {
-      void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, items).catch((e) => {
+      void setSotStateDocWithRetry(SOT_STATE_DOC.catalog, toPersistedCatalog(items, motoristaAliases)).catch((e) => {
         console.error("[SOT] Gravar catálogo na nuvem:", e);
       });
     }, 120);
     return () => window.clearTimeout(t);
-  }, [items, useCloud]);
+  }, [items, motoristaAliases, useCloud]);
 
   const addItem = useCallback(
     (category: CatalogCategory, value: string): boolean => {
@@ -400,7 +423,7 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
       if (renamed) {
         bumpLocalMutation();
         if (category === "motoristas") {
-          dispatchMotoristaRenamed(oldValue, nextName);
+          setMotoristaAliases((prev) => registerMotoristaRename(prev, oldValue, nextName));
         }
       }
       return renamed;
@@ -420,8 +443,8 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, initialLoadComplete, addItem, renameItem, removeItem }),
-    [items, initialLoadComplete, addItem, renameItem, removeItem],
+    () => ({ items, motoristaAliases, initialLoadComplete, addItem, renameItem, removeItem }),
+    [items, motoristaAliases, initialLoadComplete, addItem, renameItem, removeItem],
   );
 
   return (

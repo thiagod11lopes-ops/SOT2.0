@@ -14,7 +14,7 @@ import {
 
 export function useSotRagKnowledge() {
   const { departures } = useDepartures();
-  const { items: catalog } = useCatalogItems();
+  const { items: catalog, motoristaAliases } = useCatalogItems();
   const { escala, integrantes } = useEscalaPao();
   const { nome: motoristaPaoHoje } = useMotoristaPao();
   const { avisoPrincipal, avisosGeraisLinhas } = useAvisos();
@@ -24,13 +24,23 @@ export function useSotRagKnowledge() {
       buildSotRagKnowledgeBase({
         departures,
         catalog,
+        motoristaAliases,
         escalaPao: escala,
         integrantesPao: integrantes,
         motoristaPaoHoje: motoristaPaoHoje.trim() || getMotoristaEscalaParaData(escala, new Date()),
         avisoPrincipal,
         avisosGerais: avisosGeraisLinhas,
       }),
-    [departures, catalog, escala, integrantes, motoristaPaoHoje, avisoPrincipal, avisosGeraisLinhas],
+    [
+      departures,
+      catalog,
+      motoristaAliases,
+      escala,
+      integrantes,
+      motoristaPaoHoje,
+      avisoPrincipal,
+      avisosGeraisLinhas,
+    ],
   );
 
   return {

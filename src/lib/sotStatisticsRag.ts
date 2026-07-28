@@ -1,5 +1,9 @@
 import { parseIsoDateToDate, parsePtBrToDate } from "./dateFormat";
 import {
+  resolveMotoristaNameForStats,
+  type MotoristaAliasesMap,
+} from "./motoristaAliases";
+import {
   addBaselineCalendarDaysToSet,
   getStatisticsBaselineContribution,
   mergeMonthlyEvolutionWithBaseline,
@@ -171,7 +175,18 @@ function formatAverage(value: number): string {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-export function buildSotStatisticsRagChunks(departures: DepartureRecord[]): StatisticsRagChunk[] {
+export function buildSotStatisticsRagChunks(
+  departures: DepartureRecord[],
+  options?: {
+    motoristaAliases?: MotoristaAliasesMap;
+    catalogMotoristas?: string[];
+  },
+): StatisticsRagChunk[] {
+  const aliases = options?.motoristaAliases ?? {};
+  const catalogMotoristas = options?.catalogMotoristas ?? [];
+  const resolveDriver = (field: string) =>
+    resolveMotoristaNameForStats(field, aliases, catalogMotoristas);
+
   const rows = departures.filter((r) => r.cancelada !== true && !rowHasAsdPlaceholder(r));
   const baseline = getStatisticsBaselineContribution(DEFAULT_FILTERS);
 
@@ -189,7 +204,10 @@ export function buildSotStatisticsRagChunks(departures: DepartureRecord[]): Stat
     ? mergeMonthlyEvolutionWithBaseline(buildMonthlyEvolution(rows), baseline.byMonth)
     : buildMonthlyEvolution(rows);
 
-  const rankingMotoristas = toTopRanking(toCountMap(rows, (r) => r.motoristas), TOP_MOTORISTAS);
+  const rankingMotoristas = toTopRanking(
+    toCountMap(rows, (r) => resolveDriver(r.motoristas)),
+    TOP_MOTORISTAS,
+  );
   const adminRows = rows.filter((r) => r.tipo === "Administrativa");
   const ambulanceRows = rows.filter((r) => r.tipo === "Ambulância");
   const rankingViaturasAdmin = toTopRanking(toCountMap(adminRows, (r) => r.viaturas), TOP_VIATURAS);

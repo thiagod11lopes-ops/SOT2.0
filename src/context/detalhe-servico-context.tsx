@@ -20,10 +20,6 @@ import {
 } from "../lib/detalheServicoBundle";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
-import {
-  renameMotoristaInDetalheBundle,
-  subscribeMotoristaRenamed,
-} from "../lib/motoristaRename";
 import { useSyncPreference } from "./sync-preference-context";
 
 type CloudSyncStatus = "idle" | "syncing" | "synced" | "error";
@@ -215,12 +211,6 @@ export function DetalheServicoProvider({ children }: { children: ReactNode }) {
     if (useCloud || !hydratedRef.current) return;
     void saveDetalheServicoBundleToIdb(bundle);
   }, [bundle, useCloud]);
-
-  useEffect(() => {
-    return subscribeMotoristaRenamed((oldName, newName) => {
-      setBundleState((prev) => renameMotoristaInDetalheBundle(prev, oldName, newName));
-    });
-  }, []);
 
   const value: DetalheServicoContextValue = {
     bundle,
