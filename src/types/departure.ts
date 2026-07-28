@@ -150,12 +150,23 @@ function horaMergeKey(hora: string): string {
   return `${String(p.h).padStart(2, "0")}:${String(p.m).padStart(2, "0")}`;
 }
 
-/** Chave de agrupamento: mesma viatura, motorista, hora de saída e estado cancelada. */
+/** Placeholder de cadastro incompleto (SIAD / ASD) — não deve fundir linhas na lista. */
+function isAsdPlaceholderField(value: string): boolean {
+  return value.trim().toUpperCase() === "ASD";
+}
+
+/**
+ * Chave de agrupamento: mesma viatura, motorista, hora de saída e estado cancelada.
+ * Se motorista e viatura forem ambos «ASD», cada registo fica sozinho (não junta pelo horário).
+ */
 export function mergeGroupKey(r: DepartureRecord): string {
   const v = r.viaturas.trim().toLowerCase();
   const m = r.motoristas.trim().toLowerCase();
   const h = horaMergeKey(r.horaSaida);
   const c = r.cancelada === true ? "1" : "0";
+  if (isAsdPlaceholderField(r.viaturas) && isAsdPlaceholderField(r.motoristas)) {
+    return `${c}|${v}|${m}|${h}|id:${r.id}`;
+  }
   return `${c}|${v}|${m}|${h}`;
 }
 
@@ -172,6 +183,7 @@ export type DepartureListMergeGroup = {
 /**
  * Agrupa saídas com a mesma viatura, motorista e horário (e mesmo estado cancelada)
  * para uma única linha na tabela, fundindo bairros e setores.
+ * Exceção: motorista e viatura «ASD» não se agrupam (cada registo numa linha).
  */
 export function groupDeparturesForListDisplay(rows: DepartureRecord[]): DepartureListMergeGroup[] {
   const order: string[] = [];
