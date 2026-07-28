@@ -27,6 +27,10 @@ import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import { clearMotoristaActiveAssignmentIfDeparture } from "../lib/motoristaActiveAssignment";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
 import {
+  renameMotoristaInDepartures,
+  subscribeMotoristaRenamed,
+} from "../lib/motoristaRename";
+import {
   departureCompletionScore,
   mergeDeparturePatch,
   type DepartureUpdatePatch,
@@ -770,6 +774,29 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     }));
     setSyncRefreshToken((v) => v + 1);
   }, []);
+
+  useEffect(() => {
+    return subscribeMotoristaRenamed((oldName, newName) => {
+      setDepartures((prev) => {
+        const { next, changedIds } = renameMotoristaInDepartures(prev, oldName, newName);
+        if (changedIds.length === 0) return prev;
+        const now = Date.now();
+        const clientId = clientIdRef.current;
+        const updated = next.map((row) =>
+          changedIds.includes(row.id)
+            ? { ...row, updatedAt: now, updatedBy: clientId }
+            : row,
+        );
+        if (useCloud) {
+          bumpLocalMutation();
+          for (const id of changedIds) markTouched(id);
+          const toUpsert = updated.filter((r) => changedIds.includes(r.id));
+          enqueueWrite(() => batchUpsertDepartures(toUpsert));
+        }
+        return updated;
+      });
+    });
+  }, [useCloud, bumpLocalMutation, markTouched, enqueueWrite]);
 
   const value = useMemo(
     () => ({

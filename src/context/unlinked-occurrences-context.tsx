@@ -21,6 +21,7 @@ import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import type { DepartureType } from "../types/departure";
 import { normalizeLegacyDateToPtBr } from "../lib/dateFormat";
 import type { UnlinkedDepartureOccurrence, UnlinkedOccurrencesDoc } from "../types/unlinkedOccurrence";
+import { renameMotoristaInUnlinkedDoc, subscribeMotoristaRenamed } from "../lib/motoristaRename";
 import { useSyncPreference } from "./sync-preference-context";
 
 type UnlinkedOccurrencesContextValue = {
@@ -199,6 +200,12 @@ export function UnlinkedOccurrencesProvider({ children }: { children: ReactNode 
     }),
     [doc.items, initialLoadComplete, addUnlinkedOccurrence, entriesForPdf],
   );
+
+  useEffect(() => {
+    return subscribeMotoristaRenamed((oldName, newName) => {
+      setDoc((prev) => renameMotoristaInUnlinkedDoc(prev, oldName, newName));
+    });
+  }, []);
 
   return (
     <UnlinkedOccurrencesContext.Provider value={value}>{children}</UnlinkedOccurrencesContext.Provider>

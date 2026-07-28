@@ -12,6 +12,7 @@ import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
+import { dispatchMotoristaRenamed } from "../lib/motoristaRename";
 import { useSyncPreference } from "./sync-preference-context";
 
 export type CatalogCategory =
@@ -396,7 +397,12 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
         renamed = true;
         return { ...prev, [category]: nextList };
       });
-      if (renamed) bumpLocalMutation();
+      if (renamed) {
+        bumpLocalMutation();
+        if (category === "motoristas") {
+          dispatchMotoristaRenamed(oldValue, nextName);
+        }
+      }
       return renamed;
     },
     [bumpLocalMutation],

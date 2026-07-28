@@ -22,6 +22,10 @@ import {
   loadIntegrantesPaoFromIdb,
   saveIntegrantesPaoToIdb,
 } from "../lib/integrantesPaoStorage";
+import {
+  renameMotoristaInEscalaPao,
+  subscribeMotoristaRenamed,
+} from "../lib/motoristaRename";
 import { useSyncPreference } from "./sync-preference-context";
 
 function normalizeEscalaPaoBundle(raw: unknown): { escala: EscalaPaoStored; integrantes: string[] } {
@@ -257,6 +261,18 @@ export function EscalaPaoProvider({ children }: { children: ReactNode }) {
 
   const setEscalaCompleta = useCallback((next: EscalaPaoStored) => {
     setEscala(next);
+  }, []);
+
+  useEffect(() => {
+    return subscribeMotoristaRenamed((oldName, newName) => {
+      setEscala((prevE) => {
+        setIntegrantesState((prevI) => {
+          const renamed = renameMotoristaInEscalaPao(prevE, prevI, oldName, newName);
+          return renamed.integrantes;
+        });
+        return renameMotoristaInEscalaPao(prevE, [], oldName, newName).escala;
+      });
+    });
   }, []);
 
   const value = useMemo(

@@ -20,6 +20,7 @@ import { OficinaVisitasProvider } from "./context/oficina-visits-context";
 import { ViaturasInoperantesProvider } from "./context/viaturas-inoperantes-context";
 import { VehicleMaintenanceProvider } from "./context/vehicle-maintenance-context";
 import { VehicleMaintenanceModals } from "./components/vehicle-maintenance-modals";
+import { MotoristaRenameSideEffects } from "./components/motorista-rename-side-effects";
 import { SiadDriverRequestSyncProvider } from "./context/siad-driver-request-sync-provider";
 import { SyncPreferenceProvider } from "./context/sync-preference-context";
 import { RootErrorBoundary } from "./root-error-boundary";
@@ -56,6 +57,7 @@ createRoot(rootEl).render(
                               <MaterialControleProvider>
                               <MotoristaPaoProvider>
                                 <EscalaPaoProvider>
+                                  <MotoristaRenameSideEffects />
                                   <App />
                                 </EscalaPaoProvider>
                               </MotoristaPaoProvider>
