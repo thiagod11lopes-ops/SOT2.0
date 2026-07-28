@@ -1,4 +1,4 @@
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CatalogCategory } from "../context/catalog-items-context";
 import { useCatalogItems } from "../context/catalog-items-context";
@@ -20,7 +20,7 @@ const viaturaSubTabs = ["Cadastrar Viatura", "Manutenções"] as const;
 const motoristaCategory: CatalogCategory = "motoristas";
 
 export function FleetPersonnelPage() {
-  const { items, addItem, removeItem } = useCatalogItems();
+  const { items, addItem, renameItem, removeItem } = useCatalogItems();
   const { fleetManutencoesFocusKey } = useAppTab();
   const { isPendente, setPendente } = useLimpezaPendente();
   const [activeSubTab, setActiveSubTab] = useState<string>(subTabs[0]);
@@ -28,6 +28,8 @@ export function FleetPersonnelPage() {
   const [draftViaturaAdmin, setDraftViaturaAdmin] = useState("");
   const [draftViaturaAmb, setDraftViaturaAmb] = useState("");
   const [viaturaInnerTab, setViaturaInnerTab] = useState<string>(viaturaSubTabs[0]);
+  const [editingMotorista, setEditingMotorista] = useState<string | null>(null);
+  const [editMotoristaDraft, setEditMotoristaDraft] = useState("");
 
   useEffect(() => {
     if (fleetManutencoesFocusKey > 0) {
@@ -35,6 +37,13 @@ export function FleetPersonnelPage() {
       setViaturaInnerTab("Manutenções");
     }
   }, [fleetManutencoesFocusKey]);
+
+  useEffect(() => {
+    if (activeSubTab !== "Motorista") {
+      setEditingMotorista(null);
+      setEditMotoristaDraft("");
+    }
+  }, [activeSubTab]);
 
   const isMotorista = activeSubTab === "Motorista";
   const isViatura = activeSubTab === "Viaturas";
@@ -50,6 +59,32 @@ export function FleetPersonnelPage() {
     if (!canAddMotorista) return;
     const added = addItem(motoristaCategory, draftMotorista);
     if (added) setDraftMotorista("");
+  }
+
+  function startEditMotorista(entry: string) {
+    setEditingMotorista(entry);
+    setEditMotoristaDraft(entry);
+  }
+
+  function cancelEditMotorista() {
+    setEditingMotorista(null);
+    setEditMotoristaDraft("");
+  }
+
+  function confirmEditMotorista() {
+    if (!editingMotorista) return;
+    const next = editMotoristaDraft.trim();
+    if (!next) return;
+    if (next === editingMotorista) {
+      cancelEditMotorista();
+      return;
+    }
+    const ok = renameItem(motoristaCategory, editingMotorista, next);
+    if (!ok) {
+      window.alert("Não foi possível renomear. O nome pode já existir ou estar vazio.");
+      return;
+    }
+    cancelEditMotorista();
   }
 
   function handleAddViaturaAdmin() {
@@ -114,24 +149,88 @@ export function FleetPersonnelPage() {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">Nenhum item ainda.</p>
                 ) : (
                   <ul className="space-y-1.5">
-                    {items.motoristas.map((entry) => (
+                    {items.motoristas.map((entry) => {
+                      const isEditing = editingMotorista === entry;
+                      return (
                       <li
                         key={entry}
                         className="flex items-center justify-between gap-2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 py-1.5 text-sm"
                       >
-                        <span className="min-w-0 flex-1 break-words">{entry}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 text-slate-500 hover:text-red-600"
-                          aria-label={`Remover ${entry}`}
-                          onClick={() => removeItem(motoristaCategory, entry)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {isEditing ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editMotoristaDraft}
+                              onChange={(e) => setEditMotoristaDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  confirmEditMotorista();
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelEditMotorista();
+                                }
+                              }}
+                              className={cn(sotFormInputClass, "h-8 min-w-0 flex-1 py-1 text-sm")}
+                              autoFocus
+                              aria-label={`Editar nome de ${entry}`}
+                            />
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
+                                aria-label="Confirmar edição"
+                                onClick={confirmEditMotorista}
+                                disabled={!editMotoristaDraft.trim()}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-slate-500 hover:text-slate-700"
+                                aria-label="Cancelar edição"
+                                onClick={cancelEditMotorista}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="min-w-0 flex-1 break-words">{entry}</span>
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-slate-500 hover:text-[hsl(var(--primary))]"
+                                aria-label={`Editar ${entry}`}
+                                title="Editar nome"
+                                onClick={() => startEditMotorista(entry)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-slate-500 hover:text-red-600"
+                                aria-label={`Remover ${entry}`}
+                                onClick={() => removeItem(motoristaCategory, entry)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
               </div>

@@ -200,6 +200,8 @@ type CatalogItemsContextValue = {
   initialLoadComplete: boolean;
   /** Retorna `true` se o item foi incluído (novo); `false` se vazio ou duplicado. */
   addItem: (category: CatalogCategory, value: string) => boolean;
+  /** Renomeia um item existente. `false` se vazio, inexistente ou duplicado. */
+  renameItem: (category: CatalogCategory, oldValue: string, newValue: string) => boolean;
   removeItem: (category: CatalogCategory, value: string) => void;
 };
 
@@ -371,6 +373,35 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
     [bumpLocalMutation],
   );
 
+  const renameItem = useCallback(
+    (category: CatalogCategory, oldValue: string, newValue: string): boolean => {
+      const normalizedNew =
+        category === "motoristas"
+          ? canonicalizeMotoristaName(newValue)
+          : category === "viaturasAdministrativas" || category === "ambulancias"
+            ? canonicalizeVehiclePlate(newValue)
+            : newValue.trim();
+      const nextName = normalizedNew.trim();
+      if (!nextName) return false;
+      let renamed = false;
+      setItems((prev) => {
+        const list = prev[category];
+        const idx = list.findIndex((x) => x === oldValue);
+        if (idx < 0) return prev;
+        const lower = nextName.toLowerCase();
+        if (list.some((x, i) => i !== idx && x.toLowerCase() === lower)) return prev;
+        if (list[idx] === nextName) return prev;
+        const nextList = [...list];
+        nextList[idx] = nextName;
+        renamed = true;
+        return { ...prev, [category]: nextList };
+      });
+      if (renamed) bumpLocalMutation();
+      return renamed;
+    },
+    [bumpLocalMutation],
+  );
+
   const removeItem = useCallback(
     (category: CatalogCategory, value: string) => {
       bumpLocalMutation();
@@ -383,8 +414,8 @@ export function CatalogItemsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, initialLoadComplete, addItem, removeItem }),
-    [items, initialLoadComplete, addItem, removeItem],
+    () => ({ items, initialLoadComplete, addItem, renameItem, removeItem }),
+    [items, initialLoadComplete, addItem, renameItem, removeItem],
   );
 
   return (
