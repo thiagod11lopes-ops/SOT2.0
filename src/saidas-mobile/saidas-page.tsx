@@ -6,7 +6,7 @@ import { useUnlinkedOccurrences } from "../context/unlinked-occurrences-context"
 import { UnlinkedOccurrencesBlock } from "../components/unlinked-occurrences-block";
 import { groupDeparturesForListDisplay, type DepartureRecord, type DepartureType } from "../types/departure";
 import { DepartureDeleteOrCancelModal } from "../components/departure-delete-or-cancel-modal";
-import { addDaysPtBr, getCurrentDatePtBr, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
+import { addDaysPtBr, getCurrentDatePtBr, isDepartureKmFieldsEditableByDate, normalizeDatePtBr, ptBrToIsoDate } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 import { DepartureCard } from "./departure-card";
 import { cn } from "../lib/utils";
@@ -342,7 +342,7 @@ export function SaidasPage({ tipo }: { tipo: DepartureType }) {
                   mergedSetorDisplay={group.setorDisplay}
                   allowMobileEdit={editavelMobile}
                   onPatchKm={(patch) => {
-                    if (!editavelMobile) return;
+                    if (!isDepartureKmFieldsEditableByDate(r.dataSaida)) return;
                     updateDepartureKmFields(r.id, patch);
                   }}
                   updateDeparture={updateDeparture}

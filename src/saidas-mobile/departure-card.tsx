@@ -9,6 +9,7 @@ import { mergeViaturasCatalog, useCatalogItems } from "../context/catalog-items-
 import { useDepartures } from "../context/departures-context";
 import type { DepartureKmFieldsPatch, DepartureUpdatePatch } from "../context/departures-context";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
+import { isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
 import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
 import { normalize24hTime } from "../lib/timeInput";
 import { formatTipoSaidaAmbulancia, type DepartureRecord } from "../types/departure";
@@ -101,6 +102,7 @@ export function DepartureCard({
   const isAmbulancia = record.tipo === "Ambulância";
   const cancelada = record.cancelada === true;
   const editavel = allowMobileEdit && !cancelada;
+  const kmEditavel = !cancelada && isDepartureKmFieldsEditableByDate(record.dataSaida);
   const hospitalResumo = record.hospitalDestino.trim();
   const hospitalAoLadoDestino = isAmbulancia && hospitalResumo.length > 0;
   const tipoSaidaResumo = isAmbulancia ? formatTipoSaidaAmbulancia(record) : "";
@@ -198,14 +200,14 @@ export function DepartureCard({
   }
 
   function marcarViaturaNaOficina() {
-    if (!editavel) return;
+    if (!kmEditavel) return;
     onPatchKm({ kmChegada: "", chegada: "", ficouNaOficina: true });
     setOficinaConfirmModalOpen(false);
     setRubricaModalOpen(true);
   }
 
   async function handleIniciarSaida() {
-    if (!editavel) return;
+    if (!kmEditavel) return;
     if (!record.kmSaida.trim()) {
       window.alert("Preencha o KM saída antes de iniciar o rastreamento da viagem.");
       return;
@@ -235,7 +237,7 @@ export function DepartureCard({
   }
 
   function handleKmSaidaFieldTapPrefill(onApply: (km: string) => void): boolean {
-    if (!editavel) return false;
+    if (!kmEditavel) return false;
     if (record.kmSaida.trim().length > 0) return false;
     const placa = primaryPlacaFromViaturasField(record.viaturas) || record.viaturas.trim();
     const km = formatKmSaidaPrefillFromKmAtualViatura(departures, placa);
@@ -493,13 +495,13 @@ export function DepartureCard({
                   transform={formatKmThousandsPtBr}
                   inputMode="numeric"
                   mono
-                  disabled={!editavel}
+                  disabled={!kmEditavel}
                 />
               </div>
               <Button
                 type="button"
                 variant="outline"
-                disabled={!editavel}
+                disabled={!kmEditavel}
                 className="mb-[2px] h-11 min-h-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-xs font-semibold text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55 disabled:opacity-40"
                 onClick={handleIniciarSaida}
               >
@@ -518,7 +520,7 @@ export function DepartureCard({
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
-              disabled={!editavel}
+              disabled={!kmEditavel}
             />
             <div className="col-span-1 flex items-end gap-2">
               <div className="min-w-0 flex-1">
@@ -533,13 +535,13 @@ export function DepartureCard({
                   }
                   transform={normalize24hTime}
                   time24h
-                  disabled={!editavel}
+                  disabled={!kmEditavel}
                 />
               </div>
               <Button
                 type="button"
                 variant="outline"
-                disabled={!editavel}
+                disabled={!kmEditavel}
                 className="mb-[2px] h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-amber-500/10 p-0 text-amber-700 hover:bg-amber-500/20 disabled:opacity-40 dark:text-amber-400"
                 title="Viatura ficou na oficina (carro quebrado)"
                 aria-label="Marcar viatura como ficou na oficina"
@@ -647,13 +649,13 @@ export function DepartureCard({
                   transform={formatKmThousandsPtBr}
                   inputMode="numeric"
                   mono
-                  disabled={!editavel}
+                  disabled={!kmEditavel}
                 />
               </div>
               <Button
                 type="button"
                 variant="outline"
-                disabled={!editavel}
+                disabled={!kmEditavel}
                 className="mb-[2px] h-11 min-h-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-[hsl(var(--muted))]/35 px-3 text-xs font-semibold text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/55 disabled:opacity-40"
                 onClick={handleIniciarSaida}
               >
@@ -673,7 +675,7 @@ export function DepartureCard({
               transform={formatKmThousandsPtBr}
               inputMode="numeric"
               mono
-              disabled={!editavel}
+              disabled={!kmEditavel}
             />
             <div className="col-span-1 flex items-end gap-2">
               <div className="min-w-0 flex-1">
@@ -688,13 +690,13 @@ export function DepartureCard({
                     });
                   }}
                   time24h
-                  disabled={!editavel}
+                  disabled={!kmEditavel}
                 />
               </div>
               <Button
                 type="button"
                 variant="outline"
-                disabled={!editavel}
+                disabled={!kmEditavel}
                 className="mb-[2px] h-11 min-h-11 w-11 min-w-11 shrink-0 rounded-xl border-[hsl(var(--border))] bg-amber-500/10 p-0 text-amber-700 hover:bg-amber-500/20 disabled:opacity-40 dark:text-amber-400"
                 title="Viatura ficou na oficina (carro quebrado)"
                 aria-label="Marcar viatura como ficou na oficina"

@@ -26,6 +26,7 @@ import { stopMobileDriverTrackingSessionIfMatches } from "../lib/mobileDriverTra
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import { clearMotoristaActiveAssignmentIfDeparture } from "../lib/motoristaActiveAssignment";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
+import { isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
 import {
   departureCompletionScore,
   mergeDeparturePatch,
@@ -566,13 +567,24 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       data: DepartureUpdatePatch,
       options?: { expectedBaseVersion?: number; onVersionConflict?: () => void },
     ) => {
+      const stripFutureKm = (base: DepartureRecord, patch: DepartureUpdatePatch): DepartureUpdatePatch => {
+        if (isDepartureKmFieldsEditableByDate(base.dataSaida)) return patch;
+        const next = { ...patch };
+        delete next.kmSaida;
+        delete next.kmChegada;
+        delete next.chegada;
+        delete next.ficouNaOficina;
+        return next;
+      };
+
       if (useCloud) {
         bumpLocalMutation();
         setDepartures((prev) => {
           const d = prev.find((x) => x.id === id);
           if (!d) return prev;
+          const dataSafe = stripFutureKm(d, data);
           const now = Date.now();
-          const merged = mergeDeparturePatch(d, data);
+          const merged = mergeDeparturePatch(d, dataSafe);
           const next: DepartureRecord = {
             ...merged,
             id: d.id,
@@ -598,7 +610,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
                   if (!remote) {
                     throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
                   }
-                  const resolved = mergeDeparturePatch(remote, data);
+                  const resolved = mergeDeparturePatch(remote, stripFutureKm(remote, data));
                   candidate = {
                     ...resolved,
                     id: remote.id,
@@ -627,7 +639,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       setDepartures((prev) =>
         prev.map((d) => {
           if (d.id !== id) return d;
-          const merged = mergeDeparturePatch(d, data);
+          const merged = mergeDeparturePatch(d, stripFutureKm(d, data));
           return {
             ...merged,
             id: d.id,
@@ -684,6 +696,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
         setDepartures((prev) => {
           const seed = prev.find((x) => x.id === id);
           if (!seed || seed.cancelada) return prev;
+          if (!isDepartureKmFieldsEditableByDate(seed.dataSaida)) return prev;
           const groupKey = mergeGroupKey(seed);
           const now = Date.now();
           const updates = prev
@@ -715,6 +728,9 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
                     if (!remote) {
                       throw new Error("Saída não encontrada na nuvem durante auto-resolução de conflito.");
                     }
+                    if (!isDepartureKmFieldsEditableByDate(remote.dataSaida)) {
+                      return;
+                    }
                     candidate = {
                       ...remote,
                       ...patch,
@@ -740,6 +756,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       setDepartures((prev) => {
         const seed = prev.find((x) => x.id === id);
         if (!seed || seed.cancelada) return prev;
+        if (!isDepartureKmFieldsEditableByDate(seed.dataSaida)) return prev;
         const groupKey = mergeGroupKey(seed);
         return prev.map((d) =>
           !d.cancelada && mergeGroupKey(d) === groupKey ? { ...d, ...patch } : d,

@@ -1,3 +1,4 @@
+import { normalizeLegacyDateToPtBr } from "../lib/dateFormat";
 import { parseHhMm } from "../lib/timeInput";
 
 export type DepartureType = "Administrativa" | "Ambulância";
@@ -156,18 +157,21 @@ function isAsdPlaceholderField(value: string): boolean {
 }
 
 /**
- * Chave de agrupamento: mesma viatura, motorista, hora de saída e estado cancelada.
+ * Chave de agrupamento: mesma data, viatura, motorista, hora de saída e estado cancelada.
  * Se motorista e viatura forem ambos «ASD», cada registo fica sozinho (não junta pelo horário).
  */
 export function mergeGroupKey(r: DepartureRecord): string {
+  const d =
+    normalizeLegacyDateToPtBr(r.dataSaida ?? "") ||
+    r.dataSaida.trim().toLowerCase();
   const v = r.viaturas.trim().toLowerCase();
   const m = r.motoristas.trim().toLowerCase();
   const h = horaMergeKey(r.horaSaida);
   const c = r.cancelada === true ? "1" : "0";
   if (isAsdPlaceholderField(r.viaturas) && isAsdPlaceholderField(r.motoristas)) {
-    return `${c}|${v}|${m}|${h}|id:${r.id}`;
+    return `${c}|${d}|${v}|${m}|${h}|id:${r.id}`;
   }
-  return `${c}|${v}|${m}|${h}`;
+  return `${c}|${d}|${v}|${m}|${h}`;
 }
 
 export type DepartureListMergeGroup = {
@@ -181,7 +185,7 @@ export type DepartureListMergeGroup = {
 };
 
 /**
- * Agrupa saídas com a mesma viatura, motorista e horário (e mesmo estado cancelada)
+ * Agrupa saídas com a mesma data, viatura, motorista e horário (e mesmo estado cancelada)
  * para uma única linha na tabela, fundindo bairros e setores.
  * Exceção: motorista e viatura «ASD» não se agrupam (cada registo numa linha).
  */

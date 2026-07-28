@@ -10,6 +10,7 @@ import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
+import { isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import { normalize24hTimeWithCaret } from "../lib/timeInput";
@@ -149,6 +150,8 @@ export function DeparturesDataTable({
 
   function applyKmFieldsPatch(id: string, patch: DepartureKmFieldsPatch) {
     if (!onUpdateKmFields) return;
+    const target = departures.find((d) => d.id === id) ?? rows.find((d) => d.id === id);
+    if (target && !isDepartureKmFieldsEditableByDate(target.dataSaida)) return;
     if (kmUnlocked) {
       onUpdateKmFields(id, patch);
       return;
@@ -159,6 +162,7 @@ export function DeparturesDataTable({
 
   function tryPrefillKmSaidaOnFocus(record: DepartureRecord) {
     if (!onUpdateKmFields || record.kmSaida.trim().length > 0) return;
+    if (!isDepartureKmFieldsEditableByDate(record.dataSaida)) return;
     const placa = primaryPlacaFromViaturasField(record.viaturas) || record.viaturas.trim();
     const km = formatKmSaidaPrefillFromKmAtualViatura(departures, placa);
     if (!km) return;
@@ -310,7 +314,8 @@ export function DeparturesDataTable({
             const finalizada = saidaFinalizadaKmEChegada(row);
             const cancelada = row.cancelada === true;
             const ficouNaOficina = row.ficouNaOficina === true && row.rubrica.trim().length > 0;
-            const kmEditavel = Boolean(onUpdateKmFields) && !cancelada;
+            const kmEditavel =
+              Boolean(onUpdateKmFields) && !cancelada && isDepartureKmFieldsEditableByDate(row.dataSaida);
             const destinoCell = group.destinoDisplay;
             const setorCell = group.setorDisplay;
             const rowKey = group.records.map((r) => r.id).join("|");
@@ -325,15 +330,17 @@ export function DeparturesDataTable({
                     (finalizada || ficouNaOficina) &&
                     "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
                 )}
-                title={
-                  cancelada
-                    ? "Saída cancelada"
-                    : ficouNaOficina
-                      ? "Saída finalizada — viatura na oficina"
-                      : finalizada
-                        ? "Saída finalizada — ainda editável"
-                        : undefined
-                }
+                    title={
+                      cancelada
+                        ? "Saída cancelada"
+                        : !isDepartureKmFieldsEditableByDate(row.dataSaida)
+                          ? "KM e chegada só podem ser preenchidos no dia atual ou em dias passados"
+                        : ficouNaOficina
+                          ? "Saída finalizada — viatura na oficina"
+                          : finalizada
+                            ? "Saída finalizada — ainda editável"
+                            : undefined
+                    }
               >
                 {showTipoColumn ? (
                   <TableCell className={cell("whitespace-nowrap text-sm")}>{lr.tipo}</TableCell>

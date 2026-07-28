@@ -28,6 +28,7 @@ import {
   getCurrentDatePtBr,
   getWeekdayDatesFromTodayThroughEndOfCurrentMonth,
   isCompleteDatePtBr,
+  isDepartureKmFieldsEditableByDate,
   normalizeDatePtBr,
   parsePtBrToDate,
 } from "../lib/dateFormat";
@@ -857,21 +858,34 @@ export function RegisterDeparturePage() {
   }, [vehicles, viaturasCatalogForCurrentTipo]);
 
   const lastKmAutofillViaturaLowerRef = useRef<string>("");
+  const kmFieldsEditableByDate = isDepartureKmFieldsEditableByDate(departureDate);
+
+  useEffect(() => {
+    if (kmFieldsEditableByDate) return;
+    if (kmDeparture || kmArrival || arrivalTime) {
+      setKmDeparture("");
+      setKmArrival("");
+      setArrivalTime("");
+    }
+  }, [kmFieldsEditableByDate, kmDeparture, kmArrival, arrivalTime]);
+
   useEffect(() => {
     const viaturaKey = vehicles.trim().toLowerCase();
     if (!viaturaKey) {
       lastKmAutofillViaturaLowerRef.current = "";
       return;
     }
+    if (!kmFieldsEditableByDate) return;
     if (lastKmAutofillViaturaLowerRef.current === viaturaKey) return;
     lastKmAutofillViaturaLowerRef.current = viaturaKey;
     if (kmDeparture.trim().length > 0) return;
     const km = ultimoKmSaidaPorViaturaLower.get(viaturaKey);
     if (km === undefined) return;
     setKmDeparture(formatKmThousandsPtBr(String(km)));
-  }, [vehicles, kmDeparture, ultimoKmSaidaPorViaturaLower]);
+  }, [vehicles, kmDeparture, ultimoKmSaidaPorViaturaLower, kmFieldsEditableByDate]);
 
   const handleKmDepartureFieldFocus = useCallback(() => {
+    if (!isDepartureKmFieldsEditableByDate(departureDate)) return;
     if (kmDeparture.trim().length > 0) return;
     const viaturaKey = vehicles.trim().toLowerCase();
     if (!viaturaKey) return;
@@ -880,7 +894,7 @@ export function RegisterDeparturePage() {
     const kmNormal = ultimoKmSaidaNormalPorViaturaLower.get(viaturaKey);
     if (kmNormal === undefined) return;
     setKmDeparture(formatKmThousandsPtBr(String(kmNormal)));
-  }, [kmDeparture, vehicles, ultimoKmSaidaPorViaturaLower, ultimoKmSaidaNormalPorViaturaLower]);
+  }, [kmDeparture, vehicles, ultimoKmSaidaPorViaturaLower, ultimoKmSaidaNormalPorViaturaLower, departureDate]);
 
   /** Ao mudar para Ambulância com catálogo de ambulâncias, remove viatura que não seja ambulância. */
   useEffect(() => {
@@ -1070,6 +1084,7 @@ export function RegisterDeparturePage() {
   }, [persistSetorRamalPair, sector, extension]);
 
   function buildDeparturePayload(): Omit<DepartureRecord, "id" | "createdAt"> {
+    const kmEditable = isDepartureKmFieldsEditableByDate(departureDate);
     const base: Omit<DepartureRecord, "id" | "createdAt"> = {
       tipo: departureType as DepartureRecord["tipo"],
       dataPedido: requestDate,
@@ -1088,9 +1103,9 @@ export function RegisterDeparturePage() {
       tipoSaidaInterHospitalar: departureType === "Ambulância" && tipoSaidaInterHospitalar,
       tipoSaidaAlta: departureType === "Ambulância" && tipoSaidaAlta,
       tipoSaidaOutros: departureType === "Ambulância" && tipoSaidaOutros,
-      kmSaida: kmDeparture,
-      kmChegada: kmArrival,
-      chegada: arrivalTime,
+      kmSaida: kmEditable ? kmDeparture : "",
+      kmChegada: kmEditable ? kmArrival : "",
+      chegada: kmEditable ? arrivalTime : "",
       cidade: city,
       bairro: neighborhood,
       rubrica: "",
@@ -2150,6 +2165,12 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={kmDeparture}
+                      disabled={!kmFieldsEditableByDate}
+                      title={
+                        kmFieldsEditableByDate
+                          ? undefined
+                          : "KM saída só pode ser preenchido no dia atual ou em dias passados"
+                      }
                       onFocus={handleKmDepartureFieldFocus}
                       onChange={(event) => setKmDeparture(formatKmThousandsPtBr(event.target.value))}
                       className={sotFormSelectClass}
@@ -2162,6 +2183,12 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={kmArrival}
+                      disabled={!kmFieldsEditableByDate}
+                      title={
+                        kmFieldsEditableByDate
+                          ? undefined
+                          : "KM chegada só pode ser preenchido no dia atual ou em dias passados"
+                      }
                       onChange={(event) => setKmArrival(formatKmThousandsPtBr(event.target.value))}
                       className={sotFormSelectClass}
                     />
@@ -2173,6 +2200,12 @@ export function RegisterDeparturePage() {
                       type="text"
                       inputMode="numeric"
                       value={arrivalTime}
+                      disabled={!kmFieldsEditableByDate}
+                      title={
+                        kmFieldsEditableByDate
+                          ? undefined
+                          : "Chegada só pode ser preenchida no dia atual ou em dias passados"
+                      }
                       onChange={(event) => setArrivalTime(normalize24hTime(event.target.value))}
                       className={sotFormSelectClass}
                     />

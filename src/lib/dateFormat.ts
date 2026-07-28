@@ -198,6 +198,38 @@ export function isDepartureDateSameLocalDay(dataSaida: string, hojePtBr: string)
   );
 }
 
+/** Compara só o dia civil (ignora hora). */
+function startOfLocalDayMs(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/**
+ * True se a data da saída for **depois** de hoje (dia civil local).
+ * Datas inválidas/vazias não contam como futuro.
+ */
+export function isDepartureDateInTheFuture(
+  dataSaida: string,
+  hojePtBr: string = getCurrentDatePtBr(),
+): boolean {
+  const hoje = parsePtBrToDate(hojePtBr.trim());
+  if (!hoje) return false;
+  const raw = normalizeLegacyDateToPtBr(dataSaida ?? "");
+  if (!raw) return false;
+  const d = parsePtBrToDate(raw) ?? parseIsoDateToDate(raw);
+  if (!d) return false;
+  return startOfLocalDayMs(d) > startOfLocalDayMs(hoje);
+}
+
+/**
+ * KM saída / KM chegada / Chegada só podem ser preenchidos no dia atual ou em dias passados.
+ */
+export function isDepartureKmFieldsEditableByDate(
+  dataSaida: string,
+  hojePtBr: string = getCurrentDatePtBr(),
+): boolean {
+  return !isDepartureDateInTheFuture(dataSaida, hojePtBr);
+}
+
 /**
  * Data usada para filtrar exportações: **data da saída**; se vazia, **data do pedido**.
  * Aceita dd/mm/aaaa ou yyyy-mm-dd nos campos.
