@@ -567,6 +567,7 @@ export function DetalheServicoSheet() {
   const [mostrarAlteracoesAposX, setMostrarAlteracoesAposX] = useState(false);
   const [intervaloModal, setIntervaloModal] = useState<IntervaloMinimoModalState | null>(null);
   const [feriasModalOpen, setFeriasModalOpen] = useState(false);
+  const [tornarOriginalModalOpen, setTornarOriginalModalOpen] = useState(false);
 
   const monthYearRef = useRef(monthYear);
   monthYearRef.current = monthYear;
@@ -810,6 +811,26 @@ export function DetalheServicoSheet() {
     },
     [flushCloudWrite],
   );
+
+  const applyTornarOriginal = useCallback(() => {
+    setBundle((b) => {
+      const mk = monthYearRef.current;
+      const live = normalizeLoadedSheet(b.sheets[mk] ?? null);
+      return {
+        ...b,
+        version: 1,
+        originalSheetBeforeFirstXByMonth: {
+          ...(b.originalSheetBeforeFirstXByMonth ?? {}),
+          [mk]: cloneSheet(live),
+        },
+      };
+    });
+    setMostrarAlteracoesAposX(false);
+    setTornarOriginalModalOpen(false);
+    window.setTimeout(() => {
+      void flushCloudWrite();
+    }, 0);
+  }, [flushCloudWrite]);
 
   const handleMonthYearChange = useCallback((next: string) => {
     setBundle((b) => {
@@ -1594,6 +1615,14 @@ export function DetalheServicoSheet() {
           >
             <FileDown className="h-4 w-4" aria-hidden />
             Gerar PDF
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => setTornarOriginalModalOpen(true)}
+          >
+            Tornar Original
           </Button>
           <input
             id="detalhe-servico-mes-ano"
@@ -2505,6 +2534,51 @@ export function DetalheServicoSheet() {
                   onClick={confirmIntervaloModal}
                 >
                   Continuar mesmo assim
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {tornarOriginalModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[260] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-[3px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="detalhe-servico-tornar-original-title"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setTornarOriginalModalOpen(false);
+            }}
+          >
+            <div
+              className="w-full max-w-lg overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_24px_70px_rgba(10,10,40,0.45)]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-[hsl(var(--border))] px-5 py-4">
+                <h3
+                  id="detalhe-servico-tornar-original-title"
+                  className="text-base font-semibold text-[hsl(var(--foreground))]"
+                >
+                  Tornar Original
+                </h3>
+              </div>
+              <div className="space-y-3 px-5 py-4">
+                <p className="text-sm leading-relaxed text-[hsl(var(--foreground))]">
+                  Se confirmar, o <strong>detalhe original</strong> fica igual ao{" "}
+                  <strong>detalhe com as alterações</strong> deste mês.
+                </p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Esta ação substitui o snapshot original pelo estado atual da planilha. Deseja continuar?
+                </p>
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)] px-5 py-4 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setTornarOriginalModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={applyTornarOriginal}>
+                  Confirmar
                 </Button>
               </div>
             </div>
