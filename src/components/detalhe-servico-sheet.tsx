@@ -7,6 +7,8 @@ import { useSyncPreference } from "../context/sync-preference-context";
 import {
   canonicalizeMotoristaPostoName,
   emptyRodapeAssinatura,
+  lookupFeriasPeriodsForMotorista,
+  normalizeDetalheMotoristaKey,
   type DetalheServicoFeriasPeriodo,
   type DetalheServicoPortraitRow,
 } from "../lib/detalheServicoBundle";
@@ -303,7 +305,7 @@ function tallyDayCellTokens(
   days: DayMeta[],
   feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]>,
 ): { s: number; ro: number; horas: number } {
-  const feriasPeriods = feriasForMonth[normalizeMotoristaName(motoristaDisplay)];
+  const feriasPeriods = lookupFeriasPeriodsForMotorista(feriasForMonth, motoristaDisplay);
   let s = 0;
   let ro = 0;
   for (const { day } of days) {
@@ -346,12 +348,7 @@ function formatDatePtBr(date: Date): string {
 }
 
 function normalizeMotoristaName(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .toLowerCase();
+  return normalizeDetalheMotoristaKey(value);
 }
 
 function parseIsoDateLocal(iso: string): Date | null {
@@ -507,7 +504,7 @@ function buildServicosInvalidosPorDiaMap(args: {
     let sCount = 0;
     for (const rowId of sheet.rows) {
       const motor = (sheet.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
-      const periods = feriasForMonth[normalizeMotoristaName(motor)];
+      const periods = lookupFeriasPeriodsForMotorista(feriasForMonth, motor);
       if (isDayInFeriasPeriods(year, monthIndex, day, periods)) continue;
       const raw = sheet.cells[rowId]?.[dk] ?? "";
       if (cellContainsServicoToken(raw)) sCount += 1;
@@ -644,7 +641,7 @@ export function DetalheServicoSheet() {
       const motoristaKey = normalizeMotoristaName(motorista);
       if (!motoristaKey) continue;
       if (seen.has(motoristaKey)) continue;
-      const periods = feriasForMonth[motoristaKey];
+      const periods = lookupFeriasPeriodsForMotorista(feriasForMonth, motorista);
       if (!periods?.length) continue;
       const formattedPeriods = periods
         .map((p) => {
@@ -745,57 +742,74 @@ export function DetalheServicoSheet() {
     });
   }, []);
 
-  const applyFeriasSave = useCallback((draft: FeriasDraftByMotorKey) => {
-    setBundle((b) => {
-      const mk = monthYearRef.current;
-      const sh = normalizeLoadedSheet(b.sheets[mk] ?? null);
-      const { year, monthIndex } = parseMonthInput(mk);
-      const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const applyFeriasSave = useCallback(
+    (draft: FeriasDraftByMotorKey) => {
+      setBundle((b) => {
+        const mk = monthYearRef.current;
+        const sh = normalizeLoadedSheet(b.sheets[mk] ?? null);
+        const { year, monthIndex } = parseMonthInput(mk);
+        const lastDay = new Date(year, monthIndex + 1, 0).getDate();
 
-      const nextMonthFerias: Record<string, DetalheServicoFeriasPeriodo[]> = {};
-      for (const [k, periods] of Object.entries(draft)) {
-        const cleaned: DetalheServicoFeriasPeriodo[] = [];
-        for (const p of periods) {
-          const c = clipFeriasPeriodToMonth(mk, p);
-          if (c) cleaned.push(c);
-          if (cleaned.length >= 3) break;
+        const nextMonthFerias: Record<string, DetalheServicoFeriasPeriodo[]> = {};
+        for (const [k, periods] of Object.entries(draft)) {
+          const motorKey = normalizeDetalheMotoristaKey(k) || k;
+          const cleaned: DetalheServicoFeriasPeriodo[] = [];
+          for (const p of periods) {
+            const c = clipFeriasPeriodToMonth(mk, p);
+            if (c) cleaned.push(c);
+            if (cleaned.length >= 3) break;
+          }
+          if (cleaned.length === 0) continue;
+          const prev = nextMonthFerias[motorKey] ?? [];
+          const seen = new Set(prev.map((p) => `${p.inicio}|${p.fim}|${resolveAusenciaTipo(p.tipo)}`));
+          const merged = [...prev];
+          for (const p of cleaned) {
+            const fp = `${p.inicio}|${p.fim}|${resolveAusenciaTipo(p.tipo)}`;
+            if (seen.has(fp)) continue;
+            seen.add(fp);
+            merged.push(p);
+            if (merged.length >= 3) break;
+          }
+          nextMonthFerias[motorKey] = merged.slice(0, 3);
         }
-        if (cleaned.length > 0) nextMonthFerias[k] = cleaned;
-      }
 
-      const cells = structuredClone(sh.cells);
-      for (const rowId of sh.rows) {
-        const motor = (sh.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
-        const motorKey = normalizeMotoristaName(motor);
-        const periods = nextMonthFerias[motorKey];
-        if (!periods?.length) continue;
-        for (let day = 1; day <= lastDay; day++) {
-          if (!isDayInFeriasPeriods(year, monthIndex, day, periods)) continue;
-          const dk = dateKey(year, monthIndex, day);
-          const cur = cells[rowId]?.[dk];
-          if (cur === undefined || cur === "") continue;
-          const rowCells = { ...(cells[rowId] ?? {}) };
-          delete rowCells[dk];
-          cells[rowId] = rowCells;
+        const cells = structuredClone(sh.cells);
+        for (const rowId of sh.rows) {
+          const motor = (sh.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
+          const periods = lookupFeriasPeriodsForMotorista(nextMonthFerias, motor);
+          if (!periods?.length) continue;
+          for (let day = 1; day <= lastDay; day++) {
+            if (!isDayInFeriasPeriods(year, monthIndex, day, periods)) continue;
+            const dk = dateKey(year, monthIndex, day);
+            const cur = cells[rowId]?.[dk];
+            if (cur === undefined || cur === "") continue;
+            const rowCells = { ...(cells[rowId] ?? {}) };
+            delete rowCells[dk];
+            cells[rowId] = rowCells;
+          }
         }
-      }
 
-      const nextFeriasByMonth = { ...b.feriasByMonth };
-      if (Object.keys(nextMonthFerias).length === 0) {
-        delete nextFeriasByMonth[mk];
-      } else {
-        nextFeriasByMonth[mk] = nextMonthFerias;
-      }
+        const nextFeriasByMonth = { ...b.feriasByMonth };
+        if (Object.keys(nextMonthFerias).length === 0) {
+          delete nextFeriasByMonth[mk];
+        } else {
+          nextFeriasByMonth[mk] = nextMonthFerias;
+        }
 
-      return {
-        ...b,
-        version: 1,
-        sheets: { ...b.sheets, [mk]: { rows: sh.rows, cells } },
-        feriasByMonth: nextFeriasByMonth,
-      };
-    });
-    setFeriasModalOpen(false);
-  }, []);
+        return {
+          ...b,
+          version: 1,
+          sheets: { ...b.sheets, [mk]: { rows: sh.rows, cells } },
+          feriasByMonth: nextFeriasByMonth,
+        };
+      });
+      setFeriasModalOpen(false);
+      window.setTimeout(() => {
+        void flushCloudWrite();
+      }, 0);
+    },
+    [flushCloudWrite],
+  );
 
   const handleMonthYearChange = useCallback((next: string) => {
     setBundle((b) => {
@@ -1130,10 +1144,10 @@ export function DetalheServicoSheet() {
   const handleDayCellChange = useCallback(
     (rowId: string, key: string, day: number, value: string) => {
       const motoristaFerias = (sheetRef.current.cells[rowId]?.[KEY_MOTORISTA] ?? "").trim();
-      const feriasP =
-        bundleRef.current.feriasByMonth[monthYearRef.current]?.[
-          normalizeMotoristaName(motoristaFerias)
-        ];
+      const feriasP = lookupFeriasPeriodsForMotorista(
+        bundleRef.current.feriasByMonth[monthYearRef.current],
+        motoristaFerias,
+      );
       if (isDayInFeriasPeriods(year, monthIndex, day, feriasP)) return;
 
       const prevValue = sheetRef.current.cells[rowId]?.[key] ?? "";
@@ -1384,17 +1398,32 @@ export function DetalheServicoSheet() {
   const motoristasCatalogFerias = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const n of catalogItems.motoristas) {
-      const t = n.trim();
-      if (!t) continue;
-      const k = normalizeMotoristaName(t);
-      if (seen.has(k)) continue;
+    const pushName = (raw: string) => {
+      const t = canonicalizeMotoristaPostoName(raw.trim());
+      if (!t) return;
+      const k = normalizeDetalheMotoristaKey(t);
+      if (!k || seen.has(k)) return;
       seen.add(k);
-      out.push(n);
+      out.push(t);
+    };
+    for (const n of catalogItems.motoristas) pushName(n);
+    for (const rid of sheetLive.rows) {
+      pushName(sheetLive.cells[rid]?.[KEY_MOTORISTA] ?? "");
+    }
+    // Inclui motoristas que já têm períodos gravados (mesmo se sumiram do catálogo/grelha).
+    for (const motorKey of Object.keys(feriasForMonth)) {
+      if (seen.has(motorKey)) continue;
+      const fromSheet = sheetLive.rows
+        .map((rid) => (sheetLive.cells[rid]?.[KEY_MOTORISTA] ?? "").trim())
+        .find((n) => normalizeDetalheMotoristaKey(n) === motorKey);
+      const fromCatalog = catalogItems.motoristas
+        .map((n) => n.trim())
+        .find((n) => normalizeDetalheMotoristaKey(n) === motorKey);
+      pushName(fromSheet || fromCatalog || motorKey);
     }
     out.sort((a, b) => a.localeCompare(b, "pt-PT"));
     return out;
-  }, [catalogItems.motoristas]);
+  }, [catalogItems.motoristas, sheetLive.rows, sheetLive.cells, feriasForMonth]);
 
   const prevMonthRowsForEscala = useMemo(() => {
     if (!prevMonthSheet) return [];
@@ -1941,8 +1970,10 @@ export function DetalheServicoSheet() {
                         const dk = dateKey(year, monthIndex, day);
                         const colIndex = dayColIndex + 1;
                         const dayColGray = columnGray[dk] || isWeekend;
-                        const periodsThisMotor =
-                          feriasForMonth[normalizeMotoristaName(motoristaVal)];
+                        const periodsThisMotor = lookupFeriasPeriodsForMotorista(
+                          feriasForMonth,
+                          motoristaVal,
+                        );
                         const ausenciaRun = getAusenciaRunForDay(
                           year,
                           monthIndex,

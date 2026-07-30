@@ -2,6 +2,7 @@ import { CalendarRange, Plus, Sparkles, UserRound, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DetalheServicoFeriasPeriodo } from "../lib/detalheServicoBundle";
+import { normalizeDetalheMotoristaKey } from "../lib/detalheServicoBundle";
 import {
   DETALHE_SERVICO_AUSENCIA_TIPO_DEFAULT,
   DETALHE_SERVICO_AUSENCIA_TIPOS,
@@ -27,12 +28,7 @@ function monthRangeIso(monthYear: string): { min: string; max: string } {
 }
 
 function normalizeMotoristaKey(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .toLowerCase();
+  return normalizeDetalheMotoristaKey(value);
 }
 
 function emptySlot(): DetalheServicoFeriasPeriodo {

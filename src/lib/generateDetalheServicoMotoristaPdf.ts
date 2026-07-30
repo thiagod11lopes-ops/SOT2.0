@@ -2,6 +2,7 @@ import autoTable from "jspdf-autotable";
 import type { Styles, Table } from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import type { DetalheServicoFeriasPeriodo } from "./detalheServicoBundle";
+import { lookupFeriasPeriodsForMotorista } from "./detalheServicoBundle";
 import { getAusenciaRunForDay, isDayInAusenciaPeriods } from "./detalheServicoAusencia";
 
 type JsPDFWithLastTable = jsPDF & { lastAutoTable?: Table };
@@ -150,15 +151,6 @@ function isMotoristaFC(motorista: string): boolean {
   return /^FC(?:\b|[-\s])/.test(nome);
 }
 
-function normalizeMotoristaName(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .toLowerCase();
-}
-
 function isDayInFeriasPeriods(
   year: number,
   monthIndex: number,
@@ -176,7 +168,7 @@ function tallyDayCellTokens(
   days: DayMeta[],
   feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]>,
 ): { s: number; ro: number; horas: number } {
-  const feriasPeriods = feriasForMonth[normalizeMotoristaName(motoristaDisplay)];
+  const feriasPeriods = lookupFeriasPeriodsForMotorista(feriasForMonth, motoristaDisplay);
   let s = 0;
   let ro = 0;
   for (const { day } of days) {
@@ -467,7 +459,7 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       const rowCells = sheet.cells[rowId] ?? {};
       const motoristaVal = rowCells[KEY_MOTORISTA] ?? "";
       const cargaAutoPorMotorista = isMotoristaCargaHorariaAutomatica(motoristaVal);
-      const motorFerias = (feriasForMonth ?? {})[normalizeMotoristaName(motoristaVal)];
+      const motorFerias = lookupFeriasPeriodsForMotorista(feriasForMonth ?? {}, motoristaVal);
       const rowCellsForPdf = showRoTokens
         ? rowCells
         : Object.fromEntries(

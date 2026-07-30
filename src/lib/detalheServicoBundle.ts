@@ -170,7 +170,7 @@ export function normalizeDetalheServicoBundle(raw: unknown): DetalheServicoBundl
     }
   }
   const columnGrayByMonth = normalizeColumnGrayMap(o.columnGrayByMonth);
-  const feriasByMonth = normalizeFeriasByMonth(o.feriasByMonth);
+  const feriasByMonth = migrateFeriasByMonthKeys(normalizeFeriasByMonth(o.feriasByMonth));
   const portraitByMonth = normalizePortraitByMonth(o.portraitByMonth);
   const originalSheetBeforeFirstXByMonth: Record<string, DetalheServicoSheetSnapshot> = {};
   if (o.originalSheetBeforeFirstXByMonth && typeof o.originalSheetBeforeFirstXByMonth === "object") {
@@ -331,6 +331,72 @@ export function canonicalizeMotoristaPostoName(value: string): string {
   return t;
 }
 
+/** Chave estável para Programação de Ausência ↔ grelha (após canonicalize do posto). */
+export function normalizeDetalheMotoristaKey(value: string): string {
+  return canonicalizeMotoristaPostoName(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeDetalheMotoristaKeyRaw(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/** Períodos de ausência do motorista (aceita chave canónica ou legado). */
+export function lookupFeriasPeriodsForMotorista(
+  feriasForMonth: Record<string, DetalheServicoFeriasPeriodo[]> | undefined,
+  motoristaDisplay: string,
+): DetalheServicoFeriasPeriodo[] | undefined {
+  if (!feriasForMonth) return undefined;
+  const canonical = normalizeDetalheMotoristaKey(motoristaDisplay);
+  if (feriasForMonth[canonical]?.length) return feriasForMonth[canonical];
+  const raw = normalizeDetalheMotoristaKeyRaw(motoristaDisplay);
+  if (raw && raw !== canonical && feriasForMonth[raw]?.length) return feriasForMonth[raw];
+  return feriasForMonth[canonical] ?? feriasForMonth[raw];
+}
+
+function mergeFeriasPeriodLists(
+  a: DetalheServicoFeriasPeriodo[],
+  b: DetalheServicoFeriasPeriodo[],
+): DetalheServicoFeriasPeriodo[] {
+  const out: DetalheServicoFeriasPeriodo[] = [];
+  const seen = new Set<string>();
+  for (const p of [...a, ...b]) {
+    const tipo = resolveAusenciaTipo(p.tipo);
+    const fp = `${p.inicio}|${p.fim}|${tipo}`;
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    out.push({ inicio: p.inicio, fim: p.fim, tipo });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+/** Reindexa `feriasByMonth` para chaves canónicas (evita perder períodos após rename de posto). */
+export function migrateFeriasByMonthKeys(feriasByMonth: DetalheServicoFeriasPorMes): DetalheServicoFeriasPorMes {
+  const out: DetalheServicoFeriasPorMes = {};
+  let changed = false;
+  for (const [monthKey, byMotor] of Object.entries(feriasByMonth ?? {})) {
+    const next: Record<string, DetalheServicoFeriasPeriodo[]> = {};
+    for (const [motorKey, periods] of Object.entries(byMotor ?? {})) {
+      const canonical = normalizeDetalheMotoristaKey(motorKey) || normalizeDetalheMotoristaKeyRaw(motorKey);
+      if (!canonical) continue;
+      if (canonical !== motorKey) changed = true;
+      next[canonical] = mergeFeriasPeriodLists(next[canonical] ?? [], periods);
+    }
+    if (Object.keys(next).length > 0) out[monthKey] = next;
+  }
+  return changed ? out : feriasByMonth;
+}
+
 /** Normaliza grafias de motoristas no bundle (grelha e modo retrato). */
 export function migrateDetalheServicoBundleMotoristaNames(bundle: DetalheServicoBundle): DetalheServicoBundle {
   let changed = false;
@@ -371,11 +437,16 @@ export function migrateDetalheServicoBundleMotoristaNames(bundle: DetalheServico
     nextPortraitByMonth[month] = nextMonthRows;
   }
 
-  if (!changed) return bundle;
+  if (!changed) {
+    const migratedFerias = migrateFeriasByMonthKeys(bundle.feriasByMonth ?? {});
+    if (migratedFerias === bundle.feriasByMonth) return bundle;
+    return { ...bundle, version: 1, feriasByMonth: migratedFerias };
+  }
   return {
     ...bundle,
     version: 1,
     sheets: nextSheets,
     portraitByMonth: nextPortraitByMonth,
+    feriasByMonth: migrateFeriasByMonthKeys(bundle.feriasByMonth ?? {}),
   };
 }
