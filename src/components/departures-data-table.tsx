@@ -330,17 +330,17 @@ export function DeparturesDataTable({
                     (finalizada || ficouNaOficina) &&
                     "opacity-[0.55] transition-opacity hover:opacity-[0.88] focus-within:opacity-90",
                 )}
-                    title={
-                      cancelada
-                        ? "Saída cancelada"
-                        : !isDepartureKmFieldsEditableByDate(row.dataSaida)
-                          ? "KM e chegada só podem ser preenchidos no dia atual ou em dias passados"
-                        : ficouNaOficina
-                          ? "Saída finalizada — viatura na oficina"
-                          : finalizada
-                            ? "Saída finalizada — ainda editável"
-                            : undefined
-                    }
+                title={
+                  cancelada
+                    ? "Saída cancelada"
+                    : !isDepartureKmFieldsEditableByDate(row.dataSaida)
+                      ? "KM e chegada só podem ser preenchidos no dia atual ou em dias passados"
+                      : ficouNaOficina
+                        ? "Saída finalizada — viatura na oficina"
+                        : finalizada
+                          ? "Saída finalizada — ainda editável"
+                          : undefined
+                }
               >
                 {showTipoColumn ? (
                   <TableCell className={cell("whitespace-nowrap text-sm")}>{lr.tipo}</TableCell>
