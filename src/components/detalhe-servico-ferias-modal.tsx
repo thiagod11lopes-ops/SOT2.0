@@ -2,6 +2,12 @@ import { CalendarRange, Plus, Sparkles, UserRound, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DetalheServicoFeriasPeriodo } from "../lib/detalheServicoBundle";
+import {
+  DETALHE_SERVICO_AUSENCIA_TIPO_DEFAULT,
+  DETALHE_SERVICO_AUSENCIA_TIPOS,
+  resolveAusenciaTipo,
+  type DetalheServicoAusenciaTipo,
+} from "../lib/detalheServicoAusencia";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
@@ -30,7 +36,7 @@ function normalizeMotoristaKey(value: string): string {
 }
 
 function emptySlot(): DetalheServicoFeriasPeriodo {
-  return { inicio: "", fim: "" };
+  return { inicio: "", fim: "", tipo: DETALHE_SERVICO_AUSENCIA_TIPO_DEFAULT };
 }
 
 function padThree(periods: DetalheServicoFeriasPeriodo[] | undefined): [
@@ -38,7 +44,11 @@ function padThree(periods: DetalheServicoFeriasPeriodo[] | undefined): [
   DetalheServicoFeriasPeriodo,
   DetalheServicoFeriasPeriodo,
 ] {
-  const list = [...(periods ?? [])].slice(0, 3);
+  const list: DetalheServicoFeriasPeriodo[] = [...(periods ?? [])].slice(0, 3).map((p) => ({
+    inicio: p.inicio,
+    fim: p.fim,
+    tipo: resolveAusenciaTipo(p.tipo),
+  }));
   while (list.length < 3) list.push(emptySlot());
   return [list[0]!, list[1]!, list[2]!];
 }
@@ -53,6 +63,12 @@ function initialsFromName(name: string): string {
 const dateInputClass = cn(
   "h-10 w-full min-w-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm tabular-nums text-[hsl(var(--foreground))] shadow-sm",
   "transition-[border-color,box-shadow] placeholder:text-[hsl(var(--muted-foreground))]",
+  "focus-visible:border-teal-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/20",
+);
+
+const selectClass = cn(
+  "h-10 w-full min-w-0 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))] shadow-sm",
+  "transition-[border-color,box-shadow]",
   "focus-visible:border-teal-500/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/20",
 );
 
@@ -121,7 +137,12 @@ export function DetalheServicoFeriasModal({
 
   if (!open) return null;
 
-  function updateSlot(motorKey: string, slot: 0 | 1 | 2, field: "inicio" | "fim", value: string) {
+  function updateSlot(
+    motorKey: string,
+    slot: 0 | 1 | 2,
+    field: "inicio" | "fim" | "tipo",
+    value: string,
+  ) {
     setDraft((prev) => {
       const row = prev[motorKey] ?? padThree(undefined);
       const copy: [DetalheServicoFeriasPeriodo, DetalheServicoFeriasPeriodo, DetalheServicoFeriasPeriodo] = [
@@ -129,7 +150,11 @@ export function DetalheServicoFeriasModal({
         { ...row[1] },
         { ...row[2] },
       ];
-      copy[slot] = { ...copy[slot], [field]: value };
+      if (field === "tipo") {
+        copy[slot] = { ...copy[slot], tipo: resolveAusenciaTipo(value) };
+      } else {
+        copy[slot] = { ...copy[slot], [field]: value };
+      }
       return { ...prev, [motorKey]: copy };
     });
   }
@@ -151,7 +176,11 @@ export function DetalheServicoFeriasModal({
         const ini = p.inicio.trim();
         const fim = p.fim.trim();
         if (!ini || !fim) continue;
-        periods.push({ inicio: ini, fim: fim });
+        periods.push({
+          inicio: ini,
+          fim: fim,
+          tipo: resolveAusenciaTipo(p.tipo),
+        });
       }
       if (periods.length > 0) out[k] = periods;
     }
@@ -205,7 +234,7 @@ export function DetalheServicoFeriasModal({
                   </span>
                 </div>
                 <p id={descId} className="mt-2 max-w-xl text-sm leading-relaxed text-white/88">
-                  Defina até três períodos por motorista. Comece com um intervalo; use{" "}
+                  Defina até três períodos por motorista, escolhendo o tipo de ausência. Use{" "}
                   <span className="font-semibold text-white">Adicionar período</span> para incluir mais. As datas
                   aplicam-se ao mês{" "}
                   <span className="whitespace-nowrap font-semibold text-white">{monthTitle}</span>.
@@ -240,8 +269,9 @@ export function DetalheServicoFeriasModal({
                 <UserRound className="h-7 w-7" strokeWidth={1.5} aria-hidden />
               </div>
               <p className="max-w-sm text-sm text-[hsl(var(--muted-foreground))]">
-                Não há motoristas no catálogo. Adicione nomes na aba <strong className="text-[hsl(var(--foreground))]">Motoristas</strong>{" "}
-                para configurar férias aqui.
+                Não há motoristas no catálogo. Adicione nomes na aba{" "}
+                <strong className="text-[hsl(var(--foreground))]">Motoristas</strong> para configurar ausências
+                aqui.
               </p>
             </div>
           ) : (
@@ -285,58 +315,91 @@ export function DetalheServicoFeriasModal({
                       </div>
 
                       <div className="space-y-3 p-4 sm:p-5">
-                        {slotsToShow.map((slot) => (
-                          <div
-                            key={slot}
-                            className={cn(
-                              "rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-3 sm:p-4",
-                              "ring-1 ring-black/[0.02] dark:ring-white/[0.03]",
-                            )}
-                          >
-                            <div className="mb-3 flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
-                                Período {slot + 1}
-                              </span>
-                              <span className="h-1 w-8 rounded-full bg-gradient-to-r from-teal-500/40 to-emerald-500/30" aria-hidden />
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-                              <div className="min-w-0 space-y-1.5">
-                                <label
-                                  htmlFor={`ferias-${k}-s${slot}-i`}
-                                  className="block text-xs font-medium text-[hsl(var(--muted-foreground))]"
-                                >
-                                  Início
-                                </label>
-                                <input
-                                  id={`ferias-${k}-s${slot}-i`}
-                                  type="date"
-                                  min={min}
-                                  max={max}
-                                  className={dateInputClass}
-                                  value={triple[slot].inicio}
-                                  onChange={(e) => updateSlot(k, slot, "inicio", e.target.value)}
+                        {slotsToShow.map((slot) => {
+                          const tipoAtual = resolveAusenciaTipo(triple[slot].tipo);
+                          return (
+                            <div
+                              key={slot}
+                              className={cn(
+                                "rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-3 sm:p-4",
+                                "ring-1 ring-black/[0.02] dark:ring-white/[0.03]",
+                              )}
+                            >
+                              <div className="mb-3 flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
+                                  Período {slot + 1}
+                                </span>
+                                <span
+                                  className="h-1 w-8 rounded-full bg-gradient-to-r from-teal-500/40 to-emerald-500/30"
+                                  aria-hidden
                                 />
                               </div>
-                              <div className="min-w-0 space-y-1.5">
+                              <div className="mb-3 min-w-0 space-y-1.5">
                                 <label
-                                  htmlFor={`ferias-${k}-s${slot}-f`}
+                                  htmlFor={`ausencia-${k}-s${slot}-tipo`}
                                   className="block text-xs font-medium text-[hsl(var(--muted-foreground))]"
                                 >
-                                  Fim
+                                  Tipo de ausência
                                 </label>
-                                <input
-                                  id={`ferias-${k}-s${slot}-f`}
-                                  type="date"
-                                  min={min}
-                                  max={max}
-                                  className={dateInputClass}
-                                  value={triple[slot].fim}
-                                  onChange={(e) => updateSlot(k, slot, "fim", e.target.value)}
-                                />
+                                <select
+                                  id={`ausencia-${k}-s${slot}-tipo`}
+                                  className={selectClass}
+                                  value={tipoAtual}
+                                  onChange={(e) =>
+                                    updateSlot(
+                                      k,
+                                      slot,
+                                      "tipo",
+                                      e.target.value as DetalheServicoAusenciaTipo,
+                                    )
+                                  }
+                                >
+                                  {DETALHE_SERVICO_AUSENCIA_TIPOS.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+                                <div className="min-w-0 space-y-1.5">
+                                  <label
+                                    htmlFor={`ferias-${k}-s${slot}-i`}
+                                    className="block text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                                  >
+                                    Início
+                                  </label>
+                                  <input
+                                    id={`ferias-${k}-s${slot}-i`}
+                                    type="date"
+                                    min={min}
+                                    max={max}
+                                    className={dateInputClass}
+                                    value={triple[slot].inicio}
+                                    onChange={(e) => updateSlot(k, slot, "inicio", e.target.value)}
+                                  />
+                                </div>
+                                <div className="min-w-0 space-y-1.5">
+                                  <label
+                                    htmlFor={`ferias-${k}-s${slot}-f`}
+                                    className="block text-xs font-medium text-[hsl(var(--muted-foreground))]"
+                                  >
+                                    Fim
+                                  </label>
+                                  <input
+                                    id={`ferias-${k}-s${slot}-f`}
+                                    type="date"
+                                    min={min}
+                                    max={max}
+                                    className={dateInputClass}
+                                    value={triple[slot].fim}
+                                    onChange={(e) => updateSlot(k, slot, "fim", e.target.value)}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
 
                         {visible < 3 ? (
                           <button
@@ -347,7 +410,7 @@ export function DetalheServicoFeriasModal({
                               "transition-colors hover:border-teal-500/40 hover:bg-teal-500/[0.06] hover:text-[hsl(var(--foreground))]",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/25",
                             )}
-                            aria-label={`Adicionar período de férias para ${nome}`}
+                            aria-label={`Adicionar período de ausência para ${nome}`}
                             onClick={() => addVisibleSlot(k)}
                           >
                             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))] text-[hsl(var(--foreground))] ring-1 ring-[hsl(var(--border))]">

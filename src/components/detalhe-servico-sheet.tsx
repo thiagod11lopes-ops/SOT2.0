@@ -10,6 +10,11 @@ import {
   type DetalheServicoFeriasPeriodo,
   type DetalheServicoPortraitRow,
 } from "../lib/detalheServicoBundle";
+import {
+  getAusenciaRunForDay,
+  isDayInAusenciaPeriods,
+  resolveAusenciaTipo,
+} from "../lib/detalheServicoAusencia";
 import { DetalheServicoFeriasModal, type FeriasDraftByMotorKey } from "./detalhe-servico-ferias-modal";
 import { isFirebaseConfigured } from "../lib/firebase/config";
 import {
@@ -302,7 +307,7 @@ function tallyDayCellTokens(
   let s = 0;
   let ro = 0;
   for (const { day } of days) {
-    if (isDayInFeriasPeriods(year, monthIndex, day, feriasPeriods)) continue;
+    if (isDayInAusenciaPeriods(year, monthIndex, day, feriasPeriods)) continue;
     const dk = dateKey(year, monthIndex, day);
     const raw = (rowCells[dk] ?? "").trim();
     if (!raw) continue;
@@ -386,6 +391,7 @@ function clipFeriasPeriodToMonth(
   return {
     inicio: dateKey(year, monthIndex, lo.getDate()),
     fim: dateKey(year, monthIndex, hi.getDate()),
+    tipo: resolveAusenciaTipo(p.tipo),
   };
 }
 
@@ -395,19 +401,7 @@ function isDayInFeriasPeriods(
   day: number,
   periods: DetalheServicoFeriasPeriodo[] | undefined,
 ): boolean {
-  if (!periods?.length) return false;
-  const t = new Date(year, monthIndex, day);
-  t.setHours(0, 0, 0, 0);
-  for (const p of periods) {
-    const a = parseIsoDateLocal(p.inicio);
-    const b = parseIsoDateLocal(p.fim);
-    if (!a || !b) continue;
-    a.setHours(0, 0, 0, 0);
-    b.setHours(0, 0, 0, 0);
-    if (a > b) continue;
-    if (t >= a && t <= b) return true;
-  }
-  return false;
+  return isDayInAusenciaPeriods(year, monthIndex, day, periods);
 }
 
 function findLastWorkedDateInMonthByMotorista(
@@ -653,9 +647,12 @@ export function DetalheServicoSheet() {
       const periods = feriasForMonth[motoristaKey];
       if (!periods?.length) continue;
       const formattedPeriods = periods
-        .map((p) => `${formatIsoDatePtBr(p.inicio)} até ${formatIsoDatePtBr(p.fim)}`)
+        .map((p) => {
+          const tipo = resolveAusenciaTipo(p.tipo);
+          return `${tipo}: ${formatIsoDatePtBr(p.inicio)} até ${formatIsoDatePtBr(p.fim)}`;
+        })
         .join(" | ");
-      out.push(`Obs: ${motorista} - Férias no período de ${formattedPeriods}.`);
+      out.push(`Obs: ${motorista} - ${formattedPeriods}.`);
       seen.add(motoristaKey);
     }
     return out;
@@ -1946,37 +1943,18 @@ export function DetalheServicoSheet() {
                         const dayColGray = columnGray[dk] || isWeekend;
                         const periodsThisMotor =
                           feriasForMonth[normalizeMotoristaName(motoristaVal)];
-                        const isFeriasDay = isDayInFeriasPeriods(
+                        const ausenciaRun = getAusenciaRunForDay(
                           year,
                           monthIndex,
                           day,
+                          lastCalendarDay,
                           periodsThisMotor,
                         );
-                        const feriasPrev =
-                          day > 1 &&
-                          isDayInFeriasPeriods(year, monthIndex, day - 1, periodsThisMotor);
-                        const feriasNext =
-                          day < lastCalendarDay &&
-                          isDayInFeriasPeriods(year, monthIndex, day + 1, periodsThisMotor);
-                        let isFeriasLabelDay = false;
-                        if (isFeriasDay) {
-                          let start = day;
-                          let end = day;
-                          while (
-                            start > 1 &&
-                            isDayInFeriasPeriods(year, monthIndex, start - 1, periodsThisMotor)
-                          ) {
-                            start -= 1;
-                          }
-                          while (
-                            end < lastCalendarDay &&
-                            isDayInFeriasPeriods(year, monthIndex, end + 1, periodsThisMotor)
-                          ) {
-                            end += 1;
-                          }
-                          const middle = Math.floor((start + end) / 2);
-                          isFeriasLabelDay = day === middle;
-                        }
+                        const isFeriasDay = Boolean(ausenciaRun?.isAusencia);
+                        const feriasPrev = Boolean(ausenciaRun?.hasPrev);
+                        const feriasNext = Boolean(ausenciaRun?.hasNext);
+                        const isFeriasLabelDay = Boolean(ausenciaRun?.isLabelDay);
+                        const ausenciaLabel = ausenciaRun?.label ?? "FÉRIAS";
                         const feriasBg = !tableEditable ? "bg-neutral-300/80" : "bg-neutral-200";
                         const hasIntervaloViolation =
                           !isFeriasDay &&
@@ -2007,13 +1985,13 @@ export function DetalheServicoSheet() {
                                 name={`dia-${rowId}-${dk}`}
                                 autoComplete="off"
                                 readOnly
-                                aria-label="Férias"
-                                title="Férias"
+                                aria-label={ausenciaRun?.tipo ?? "Ausência"}
+                                title={ausenciaRun?.tipo ?? "Ausência"}
                                 className={`${inputClassDay} ${inputLockedClass} placeholder:font-semibold placeholder:text-[hsl(var(--foreground))]/80`}
                                 data-det-sheet-row={rowIndex}
                                 data-det-sheet-col={colIndex}
                                 value=""
-                                placeholder={isFeriasLabelDay ? "FÉRIAS" : "\u00a0"}
+                                placeholder={isFeriasLabelDay ? ausenciaLabel : "\u00a0"}
                                 onChange={() => {}}
                                 onFocus={onCellFocus}
                                 onBlur={() => {}}

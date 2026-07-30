@@ -2,6 +2,7 @@ import autoTable from "jspdf-autotable";
 import type { Styles, Table } from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import type { DetalheServicoFeriasPeriodo } from "./detalheServicoBundle";
+import { getAusenciaRunForDay, isDayInAusenciaPeriods } from "./detalheServicoAusencia";
 
 type JsPDFWithLastTable = jsPDF & { lastAutoTable?: Table };
 
@@ -158,31 +159,13 @@ function normalizeMotoristaName(value: string): string {
     .toLowerCase();
 }
 
-function parseIsoDateLocal(iso: string): Date | null {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
 function isDayInFeriasPeriods(
   year: number,
   monthIndex: number,
   day: number,
   periods: DetalheServicoFeriasPeriodo[] | undefined,
 ): boolean {
-  if (!periods?.length) return false;
-  const t = new Date(year, monthIndex, day);
-  t.setHours(0, 0, 0, 0);
-  for (const p of periods) {
-    const a = parseIsoDateLocal(p.inicio);
-    const b = parseIsoDateLocal(p.fim);
-    if (!a || !b) continue;
-    a.setHours(0, 0, 0, 0);
-    b.setHours(0, 0, 0, 0);
-    if (a > b) continue;
-    if (t >= a && t <= b) return true;
-  }
-  return false;
+  return isDayInAusenciaPeriods(year, monthIndex, day, periods);
 }
 
 function tallyDayCellTokens(
@@ -471,7 +454,10 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
   }
 
   const body1: string[][] = [];
-  const feriasCellMap: Record<string, { isFerias: boolean; isMiddle: boolean; hasPrev: boolean; hasNext: boolean }> = {};
+  const feriasCellMap: Record<
+    string,
+    { isFerias: boolean; isMiddle: boolean; hasPrev: boolean; hasNext: boolean; label: string }
+  > = {};
   if (sheet.rows.length === 0) {
     const emptyRow = Array(headRow.length).fill("—");
     emptyRow[0] = "Sem linhas";
@@ -500,24 +486,21 @@ export function downloadDetalheServicoMotoristaPdf(params: DetalheServicoMotoris
       const lastCalendarDay = days[days.length - 1]?.day ?? 31;
       for (const { day } of days) {
         const dk = dateKey(year, monthIndex, day);
-        const isFerias = isDayInFeriasPeriods(year, monthIndex, day, motorFerias);
-        if (!isFerias) {
+        const run = getAusenciaRunForDay(year, monthIndex, day, lastCalendarDay, motorFerias);
+        if (!run) {
           const rawCell = stripCrossedPrefixForDisplay(rowCells[dk] ?? "");
           cells.push((showRoTokens ? rawCell : stripRoTokens(rawCell)).trim() || "");
           continue;
         }
-        const hasPrev = day > 1 && isDayInFeriasPeriods(year, monthIndex, day - 1, motorFerias);
-        const hasNext =
-          day < lastCalendarDay && isDayInFeriasPeriods(year, monthIndex, day + 1, motorFerias);
-        let start = day;
-        let end = day;
-        while (start > 1 && isDayInFeriasPeriods(year, monthIndex, start - 1, motorFerias)) start -= 1;
-        while (end < lastCalendarDay && isDayInFeriasPeriods(year, monthIndex, end + 1, motorFerias)) end += 1;
-        const middle = Math.floor((start + end) / 2);
-        const isMiddle = day === middle;
         const colIndex = day;
-        feriasCellMap[`${rowIndex}:${colIndex}`] = { isFerias, isMiddle, hasPrev, hasNext };
-        cells.push(isMiddle ? "FÉRIAS" : "");
+        feriasCellMap[`${rowIndex}:${colIndex}`] = {
+          isFerias: true,
+          isMiddle: run.isLabelDay,
+          hasPrev: run.hasPrev,
+          hasNext: run.hasNext,
+          label: run.label,
+        };
+        cells.push(run.isLabelDay ? run.label : "");
       }
       if (tableEditable) {
         for (const { key: cellKey } of COLUNAS_EXTRAS_EDICAO) {

@@ -1,12 +1,21 @@
 import { idbGetJson, idbSetJson } from "./indexedDb";
 import { isFirebaseOnlyOnlineActive } from "./firebaseOnlyOnlinePolicy";
+import {
+  DETALHE_SERVICO_AUSENCIA_TIPO_DEFAULT,
+  resolveAusenciaTipo,
+} from "./detalheServicoAusencia";
 import type {
   DetalheServicoRodapeAssinatura,
   DetalheServicoSheetSnapshot,
 } from "./generateDetalheServicoMotoristaPdf";
 
-/** Período de férias (datas inclusivas, ISO `YYYY-MM-DD`). */
-export type DetalheServicoFeriasPeriodo = { inicio: string; fim: string };
+/** Período de ausência (datas inclusivas, ISO `YYYY-MM-DD`). */
+export type DetalheServicoFeriasPeriodo = {
+  inicio: string;
+  fim: string;
+  /** Tipo de ausência; omitido em dados antigos = Férias. */
+  tipo?: string;
+};
 
 /** Por mês (`YYYY-MM`), mapa motorista (chave normalizada) → até 3 períodos. */
 export type DetalheServicoFeriasPorMes = Record<string, Record<string, DetalheServicoFeriasPeriodo[]>>;
@@ -81,7 +90,8 @@ function normalizeFeriasPeriodo(p: unknown): DetalheServicoFeriasPeriodo | null 
   const inicio = typeof o.inicio === "string" ? o.inicio.trim() : "";
   const fim = typeof o.fim === "string" ? o.fim.trim() : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) return null;
-  return { inicio, fim };
+  const tipo = o.tipo !== undefined ? resolveAusenciaTipo(o.tipo) : DETALHE_SERVICO_AUSENCIA_TIPO_DEFAULT;
+  return { inicio, fim, tipo };
 }
 
 function normalizeFeriasByMonth(raw: unknown): DetalheServicoFeriasPorMes {
