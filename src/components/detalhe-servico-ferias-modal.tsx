@@ -197,7 +197,7 @@ export function DetalheServicoFeriasModal({
               <div className="min-w-0 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 id={titleId} className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-                    Escala de Férias
+                    Programação de Ausência
                   </h2>
                   <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white/95 ring-1 ring-white/25">
                     <Sparkles className="h-3 w-3 opacity-90" aria-hidden />

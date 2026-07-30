@@ -1495,7 +1495,7 @@ export function DetalheServicoSheet() {
             className="shrink-0"
             onClick={() => setFeriasModalOpen(true)}
           >
-            Escala de Férias
+            Programação de Ausência
           </Button>
           <span
             className="text-xs text-[hsl(var(--muted-foreground))]"
