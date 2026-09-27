@@ -860,7 +860,7 @@ function EstoquePane({
       ) : (
         <ul className="space-y-2.5">
           {items.map((item) => (
-            <li key={item.id} className="rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3.5 shadow-sm">
+            <li key={item.id} className="rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card)/0.78)] p-3.5 shadow-sm">
               <button type="button" className="flex w-full items-start gap-3 text-left" onClick={() => onMore(item)}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[0.95rem] font-semibold">{item.nome}</p>
