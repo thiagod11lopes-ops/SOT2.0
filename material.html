@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="apple-touch-icon" href="./sot-pwa-icon.svg" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta
+      name="description"
+      content="Controle de Material em endereço próprio. Estoque separado do ícone no sistema principal."
+    />
+    <title>Controle de Material</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (function () {
+        var target = "#/controle-material";
+        if (window.location.hash === target || window.location.hash.indexOf(target + "/") === 0) return;
+        try {
+          if (window.history.replaceState) {
+            window.history.replaceState(
+              null,
+              "",
+              window.location.pathname + window.location.search + target,
+            );
+          } else {
+            window.location.replace(window.location.pathname + window.location.search + target);
+          }
+        } catch (e) {
+          window.location.hash = target;
+        }
+      })();
+    </script>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("sot-appearance");
+          if (!raw) return;
+          var mode = raw;
+          if (raw.charAt(0) === "{") {
+            var parsed = JSON.parse(raw);
+            mode = parsed && parsed.mode;
+          }
+          if (mode && mode !== "original") {
+            document.documentElement.dataset.appearance = mode;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

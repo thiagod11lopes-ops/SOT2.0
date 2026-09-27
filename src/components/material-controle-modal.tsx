@@ -28,6 +28,8 @@ import { MaterialControleMovimentosPanel } from "./material-controle-movimentos-
 type Props = {
   open: boolean;
   onClose: () => void;
+  /** `page` ocupa o ecrã no endereço dedicado, com estoque próprio. */
+  presentation?: "modal" | "page";
 };
 
 type DialogMode =
@@ -52,7 +54,8 @@ function formatBaixaDate(iso: string | null) {
   }
 }
 
-export function MaterialControleModal({ open, onClose }: Props) {
+export function MaterialControleModal({ open, onClose, presentation = "modal" }: Props) {
+  const isPage = presentation === "page";
   const titleId = useId();
   const {
     doc,
@@ -253,9 +256,15 @@ export function MaterialControleModal({ open, onClose }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-6"
+      className={cn(
+        "fixed inset-0 z-[120] flex",
+        isPage
+          ? "bg-[hsl(var(--background))]"
+          : "items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-6",
+      )}
       role="presentation"
       onMouseDown={(e) => {
+        if (isPage) return;
         if (e.target === e.currentTarget && !dialog) onClose();
       }}
     >
@@ -264,9 +273,14 @@ export function MaterialControleModal({ open, onClose }: Props) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex h-[min(92dvh,820px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-[hsl(var(--primary))]/20",
-          "bg-gradient-to-br from-[hsl(var(--card))] via-[hsl(var(--card))] to-[hsl(var(--muted))]/30",
-          "shadow-[0_32px_80px_-16px_rgba(0,0,0,0.55),inset_0_1px_0_hsla(0,0%,100%,0.08)]",
+          "relative flex w-full flex-col overflow-hidden",
+          isPage
+            ? "h-dvh max-w-none rounded-none border-0 bg-[hsl(var(--background))]"
+            : cn(
+                "h-[min(92dvh,820px)] max-w-6xl rounded-3xl border border-[hsl(var(--primary))]/20",
+                "bg-gradient-to-br from-[hsl(var(--card))] via-[hsl(var(--card))] to-[hsl(var(--muted))]/30",
+                "shadow-[0_32px_80px_-16px_rgba(0,0,0,0.55),inset_0_1px_0_hsla(0,0%,100%,0.08)]",
+              ),
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -288,9 +302,11 @@ export function MaterialControleModal({ open, onClose }: Props) {
               Controle de Material
             </h2>
           </div>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Fechar">
-            <X className="h-4 w-4" />
-          </Button>
+          {isPage ? null : (
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Fechar">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </header>
 
         {/* Barra de abas horizontal — estilo Excel moderno */}

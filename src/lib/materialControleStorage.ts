@@ -1,6 +1,8 @@
 import { idbGetJson, idbSetJson } from "./indexedDb";
 
 export const MATERIAL_CONTROLE_IDB_KEY = "sot-material-controle-v1";
+/** Estoque do endereço `material.html`. Não partilha dados com o ícone do SOT. */
+export const MATERIAL_CONTROLE_AVULSO_IDB_KEY = "sot-material-controle-avulso-v1";
 
 export type MaterialItemStatus = "ativo" | "baixa";
 
@@ -153,11 +155,16 @@ export function isMaterialControleDocEmpty(doc: MaterialControleDoc): boolean {
   return doc.planilhas.length === 0;
 }
 
-export async function loadMaterialControleFromIdb(): Promise<MaterialControleDoc> {
-  const raw = await idbGetJson<unknown>(MATERIAL_CONTROLE_IDB_KEY, { allowWhenFirebaseOnlyOnline: true });
+export async function loadMaterialControleFromIdb(
+  idbKey: string = MATERIAL_CONTROLE_IDB_KEY,
+): Promise<MaterialControleDoc> {
+  const raw = await idbGetJson<unknown>(idbKey, { allowWhenFirebaseOnlyOnline: true });
   return normalizeMaterialControleDoc(raw);
 }
 
-export async function saveMaterialControleToIdb(doc: MaterialControleDoc): Promise<void> {
-  await idbSetJson(MATERIAL_CONTROLE_IDB_KEY, doc, { allowWhenFirebaseOnlyOnline: true });
+export async function saveMaterialControleToIdb(
+  doc: MaterialControleDoc,
+  idbKey: string = MATERIAL_CONTROLE_IDB_KEY,
+): Promise<void> {
+  await idbSetJson(idbKey, doc, { allowWhenFirebaseOnlyOnline: true });
 }

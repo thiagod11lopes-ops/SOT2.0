@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: path.resolve(__dirname, "index.html"),
         mobile: path.resolve(__dirname, "mobile.html"),
+        material: path.resolve(__dirname, "material.html"),
       },
     },
   },

@@ -49,6 +49,14 @@ export const SOT_STATE_DOC = {
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];
 
+/**
+ * Estoque só do endereço `material.html`.
+ * Fica de fora de `SOT_STATE_DOC` para o backup do SOT principal não o ler nem o gravar.
+ */
+export const MATERIAL_CONTROLE_AVULSO_STATE_DOC = "materialControleAvulso" as const;
+
+export type SotStateCloudDocId = SotStateDocId | typeof MATERIAL_CONTROLE_AVULSO_STATE_DOC;
+
 function docRef(docId: string) {
   const db = getFirestore(getFirebaseApp());
   return doc(db, COLLECTION, docId);
@@ -64,7 +72,7 @@ function sanitizePayload(data: unknown): unknown {
  * (efeitos após hidratar IndexedDB) antes de `ensureFirebaseAuth` noutro efeito terminar.
  */
 export function subscribeSotStateDoc(
-  docId: SotStateDocId,
+  docId: SotStateCloudDocId,
   onPayload: (payload: unknown | null) => void,
   onError: (err: Error) => void,
   options?: { ignoreCachedSnapshotWhenOnline?: boolean },
@@ -142,12 +150,12 @@ export function subscribeSotStateDoc(
   };
 }
 
-export async function setSotStateDoc(docId: SotStateDocId, payload: unknown): Promise<void> {
+export async function setSotStateDoc(docId: SotStateCloudDocId, payload: unknown): Promise<void> {
   await ensureFirebaseAuth();
   await setDoc(docRef(docId), { payload: sanitizePayload(payload) });
 }
 
-export async function readSotStateDocFromServer(docId: SotStateDocId): Promise<unknown | null> {
+export async function readSotStateDocFromServer(docId: SotStateCloudDocId): Promise<unknown | null> {
   await ensureFirebaseAuth();
   const snap = await getDocFromServer(docRef(docId));
   if (!snap.exists()) return null;
@@ -176,7 +184,7 @@ function isRetryableFirestoreError(err: unknown): boolean {
  * Gravação com novas tentativas — falhas transitórias de rede/Firestore são comuns em campo.
  */
 export async function setSotStateDocWithRetry(
-  docId: SotStateDocId,
+  docId: SotStateCloudDocId,
   payload: unknown,
   options?: { maxAttempts?: number },
 ): Promise<void> {

@@ -10,11 +10,19 @@ import {
 } from "react";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
 import { isFirebaseConfigured } from "../lib/firebase/config";
-import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import {
+  MATERIAL_CONTROLE_AVULSO_STATE_DOC,
+  SOT_STATE_DOC,
+  setSotStateDocWithRetry,
+  subscribeSotStateDoc,
+  type SotStateCloudDocId,
+} from "../lib/firebase/sotStateFirestore";
 import {
   emptyMaterialControleDoc,
   isMaterialControleDocEmpty,
   loadMaterialControleFromIdb,
+  MATERIAL_CONTROLE_AVULSO_IDB_KEY,
+  MATERIAL_CONTROLE_IDB_KEY,
   newMaterialId,
   normalizeMaterialControleDoc,
   saveMaterialControleToIdb,
@@ -29,12 +37,41 @@ import {
 import { applyMaterialControleSeeds } from "../lib/materialControleArmario1Seed";
 import { useSyncPreference } from "./sync-preference-context";
 
-async function hydrateDocWithSeeds(raw: MaterialControleDoc): Promise<{
+export type MaterialControleStore = "principal" | "avulso";
+
+const MATERIAL_STORE: Record<
+  MaterialControleStore,
+  { idbKey: string; cloudDoc: SotStateCloudDocId; applySeeds: boolean }
+> = {
+  principal: {
+    idbKey: MATERIAL_CONTROLE_IDB_KEY,
+    cloudDoc: SOT_STATE_DOC.materialControle,
+    applySeeds: true,
+  },
+  avulso: {
+    idbKey: MATERIAL_CONTROLE_AVULSO_IDB_KEY,
+    cloudDoc: MATERIAL_CONTROLE_AVULSO_STATE_DOC,
+    applySeeds: false,
+  },
+};
+
+function materialStoreFromHash(): MaterialControleStore {
+  if (typeof window === "undefined") return "principal";
+  return /^#\/controle-material(\/|$)/.test(window.location.hash) ? "avulso" : "principal";
+}
+
+async function hydrateDoc(
+  raw: MaterialControleDoc,
+  idbKey: string,
+  applySeeds: boolean,
+): Promise<{
   doc: MaterialControleDoc;
   seedApplied: boolean;
 }> {
-  const { doc, changed } = applyMaterialControleSeeds(raw);
-  if (changed) await saveMaterialControleToIdb(doc);
+  const { doc, changed } = applySeeds
+    ? applyMaterialControleSeeds(raw)
+    : { doc: raw, changed: false };
+  if (changed) await saveMaterialControleToIdb(doc, idbKey);
   return { doc, seedApplied: changed };
 }
 
@@ -107,7 +144,14 @@ function mapPlanilha(
   };
 }
 
-export function MaterialControleProvider({ children }: { children: ReactNode }) {
+export function MaterialControleProvider({
+  children,
+  store = "principal",
+}: {
+  children: ReactNode;
+  store?: MaterialControleStore;
+}) {
+  const { idbKey, cloudDoc, applySeeds } = MATERIAL_STORE[store];
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
 
@@ -140,8 +184,8 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
           pendingDocRef.current = null;
           setCloudSyncStatus("syncing");
           try {
-            await setSotStateDocWithRetry(SOT_STATE_DOC.materialControle, toSend);
-            await saveMaterialControleToIdb(toSend);
+            await setSotStateDocWithRetry(cloudDoc, toSend);
+            await saveMaterialControleToIdb(toSend, idbKey);
             setCloudSyncStatus("synced");
           } catch (e) {
             setCloudSyncStatus("error");
@@ -152,7 +196,7 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
         cloudWriteInFlightRef.current = false;
       }
     },
-    [useCloud],
+    [useCloud, cloudDoc, idbKey],
   );
 
   const flushCloudWrite = useCallback(async () => {
@@ -167,9 +211,9 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (useCloud) return;
     let cancelled = false;
-    void loadMaterialControleFromIdb().then(async (local) => {
+    void loadMaterialControleFromIdb(idbKey).then(async (local) => {
       if (cancelled) return;
-      const { doc: seeded } = await hydrateDocWithSeeds(local);
+      const { doc: seeded } = await hydrateDoc(local, idbKey, applySeeds);
       if (cancelled) return;
       setDoc(seeded);
       hydratedRef.current = true;
@@ -179,7 +223,7 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [useCloud]);
+  }, [useCloud, idbKey, applySeeds]);
 
   useEffect(() => {
     if (!useCloud) return;
@@ -194,7 +238,7 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
         await ensureFirebaseAuth();
         if (cancelled) return;
         unsub = subscribeSotStateDoc(
-          SOT_STATE_DOC.materialControle,
+          cloudDoc,
           (payload) => {
             void (async () => {
               if (cancelled) return;
@@ -203,13 +247,17 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
               if (payload === null) {
                 if (!localPromotionAttemptedRef.current) {
                   localPromotionAttemptedRef.current = true;
-                  const { doc: seeded } = await hydrateDocWithSeeds(await loadMaterialControleFromIdb());
+                  const { doc: seeded } = await hydrateDoc(
+                    await loadMaterialControleFromIdb(idbKey),
+                    idbKey,
+                    applySeeds,
+                  );
                   if (!isMaterialControleDocEmpty(seeded)) {
                     try {
-                      await setSotStateDocWithRetry(SOT_STATE_DOC.materialControle, seeded);
+                      await setSotStateDocWithRetry(cloudDoc, seeded);
                       applyingRemoteRef.current = true;
                       setDoc(seeded);
-                      await saveMaterialControleToIdb(seeded);
+                      await saveMaterialControleToIdb(seeded, idbKey);
                       setCloudSyncStatus("synced");
                     } catch (e) {
                       console.error("[SOT] Promover controle de material local para nuvem:", e);
@@ -227,11 +275,11 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
 
               applyingRemoteRef.current = true;
               const normalized = normalizeMaterialControleDoc(payload);
-              const { doc: seeded, seedApplied } = await hydrateDocWithSeeds(normalized);
+              const { doc: seeded, seedApplied } = await hydrateDoc(normalized, idbKey, applySeeds);
               if (seedApplied) applyingRemoteRef.current = false;
               setDoc(seeded);
               setCloudSyncStatus("synced");
-              await saveMaterialControleToIdb(seeded);
+              await saveMaterialControleToIdb(seeded, idbKey);
               hydratedRef.current = true;
               setInitialLoadComplete(true);
             })();
@@ -260,7 +308,7 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud]);
+  }, [useCloud, cloudDoc, idbKey, applySeeds]);
 
   useEffect(() => {
     if (!useCloud || !hydratedRef.current) return;
@@ -276,8 +324,8 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (useCloud || !hydratedRef.current) return;
-    void saveMaterialControleToIdb(doc);
-  }, [doc, useCloud]);
+    void saveMaterialControleToIdb(doc, idbKey);
+  }, [doc, useCloud, idbKey]);
 
   const addPlanilha = useCallback(
     (nome: string) => {
@@ -513,6 +561,20 @@ export function MaterialControleProvider({ children }: { children: ReactNode }) 
   );
 
   return <MaterialControleContext.Provider value={value}>{children}</MaterialControleContext.Provider>;
+}
+
+export function MaterialControleRouteProvider({ children }: { children: ReactNode }) {
+  const [store, setStore] = useState<MaterialControleStore>(materialStoreFromHash);
+  useEffect(() => {
+    const onHash = () => setStore(materialStoreFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return (
+    <MaterialControleProvider key={store} store={store}>
+      {children}
+    </MaterialControleProvider>
+  );
 }
 
 export function useMaterialControle() {

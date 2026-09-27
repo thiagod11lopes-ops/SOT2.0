@@ -11,6 +11,7 @@ import { SettingsPage } from "./components/settings-page";
 import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
+import { MaterialControleModal } from "./components/material-controle-modal";
 import { SiadQuickDepartureFormPage } from "./components/siad-quick-departure-form-page";
 import { SiadDriverRequestAlertModal } from "./components/siad-driver-request-alert-modal";
 import { RelatorioDiarioViaturasCalendarPage } from "./components/relatorio-diario-viaturas-calendar-page";
@@ -162,9 +163,10 @@ function App() {
   const isMobileRoute = hash.startsWith("#/saidas");
   const isCarroQuebradoRoute = /^#\/carro-quebrado(\/|$)/.test(hash);
   const isSiadSaidaRoute = /^#\/siad-saida(\/|$)/.test(hash);
+  const isMaterialControleRoute = /^#\/controle-material(\/|$)/.test(hash);
 
   useEffect(() => {
-    if (isMobileRoute || isSiadSaidaRoute) return;
+    if (isMobileRoute || isSiadSaidaRoute || isMaterialControleRoute) return;
     const prime = () => primeSiadDriverRequestSpeech();
     window.addEventListener("pointerdown", prime, { once: true, passive: true });
     window.addEventListener("keydown", prime, { once: true });
@@ -172,17 +174,19 @@ function App() {
       window.removeEventListener("pointerdown", prime);
       window.removeEventListener("keydown", prime);
     };
-  }, [isMobileRoute, isSiadSaidaRoute]);
+  }, [isMobileRoute, isSiadSaidaRoute, isMaterialControleRoute]);
   useIdleResetToHome(
-    !isMobileRoute && !isSiadSaidaRoute && !detalheServicoEditingActive,
+    !isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute && !detalheServicoEditingActive,
     handleIdleReturnHome,
   );
 
   useEffect(() => {
     if (isSiadSaidaRoute) {
       document.title = "Saídas SIAD";
+    } else if (isMaterialControleRoute) {
+      document.title = "Controle de Material";
     }
-  }, [isSiadSaidaRoute]);
+  }, [isSiadSaidaRoute, isMaterialControleRoute]);
 
   useEffect(() => {
     const onDetalheServicoEditing = (event: Event) => {
@@ -196,7 +200,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (hash.startsWith("#/saidas") || isSiadSaidaRoute) return;
+    if (hash.startsWith("#/saidas") || isSiadSaidaRoute || isMaterialControleRoute) return;
     if (editIntentVersion > 0 && editIntentVersion !== lastEditIntentVersion.current) {
       lastEditIntentVersion.current = editIntentVersion;
       // Não limpar `#/siad-saida` para manter o deep-link direto ao formulário.
@@ -205,7 +209,7 @@ function App() {
       }
       setActiveTab("Cadastrar Saída");
     }
-  }, [editIntentVersion, setActiveTab, hash, isSiadSaidaRoute]);
+  }, [editIntentVersion, setActiveTab, hash, isSiadSaidaRoute, isMaterialControleRoute]);
 
   useEffect(() => {
     ensureVistoriaCloudStateSyncStarted();
@@ -230,6 +234,7 @@ function App() {
   const shouldRequireDailyBackup =
     !isMobileRoute &&
     !isSiadSaidaRoute &&
+    !isMaterialControleRoute &&
     isOnline &&
     firebaseOnlyEnabled &&
     cloudDeparturesSync.enabled &&
@@ -313,6 +318,8 @@ function App() {
     <SaidasMobileApp />
   ) : isSiadSaidaRoute ? (
     <SiadQuickDepartureFormPage />
+  ) : isMaterialControleRoute ? (
+    <MaterialControleModal open onClose={() => {}} presentation="page" />
   ) : (
     <>
       <Layout
@@ -329,11 +336,11 @@ function App() {
     </>
   );
 
-  const showSiadDriverRequestModal = !isMobileRoute && !isSiadSaidaRoute;
+  const showSiadDriverRequestModal = !isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute;
 
   return (
     <>
-      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute && !isSiadSaidaRoute}>
+      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute}>
         {appContent}
       </DesktopDriverLocationsMapProvider>
       {showSiadDriverRequestModal ? <SiadDriverRequestAlertModal /> : null}

@@ -13,7 +13,7 @@ import { UnlinkedOccurrencesProvider } from "./context/unlinked-occurrences-cont
 import { AvisosProvider } from "./context/avisos-context";
 import { LimpezaPendenteProvider } from "./context/limpeza-pendente-context";
 import { EscalaPaoProvider } from "./context/escala-pao-context";
-import { MaterialControleProvider } from "./context/material-controle-context";
+import { MaterialControleRouteProvider } from "./context/material-controle-context";
 import { MotoristaPaoProvider } from "./context/motorista-pao-context";
 import { RdvFirebaseSyncProvider } from "./context/rdv-firebase-sync-provider";
 import { OficinaVisitasProvider } from "./context/oficina-visits-context";
@@ -53,13 +53,13 @@ createRoot(rootEl).render(
                           <VehicleMaintenanceProvider>
                             <VehicleMaintenanceModals />
                             <AvisosProvider>
-                              <MaterialControleProvider>
+                              <MaterialControleRouteProvider>
                               <MotoristaPaoProvider>
                                 <EscalaPaoProvider>
                                   <App />
                                 </EscalaPaoProvider>
                               </MotoristaPaoProvider>
-                              </MaterialControleProvider>
+                              </MaterialControleRouteProvider>
                             </AvisosProvider>
                           </VehicleMaintenanceProvider>
                         </OficinaVisitasProvider>
