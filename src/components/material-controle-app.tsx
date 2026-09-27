@@ -501,9 +501,9 @@ function MaterialControleApp({
                 type="button"
                 onClick={() => setActivePlanilhaId(p.id)}
                 className={cn(
-                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold",
+                  "material-planilha-tab shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold",
                   p.id === activePlanilhaId
-                    ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                    ? "is-active"
                     : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
                 )}
               >
