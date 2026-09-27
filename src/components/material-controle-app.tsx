@@ -5,7 +5,6 @@ import {
   Boxes,
   CircleHelp,
   ClipboardList,
-  FileDown,
   Handshake,
   History,
   Moon,
@@ -31,10 +30,10 @@ import {
   quantidadeEmprestada,
   type MaterialEmprestimo,
   type MaterialItem,
-  type MaterialPlanilha,
 } from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormSelectClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
+import { MaterialBalancoPane } from "./material-balanco-pane";
 
 const UNIDADES = ["UN", "QTD", "KG", "PAR"] as const;
 
@@ -571,7 +570,7 @@ function MaterialControleApp({
         ) : tab === "historico" ? (
           <HistoricoPane rows={historico} />
         ) : (
-          <BalancoPane docPlanilhas={doc.planilhas} onPdf={() => downloadMaterialControleBalancoPdf(doc)} />
+          <MaterialBalancoPane planilhas={doc.planilhas} nowMs={nowMs} onPdf={() => downloadMaterialControleBalancoPdf(doc)} />
         )}
       </div>
 
@@ -1253,44 +1252,3 @@ function HistoricoPane({ rows }: { rows: HistoryRow[] }) {
   );
 }
 
-function BalancoPane({
-  docPlanilhas,
-  onPdf,
-}: {
-  docPlanilhas: MaterialPlanilha[];
-  onPdf: () => void;
-}) {
-  if (docPlanilhas.length === 0) {
-    return <EmptyState title="Sem balanço" text="Crie uma planilha para ver o resumo do estoque." />;
-  }
-  return (
-    <div className="space-y-4">
-      <button type="button" className="material-app__primary w-full" onClick={onPdf}>
-        <FileDown className="h-4 w-4" /> Gerar PDF
-      </button>
-      {docPlanilhas.map((planilha) => (
-        <section key={planilha.id} className="overflow-hidden rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
-          <h2 className="border-b border-[hsl(var(--border))] px-4 py-3 text-sm font-semibold">{planilha.nome}</h2>
-          {planilha.items.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-[hsl(var(--muted-foreground))]">Sem itens.</p>
-          ) : (
-            <ul>
-              {planilha.items.map((it) => (
-                <li key={it.id} className="flex items-center gap-3 border-b border-[hsl(var(--border))]/60 px-4 py-3 last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{it.nome}</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {it.status === "baixa" ? "Baixa" : "Ativo"}
-                      {it.unidade ? ` · ${it.unidade}` : ""}
-                    </p>
-                  </div>
-                  <p className="text-lg font-semibold tabular-nums">{it.quantidade}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ))}
-    </div>
-  );
-}
