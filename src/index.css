@@ -1764,6 +1764,42 @@ html.siad-mobile-shell #root {
   font-weight: 700;
 }
 
+.material-history-mark--in {
+  background: rgb(16 185 129 / 0.15);
+  color: rgb(4 120 87);
+}
+
+.material-history-mark--out {
+  background: rgb(245 158 11 / 0.16);
+  color: rgb(146 64 14);
+}
+
+.material-history-mark--loan {
+  background: rgb(249 115 22 / 0.16);
+  color: #c2410c;
+}
+
+.material-history-mark--back {
+  background: rgb(148 163 184 / 0.2);
+  color: rgb(51 65 85);
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-history-mark--in {
+  color: rgb(110 231 183);
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-history-mark--out {
+  color: rgb(252 211 77);
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-history-mark--loan {
+  color: #fdba74;
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-history-mark--back {
+  color: rgb(226 232 240);
+}
+
 .material-loan-bell {
   background: rgb(249 115 22 / 0.16);
   color: #f97316;

@@ -22,10 +22,7 @@ import {
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMaterialControle } from "../context/material-controle-context";
-import {
-  formatMaterialDateTime,
-  materialMovimentoTipoLabel,
-} from "../lib/materialControleFormat";
+import { formatMaterialDateTime } from "../lib/materialControleFormat";
 import { downloadMaterialControleBalancoPdf } from "../lib/materialControlePdf";
 import {
   emprestimoVencido,
@@ -241,11 +238,48 @@ function MaterialControleApp({
     return { ativos, baixados, totalQty, zerados };
   }, [activePlanilha]);
 
-  const movimentos = useMemo(() => {
+  const historico = useMemo(() => {
     if (!activePlanilha) return [];
-    return activePlanilha.items
-      .flatMap((item) => item.movimentos.map((m) => ({ id: m.id, itemNome: item.nome, movimento: m })))
-      .sort((a, b) => b.movimento.at.localeCompare(a.movimento.at));
+    const rows: HistoryRow[] = [];
+    for (const item of activePlanilha.items) {
+      for (const movimento of item.movimentos) {
+        rows.push({
+          id: movimento.id,
+          itemNome: item.nome,
+          unidade: item.unidade || "UN",
+          at: movimento.at,
+          quantidade: movimento.quantidade,
+          responsavel: movimento.responsavel,
+          kind: movimento.tipo,
+          detalhe: movimento.observacao,
+        });
+      }
+      for (const emprestimo of item.emprestimos) {
+        rows.push({
+          id: emprestimo.id,
+          itemNome: item.nome,
+          unidade: item.unidade || "UN",
+          at: emprestimo.emprestadoEm,
+          quantidade: emprestimo.quantidade,
+          responsavel: emprestimo.responsavel,
+          kind: "emprestimo",
+          detalhe: emprestimo.devolverEm ? `Entrega ${formatMaterialDateTime(emprestimo.devolverEm)}` : "",
+        });
+        if (emprestimo.devolvidoEm) {
+          rows.push({
+            id: `${emprestimo.id}-devolucao`,
+            itemNome: item.nome,
+            unidade: item.unidade || "UN",
+            at: emprestimo.devolvidoEm,
+            quantidade: emprestimo.quantidade,
+            responsavel: emprestimo.responsavel,
+            kind: "devolucao",
+            detalhe: "",
+          });
+        }
+      }
+    }
+    return rows.sort((a, b) => b.at.localeCompare(a.at));
   }, [activePlanilha]);
 
   const dueLoans = useMemo(() => {
@@ -535,7 +569,7 @@ function MaterialControleApp({
             onMore={(item) => setSheet({ kind: "item", item })}
           />
         ) : tab === "historico" ? (
-          <HistoricoPane rows={movimentos} />
+          <HistoricoPane rows={historico} />
         ) : (
           <BalancoPane docPlanilhas={doc.planilhas} onPdf={() => downloadMaterialControleBalancoPdf(doc)} />
         )}
@@ -1156,42 +1190,65 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HistoricoPane({
-  rows,
-}: {
-  rows: { id: string; itemNome: string; movimento: MaterialPlanilha["items"][number]["movimentos"][number] }[];
-}) {
+type HistoryKind = "entrada" | "saida" | "emprestimo" | "devolucao";
+
+type HistoryRow = {
+  id: string;
+  itemNome: string;
+  unidade: string;
+  at: string;
+  quantidade: number;
+  responsavel: string;
+  kind: HistoryKind;
+  detalhe: string;
+};
+
+function historyKindLabel(kind: HistoryKind): string {
+  if (kind === "entrada") return "Entrada";
+  if (kind === "saida") return "Retirada";
+  if (kind === "emprestimo") return "Empréstimo";
+  return "Devolução";
+}
+
+function HistoricoPane({ rows }: { rows: HistoryRow[] }) {
   if (rows.length === 0) {
-    return <EmptyState title="Sem movimentação" text="Entradas e retiradas desta planilha aparecem aqui." />;
+    return (
+      <EmptyState
+        title="Sem movimentação"
+        text="Entradas, retiradas, empréstimos e devoluções desta planilha aparecem aqui."
+      />
+    );
   }
   return (
     <ul className="space-y-2">
-      {rows.map((row) => {
-        const entrada = row.movimento.tipo === "entrada";
-        return (
-          <li key={row.id} className="flex gap-3 rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3.5">
-            <div
-              className={cn(
-                "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold",
-                entrada ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-              )}
-            >
-              {entrada ? "+" : "−"}
-              {row.movimento.quantidade}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{row.itemNome}</p>
-              <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                {materialMovimentoTipoLabel(row.movimento.tipo)} · {row.movimento.responsavel}
-              </p>
-              <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">{formatMaterialDateTime(row.movimento.at)}</p>
-              {row.movimento.observacao ? (
-                <p className="mt-1 text-xs">{row.movimento.observacao}</p>
-              ) : null}
-            </div>
-          </li>
-        );
-      })}
+      {rows.map((row) => (
+        <li key={row.id} className="flex gap-3 rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3.5">
+          <div
+            className={cn(
+              "material-history-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold",
+              row.kind === "entrada" && "material-history-mark--in",
+              row.kind === "saida" && "material-history-mark--out",
+              row.kind === "emprestimo" && "material-history-mark--loan",
+              row.kind === "devolucao" && "material-history-mark--back",
+            )}
+          >
+            {row.kind === "entrada" ? "+" : row.kind === "saida" ? "−" : ""}
+            {row.quantidade}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">{row.itemNome}</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              {historyKindLabel(row.kind)} · {row.quantidade} {row.unidade} · {row.responsavel}
+            </p>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              {row.kind === "emprestimo"
+                ? new Date(row.at).toLocaleDateString("pt-BR")
+                : formatMaterialDateTime(row.at)}
+            </p>
+            {row.detalhe ? <p className="mt-1 text-xs">{row.detalhe}</p> : null}
+          </div>
+        </li>
+      ))}
     </ul>
   );
 }
