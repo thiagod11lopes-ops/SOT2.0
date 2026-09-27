@@ -294,9 +294,11 @@ function MaterialControleApp({
     <div className="material-app relative flex h-full min-h-0 flex-col bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
       <header className="shrink-0 px-4 pb-2 pt-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm">
-            <Boxes className="h-5 w-5" strokeWidth={1.75} />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
+            alt="Aliança Ebenézer"
+            className="h-11 w-11 shrink-0 rounded-full object-cover shadow-sm"
+          />
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
               Estoque
