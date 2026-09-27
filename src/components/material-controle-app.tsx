@@ -428,7 +428,7 @@ function MaterialControleApp({
                   <input
                     value={novaPlanilhaNome}
                     onChange={(e) => setNovaPlanilhaNome(e.target.value)}
-                    placeholder="Nome da organização"
+                    placeholder="Sala, Armário, Prateleira..."
                     className={cn(sotFormInputClass, "text-base")}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleCreatePlanilha();
