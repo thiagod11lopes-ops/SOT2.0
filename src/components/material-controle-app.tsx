@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Search,
   Sun,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
@@ -309,10 +310,13 @@ function MaterialControleApp({
           </div>
           <button
             type="button"
-            className="rounded-full bg-[hsl(var(--muted))] px-3 py-2 text-xs font-semibold"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
             onClick={() => setSheet({ kind: "planilhas" })}
+            aria-label="Planilhas"
+            title="Planilhas"
           >
-            Planilhas
+            <Table2 className="h-5 w-5" strokeWidth={1.75} />
+            <Plus className="absolute bottom-1 right-1 h-3 w-3" strokeWidth={2.75} />
           </button>
           <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
             <button
