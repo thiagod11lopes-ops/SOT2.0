@@ -303,9 +303,9 @@ function MaterialControleApp({
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
               Estoque
             </p>
-            <h1 className="truncate text-lg font-semibold leading-tight">
-              {activePlanilha?.nome ?? "Controle de material"}
-            </h1>
+            {activePlanilha ? (
+              <h1 className="truncate text-lg font-semibold leading-tight">{activePlanilha.nome}</h1>
+            ) : null}
           </div>
           <button
             type="button"
@@ -361,9 +361,9 @@ function MaterialControleApp({
           <p className="py-16 text-center text-sm text-[hsl(var(--muted-foreground))]">A preparar o estoque…</p>
         ) : doc.planilhas.length === 0 ? (
           <EmptyState
-            title="Nenhuma planilha ainda"
-            text="Crie a primeira planilha para começar a controlar o material."
-            action="Criar planilha"
+            title="Nenhuma organização ainda"
+            text="Gere a primeira organização para começar a controlar o material."
+            action="Gerar organização"
             onAction={() => setSheet({ kind: "planilhas" })}
           />
         ) : tab === "estoque" ? (
@@ -420,18 +420,18 @@ function MaterialControleApp({
 
             {sheet.kind === "planilhas" ? (
               <div className="space-y-3">
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   <input
                     value={novaPlanilhaNome}
                     onChange={(e) => setNovaPlanilhaNome(e.target.value)}
-                    placeholder="Nome da planilha"
+                    placeholder="Nome da organização"
                     className={cn(sotFormInputClass, "text-base")}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleCreatePlanilha();
                     }}
                   />
-                  <button type="button" className="material-app__primary shrink-0 px-4" onClick={handleCreatePlanilha}>
-                    Criar
+                  <button type="button" className="material-app__primary w-full" onClick={handleCreatePlanilha}>
+                    Gerar organização
                   </button>
                 </div>
                 {doc.planilhas.map((p) => (
