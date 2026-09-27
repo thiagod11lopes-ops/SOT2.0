@@ -2,6 +2,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Boxes,
+  CircleHelp,
   ClipboardList,
   FileDown,
   History,
@@ -30,6 +31,7 @@ import { cn } from "../lib/utils";
 type Tab = "estoque" | "historico" | "balanco";
 
 type Sheet =
+  | { kind: "ajuda" }
   | { kind: "planilhas" }
   | { kind: "add-item" }
   | { kind: "item"; item: MaterialItem }
@@ -275,7 +277,9 @@ function MaterialControleApp({
   }
 
   const sheetTitle =
-    sheet?.kind === "planilhas"
+    sheet?.kind === "ajuda"
+      ? "Como usar"
+      : sheet?.kind === "planilhas"
       ? "Planilhas"
       : sheet?.kind === "add-item"
         ? "Novo material"
@@ -300,7 +304,7 @@ function MaterialControleApp({
         className="material-app__watermark"
       />
       <header className="relative z-[1] shrink-0 px-4 pb-2 pt-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <img
             src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
             alt="Aliança Ebenézer"
@@ -323,6 +327,15 @@ function MaterialControleApp({
           >
             <Table2 className="h-5 w-5" strokeWidth={1.75} />
             <Plus className="absolute bottom-1 right-1 h-3 w-3" strokeWidth={2.75} />
+          </button>
+          <button
+            type="button"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+            onClick={() => setSheet({ kind: "ajuda" })}
+            aria-label="Como usar"
+            title="Como usar"
+          >
+            <CircleHelp className="h-5 w-5" strokeWidth={1.75} />
           </button>
           <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
             <button
@@ -427,6 +440,8 @@ function MaterialControleApp({
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {sheet.kind === "ajuda" ? <HelpGuide /> : null}
 
             {sheet.kind === "planilhas" ? (
               <div className="space-y-3">
@@ -675,6 +690,71 @@ function NavButton({
       {icon}
       {label}
     </button>
+  );
+}
+
+const GUIDE_STEPS: { icon: typeof Table2; title: string; text: string }[] = [
+  {
+    icon: Table2,
+    title: "Crie o lugar",
+    text: "Toque na planilha com + e dê um nome: sala, armário ou prateleira.",
+  },
+  {
+    icon: Plus,
+    title: "Inclua o material",
+    text: "Na aba Estoque, toque no + e informe o nome e a quantidade.",
+  },
+  {
+    icon: ArrowDownCircle,
+    title: "Registre a entrada",
+    text: "Quando chegar material, abra o item e toque em Entrada.",
+  },
+  {
+    icon: ArrowUpCircle,
+    title: "Registre a retirada",
+    text: "Quando alguém levar, toque em Retirada e informe quem levou.",
+  },
+  {
+    icon: Boxes,
+    title: "Dê baixa",
+    text: "Se acabou ou saiu de uso, dê baixa. O item sai da lista e pode voltar depois.",
+  },
+  {
+    icon: ClipboardList,
+    title: "Acompanhe",
+    text: "Histórico mostra cada movimento. Balanço mostra o que resta e gera o PDF.",
+  },
+];
+
+function HelpGuide() {
+  return (
+    <div className="material-guide">
+      <div className="material-guide__lead">
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+          Guia rápido
+        </p>
+        <p className="mt-1 text-sm leading-relaxed">
+          Controle o que entra, o que sai e o que ainda resta. Cada passo abaixo é um toque.
+        </p>
+      </div>
+      {GUIDE_STEPS.map((step, index) => {
+        const Icon = step.icon;
+        return (
+          <div key={step.title} className="material-guide__step">
+            <span className="material-guide__mark" aria-hidden="true">
+              <Icon className="h-4 w-4" strokeWidth={1.75} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                {String(index + 1).padStart(2, "0")}
+              </p>
+              <p className="text-sm font-semibold leading-tight">{step.title}</p>
+              <p className="mt-0.5 text-sm leading-snug text-[hsl(var(--muted-foreground))]">{step.text}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

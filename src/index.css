@@ -1668,6 +1668,42 @@ html.siad-mobile-shell #root {
   opacity: 0.3;
 }
 
+.material-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.material-guide__lead {
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(145deg, hsl(var(--primary) / 0.16), hsl(var(--card)) 58%);
+  padding: 1rem 1rem 0.95rem;
+}
+
+.material-guide__step {
+  display: grid;
+  grid-template-columns: 2.65rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  border-radius: 1.25rem;
+  border: 1px solid hsl(var(--border));
+  background: color-mix(in srgb, hsl(var(--card)) 86%, transparent);
+  padding: 0.7rem 0.8rem;
+}
+
+.material-guide__mark {
+  display: flex;
+  height: 2.65rem;
+  width: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.95rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 8px 18px hsl(var(--primary) / 0.28);
+}
+
 .material-app__nav {
   position: absolute;
   right: 0;
