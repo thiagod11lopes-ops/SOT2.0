@@ -259,7 +259,7 @@ export function MaterialControleModal({ open, onClose, presentation = "modal" }:
       className={cn(
         "fixed inset-0 z-[120] flex",
         isPage
-          ? "bg-[hsl(var(--background))]"
+          ? "material-phone-stage"
           : "items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-6",
       )}
       role="presentation"
@@ -268,6 +268,16 @@ export function MaterialControleModal({ open, onClose, presentation = "modal" }:
         if (e.target === e.currentTarget && !dialog) onClose();
       }}
     >
+      <div className={isPage ? "material-phone" : "contents"}>
+      {isPage ? (
+        <>
+          <span className="material-phone__btn material-phone__btn--silent" aria-hidden="true" />
+          <span className="material-phone__btn material-phone__btn--vol-up" aria-hidden="true" />
+          <span className="material-phone__btn material-phone__btn--vol-down" aria-hidden="true" />
+          <span className="material-phone__btn material-phone__btn--power" aria-hidden="true" />
+          <span className="material-phone__island" aria-hidden="true" />
+        </>
+      ) : null}
       <div
         role="dialog"
         aria-modal="true"
@@ -275,7 +285,7 @@ export function MaterialControleModal({ open, onClose, presentation = "modal" }:
         className={cn(
           "relative flex w-full flex-col overflow-hidden",
           isPage
-            ? "h-dvh max-w-none rounded-none border-0 bg-[hsl(var(--background))]"
+            ? "material-phone__screen bg-[hsl(var(--background))]"
             : cn(
                 "h-[min(92dvh,820px)] max-w-6xl rounded-3xl border border-[hsl(var(--primary))]/20",
                 "bg-gradient-to-br from-[hsl(var(--card))] via-[hsl(var(--card))] to-[hsl(var(--muted))]/30",
@@ -697,7 +707,7 @@ export function MaterialControleModal({ open, onClose, presentation = "modal" }:
         </main>
 
         {dialog ? (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="material-form-layer absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-2xl">
               <h3 className="mb-4 text-base font-semibold">{dialogTitle}</h3>
               <div className="space-y-3">
@@ -856,6 +866,7 @@ export function MaterialControleModal({ open, onClose, presentation = "modal" }:
           onClose={() => setBalancoPanelOpen(false)}
           doc={doc}
         />
+      </div>
       </div>
     </div>,
     document.body,

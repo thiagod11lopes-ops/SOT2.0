@@ -1536,6 +1536,165 @@ html.siad-mobile-shell #root {
  * Animação de "flash" da sirene da ambulância (cruz vermelha central).
  * Alterna a opacidade do vermelho de 100% para 25% num loop rápido.
  * =========================================================================== */
+/* Estoque do endereço material.html: tela cheia no celular, moldura no desktop. */
+.material-phone-stage {
+  align-items: stretch;
+  justify-content: stretch;
+  background: #07080c;
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+}
+
+.material-phone {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.material-phone__screen {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--background));
+  -webkit-overflow-scrolling: touch;
+}
+
+.material-phone__screen main,
+.material-phone__screen .material-form-layer {
+  overscroll-behavior: contain;
+}
+
+.material-phone__screen .material-form-layer {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.material-phone__btn,
+.material-phone__island {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .material-phone__screen input,
+  .material-phone__screen textarea,
+  .material-phone__screen select {
+    font-size: 16px;
+  }
+
+  .material-phone__screen main button,
+  .material-phone__screen .material-form-layer button {
+    min-height: 2.75rem;
+  }
+}
+
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+  .material-phone-stage {
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 45%, #1c2230 0%, #07080c 68%);
+  }
+
+  .material-phone {
+    width: min(402px, calc(100vw - 4.5rem));
+    height: min(844px, calc(100dvh - 3rem));
+    flex: none;
+    padding: 14px 12px;
+    border-radius: 48px;
+    background:
+      linear-gradient(145deg, #4a5160 0%, #1a1d24 28%, #0c0e12 62%, #2c313b 100%);
+    box-shadow:
+      0 0 0 1px #050506,
+      0 0 0 3px #8b93a3,
+      0 0 0 6px #12141a,
+      0 28px 70px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .material-phone__screen {
+    border-radius: 34px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  .material-phone__screen > header {
+    padding-top: 2.6rem;
+  }
+
+  .material-phone__screen ul.grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .material-phone__island {
+    display: block;
+    position: absolute;
+    z-index: 40;
+    top: 22px;
+    left: 50%;
+    width: 112px;
+    height: 28px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    border-radius: 999px;
+    background: #050506;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .material-phone__btn {
+    display: block;
+    position: absolute;
+    width: 3px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #6a7180, #2a2e36);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  }
+
+  .material-phone__btn--silent {
+    top: 118px;
+    left: -3px;
+    height: 28px;
+  }
+
+  .material-phone__btn--vol-up {
+    top: 168px;
+    left: -3px;
+    height: 52px;
+  }
+
+  .material-phone__btn--vol-down {
+    top: 230px;
+    left: -3px;
+    height: 52px;
+  }
+
+  .material-phone__btn--power {
+    top: 176px;
+    right: -3px;
+    height: 78px;
+  }
+
+  .material-phone__screen .material-form-layer {
+    overflow-y: auto;
+    align-items: flex-start;
+  }
+
+  .material-phone__screen .material-form-layer > div {
+    max-height: calc(100% - 1rem);
+    overflow-y: auto;
+  }
+}
+
 @keyframes ambulance-siren-flash {
   0%,
   100% {
