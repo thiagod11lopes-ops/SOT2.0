@@ -1651,6 +1651,23 @@ html.siad-mobile-shell #root {
   display: none;
 }
 
+.material-app__watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(72%, 17.5rem);
+  height: auto;
+  transform: translate(-50%, -50%);
+  opacity: 0.22;
+  pointer-events: none;
+  user-select: none;
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-app__watermark {
+  opacity: 0.3;
+}
+
 .material-app__nav {
   position: absolute;
   right: 0;

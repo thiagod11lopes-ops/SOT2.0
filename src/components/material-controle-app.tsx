@@ -293,7 +293,13 @@ function MaterialControleApp({
 
   return (
     <div className="material-app relative flex h-full min-h-0 flex-col bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
-      <header className="shrink-0 px-4 pb-2 pt-3">
+      <img
+        src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
+        alt=""
+        aria-hidden="true"
+        className="material-app__watermark"
+      />
+      <header className="relative z-[1] shrink-0 px-4 pb-2 pt-3">
         <div className="flex items-center gap-3">
           <img
             src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
@@ -360,7 +366,7 @@ function MaterialControleApp({
         ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28">
+      <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-28">
         {!initialLoadComplete ? (
           <p className="py-16 text-center text-sm text-[hsl(var(--muted-foreground))]">A preparar o estoque…</p>
         ) : doc.planilhas.length === 0 ? (
