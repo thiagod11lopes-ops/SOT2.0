@@ -25,8 +25,10 @@ import {
 } from "../lib/materialControleFormat";
 import { downloadMaterialControleBalancoPdf } from "../lib/materialControlePdf";
 import type { MaterialItem, MaterialPlanilha } from "../lib/materialControleStorage";
-import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
+import { sotFormInputClass, sotFormSelectClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
+
+const UNIDADES = ["UN", "QTD", "KG", "PAR"] as const;
 
 type Tab = "estoque" | "historico" | "balanco";
 
@@ -230,7 +232,7 @@ function MaterialControleApp({
   function openAdd() {
     setFormNome("");
     setFormQty("1");
-    setFormUnidade("");
+    setFormUnidade("UN");
     setFormObs("");
     setSheet({ kind: "add-item" });
   }
@@ -426,9 +428,16 @@ function MaterialControleApp({
       </nav>
 
       {sheet ? (
-        <div className="material-app__sheet-backdrop" onClick={closeSheet} role="presentation">
+        <div
+          className={cn(
+            "material-app__sheet-backdrop",
+            sheet.kind === "add-item" && "material-app__sheet-backdrop--top",
+          )}
+          onClick={closeSheet}
+          role="presentation"
+        >
           <div
-            className="material-app__sheet"
+            className={cn("material-app__sheet", sheet.kind === "add-item" && "material-app__sheet--top")}
             role="dialog"
             aria-label={sheetTitle}
             onClick={(e) => e.stopPropagation()}
@@ -591,7 +600,20 @@ function MaterialControleApp({
                     <input inputMode="decimal" value={formQty} onChange={(e) => setFormQty(e.target.value)} className={cn(sotFormInputClass, "text-base")} />
                   </Field>
                   <Field label="Unidade">
-                    <input value={formUnidade} onChange={(e) => setFormUnidade(e.target.value)} placeholder="un, L, cx" className={cn(sotFormInputClass, "text-base")} />
+                    <select
+                      value={formUnidade}
+                      onChange={(e) => setFormUnidade(e.target.value)}
+                      className={cn(sotFormSelectClass, "text-base")}
+                    >
+                      {UNIDADES.map((unidade) => (
+                        <option key={unidade} value={unidade}>
+                          {unidade}
+                        </option>
+                      ))}
+                      {formUnidade && !UNIDADES.includes(formUnidade as (typeof UNIDADES)[number]) ? (
+                        <option value={formUnidade}>{formUnidade}</option>
+                      ) : null}
+                    </select>
                   </Field>
                 </div>
                 <Field label="Observação">

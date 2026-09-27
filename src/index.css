@@ -1743,6 +1743,10 @@ html.siad-mobile-shell #root {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.material-app__sheet-backdrop--top {
+  align-items: flex-start;
+}
+
 .material-app__sheet {
   max-height: min(88%, 640px);
   width: 100%;
@@ -1751,6 +1755,12 @@ html.siad-mobile-shell #root {
   background: hsl(var(--card));
   padding: 0.7rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.2);
+}
+
+.material-app__sheet--top {
+  border-radius: 0 0 1.6rem 1.6rem;
+  padding: 0.85rem 1rem 1.1rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
 }
 
 .material-app button {
@@ -1871,6 +1881,10 @@ html.siad-mobile-shell #root {
 
   .material-phone__screen > header {
     padding-top: 2.6rem;
+  }
+
+  .material-app__sheet--top {
+    padding-top: 2.4rem;
   }
 
   .material-phone__screen ul.grid {
