@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,500;0,600;0,700;1,500&display=swap"
       rel="stylesheet"
     />
     <script>
@@ -161,6 +161,41 @@
         background: #f4f7fb;
         box-shadow: 0 0 16px 4px rgba(230, 236, 245, 0.85);
       }
+      .ebenezer-boot__verse {
+        position: relative;
+        margin: -0.35rem 0 0;
+        max-width: min(84vw, 340px);
+        padding: 0 1.25rem;
+        text-align: center;
+        animation: ebenezer-verse 0.9s ease both;
+      }
+      .ebenezer-boot__verse-text {
+        margin: 0;
+        font-family: "Plus Jakarta Sans", Inter, sans-serif;
+        font-size: clamp(0.95rem, 3.4vw, 1.08rem);
+        font-weight: 500;
+        font-style: italic;
+        line-height: 1.45;
+        color: rgba(244, 247, 251, 0.95);
+      }
+      .ebenezer-boot__verse-ref {
+        margin: 0.7rem 0 0;
+        font-family: Inter, sans-serif;
+        font-size: 0.62rem;
+        font-weight: 600;
+        letter-spacing: 0.26em;
+        text-indent: 0.26em;
+        text-transform: uppercase;
+        color: rgba(196, 204, 216, 0.72);
+      }
+      .ebenezer-boot__verse-ref::before {
+        content: "";
+        display: block;
+        width: 2.4rem;
+        height: 1px;
+        margin: 0 auto 0.65rem;
+        background: linear-gradient(90deg, transparent, rgba(236, 241, 248, 0.75), transparent);
+      }
       .ebenezer-boot__title {
         position: relative;
         margin: 0;
@@ -218,6 +253,10 @@
         0% { transform: translateX(-120%); }
         100% { transform: translateX(320%); }
       }
+      @keyframes ebenezer-verse {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       @keyframes ebenezer-dots {
         0% { content: ""; }
         25% { content: "."; }
@@ -232,7 +271,8 @@
         .ebenezer-boot__orbit,
         .ebenezer-boot__sheen::after,
         .ebenezer-boot__bar,
-        .ebenezer-boot__status::after {
+        .ebenezer-boot__status::after,
+        .ebenezer-boot__verse {
           animation: none;
         }
       }
@@ -248,6 +288,10 @@
         <img class="ebenezer-boot__mark" src="./alianca-ebenezer-logo.png?v=1" alt="" />
         <div class="ebenezer-boot__sheen" aria-hidden="true"></div>
       </div>
+      <blockquote class="ebenezer-boot__verse">
+        <p class="ebenezer-boot__verse-text">“Mas faça-se tudo decentemente e com ordem.”</p>
+        <p class="ebenezer-boot__verse-ref">1 Coríntios 14:40</p>
+      </blockquote>
       <p class="ebenezer-boot__title">Aliança Ebenézer</p>
       <p class="ebenezer-boot__status">A preparar o estoque</p>
       <div class="ebenezer-boot__track" aria-hidden="true"><span class="ebenezer-boot__bar"></span></div>
