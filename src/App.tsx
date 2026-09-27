@@ -12,6 +12,7 @@ import { VistoriaPage } from "./components/vistoria-page";
 import { FleetPersonnelPage } from "./components/fleet-personnel-page";
 import { RegisterDeparturePage } from "./components/register-departure-page";
 import { MaterialControleModal } from "./components/material-controle-modal";
+import { MaterialEbenezerBoot } from "./components/material-ebenezer-boot";
 import { SiadQuickDepartureFormPage } from "./components/siad-quick-departure-form-page";
 import { SiadDriverRequestAlertModal } from "./components/siad-driver-request-alert-modal";
 import { RelatorioDiarioViaturasCalendarPage } from "./components/relatorio-diario-viaturas-calendar-page";
@@ -319,7 +320,10 @@ function App() {
   ) : isSiadSaidaRoute ? (
     <SiadQuickDepartureFormPage />
   ) : isMaterialControleRoute ? (
-    <MaterialControleModal open onClose={() => {}} presentation="page" />
+    <>
+      <MaterialEbenezerBoot />
+      <MaterialControleModal open onClose={() => {}} presentation="page" />
+    </>
   ) : (
     <>
       <Layout

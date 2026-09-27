@@ -6,6 +6,7 @@ import {
   type SystemSyncOverlayState,
   useMobileLoadingOverlay,
 } from "./mobile-loading-context";
+import { isMaterialControleAddress } from "../lib/materialControleRoute";
 import { clampMobileProgress } from "./mobileProgressUtils";
 import { MobileProgressOverlayPanel } from "./mobile-progress-overlay-panel";
 
@@ -141,7 +142,7 @@ export function MobileLoadingOverlayProvider({ children }: { children: ReactNode
 
 export function MobileLoadingOverlayHost() {
   const { overlayActive, overlayProgress, overlayLabel } = useMobileLoadingOverlay();
-  if (!overlayActive) return null;
+  if (!overlayActive || isMaterialControleAddress()) return null;
 
   return (
     <MobileProgressOverlayPanel
