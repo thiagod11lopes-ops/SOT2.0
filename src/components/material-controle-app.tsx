@@ -1,6 +1,7 @@
 import {
   ArrowDownCircle,
   ArrowUpCircle,
+  Bell,
   Boxes,
   CircleHelp,
   ClipboardList,
@@ -44,6 +45,7 @@ type Tab = "estoque" | "historico" | "balanco";
 
 type Sheet =
   | { kind: "ajuda" }
+  | { kind: "devolucoes" }
   | { kind: "planilhas" }
   | { kind: "add-item" }
   | { kind: "item"; item: MaterialItem }
@@ -361,7 +363,9 @@ function MaterialControleApp({
   const sheetTitle =
     sheet?.kind === "ajuda"
       ? "Como usar"
-      : sheet?.kind === "planilhas"
+      : sheet?.kind === "devolucoes"
+        ? "Devoluções"
+        : sheet?.kind === "planilhas"
       ? "Planilhas"
       : sheet?.kind === "add-item"
         ? "Novo material"
@@ -402,6 +406,17 @@ function MaterialControleApp({
               <h1 className="truncate text-lg font-semibold leading-tight">{activePlanilha.nome}</h1>
             ) : null}
           </div>
+          {dueLoans.length > 0 ? (
+            <button
+              type="button"
+              className="material-loan-bell flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+              onClick={() => setSheet({ kind: "devolucoes" })}
+              aria-label="Devoluções pendentes"
+              title="Devoluções pendentes"
+            >
+              <Bell className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
@@ -457,28 +472,6 @@ function MaterialControleApp({
                 )}
               >
                 {p.nome}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {dueLoans.length > 0 ? (
-          <div className="material-loan-alerts" aria-live="polite">
-            {dueLoans.map((alert) => (
-              <button
-                key={alert.emprestimo.id}
-                type="button"
-                className="material-loan-alert"
-                onClick={() => {
-                  setActivePlanilhaId(alert.planilhaId);
-                  setTab("estoque");
-                  setSheet({ kind: "item", item: alert.item });
-                }}
-              >
-                <span className="material-loan-alert__kicker">Devolução</span>
-                <span className="material-loan-alert__title">{alert.item.nome}</span>
-                <span className="material-loan-alert__meta">
-                  {alert.emprestimo.quantidade} {alert.item.unidade || "UN"} · {alert.emprestimo.responsavel}
-                </span>
               </button>
             ))}
           </div>
@@ -557,6 +550,28 @@ function MaterialControleApp({
             </div>
 
             {sheet.kind === "ajuda" ? <HelpGuide /> : null}
+
+            {sheet.kind === "devolucoes" ? (
+              <div className="space-y-2">
+                {dueLoans.map((alert) => (
+                  <button
+                    key={alert.emprestimo.id}
+                    type="button"
+                    className="material-loan-note w-full text-left"
+                    onClick={() => {
+                      setActivePlanilhaId(alert.planilhaId);
+                      setTab("estoque");
+                      setSheet({ kind: "item", item: alert.item });
+                    }}
+                  >
+                    <p>{alert.item.nome}</p>
+                    <p className="mt-0.5 text-xs font-medium opacity-80">
+                      {alert.emprestimo.quantidade} {alert.item.unidade || "UN"} · {alert.emprestimo.responsavel}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             {sheet.kind === "planilhas" ? (
               <div className="space-y-3">

@@ -1751,56 +1751,30 @@ html.siad-mobile-shell #root {
   font-weight: 700;
 }
 
-.material-loan-alerts {
-  position: absolute;
-  top: calc(100% - 0.15rem);
-  right: 0.75rem;
-  z-index: 35;
-  display: flex;
-  width: min(16rem, calc(100% - 1.5rem));
-  max-height: 12rem;
-  flex-direction: column;
-  gap: 0.4rem;
-  overflow-y: auto;
+.material-loan-bell {
+  background: rgb(249 115 22 / 0.16);
+  color: #f97316;
+  animation: material-bell-blink 1s ease-in-out infinite;
 }
 
-.material-loan-alert {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.08rem;
-  border-radius: 1rem;
-  background: linear-gradient(145deg, #fb923c, #ea580c);
-  color: #fff;
-  padding: 0.65rem 0.8rem;
-  text-align: left;
-  box-shadow: 0 12px 28px rgb(234 88 12 / 0.38);
+@keyframes material-bell-blink {
+  0%,
+  100% {
+    color: #f97316;
+    background: rgb(249 115 22 / 0.22);
+    opacity: 1;
+  }
+  50% {
+    color: #fdba74;
+    background: rgb(249 115 22 / 0.06);
+    opacity: 0.35;
+  }
 }
 
-.material-loan-alert__kicker {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.88;
-}
-
-.material-loan-alert__title,
-.material-loan-alert__meta {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.material-loan-alert__title {
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.material-loan-alert__meta {
-  font-size: 0.75rem;
+@media (prefers-reduced-motion: reduce) {
+  .material-loan-bell {
+    animation: none;
+  }
 }
 
 .material-guide {
