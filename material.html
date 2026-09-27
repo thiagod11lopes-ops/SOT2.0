@@ -196,46 +196,6 @@
         margin: 0 auto 0.65rem;
         background: linear-gradient(90deg, transparent, rgba(236, 241, 248, 0.75), transparent);
       }
-      .ebenezer-boot__title {
-        position: relative;
-        margin: 0;
-        font-family: "Plus Jakarta Sans", Inter, sans-serif;
-        font-size: 0.78rem;
-        font-weight: 600;
-        letter-spacing: 0.42em;
-        text-indent: 0.42em;
-        text-transform: uppercase;
-        color: rgba(232, 237, 244, 0.88);
-      }
-      .ebenezer-boot__status {
-        position: relative;
-        margin: -0.7rem 0 0;
-        font-family: Inter, sans-serif;
-        font-size: 0.72rem;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: rgba(190, 198, 210, 0.72);
-      }
-      .ebenezer-boot__status::after {
-        content: "";
-        animation: ebenezer-dots 1.4s steps(4, end) infinite;
-      }
-      .ebenezer-boot__track {
-        position: relative;
-        width: min(42vw, 180px);
-        height: 2px;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.08);
-      }
-      .ebenezer-boot__bar {
-        display: block;
-        height: 100%;
-        width: 40%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, transparent, #f5f7fb, transparent);
-        animation: ebenezer-bar 1.35s ease-in-out infinite;
-      }
       @keyframes ebenezer-spin { to { transform: rotate(360deg); } }
       @keyframes ebenezer-float {
         0%, 100% { transform: translateY(0); }
@@ -249,19 +209,9 @@
         0%, 42% { transform: translateX(-120%); }
         100% { transform: translateX(120%); }
       }
-      @keyframes ebenezer-bar {
-        0% { transform: translateX(-120%); }
-        100% { transform: translateX(320%); }
-      }
       @keyframes ebenezer-verse {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes ebenezer-dots {
-        0% { content: ""; }
-        25% { content: "."; }
-        50% { content: ".."; }
-        75% { content: "..."; }
       }
       @media (prefers-reduced-motion: reduce) {
         .ebenezer-boot__glow,
@@ -270,8 +220,6 @@
         .ebenezer-boot__ring--inner,
         .ebenezer-boot__orbit,
         .ebenezer-boot__sheen::after,
-        .ebenezer-boot__bar,
-        .ebenezer-boot__status::after,
         .ebenezer-boot__verse {
           animation: none;
         }
@@ -279,7 +227,7 @@
     </style>
   </head>
   <body>
-    <div id="ebenezer-boot" class="ebenezer-boot" role="status" aria-live="polite" aria-label="A carregar o estoque da Aliança Ebenézer">
+    <div id="ebenezer-boot" class="ebenezer-boot" role="status" aria-live="polite" aria-label="Mas faça-se tudo decentemente e com ordem. 1 Coríntios 14:40">
       <div class="ebenezer-boot__glow" aria-hidden="true"></div>
       <div class="ebenezer-boot__stage">
         <div class="ebenezer-boot__ring ebenezer-boot__ring--outer" aria-hidden="true"></div>
@@ -292,9 +240,6 @@
         <p class="ebenezer-boot__verse-text">“Mas faça-se tudo decentemente e com ordem.”</p>
         <p class="ebenezer-boot__verse-ref">1 Coríntios 14:40</p>
       </blockquote>
-      <p class="ebenezer-boot__title">Aliança Ebenézer</p>
-      <p class="ebenezer-boot__status">A preparar o estoque</p>
-      <div class="ebenezer-boot__track" aria-hidden="true"><span class="ebenezer-boot__bar"></span></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
