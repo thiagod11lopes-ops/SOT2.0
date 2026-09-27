@@ -22,6 +22,7 @@ import type { MaterialItem } from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { MaterialControlePage } from "./material-controle-app";
 import { MaterialControleBalancoPanel } from "./material-controle-balanco-panel";
 import { MaterialControleMovimentosPanel } from "./material-controle-movimentos-panel";
 
@@ -54,7 +55,15 @@ function formatBaixaDate(iso: string | null) {
   }
 }
 
-export function MaterialControleModal({ open, onClose, presentation = "modal" }: Props) {
+export function MaterialControleModal(props: Props) {
+  if (props.presentation === "page") {
+    if (!props.open) return null;
+    return <MaterialControlePage />;
+  }
+  return <MaterialControleDeskModal {...props} />;
+}
+
+function MaterialControleDeskModal({ open, onClose, presentation = "modal" }: Props) {
   const isPage = presentation === "page";
   const titleId = useId();
   const {

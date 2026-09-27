@@ -1585,6 +1585,128 @@ html.siad-mobile-shell #root {
   display: none;
 }
 
+.material-app__nav {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  gap: 0.25rem;
+  border-top: 1px solid hsl(var(--border));
+  background: color-mix(in srgb, hsl(var(--card)) 92%, transparent);
+  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(16px);
+}
+
+.material-app__fab {
+  position: absolute;
+  right: 1rem;
+  bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
+  z-index: 21;
+  display: flex;
+  height: 3.5rem;
+  width: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 12px 28px hsl(var(--primary) / 0.35);
+}
+
+.material-app__sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.material-app__sheet {
+  max-height: min(88%, 640px);
+  width: 100%;
+  overflow-y: auto;
+  border-radius: 1.6rem 1.6rem 0 0;
+  background: hsl(var(--card));
+  padding: 0.7rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.2);
+}
+
+.material-app button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.material-app__primary,
+.material-app__warn,
+.material-app__ghost,
+.material-app__chip,
+.material-app__step {
+  display: inline-flex;
+  border: 0;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.material-app__primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.material-app__warn {
+  background: rgb(245 158 11 / 0.16);
+  color: rgb(146 64 14);
+}
+
+.material-app__ghost {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.material-app__chip {
+  min-height: 2.5rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+}
+
+.material-app__chip--in {
+  background: rgb(16 185 129 / 0.14);
+  color: rgb(6 95 70);
+}
+
+.material-app__chip--out {
+  background: rgb(245 158 11 / 0.16);
+  color: rgb(146 64 14);
+}
+
+.material-app__step {
+  width: 2.75rem;
+  flex: none;
+  background: hsl(var(--muted));
+  font-size: 1.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .material-app__warn,
+  .material-app__chip--out {
+    color: rgb(252 211 77);
+  }
+
+  .material-app__chip--in {
+    color: rgb(110 231 183);
+  }
+}
+
 @media (hover: none) and (pointer: coarse) {
   .material-phone__screen input,
   .material-phone__screen textarea,
