@@ -5,10 +5,12 @@ import {
   ClipboardList,
   FileDown,
   History,
+  Moon,
   MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
+  Sun,
   Trash2,
   X,
 } from "lucide-react";
@@ -51,9 +53,32 @@ function parseQty(value: string) {
   return Math.max(0, Number.parseFloat(value.replace(",", ".")) || 0);
 }
 
+type MaterialTheme = "light" | "dark";
+const MATERIAL_THEME_KEY = "sot-material-avulso-theme";
+
+function readMaterialTheme(): MaterialTheme {
+  try {
+    const stored = localStorage.getItem(MATERIAL_THEME_KEY);
+    if (stored === "dark" || stored === "light") return stored;
+  } catch {
+    /* ignore */
+  }
+  return "light";
+}
+
 export function MaterialControlePage() {
+  const [theme, setTheme] = useState<MaterialTheme>(readMaterialTheme);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MATERIAL_THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
   return createPortal(
-    <div className="material-phone-stage fixed inset-0 z-[120] flex">
+    <div className="material-phone-stage fixed inset-0 z-[120] flex" data-material-theme={theme}>
       <div className="material-phone">
         <span className="material-phone__btn material-phone__btn--silent" aria-hidden="true" />
         <span className="material-phone__btn material-phone__btn--vol-up" aria-hidden="true" />
@@ -61,7 +86,7 @@ export function MaterialControlePage() {
         <span className="material-phone__btn material-phone__btn--power" aria-hidden="true" />
         <span className="material-phone__island" aria-hidden="true" />
         <div className="material-phone__screen bg-[hsl(var(--background))]">
-          <MaterialControleApp />
+          <MaterialControleApp theme={theme} onTheme={setTheme} />
         </div>
       </div>
     </div>,
@@ -69,7 +94,13 @@ export function MaterialControlePage() {
   );
 }
 
-function MaterialControleApp() {
+function MaterialControleApp({
+  theme,
+  onTheme,
+}: {
+  theme: MaterialTheme;
+  onTheme: (theme: MaterialTheme) => void;
+}) {
   const {
     doc,
     initialLoadComplete,
@@ -281,6 +312,26 @@ function MaterialControleApp() {
           >
             Planilhas
           </button>
+          <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
+            <button
+              type="button"
+              aria-pressed={theme === "light"}
+              aria-label="Tema claro"
+              className={theme === "light" ? "is-active" : undefined}
+              onClick={() => onTheme("light")}
+            >
+              <Sun className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              aria-pressed={theme === "dark"}
+              aria-label="Tema escuro"
+              className={theme === "dark" ? "is-active" : undefined}
+              onClick={() => onTheme("dark")}
+            >
+              <Moon className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
         {doc.planilhas.length > 1 ? (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">

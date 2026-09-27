@@ -1537,6 +1537,72 @@ html.siad-mobile-shell #root {
  * Alterna a opacidade do vermelho de 100% para 25% num loop rápido.
  * =========================================================================== */
 /* Estoque do endereço material.html: tela cheia no celular, moldura no desktop. */
+.material-phone-stage[data-material-theme="light"] {
+  color-scheme: light;
+  --background: 210 20% 96%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 214 25% 88%;
+  --muted: 214 22% 92%;
+  --muted-foreground: 215 16% 42%;
+  --primary: 204 58% 32%;
+  --primary-foreground: 210 40% 98%;
+  --ring: 204 58% 40%;
+  --input: 0 0% 100%;
+}
+
+.material-phone-stage[data-material-theme="dark"] {
+  color-scheme: dark;
+  --background: 222 32% 7%;
+  --foreground: 210 36% 98%;
+  --card: 222 30% 10%;
+  --card-foreground: 210 36% 98%;
+  --border: 217 22% 17%;
+  --muted: 217 22% 14%;
+  --muted-foreground: 215 20% 76%;
+  --primary: 187 72% 52%;
+  --primary-foreground: 222 40% 8%;
+  --ring: 187 80% 58%;
+  --input: 222 28% 12%;
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-app__warn,
+.material-phone-stage[data-material-theme="dark"] .material-app__chip--out {
+  color: rgb(252 211 77);
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-app__chip--in {
+  color: rgb(110 231 183);
+}
+
+.material-theme-toggle {
+  display: flex;
+  shrink: 0;
+  align-items: center;
+  gap: 0.1rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  padding: 0.15rem;
+}
+
+.material-theme-toggle button {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+
+.material-theme-toggle button.is-active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
 .material-phone-stage {
   align-items: stretch;
   justify-content: stretch;
