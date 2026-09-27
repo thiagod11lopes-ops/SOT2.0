@@ -214,6 +214,97 @@ export function isMaterialControleDocEmpty(doc: MaterialControleDoc): boolean {
   return doc.planilhas.length === 0;
 }
 
+/**
+ * Junta a versão do servidor com a deste aparelho.
+ * Cada planilha e cada item ficam com a alteração mais recente, e uma exclusão
+ * só se perde se o outro aparelho mudou o mesmo registro depois.
+ */
+export function mergeMaterialControleDocs(
+  base: MaterialControleDoc,
+  server: MaterialControleDoc,
+  local: MaterialControleDoc,
+): MaterialControleDoc {
+  const baseMap = new Map(base.planilhas.map((p) => [p.id, p]));
+  const serverMap = new Map(server.planilhas.map((p) => [p.id, p]));
+  const localMap = new Map(local.planilhas.map((p) => [p.id, p]));
+  const order = [
+    ...local.planilhas.map((p) => p.id),
+    ...server.planilhas.map((p) => p.id).filter((id) => !localMap.has(id)),
+  ];
+  const seen = new Set<string>();
+  const planilhas: MaterialPlanilha[] = [];
+  for (const id of order) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const merged = mergePlanilhaRecord(baseMap.get(id), serverMap.get(id), localMap.get(id));
+    if (merged) planilhas.push(merged);
+  }
+  return { planilhas };
+}
+
+function newerIso(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+function mergePlanilhaRecord(
+  base: MaterialPlanilha | undefined,
+  server: MaterialPlanilha | undefined,
+  local: MaterialPlanilha | undefined,
+): MaterialPlanilha | null {
+  if (base && !local && server) return server.updatedAt > base.updatedAt ? server : null;
+  if (base && !server && local) return local.updatedAt > base.updatedAt ? local : null;
+  if (!server && !local) return null;
+  if (!server && local) return local;
+  if (server && !local) return server;
+  if (!server || !local) return null;
+  const nome = base && local.nome === base.nome ? server.nome : local.nome;
+  return {
+    id: local.id,
+    nome,
+    items: mergeItemRecords(base?.items ?? [], server.items, local.items),
+    createdAt: local.createdAt || server.createdAt,
+    updatedAt: newerIso(local.updatedAt, server.updatedAt),
+  };
+}
+
+function mergeItemRecords(base: MaterialItem[], server: MaterialItem[], local: MaterialItem[]): MaterialItem[] {
+  const baseMap = new Map(base.map((item) => [item.id, item]));
+  const serverMap = new Map(server.map((item) => [item.id, item]));
+  const localMap = new Map(local.map((item) => [item.id, item]));
+  const order = [
+    ...local.map((item) => item.id),
+    ...server.map((item) => item.id).filter((id) => !localMap.has(id)),
+  ];
+  const seen = new Set<string>();
+  const items: MaterialItem[] = [];
+  for (const id of order) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const b = baseMap.get(id);
+    const s = serverMap.get(id);
+    const l = localMap.get(id);
+    if (b && !l && s) {
+      if (s.updatedAt > b.updatedAt) items.push(s);
+      continue;
+    }
+    if (b && !s && l) {
+      if (l.updatedAt > b.updatedAt) items.push(l);
+      continue;
+    }
+    if (!s && !l) continue;
+    if (!s && l) {
+      items.push(l);
+      continue;
+    }
+    if (s && !l) {
+      items.push(s);
+      continue;
+    }
+    if (s && l) items.push(l.updatedAt >= s.updatedAt ? l : s);
+  }
+  return items;
+}
+
 export async function loadMaterialControleFromIdb(
   idbKey: string = MATERIAL_CONTROLE_IDB_KEY,
 ): Promise<MaterialControleDoc> {

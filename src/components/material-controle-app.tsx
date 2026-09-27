@@ -187,10 +187,6 @@ function MaterialControleApp({
   }, [doc.planilhas, activePlanilhaId]);
 
   useEffect(() => {
-    setRemoteSyncPaused(sheet !== null || renameId !== null);
-  }, [sheet, renameId, setRemoteSyncPaused]);
-
-  useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 15000);
     return () => window.clearInterval(id);
   }, []);

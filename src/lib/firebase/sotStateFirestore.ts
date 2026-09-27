@@ -3,6 +3,7 @@ import {
   getDocFromServer,
   getFirestore,
   onSnapshot,
+  runTransaction,
   setDoc,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -148,6 +149,55 @@ export function subscribeSotStateDoc(
     cancelled = true;
     unsub?.();
   };
+}
+
+/**
+ * Grava o documento juntando a cópia local com o que já está no servidor.
+ * Assim dois aparelhos não apagam a alteração um do outro.
+ */
+export async function writeMergedSotStateDocWithRetry(
+  docId: SotStateCloudDocId,
+  base: unknown,
+  local: unknown,
+  merge: (base: unknown, server: unknown, local: unknown) => unknown,
+  options?: { maxAttempts?: number },
+): Promise<unknown> {
+  const maxAttempts = options?.maxAttempts ?? 4;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await writeMergedSotStateDoc(docId, base, local, merge);
+    } catch (e) {
+      lastError = e;
+      const retry = attempt < maxAttempts && isRetryableFirestoreError(e);
+      console.warn(`[SOT] Firestore merge ${docId} tentativa ${attempt}/${maxAttempts}`, e);
+      if (!retry) break;
+      await sleep(250 * 2 ** (attempt - 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+export async function writeMergedSotStateDoc(
+  docId: SotStateCloudDocId,
+  base: unknown,
+  local: unknown,
+  merge: (base: unknown, server: unknown, local: unknown) => unknown,
+): Promise<unknown> {
+  await ensureFirebaseAuth();
+  const db = getFirestore(getFirebaseApp());
+  const ref = doc(db, COLLECTION, docId);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    let server: unknown = null;
+    if (snap.exists()) {
+      const data = snap.data();
+      server = data && typeof data === "object" && "payload" in data ? (data as { payload: unknown }).payload : data;
+    }
+    const merged = merge(base, server, local);
+    tx.set(ref, { payload: sanitizePayload(merged) });
+    return merged;
+  });
 }
 
 export async function setSotStateDoc(docId: SotStateCloudDocId, payload: unknown): Promise<void> {

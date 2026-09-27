@@ -13,8 +13,10 @@ import { isFirebaseConfigured } from "../lib/firebase/config";
 import {
   MATERIAL_CONTROLE_AVULSO_STATE_DOC,
   SOT_STATE_DOC,
+  readSotStateDocFromServer,
   setSotStateDocWithRetry,
   subscribeSotStateDoc,
+  writeMergedSotStateDocWithRetry,
   type SotStateCloudDocId,
 } from "../lib/firebase/sotStateFirestore";
 import {
@@ -23,6 +25,7 @@ import {
   loadMaterialControleFromIdb,
   MATERIAL_CONTROLE_AVULSO_IDB_KEY,
   MATERIAL_CONTROLE_IDB_KEY,
+  mergeMaterialControleDocs,
   newMaterialId,
   normalizeMaterialControleDoc,
   saveMaterialControleToIdb,
@@ -158,7 +161,7 @@ export function MaterialControleProvider({
 }) {
   const { idbKey, cloudDoc, applySeeds } = MATERIAL_STORE[store];
   const { firebaseOnlyEnabled } = useSyncPreference();
-  const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
+  const useCloud = isFirebaseConfigured() && (store === "avulso" || firebaseOnlyEnabled);
 
   const [doc, setDoc] = useState<MaterialControleDoc>(emptyMaterialControleDoc);
   const [initialLoadComplete, setInitialLoadComplete] = useState(!useCloud);
@@ -170,12 +173,39 @@ export function MaterialControleProvider({
   const localPromotionAttemptedRef = useRef(false);
   const cloudWriteInFlightRef = useRef(false);
   const pendingDocRef = useRef<MaterialControleDoc | null>(null);
+  const pendingRemoteRef = useRef<MaterialControleDoc | null>(null);
+  const baseDocRef = useRef<MaterialControleDoc>(emptyMaterialControleDoc());
   const docRef = useRef(doc);
   docRef.current = doc;
 
+  const rememberRemote = useCallback((next: MaterialControleDoc, options?: { pushLocal?: boolean }) => {
+    baseDocRef.current = next;
+    if (options?.pushLocal) {
+      setDoc(next);
+      return;
+    }
+    applyingRemoteRef.current = true;
+    hydratedRef.current = true;
+    setDoc(next);
+    setInitialLoadComplete(true);
+    setCloudSyncStatus("synced");
+  }, []);
+
   const setRemoteSyncPaused = useCallback((paused: boolean) => {
     remoteSyncPausedRef.current = paused;
-  }, []);
+    if (paused || !pendingRemoteRef.current) return;
+    const remote = pendingRemoteRef.current;
+    pendingRemoteRef.current = null;
+    const local = docRef.current;
+    const base = baseDocRef.current;
+    const dirty = JSON.stringify(local) !== JSON.stringify(base);
+    if (!dirty) {
+      rememberRemote(remote);
+      return;
+    }
+    baseDocRef.current = remote;
+    setDoc(mergeMaterialControleDocs(base, remote, local));
+  }, [rememberRemote]);
 
   const pushDocToCloud = useCallback(
     async (nextDoc: MaterialControleDoc) => {
@@ -189,8 +219,23 @@ export function MaterialControleProvider({
           pendingDocRef.current = null;
           setCloudSyncStatus("syncing");
           try {
-            await setSotStateDocWithRetry(cloudDoc, toSend);
-            await saveMaterialControleToIdb(toSend, idbKey);
+            const merged = normalizeMaterialControleDoc(
+              await writeMergedSotStateDocWithRetry(cloudDoc, baseDocRef.current, toSend, (base, server, local) =>
+                mergeMaterialControleDocs(
+                  normalizeMaterialControleDoc(base),
+                  normalizeMaterialControleDoc(server),
+                  normalizeMaterialControleDoc(local),
+                ),
+              ),
+            );
+            if (pendingDocRef.current) {
+              baseDocRef.current = merged;
+              continue;
+            }
+            baseDocRef.current = merged;
+            applyingRemoteRef.current = true;
+            setDoc(merged);
+            await saveMaterialControleToIdb(merged, idbKey);
             setCloudSyncStatus("synced");
           } catch (e) {
             setCloudSyncStatus("error");
@@ -247,7 +292,27 @@ export function MaterialControleProvider({
           (payload) => {
             void (async () => {
               if (cancelled) return;
-              if (remoteSyncPausedRef.current) return;
+
+              const acceptServerDoc = (seeded: MaterialControleDoc) => {
+                if (remoteSyncPausedRef.current) {
+                  pendingRemoteRef.current = seeded;
+                  return;
+                }
+                const local = docRef.current;
+                const base = baseDocRef.current;
+                if (JSON.stringify(seeded) === JSON.stringify(base)) return;
+                const dirty = hydratedRef.current && JSON.stringify(local) !== JSON.stringify(base);
+                if (dirty) {
+                  baseDocRef.current = seeded;
+                  hydratedRef.current = true;
+                  setInitialLoadComplete(true);
+                  setCloudSyncStatus("synced");
+                  setDoc(mergeMaterialControleDocs(base, seeded, local));
+                  return;
+                }
+                rememberRemote(seeded);
+                void saveMaterialControleToIdb(seeded, idbKey);
+              };
 
               if (payload === null) {
                 if (!localPromotionAttemptedRef.current) {
@@ -260,33 +325,34 @@ export function MaterialControleProvider({
                   if (!isMaterialControleDocEmpty(seeded)) {
                     try {
                       await setSotStateDocWithRetry(cloudDoc, seeded);
-                      applyingRemoteRef.current = true;
-                      setDoc(seeded);
+                      rememberRemote(seeded);
                       await saveMaterialControleToIdb(seeded, idbKey);
-                      setCloudSyncStatus("synced");
                     } catch (e) {
                       console.error("[SOT] Promover controle de material local para nuvem:", e);
                       setCloudSyncStatus("error");
+                      hydratedRef.current = true;
+                      setInitialLoadComplete(true);
                     }
                   } else {
-                    applyingRemoteRef.current = true;
-                    setDoc(seeded);
+                    rememberRemote(seeded);
                   }
+                } else {
+                  hydratedRef.current = true;
+                  setInitialLoadComplete(true);
                 }
-                hydratedRef.current = true;
-                setInitialLoadComplete(true);
                 return;
               }
 
-              applyingRemoteRef.current = true;
               const normalized = normalizeMaterialControleDoc(payload);
               const { doc: seeded, seedApplied } = await hydrateDoc(normalized, idbKey, applySeeds);
-              if (seedApplied) applyingRemoteRef.current = false;
-              setDoc(seeded);
-              setCloudSyncStatus("synced");
-              await saveMaterialControleToIdb(seeded, idbKey);
-              hydratedRef.current = true;
-              setInitialLoadComplete(true);
+              if (seedApplied) {
+                baseDocRef.current = normalized;
+                hydratedRef.current = true;
+                setInitialLoadComplete(true);
+                setDoc(seeded);
+                return;
+              }
+              acceptServerDoc(seeded);
             })();
           },
           (err) => {
@@ -313,7 +379,39 @@ export function MaterialControleProvider({
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud, cloudDoc, idbKey, applySeeds]);
+  }, [useCloud, cloudDoc, idbKey, applySeeds, rememberRemote]);
+
+  useEffect(() => {
+    if (!useCloud) return;
+    const pullServer = () => {
+      if (document.visibilityState === "hidden" || !hydratedRef.current || remoteSyncPausedRef.current) return;
+      void readSotStateDocFromServer(cloudDoc)
+        .then((payload) => {
+          if (!hydratedRef.current || remoteSyncPausedRef.current || payload == null) return;
+          const seeded = normalizeMaterialControleDoc(payload);
+          const local = docRef.current;
+          const base = baseDocRef.current;
+          const dirty = JSON.stringify(local) !== JSON.stringify(base);
+          if (!dirty) {
+            if (JSON.stringify(seeded) === JSON.stringify(local)) return;
+            rememberRemote(seeded);
+            void saveMaterialControleToIdb(seeded, idbKey);
+            return;
+          }
+          baseDocRef.current = seeded;
+          setDoc(mergeMaterialControleDocs(base, seeded, local));
+        })
+        .catch((err) => {
+          console.error("[SOT] Atualizar controle de material ao voltar:", err);
+        });
+    };
+    document.addEventListener("visibilitychange", pullServer);
+    window.addEventListener("focus", pullServer);
+    return () => {
+      document.removeEventListener("visibilitychange", pullServer);
+      window.removeEventListener("focus", pullServer);
+    };
+  }, [useCloud, cloudDoc, idbKey, rememberRemote]);
 
   useEffect(() => {
     if (!useCloud || !hydratedRef.current) return;
@@ -323,7 +421,7 @@ export function MaterialControleProvider({
     }
     const t = window.setTimeout(() => {
       void pushDocToCloud(doc);
-    }, 450);
+    }, 200);
     return () => window.clearTimeout(t);
   }, [doc, useCloud, pushDocToCloud]);
 
