@@ -5,6 +5,7 @@ import {
   CircleHelp,
   ClipboardList,
   FileDown,
+  Handshake,
   History,
   Moon,
   MoreHorizontal,
@@ -15,6 +16,7 @@ import {
   Table2,
   Trash2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -24,7 +26,15 @@ import {
   materialMovimentoTipoLabel,
 } from "../lib/materialControleFormat";
 import { downloadMaterialControleBalancoPdf } from "../lib/materialControlePdf";
-import type { MaterialItem, MaterialPlanilha } from "../lib/materialControleStorage";
+import {
+  emprestimoVencido,
+  emprestimosAbertos,
+  materialMovimentoIsoFromDateAndTime,
+  quantidadeEmprestada,
+  type MaterialEmprestimo,
+  type MaterialItem,
+  type MaterialPlanilha,
+} from "../lib/materialControleStorage";
 import { sotFormInputClass, sotFormSelectClass, sotFormTextareaClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 
@@ -40,7 +50,8 @@ type Sheet =
   | { kind: "edit"; item: MaterialItem }
   | { kind: "entrada"; item: MaterialItem }
   | { kind: "saida"; item: MaterialItem }
-  | { kind: "baixa"; item: MaterialItem };
+  | { kind: "baixa"; item: MaterialItem }
+  | { kind: "emprestimo"; item: MaterialItem };
 
 function todayIso() {
   const d = new Date();
@@ -121,6 +132,8 @@ function MaterialControleApp({
     saidaItem,
     darBaixaItem,
     reativarItem,
+    emprestarItem,
+    devolverEmprestimo,
   } = useMaterialControle();
 
   const [tab, setTab] = useState<Tab>("estoque");
@@ -139,6 +152,10 @@ function MaterialControleApp({
   const [formResponsavel, setFormResponsavel] = useState("");
   const [formData, setFormData] = useState(todayIso);
   const [formHora, setFormHora] = useState(nowTime);
+  const [formDevolverData, setFormDevolverData] = useState("");
+  const [formDevolverHora, setFormDevolverHora] = useState("");
+  const [loanError, setLoanError] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const activePlanilha = useMemo(
     () => doc.planilhas.find((p) => p.id === activePlanilhaId) ?? null,
@@ -158,6 +175,20 @@ function MaterialControleApp({
   useEffect(() => {
     setRemoteSyncPaused(sheet !== null || renameId !== null);
   }, [sheet, renameId, setRemoteSyncPaused]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!sheet || !("item" in sheet)) return;
+    const fresh = doc.planilhas.flatMap((p) => p.items).find((it) => it.id === sheet.item.id);
+    if (!fresh || fresh === sheet.item) return;
+    setSheet((current) =>
+      current && "item" in current && current.item.id === fresh.id ? { ...current, item: fresh } : current,
+    );
+  }, [doc, sheet]);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -207,6 +238,19 @@ function MaterialControleApp({
       .sort((a, b) => b.movimento.at.localeCompare(a.movimento.at));
   }, [activePlanilha]);
 
+  const dueLoans = useMemo(() => {
+    const alerts: { planilhaId: string; item: MaterialItem; emprestimo: MaterialEmprestimo }[] = [];
+    for (const planilha of doc.planilhas) {
+      for (const item of planilha.items) {
+        if (item.status !== "ativo") continue;
+        for (const emprestimo of item.emprestimos) {
+          if (emprestimoVencido(emprestimo, nowMs)) alerts.push({ planilhaId: planilha.id, item, emprestimo });
+        }
+      }
+    }
+    return alerts;
+  }, [doc.planilhas, nowMs]);
+
   function closeSheet() {
     setSheet(null);
     setRenameId(null);
@@ -227,6 +271,16 @@ function MaterialControleApp({
     setFormUnidade(item.unidade);
     setFormObs(item.observacao);
     setSheet({ kind: "edit", item });
+  }
+
+  function openLoan(item: MaterialItem) {
+    setFormQty("1");
+    setFormResponsavel("");
+    setFormData(todayIso());
+    setFormDevolverData("");
+    setFormDevolverHora("");
+    setLoanError("");
+    setSheet({ kind: "emprestimo", item });
   }
 
   function openAdd() {
@@ -272,6 +326,32 @@ function MaterialControleApp({
       };
       if (sheet.kind === "entrada") entradaItem(activePlanilhaId, sheet.item.id, input);
       else saidaItem(activePlanilhaId, sheet.item.id, input);
+    } else if (sheet.kind === "emprestimo") {
+      if (qty <= 0 || !formResponsavel.trim() || !formData) {
+        setLoanError("Informe a quantidade, o nome e a data.");
+        return;
+      }
+      const dataDev = formDevolverData.trim();
+      const horaDev = formDevolverHora.trim();
+      if ((dataDev && !horaDev) || (!dataDev && horaDev)) {
+        setLoanError("A devolução é opcional. Se preencher, use a data e a hora juntas.");
+        return;
+      }
+      const devolverEm = dataDev && horaDev ? materialMovimentoIsoFromDateAndTime(dataDev, horaDev) : null;
+      if (dataDev && horaDev && !devolverEm) {
+        setLoanError("Data ou hora de devolução inválida.");
+        return;
+      }
+      const ok = emprestarItem(activePlanilhaId, sheet.item.id, {
+        quantidade: qty,
+        responsavel: formResponsavel,
+        dataIso: formData,
+        devolverEm,
+      });
+      if (!ok) {
+        setLoanError("Não há quantidade suficiente para este empréstimo.");
+        return;
+      }
     } else if (sheet.kind === "baixa") {
       darBaixaItem(activePlanilhaId, sheet.item.id, formMotivo);
     }
@@ -293,7 +373,9 @@ function MaterialControleApp({
               ? "Retirada"
               : sheet?.kind === "baixa"
                 ? "Dar baixa"
-                : sheet?.kind === "item"
+                : sheet?.kind === "emprestimo"
+                  ? "Empréstimo"
+                  : sheet?.kind === "item"
                   ? sheet.item.nome
                   : "";
 
@@ -305,7 +387,7 @@ function MaterialControleApp({
         aria-hidden="true"
         className="material-app__watermark"
       />
-      <header className="relative z-[1] shrink-0 px-4 pb-2 pt-3">
+      <header className="relative z-[15] shrink-0 px-4 pb-2 pt-3">
         <div className="flex items-center gap-2">
           <img
             src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
@@ -379,6 +461,28 @@ function MaterialControleApp({
             ))}
           </div>
         ) : null}
+        {dueLoans.length > 0 ? (
+          <div className="material-loan-alerts" aria-live="polite">
+            {dueLoans.map((alert) => (
+              <button
+                key={alert.emprestimo.id}
+                type="button"
+                className="material-loan-alert"
+                onClick={() => {
+                  setActivePlanilhaId(alert.planilhaId);
+                  setTab("estoque");
+                  setSheet({ kind: "item", item: alert.item });
+                }}
+              >
+                <span className="material-loan-alert__kicker">Devolução</span>
+                <span className="material-loan-alert__title">{alert.item.nome}</span>
+                <span className="material-loan-alert__meta">
+                  {alert.emprestimo.quantidade} {alert.item.unidade || "UN"} · {alert.emprestimo.responsavel}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </header>
 
       <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-28">
@@ -399,8 +503,10 @@ function MaterialControleApp({
             onToggleBaixados={() => setShowBaixados((v) => !v)}
             stats={stats}
             items={filteredItems}
+            nowMs={nowMs}
             onEntrada={(item) => openMove("entrada", item)}
             onSaida={(item) => openMove("saida", item)}
+            onEmprestimo={openLoan}
             onMore={(item) => setSheet({ kind: "item", item })}
           />
         ) : tab === "historico" ? (
@@ -541,6 +647,32 @@ function MaterialControleApp({
                   {sheet.item.unidade || "unidades"} em stock
                   {sheet.item.observacao ? ` · ${sheet.item.observacao}` : ""}
                 </p>
+                {emprestimosAbertos(sheet.item).length > 0 ? (
+                  <div className="mb-2 space-y-2">
+                    {emprestimosAbertos(sheet.item).map((emprestimo) => (
+                      <div key={emprestimo.id} className="material-loan-note">
+                        <p>
+                          Emprestado: {emprestimo.quantidade} {sheet.item.unidade || "UN"} · {emprestimo.responsavel}
+                        </p>
+                        <p className="mt-0.5 text-xs font-medium opacity-80">
+                          {emprestimo.devolverEm
+                            ? `Devolver em ${formatMaterialDateTime(emprestimo.devolverEm)}`
+                            : "Sem data de devolução"}
+                        </p>
+                        <button
+                          type="button"
+                          className="material-app__ghost mt-2 w-full"
+                          onClick={() => {
+                            if (!activePlanilhaId) return;
+                            devolverEmprestimo(activePlanilhaId, sheet.item.id, emprestimo.id);
+                          }}
+                        >
+                          Registrar devolução
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {sheet.item.status === "ativo" ? (
                   <>
                     <button type="button" className="material-app__primary" onClick={() => openMove("entrada", sheet.item)}>
@@ -548,6 +680,9 @@ function MaterialControleApp({
                     </button>
                     <button type="button" className="material-app__warn" onClick={() => openMove("saida", sheet.item)}>
                       <ArrowUpCircle className="h-4 w-4" /> Retirada
+                    </button>
+                    <button type="button" className="material-loan-chip" onClick={() => openLoan(sheet.item)}>
+                      <Handshake className="h-4 w-4" /> Empréstimo
                     </button>
                     <button type="button" className="material-app__ghost" onClick={() => openEdit(sheet.item)}>
                       Editar
@@ -660,6 +795,44 @@ function MaterialControleApp({
               </div>
             ) : null}
 
+            {sheet.kind === "emprestimo" ? (
+              <div className="space-y-3">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Disponível para empréstimo: {Math.max(0, sheet.item.quantidade - quantidadeEmprestada(sheet.item))}{" "}
+                  {sheet.item.unidade || "UN"}
+                </p>
+                <Field label="Quantidade">
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="material-app__step" onClick={() => setFormQty(String(Math.max(1, parseQty(formQty) - 1)))}>
+                      −
+                    </button>
+                    <input inputMode="decimal" value={formQty} onChange={(e) => setFormQty(e.target.value)} className={cn(sotFormInputClass, "text-center text-lg font-semibold")} />
+                    <button type="button" className="material-app__step" onClick={() => setFormQty(String(parseQty(formQty) + 1))}>
+                      +
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Quem pegou emprestado">
+                  <input value={formResponsavel} onChange={(e) => setFormResponsavel(e.target.value)} className={cn(sotFormInputClass, "text-base")} autoFocus />
+                </Field>
+                <Field label="Data">
+                  <input type="date" value={formData} onChange={(e) => setFormData(e.target.value)} className={cn(sotFormInputClass, "text-base")} />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Devolução (opcional)">
+                    <input type="date" value={formDevolverData} onChange={(e) => setFormDevolverData(e.target.value)} className={cn(sotFormInputClass, "text-base")} />
+                  </Field>
+                  <Field label="Hora (opcional)">
+                    <input type="time" value={formDevolverHora} onChange={(e) => setFormDevolverHora(e.target.value)} className={cn(sotFormInputClass, "text-base")} />
+                  </Field>
+                </div>
+                {loanError ? <p className="text-sm font-medium text-orange-600">{loanError}</p> : null}
+                <button type="button" className="material-loan-chip w-full" onClick={confirmSheet}>
+                  <Handshake className="h-4 w-4" /> Confirmar empréstimo
+                </button>
+              </div>
+            ) : null}
+
             {sheet.kind === "baixa" ? (
               <div className="space-y-3">
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -715,7 +888,7 @@ function NavButton({
   );
 }
 
-const GUIDE_STEPS: { icon: typeof Table2; title: string; text: string }[] = [
+const GUIDE_STEPS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: Table2,
     title: "Crie o lugar",
@@ -735,6 +908,11 @@ const GUIDE_STEPS: { icon: typeof Table2; title: string; text: string }[] = [
     icon: ArrowUpCircle,
     title: "Registre a retirada",
     text: "Quando alguém levar, toque em Retirada e informe quem levou.",
+  },
+  {
+    icon: Handshake,
+    title: "Empreste",
+    text: "Toque em Empréstimo, diga quem pegou, a data e a quantidade. A hora de devolver é opcional.",
   },
   {
     icon: Boxes,
@@ -814,8 +992,10 @@ function EstoquePane({
   onToggleBaixados,
   stats,
   items,
+  nowMs,
   onEntrada,
   onSaida,
+  onEmprestimo,
   onMore,
 }: {
   search: string;
@@ -824,8 +1004,10 @@ function EstoquePane({
   onToggleBaixados: () => void;
   stats: { ativos: number; baixados: number; totalQty: number; zerados: number };
   items: MaterialItem[];
+  nowMs: number;
   onEntrada: (item: MaterialItem) => void;
   onSaida: (item: MaterialItem) => void;
+  onEmprestimo: (item: MaterialItem) => void;
   onMore: (item: MaterialItem) => void;
 }) {
   return (
@@ -859,8 +1041,18 @@ function EstoquePane({
         <EmptyState title="Nada por aqui" text="Adicione um material ou ajuste a busca." />
       ) : (
         <ul className="space-y-2.5">
-          {items.map((item) => (
-            <li key={item.id} className="rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card)/0.78)] p-3.5 shadow-sm">
+          {items.map((item) => {
+            const abertos = emprestimosAbertos(item);
+            const emprestado = abertos.reduce((sum, e) => sum + e.quantidade, 0);
+            const due = abertos.some((e) => emprestimoVencido(e, nowMs));
+            return (
+            <li
+              key={item.id}
+              className={cn(
+                "material-item-card rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card)/0.78)] p-3.5 shadow-sm",
+                due && "material-item-card--due",
+              )}
+            >
               <button type="button" className="flex w-full items-start gap-3 text-left" onClick={() => onMore(item)}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[0.95rem] font-semibold">{item.nome}</p>
@@ -873,6 +1065,11 @@ function EstoquePane({
                   {item.quantidade}
                 </p>
               </button>
+              {emprestado > 0 ? (
+                <p className="material-item-card__loan">
+                  Emprestado: {emprestado} {item.unidade || "UN"}
+                </p>
+              ) : null}
               {item.status === "ativo" ? (
                 <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-2">
                   <button type="button" className="material-app__chip material-app__chip--in" onClick={() => onEntrada(item)}>
@@ -884,6 +1081,9 @@ function EstoquePane({
                   <button type="button" className="material-app__chip" onClick={() => onMore(item)} aria-label="Mais ações">
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
+                  <button type="button" className="material-loan-chip col-span-3" onClick={() => onEmprestimo(item)}>
+                    <Handshake className="h-4 w-4" /> Empréstimo
+                  </button>
                 </div>
               ) : (
                 <button type="button" className="material-app__ghost mt-3 w-full" onClick={() => onMore(item)}>
@@ -891,7 +1091,8 @@ function EstoquePane({
                 </button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

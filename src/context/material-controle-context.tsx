@@ -27,7 +27,10 @@ import {
   normalizeMaterialControleDoc,
   saveMaterialControleToIdb,
   materialMovimentoIsoFromDateAndTime,
+  quantidadeEmprestada,
   type MaterialControleDoc,
+  type MaterialEmprestimo,
+  type MaterialEmprestimoInput,
   type MaterialItem,
   type MaterialMovimento,
   type MaterialMovimentoInput,
@@ -104,6 +107,8 @@ type MaterialControleContextValue = {
   saidaItem: (planilhaId: string, itemId: string, input: MaterialMovimentoInput) => void;
   darBaixaItem: (planilhaId: string, itemId: string, motivo?: string) => void;
   reativarItem: (planilhaId: string, itemId: string) => void;
+  emprestarItem: (planilhaId: string, itemId: string, input: MaterialEmprestimoInput) => boolean;
+  devolverEmprestimo: (planilhaId: string, itemId: string, emprestimoId: string) => void;
 };
 
 const MaterialControleContext = createContext<MaterialControleContextValue | null>(null);
@@ -378,6 +383,7 @@ export function MaterialControleProvider({
         baixaAt: null,
         baixaMotivo: "",
         movimentos: [],
+        emprestimos: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -500,6 +506,63 @@ export function MaterialControleProvider({
     [mutateDoc],
   );
 
+  const emprestarItem = useCallback(
+    (planilhaId: string, itemId: string, input: MaterialEmprestimoInput) => {
+      const delta = Math.max(0, input.quantidade);
+      const resp = input.responsavel.trim();
+      const emprestadoEm = materialMovimentoIsoFromDateAndTime(input.dataIso, "12:00");
+      if (delta <= 0 || !resp || !emprestadoEm) return false;
+      const planilha = docRef.current.planilhas.find((p) => p.id === planilhaId);
+      const item = planilha?.items.find((it) => it.id === itemId);
+      if (!item || item.status !== "ativo") return false;
+      if (delta > Math.max(0, item.quantidade - quantidadeEmprestada(item))) return false;
+      const emprestimo: MaterialEmprestimo = {
+        id: newMaterialId(),
+        quantidade: delta,
+        responsavel: resp,
+        emprestadoEm,
+        devolverEm: input.devolverEm,
+        devolvidoEm: null,
+      };
+      mutateDoc((prev) =>
+        mapPlanilha(prev, planilhaId, (p) =>
+          touchPlanilha(p, {
+            items: p.items.map((it) =>
+              it.id === itemId
+                ? { ...it, emprestimos: [emprestimo, ...it.emprestimos], updatedAt: new Date().toISOString() }
+                : it,
+            ),
+          }),
+        ),
+      );
+      return true;
+    },
+    [mutateDoc],
+  );
+
+  const devolverEmprestimo = useCallback(
+    (planilhaId: string, itemId: string, emprestimoId: string) => {
+      const now = new Date().toISOString();
+      mutateDoc((prev) =>
+        mapPlanilha(prev, planilhaId, (p) =>
+          touchPlanilha(p, {
+            items: p.items.map((it) => {
+              if (it.id !== itemId) return it;
+              return {
+                ...it,
+                emprestimos: it.emprestimos.map((e) =>
+                  e.id === emprestimoId && !e.devolvidoEm ? { ...e, devolvidoEm: now } : e,
+                ),
+                updatedAt: now,
+              };
+            }),
+          }),
+        ),
+      );
+    },
+    [mutateDoc],
+  );
+
   const reativarItem = useCallback(
     (planilhaId: string, itemId: string) => {
       mutateDoc((prev) =>
@@ -540,6 +603,8 @@ export function MaterialControleProvider({
       saidaItem,
       darBaixaItem,
       reativarItem,
+      emprestarItem,
+      devolverEmprestimo,
     }),
     [
       doc,
@@ -557,6 +622,8 @@ export function MaterialControleProvider({
       saidaItem,
       darBaixaItem,
       reativarItem,
+      emprestarItem,
+      devolverEmprestimo,
     ],
   );
 

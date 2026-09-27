@@ -1668,6 +1668,141 @@ html.siad-mobile-shell #root {
   opacity: 0.3;
 }
 
+@property --material-loan-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes material-loan-spin {
+  to {
+    --material-loan-angle: 360deg;
+  }
+}
+
+.material-item-card {
+  position: relative;
+}
+
+.material-item-card--due {
+  border-color: transparent;
+}
+
+.material-item-card--due::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--material-loan-angle, 0deg),
+    transparent 0deg,
+    transparent 250deg,
+    #fdba74 300deg,
+    #f97316 330deg,
+    #fff7ed 348deg,
+    transparent 360deg
+  );
+  animation: material-loan-spin 1.15s linear infinite;
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.material-item-card__loan {
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #ea580c;
+}
+
+.material-phone-stage[data-material-theme="dark"] .material-item-card__loan,
+.material-phone-stage[data-material-theme="dark"] .material-loan-chip,
+.material-phone-stage[data-material-theme="dark"] .material-loan-note {
+  color: #fdba74;
+}
+
+.material-loan-chip {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.9rem;
+  background: rgb(249 115 22 / 0.16);
+  color: #c2410c;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.material-loan-note {
+  border-radius: 1rem;
+  background: rgb(249 115 22 / 0.12);
+  padding: 0.7rem 0.8rem;
+  color: #c2410c;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.material-loan-alerts {
+  position: absolute;
+  top: calc(100% - 0.15rem);
+  right: 0.75rem;
+  z-index: 35;
+  display: flex;
+  width: min(16rem, calc(100% - 1.5rem));
+  max-height: 12rem;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow-y: auto;
+}
+
+.material-loan-alert {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
+  border-radius: 1rem;
+  background: linear-gradient(145deg, #fb923c, #ea580c);
+  color: #fff;
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+  box-shadow: 0 12px 28px rgb(234 88 12 / 0.38);
+}
+
+.material-loan-alert__kicker {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.material-loan-alert__title,
+.material-loan-alert__meta {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-loan-alert__title {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.material-loan-alert__meta {
+  font-size: 0.75rem;
+}
+
 .material-guide {
   display: flex;
   flex-direction: column;

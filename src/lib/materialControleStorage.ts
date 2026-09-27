@@ -42,6 +42,26 @@ export function materialMovimentoIsoFromDateAndTime(dataIso: string, hora: strin
   return dt.toISOString();
 }
 
+export type MaterialEmprestimo = {
+  id: string;
+  quantidade: number;
+  responsavel: string;
+  /** Data do empréstimo (ISO). */
+  emprestadoEm: string;
+  /** Data/hora prevista de devolução. Ausente quando não foi combinada. */
+  devolverEm: string | null;
+  /** Preenchido quando o material volta. */
+  devolvidoEm: string | null;
+};
+
+export type MaterialEmprestimoInput = {
+  quantidade: number;
+  responsavel: string;
+  /** Data do empréstimo em `yyyy-mm-dd`. */
+  dataIso: string;
+  devolverEm: string | null;
+};
+
 export type MaterialItem = {
   id: string;
   nome: string;
@@ -52,9 +72,24 @@ export type MaterialItem = {
   baixaAt: string | null;
   baixaMotivo: string;
   movimentos: MaterialMovimento[];
+  emprestimos: MaterialEmprestimo[];
   createdAt: string;
   updatedAt: string;
 };
+
+export function emprestimosAbertos(item: MaterialItem): MaterialEmprestimo[] {
+  return item.emprestimos.filter((e) => !e.devolvidoEm);
+}
+
+export function quantidadeEmprestada(item: MaterialItem): number {
+  return emprestimosAbertos(item).reduce((sum, e) => sum + e.quantidade, 0);
+}
+
+export function emprestimoVencido(emprestimo: MaterialEmprestimo, now = Date.now()): boolean {
+  if (!emprestimo.devolverEm || emprestimo.devolvidoEm) return false;
+  const at = new Date(emprestimo.devolverEm).getTime();
+  return Number.isFinite(at) && at <= now;
+}
 
 export type MaterialPlanilha = {
   id: string;
@@ -99,6 +134,25 @@ function normalizeMovimento(raw: unknown): MaterialMovimento | null {
   };
 }
 
+function normalizeEmprestimo(raw: unknown): MaterialEmprestimo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const responsavel = typeof o.responsavel === "string" ? o.responsavel.trim() : "";
+  if (!id || !responsavel) return null;
+  const quantidade =
+    typeof o.quantidade === "number" && Number.isFinite(o.quantidade) ? Math.max(0, o.quantidade) : 0;
+  if (quantidade <= 0) return null;
+  return {
+    id,
+    quantidade,
+    responsavel,
+    emprestadoEm: typeof o.emprestadoEm === "string" ? o.emprestadoEm : new Date().toISOString(),
+    devolverEm: typeof o.devolverEm === "string" && o.devolverEm ? o.devolverEm : null,
+    devolvidoEm: typeof o.devolvidoEm === "string" && o.devolvidoEm ? o.devolvidoEm : null,
+  };
+}
+
 function normalizeItem(raw: unknown): MaterialItem | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -110,6 +164,10 @@ function normalizeItem(raw: unknown): MaterialItem | null {
   const now = new Date().toISOString();
   const movimentosRaw = Array.isArray(o.movimentos) ? o.movimentos : [];
   const movimentos = movimentosRaw.map(normalizeMovimento).filter((x): x is MaterialMovimento => x !== null);
+  const emprestimosRaw = Array.isArray(o.emprestimos) ? o.emprestimos : [];
+  const emprestimos = emprestimosRaw
+    .map(normalizeEmprestimo)
+    .filter((x): x is MaterialEmprestimo => x !== null);
   return {
     id,
     nome,
@@ -120,6 +178,7 @@ function normalizeItem(raw: unknown): MaterialItem | null {
     baixaAt: typeof o.baixaAt === "string" ? o.baixaAt : null,
     baixaMotivo: typeof o.baixaMotivo === "string" ? o.baixaMotivo.trim() : "",
     movimentos,
+    emprestimos,
     createdAt: typeof o.createdAt === "string" ? o.createdAt : now,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : now,
   };
