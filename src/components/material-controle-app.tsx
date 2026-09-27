@@ -73,6 +73,17 @@ function parseQty(value: string) {
 
 type MaterialTheme = "light" | "dark";
 const MATERIAL_THEME_KEY = "sot-material-avulso-theme";
+const BELL_LATER_KEY = "sot-material-avulso-bell-later";
+
+function readBellLater(): string[] {
+  try {
+    const raw = localStorage.getItem(BELL_LATER_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function readMaterialTheme(): MaterialTheme {
   try {
@@ -158,6 +169,7 @@ function MaterialControleApp({
   const [formDevolverHora, setFormDevolverHora] = useState("");
   const [loanError, setLoanError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [bellLater, setBellLater] = useState<string[]>(readBellLater);
 
   const activePlanilha = useMemo(
     () => doc.planilhas.find((p) => p.id === activePlanilhaId) ?? null,
@@ -253,9 +265,33 @@ function MaterialControleApp({
     return alerts;
   }, [doc.planilhas, nowMs]);
 
+  const bellLoans = useMemo(
+    () => dueLoans.filter((alert) => !bellLater.includes(alert.emprestimo.id)),
+    [dueLoans, bellLater],
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BELL_LATER_KEY, JSON.stringify(bellLater));
+    } catch {
+      /* ignore */
+    }
+  }, [bellLater]);
+
   function closeSheet() {
     setSheet(null);
     setRenameId(null);
+  }
+
+  function postponeReturns() {
+    setBellLater((prev) => [...new Set([...prev, ...bellLoans.map((alert) => alert.emprestimo.id)])]);
+    closeSheet();
+  }
+
+  function confirmReturn(planilhaId: string, itemId: string, emprestimoId: string) {
+    devolverEmprestimo(planilhaId, itemId, emprestimoId);
+    setBellLater((prev) => prev.filter((id) => id !== emprestimoId));
+    if (bellLoans.filter((alert) => alert.emprestimo.id !== emprestimoId).length === 0) closeSheet();
   }
 
   function openMove(kind: "entrada" | "saida", item: MaterialItem) {
@@ -364,7 +400,7 @@ function MaterialControleApp({
     sheet?.kind === "ajuda"
       ? "Como usar"
       : sheet?.kind === "devolucoes"
-        ? "Devoluções"
+        ? "Registrar devolução"
         : sheet?.kind === "planilhas"
       ? "Planilhas"
       : sheet?.kind === "add-item"
@@ -406,7 +442,7 @@ function MaterialControleApp({
               <h1 className="truncate text-lg font-semibold leading-tight">{activePlanilha.nome}</h1>
             ) : null}
           </div>
-          {dueLoans.length > 0 ? (
+          {bellLoans.length > 0 ? (
             <button
               type="button"
               className="material-loan-bell flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
@@ -552,24 +588,25 @@ function MaterialControleApp({
             {sheet.kind === "ajuda" ? <HelpGuide /> : null}
 
             {sheet.kind === "devolucoes" ? (
-              <div className="space-y-2">
-                {dueLoans.map((alert) => (
-                  <button
-                    key={alert.emprestimo.id}
-                    type="button"
-                    className="material-loan-note w-full text-left"
-                    onClick={() => {
-                      setActivePlanilhaId(alert.planilhaId);
-                      setTab("estoque");
-                      setSheet({ kind: "item", item: alert.item });
-                    }}
-                  >
-                    <p>{alert.item.nome}</p>
-                    <p className="mt-0.5 text-xs font-medium opacity-80">
-                      {alert.emprestimo.quantidade} {alert.item.unidade || "UN"} · {alert.emprestimo.responsavel}
+              <div className="space-y-3">
+                {bellLoans.map((alert) => (
+                  <div key={alert.emprestimo.id} className="material-loan-note">
+                    <p>{alert.emprestimo.responsavel}</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {alert.emprestimo.devolverEm ? formatMaterialDateTime(alert.emprestimo.devolverEm) : ""}
                     </p>
-                  </button>
+                    <button
+                      type="button"
+                      className="material-loan-chip mt-3 w-full"
+                      onClick={() => confirmReturn(alert.planilhaId, alert.item.id, alert.emprestimo.id)}
+                    >
+                      Registrar devolução
+                    </button>
+                  </div>
                 ))}
+                <button type="button" className="material-app__ghost w-full" onClick={postponeReturns}>
+                  Registrar devolução depois
+                </button>
               </div>
             ) : null}
 
