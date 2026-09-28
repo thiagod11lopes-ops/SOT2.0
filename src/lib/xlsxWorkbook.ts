@@ -28,12 +28,21 @@ function u32(view: DataView, offset: number, value: number) {
 }
 
 function xmlEscape(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+  let clean = "";
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31)) continue;
+    clean += ch;
+  }
+  return clean
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function blobPart(data: Uint8Array): BlobPart {
+  return data.slice().buffer as ArrayBuffer;
 }
 
 function colName(index: number): string {
@@ -214,7 +223,7 @@ function zipStore(files: { name: string; data: Uint8Array }[]): Blob {
   u16(endView, 10, files.length);
   u32(endView, 12, centralSize);
   u32(endView, 16, offset);
-  return new Blob([...parts, ...central, end], {
+  return new Blob([...parts.map(blobPart), ...central.map(blobPart), blobPart(end)], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
 }
@@ -253,7 +262,7 @@ function findEocd(bytes: Uint8Array): number {
 }
 
 async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const stream = new Blob([blobPart(data)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
