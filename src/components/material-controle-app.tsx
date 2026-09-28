@@ -10,17 +10,19 @@ import {
   Moon,
   MoreHorizontal,
   Plus,
+  Download,
   RotateCcw,
   Search,
   Settings,
   Sun,
   Table2,
   Trash2,
+  Upload,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMaterialControle } from "../context/material-controle-context";
 import { formatMaterialDateTime } from "../lib/materialControleFormat";
 import { downloadMaterialControleBalancoPdf } from "../lib/materialControlePdf";
@@ -145,6 +147,7 @@ function MaterialControleApp({
     reativarItem,
     emprestarItem,
     devolverEmprestimo,
+    restoreDoc,
   } = useMaterialControle();
 
   const [tab, setTab] = useState<Tab>("estoque");
@@ -167,6 +170,8 @@ function MaterialControleApp({
   const [formDevolverHora, setFormDevolverHora] = useState("");
   const [loanError, setLoanError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [backupMessage, setBackupMessage] = useState("");
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const [bellLater, setBellLater] = useState<string[]>(readBellLater);
 
   const activePlanilha = useMemo(
@@ -317,6 +322,30 @@ function MaterialControleApp({
   function postponeReturns() {
     setBellLater((prev) => [...new Set([...prev, ...bellLoans.map((alert) => alert.emprestimo.id)])]);
     closeSheet();
+  }
+
+  async function downloadBackup() {
+    const { buildMaterialBackup } = await import("../lib/materialControleBackup");
+    const blob = buildMaterialBackup(doc);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `estoque-${stamp}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setBackupMessage("Backup baixado.");
+  }
+
+  async function loadBackup(file: File) {
+    if (!window.confirm("Este arquivo substitui todo o estoque atual. Deseja continuar?")) return;
+    try {
+      const { parseMaterialBackup } = await import("../lib/materialControleBackup");
+      restoreDoc(await parseMaterialBackup(await file.arrayBuffer()));
+      setBackupMessage("Estoque recuperado a partir do backup.");
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "Não foi possível ler o arquivo.");
+    }
   }
 
   function confirmReturn(planilhaId: string, itemId: string, emprestimoId: string) {
@@ -610,30 +639,58 @@ function MaterialControleApp({
             {sheet.kind === "ajuda" ? <HelpGuide /> : null}
 
             {sheet.kind === "config" ? (
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] px-3 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">Tema</p>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Claro ou escuro</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] px-3 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Tema</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Claro ou escuro</p>
+                  </div>
+                  <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
+                    <button
+                      type="button"
+                      aria-pressed={theme === "light"}
+                      aria-label="Tema claro"
+                      className={theme === "light" ? "is-active" : undefined}
+                      onClick={() => onTheme("light")}
+                    >
+                      <Sun className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={theme === "dark"}
+                      aria-label="Tema escuro"
+                      className={theme === "dark" ? "is-active" : undefined}
+                      onClick={() => onTheme("dark")}
+                    >
+                      <Moon className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </div>
-                <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
-                  <button
-                    type="button"
-                    aria-pressed={theme === "light"}
-                    aria-label="Tema claro"
-                    className={theme === "light" ? "is-active" : undefined}
-                    onClick={() => onTheme("light")}
-                  >
-                    <Sun className="h-4 w-4" strokeWidth={1.75} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={theme === "dark"}
-                    aria-label="Tema escuro"
-                    className={theme === "dark" ? "is-active" : undefined}
-                    onClick={() => onTheme("dark")}
-                  >
-                    <Moon className="h-4 w-4" strokeWidth={1.75} />
-                  </button>
+                <div className="rounded-2xl border border-[hsl(var(--border))] px-3 py-3">
+                  <p className="text-sm font-semibold">Backup</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    Gera um Excel com organizações, materiais, movimentos e empréstimos. O mesmo arquivo recupera o estoque inteiro.
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    <button type="button" className="material-app__primary w-full" onClick={() => void downloadBackup()}>
+                      <Download className="h-4 w-4" /> Baixar backup .xlsx
+                    </button>
+                    <button type="button" className="material-app__ghost w-full" onClick={() => backupInputRef.current?.click()}>
+                      <Upload className="h-4 w-4" /> Carregar backup .xlsx
+                    </button>
+                  </div>
+                  <input
+                    ref={backupInputRef}
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void loadBackup(file);
+                    }}
+                  />
+                  {backupMessage ? <p className="mt-2 text-xs font-medium">{backupMessage}</p> : null}
                 </div>
               </div>
             ) : null}

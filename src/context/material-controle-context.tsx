@@ -112,6 +112,7 @@ type MaterialControleContextValue = {
   reativarItem: (planilhaId: string, itemId: string) => void;
   emprestarItem: (planilhaId: string, itemId: string, input: MaterialEmprestimoInput) => boolean;
   devolverEmprestimo: (planilhaId: string, itemId: string, emprestimoId: string) => void;
+  restoreDoc: (next: MaterialControleDoc) => void;
 };
 
 const MaterialControleContext = createContext<MaterialControleContextValue | null>(null);
@@ -174,6 +175,7 @@ export function MaterialControleProvider({
   const cloudWriteInFlightRef = useRef(false);
   const pendingDocRef = useRef<MaterialControleDoc | null>(null);
   const pendingRemoteRef = useRef<MaterialControleDoc | null>(null);
+  const forceReplaceRef = useRef(false);
   const baseDocRef = useRef<MaterialControleDoc>(emptyMaterialControleDoc());
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -219,6 +221,19 @@ export function MaterialControleProvider({
           pendingDocRef.current = null;
           setCloudSyncStatus("syncing");
           try {
+            if (forceReplaceRef.current) {
+              await setSotStateDocWithRetry(cloudDoc, toSend);
+              forceReplaceRef.current = false;
+              const replaced = normalizeMaterialControleDoc(toSend);
+              baseDocRef.current = replaced;
+              applyingRemoteRef.current = true;
+              remoteSyncPausedRef.current = false;
+              pendingRemoteRef.current = null;
+              setDoc(replaced);
+              await saveMaterialControleToIdb(replaced, idbKey);
+              setCloudSyncStatus("synced");
+              continue;
+            }
             const merged = normalizeMaterialControleDoc(
               await writeMergedSotStateDocWithRetry(cloudDoc, baseDocRef.current, toSend, (base, server, local) =>
                 mergeMaterialControleDocs(
@@ -257,6 +272,21 @@ export function MaterialControleProvider({
   const mutateDoc = useCallback((fn: (prev: MaterialControleDoc) => MaterialControleDoc) => {
     setDoc((prev) => fn(prev));
   }, []);
+
+  const restoreDoc = useCallback(
+    (next: MaterialControleDoc) => {
+      const normalized = normalizeMaterialControleDoc(next);
+      pendingRemoteRef.current = null;
+      baseDocRef.current = normalized;
+      void saveMaterialControleToIdb(normalized, idbKey);
+      if (useCloud && hydratedRef.current) {
+        remoteSyncPausedRef.current = true;
+        forceReplaceRef.current = true;
+      }
+      setDoc(normalized);
+    },
+    [useCloud, idbKey],
+  );
 
   useEffect(() => {
     if (useCloud) return;
@@ -703,6 +733,7 @@ export function MaterialControleProvider({
       reativarItem,
       emprestarItem,
       devolverEmprestimo,
+      restoreDoc,
     }),
     [
       doc,
@@ -722,6 +753,7 @@ export function MaterialControleProvider({
       reativarItem,
       emprestarItem,
       devolverEmprestimo,
+      restoreDoc,
     ],
   );
 
