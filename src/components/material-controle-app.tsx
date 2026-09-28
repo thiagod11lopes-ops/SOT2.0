@@ -27,6 +27,7 @@ import { useMaterialControle } from "../context/material-controle-context";
 import { formatMaterialDateTime } from "../lib/materialControleFormat";
 import { downloadMaterialControleBalancoPdf } from "../lib/materialControlePdf";
 import {
+  emptyMaterialControleDoc,
   emprestimoVencido,
   emprestimosAbertos,
   materialMovimentoIsoFromDateAndTime,
@@ -185,6 +186,7 @@ function MaterialControleApp({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [backupMessage, setBackupMessage] = useState("");
   const [backupPromptOpen, setBackupPromptOpen] = useState(false);
+  const [wipeConfirmOpen, setWipeConfirmOpen] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [bellLater, setBellLater] = useState<string[]>(readBellLater);
 
@@ -363,6 +365,20 @@ function MaterialControleApp({
 
   function postponeReturns() {
     setBellLater((prev) => [...new Set([...prev, ...bellLoans.map((alert) => alert.emprestimo.id)])]);
+    closeSheet();
+  }
+
+  function confirmWipeStock() {
+    setBellLater([]);
+    try {
+      localStorage.removeItem(BELL_LATER_KEY);
+    } catch {
+      /* ignore */
+    }
+    restoreDoc(emptyMaterialControleDoc());
+    setWipeConfirmOpen(false);
+    setSearch("");
+    setTab("estoque");
     closeSheet();
   }
 
@@ -744,6 +760,15 @@ function MaterialControleApp({
                   />
                   {backupMessage ? <p className="mt-2 text-xs font-medium">{backupMessage}</p> : null}
                 </div>
+                <div className="material-danger">
+                  <p className="text-sm font-semibold">Zona de risco</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    Apaga organizações, materiais, movimentos e empréstimos. O estoque fica vazio neste aparelho e nos outros.
+                  </p>
+                  <button type="button" className="material-danger__button mt-3 w-full" onClick={() => setWipeConfirmOpen(true)}>
+                    <Trash2 className="h-4 w-4" /> Excluir dados do sistema
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -1058,6 +1083,29 @@ function MaterialControleApp({
                 </button>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {wipeConfirmOpen ? (
+        <div className="material-backup-prompt material-backup-prompt--danger" role="presentation">
+          <div className="material-backup-prompt__card" role="dialog" aria-modal="true" aria-labelledby="material-wipe-title">
+            <div className="material-danger__mark" aria-hidden="true">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <p className="material-backup-prompt__kicker">Zona de risco</p>
+            <h2 id="material-wipe-title">Excluir todos os dados?</h2>
+            <p className="material-backup-prompt__text">
+              O estoque fica totalmente sem dados. Esta ação vale para este aparelho e para os outros.
+            </p>
+            <div className="mt-4 grid gap-2">
+              <button type="button" className="material-danger__button w-full" onClick={confirmWipeStock}>
+                Excluir dados
+              </button>
+              <button type="button" className="material-app__ghost w-full" onClick={() => setWipeConfirmOpen(false)}>
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

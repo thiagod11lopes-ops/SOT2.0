@@ -1826,6 +1826,43 @@ html.siad-mobile-shell #root {
   }
 }
 
+.material-danger {
+  border-radius: 1rem;
+  border: 1px solid rgb(220 38 38 / 0.35);
+  background: rgb(220 38 38 / 0.08);
+  padding: 0.75rem;
+}
+
+.material-danger__button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: 0.9rem;
+  background: rgb(185 28 28);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.material-danger__mark {
+  display: flex;
+  height: 3.25rem;
+  width: 3.25rem;
+  margin: 0 auto 0.85rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(220 38 38 / 0.14);
+  color: rgb(185 28 28);
+}
+
+.material-backup-prompt--danger {
+  z-index: 70;
+}
+
 .material-backup-prompt {
   position: absolute;
   inset: 0;
