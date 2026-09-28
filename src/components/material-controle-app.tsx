@@ -12,6 +12,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Settings,
   Sun,
   Table2,
   Trash2,
@@ -41,6 +42,7 @@ type Tab = "estoque" | "historico" | "balanco";
 
 type Sheet =
   | { kind: "ajuda" }
+  | { kind: "config" }
   | { kind: "devolucoes" }
   | { kind: "planilhas" }
   | { kind: "add-item" }
@@ -428,7 +430,9 @@ function MaterialControleApp({
   const sheetTitle =
     sheet?.kind === "ajuda"
       ? "Como usar"
-      : sheet?.kind === "devolucoes"
+      : sheet?.kind === "config"
+        ? "Configurações"
+        : sheet?.kind === "devolucoes"
         ? "Registrar devolução"
         : sheet?.kind === "planilhas"
       ? "Planilhas"
@@ -501,26 +505,15 @@ function MaterialControleApp({
           >
             <CircleHelp className="h-5 w-5" strokeWidth={1.75} />
           </button>
-          <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
-            <button
-              type="button"
-              aria-pressed={theme === "light"}
-              aria-label="Tema claro"
-              className={theme === "light" ? "is-active" : undefined}
-              onClick={() => onTheme("light")}
-            >
-              <Sun className="h-4 w-4" strokeWidth={1.75} />
-            </button>
-            <button
-              type="button"
-              aria-pressed={theme === "dark"}
-              aria-label="Tema escuro"
-              className={theme === "dark" ? "is-active" : undefined}
-              onClick={() => onTheme("dark")}
-            >
-              <Moon className="h-4 w-4" strokeWidth={1.75} />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+            onClick={() => setSheet({ kind: "config" })}
+            aria-label="Configurações"
+            title="Configurações"
+          >
+            <Settings className="h-5 w-5" strokeWidth={1.75} />
+          </button>
         </div>
         {doc.planilhas.length > 1 ? (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
@@ -615,6 +608,35 @@ function MaterialControleApp({
             </div>
 
             {sheet.kind === "ajuda" ? <HelpGuide /> : null}
+
+            {sheet.kind === "config" ? (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] px-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Tema</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Claro ou escuro</p>
+                </div>
+                <div className="material-theme-toggle" role="group" aria-label="Tema claro ou escuro">
+                  <button
+                    type="button"
+                    aria-pressed={theme === "light"}
+                    aria-label="Tema claro"
+                    className={theme === "light" ? "is-active" : undefined}
+                    onClick={() => onTheme("light")}
+                  >
+                    <Sun className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={theme === "dark"}
+                    aria-label="Tema escuro"
+                    className={theme === "dark" ? "is-active" : undefined}
+                    onClick={() => onTheme("dark")}
+                  >
+                    <Moon className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {sheet.kind === "devolucoes" ? (
               <div className="space-y-3">
