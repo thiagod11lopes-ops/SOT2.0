@@ -5,6 +5,7 @@ import {
   Boxes,
   CircleHelp,
   ClipboardList,
+  Cloud,
   Handshake,
   History,
   Moon,
@@ -1182,7 +1183,7 @@ const GUIDE_STEPS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: Plus,
     title: "Inclua o material",
-    text: "Na aba Estoque, toque no + e informe o nome e a quantidade.",
+    text: "Na aba Estoque, toque no + e informe o nome, a quantidade e a unidade: UN, QTD, KG ou PAR.",
   },
   {
     icon: ArrowDownCircle,
@@ -1197,7 +1198,12 @@ const GUIDE_STEPS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: Handshake,
     title: "Empreste",
-    text: "Toque em Empréstimo, diga quem pegou, a data e a quantidade. A hora de devolver é opcional.",
+    text: "Toque em Empréstimo, diga quem pegou, a data e a quantidade. A data e a hora de devolver são opcionais. O card mostra em laranja o quanto está emprestado.",
+  },
+  {
+    icon: Bell,
+    title: "Alerta de devolução",
+    text: "Na hora de devolver, o card sobe para o topo com uma animação laranja e o sino pisca. Toque no sino para registrar a devolução. “Registrar devolução depois” esconde o sino; a animação só some quando a devolução for registrada.",
   },
   {
     icon: Boxes,
@@ -1207,7 +1213,27 @@ const GUIDE_STEPS: { icon: LucideIcon; title: string; text: string }[] = [
   {
     icon: ClipboardList,
     title: "Acompanhe",
-    text: "Histórico mostra cada movimento. Balanço mostra o que resta e gera o PDF.",
+    text: "Histórico lista entradas, retiradas, empréstimos e devoluções. Balanço mostra gráficos do estoque e gera o PDF.",
+  },
+  {
+    icon: Settings,
+    title: "Configurações",
+    text: "A engrenagem troca o tema claro ou escuro, baixa o backup em Excel e carrega esse arquivo para recuperar o estoque inteiro.",
+  },
+  {
+    icon: Download,
+    title: "Backup do dia",
+    text: "Depois da tela inicial, o sistema pergunta uma vez por dia, neste aparelho, se você quer guardar a cópia em Excel.",
+  },
+  {
+    icon: Trash2,
+    title: "Zona de risco",
+    text: "Em Configurações, Excluir dados do sistema pede confirmação e deixa o estoque totalmente vazio.",
+  },
+  {
+    icon: Cloud,
+    title: "Em todos os aparelhos",
+    text: "O que você alterar aqui aparece nos outros aparelhos ao mesmo tempo.",
   },
 ];
 
@@ -1219,7 +1245,7 @@ function HelpGuide() {
           Guia rápido
         </p>
         <p className="mt-1 text-sm leading-relaxed">
-          Controle o que entra, o que sai e o que ainda resta. Cada passo abaixo é um toque.
+          Controle o que entra, o que sai, o que foi emprestado e a cópia de segurança. Cada passo abaixo é um toque.
         </p>
       </div>
       {GUIDE_STEPS.map((step, index) => {
