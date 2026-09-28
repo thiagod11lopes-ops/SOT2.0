@@ -40,24 +40,6 @@
         }
       })();
     </script>
-    <script>
-      (function () {
-        try {
-          var raw = localStorage.getItem("sot-appearance");
-          if (!raw) return;
-          var mode = raw;
-          if (raw.charAt(0) === "{") {
-            var parsed = JSON.parse(raw);
-            mode = parsed && parsed.mode;
-          }
-          if (mode && mode !== "original") {
-            document.documentElement.dataset.appearance = mode;
-          }
-        } catch (e) {
-          /* ignore */
-        }
-      })();
-    </script>
     <style>
       html, body { margin: 0; background: #05060a; }
       .ebenezer-boot {
@@ -242,6 +224,6 @@
       </blockquote>
     </div>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/material-main.tsx"></script>
   </body>
 </html>

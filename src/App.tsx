@@ -213,8 +213,9 @@ function App() {
   }, [editIntentVersion, setActiveTab, hash, isSiadSaidaRoute, isMaterialControleRoute]);
 
   useEffect(() => {
+    if (isMaterialControleRoute) return;
     ensureVistoriaCloudStateSyncStarted();
-  }, []);
+  }, [isMaterialControleRoute]);
 
   useEffect(() => {
     clearLegacyWhatsAppVistoriaStorage();
