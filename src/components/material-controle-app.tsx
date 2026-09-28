@@ -67,6 +67,18 @@ function nowTime() {
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function itemAlarmeEmprestimo(item: MaterialItem, nowMs: number): number | null {
+  if (item.status !== "ativo") return null;
+  let earliest: number | null = null;
+  for (const emprestimo of emprestimosAbertos(item)) {
+    if (!emprestimoVencido(emprestimo, nowMs) || !emprestimo.devolverEm) continue;
+    const at = new Date(emprestimo.devolverEm).getTime();
+    if (!Number.isFinite(at)) continue;
+    if (earliest === null || at < earliest) earliest = at;
+  }
+  return earliest;
+}
+
 function parseQty(value: string) {
   return Math.max(0, Number.parseFloat(value.replace(",", ".")) || 0);
 }
@@ -216,7 +228,7 @@ function MaterialControleApp({
   const filteredItems = useMemo(() => {
     if (!activePlanilha) return [];
     const q = search.trim().toLowerCase();
-    return activePlanilha.items.filter((it) => {
+    const items = activePlanilha.items.filter((it) => {
       if (!showBaixados && it.status === "baixa") return false;
       if (!q) return true;
       return (
@@ -225,7 +237,22 @@ function MaterialControleApp({
         it.observacao.toLowerCase().includes(q)
       );
     });
-  }, [activePlanilha, search, showBaixados]);
+    return items
+      .map((item, index) => ({
+        item,
+        index,
+        dueAt: itemAlarmeEmprestimo(item, nowMs),
+      }))
+      .sort((a, b) => {
+        if (a.dueAt !== b.dueAt) {
+          if (a.dueAt === null) return 1;
+          if (b.dueAt === null) return -1;
+          return a.dueAt - b.dueAt;
+        }
+        return a.index - b.index;
+      })
+      .map(({ item }) => item);
+  }, [activePlanilha, search, showBaixados, nowMs]);
 
   const stats = useMemo(() => {
     if (!activePlanilha) return { ativos: 0, baixados: 0, totalQty: 0, zerados: 0 };
