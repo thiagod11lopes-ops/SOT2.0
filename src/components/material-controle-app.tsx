@@ -86,6 +86,7 @@ function parseQty(value: string) {
 type MaterialTheme = "light" | "dark";
 const MATERIAL_THEME_KEY = "sot-material-avulso-theme";
 const BELL_LATER_KEY = "sot-material-avulso-bell-later";
+const BACKUP_PROMPT_KEY = "sot-material-avulso-backup-day";
 
 function readBellLater(): string[] {
   try {
@@ -183,6 +184,7 @@ function MaterialControleApp({
   const [loanError, setLoanError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [backupMessage, setBackupMessage] = useState("");
+  const [backupPromptOpen, setBackupPromptOpen] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [bellLater, setBellLater] = useState<string[]>(readBellLater);
 
@@ -341,6 +343,19 @@ function MaterialControleApp({
     }
   }, [bellLater]);
 
+  useEffect(() => {
+    function openIfDue() {
+      try {
+        if (localStorage.getItem(BACKUP_PROMPT_KEY) === todayIso()) return;
+      } catch {
+        return;
+      }
+      setBackupPromptOpen(true);
+    }
+    window.addEventListener("material-boot-finished", openIfDue);
+    return () => window.removeEventListener("material-boot-finished", openIfDue);
+  }, []);
+
   function closeSheet() {
     setSheet(null);
     setRenameId(null);
@@ -349,6 +364,16 @@ function MaterialControleApp({
   function postponeReturns() {
     setBellLater((prev) => [...new Set([...prev, ...bellLoans.map((alert) => alert.emprestimo.id)])]);
     closeSheet();
+  }
+
+  function answerBackupPrompt(download: boolean) {
+    try {
+      localStorage.setItem(BACKUP_PROMPT_KEY, todayIso());
+    } catch {
+      /* ignore */
+    }
+    setBackupPromptOpen(false);
+    if (download) void downloadBackup();
   }
 
   async function downloadBackup() {
@@ -1033,6 +1058,31 @@ function MaterialControleApp({
                 </button>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {backupPromptOpen ? (
+        <div className="material-backup-prompt" role="presentation">
+          <div className="material-backup-prompt__card" role="dialog" aria-modal="true" aria-labelledby="material-backup-title">
+            <img
+              src={`${import.meta.env.BASE_URL}alianca-ebenezer-logo.png`}
+              alt=""
+              className="material-backup-prompt__logo"
+            />
+            <p className="material-backup-prompt__kicker">Backup diário</p>
+            <h2 id="material-backup-title">Guardar o estoque?</h2>
+            <p className="material-backup-prompt__text">
+              Uma cópia em Excel com organizações, materiais, movimentos e empréstimos.
+            </p>
+            <div className="mt-4 grid gap-2">
+              <button type="button" className="material-app__primary w-full" onClick={() => answerBackupPrompt(true)}>
+                <Download className="h-4 w-4" /> Fazer backup
+              </button>
+              <button type="button" className="material-app__ghost w-full" onClick={() => answerBackupPrompt(false)}>
+                Agora não
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

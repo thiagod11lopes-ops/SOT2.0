@@ -21,7 +21,10 @@ export function MaterialEbenezerBoot() {
     const el = document.getElementById("ebenezer-boot");
     if (!el) return;
     el.classList.add("ebenezer-boot--out");
-    const removeTimer = window.setTimeout(() => el.remove(), LEAVE_MS);
+    const removeTimer = window.setTimeout(() => {
+      el.remove();
+      window.dispatchEvent(new Event("material-boot-finished"));
+    }, LEAVE_MS);
     return () => window.clearTimeout(removeTimer);
   }, [ready]);
 

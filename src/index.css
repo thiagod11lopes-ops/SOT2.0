@@ -1826,6 +1826,77 @@ html.siad-mobile-shell #root {
   }
 }
 
+.material-backup-prompt {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(8, 12, 20, 0.48);
+  backdrop-filter: blur(12px);
+}
+
+.material-backup-prompt__card {
+  width: min(100%, 22rem);
+  border-radius: 1.75rem;
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(165deg, hsl(var(--primary) / 0.2), hsl(var(--card)) 46%);
+  padding: 1.4rem 1.15rem 1.15rem;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  animation: material-backup-in 0.38s ease;
+}
+
+.material-backup-prompt__logo {
+  height: 4.4rem;
+  width: 4.4rem;
+  margin: 0 auto 0.85rem;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.material-backup-prompt__kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.material-backup-prompt__card h2 {
+  margin-top: 0.35rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.material-backup-prompt__text {
+  margin-top: 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+@keyframes material-backup-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-backup-prompt__card {
+    animation: none;
+  }
+}
+
 .material-guide {
   display: flex;
   flex-direction: column;
