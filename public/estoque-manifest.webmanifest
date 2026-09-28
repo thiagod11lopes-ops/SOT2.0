@@ -1,0 +1,21 @@
+{
+  "id": "./material.html",
+  "name": "Estoque",
+  "short_name": "Estoque",
+  "description": "Controle de material em endereço próprio, separado do SOT.",
+  "start_url": "./material.html",
+  "scope": "./material.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05060a",
+  "theme_color": "#07080c",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "./alianca-ebenezer-logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    }
+  ]
+}

@@ -36,6 +36,7 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
+        if (String(client.url).includes("material.html")) continue;
         if ("focus" in client) {
           client.navigate(targetUrl);
           return client.focus();
