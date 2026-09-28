@@ -330,7 +330,14 @@ export function MaterialControleProvider({
                 }
                 const local = docRef.current;
                 const base = baseDocRef.current;
-                if (JSON.stringify(seeded) === JSON.stringify(base)) return;
+                if (JSON.stringify(seeded) === JSON.stringify(base)) {
+                  if (!hydratedRef.current) {
+                    hydratedRef.current = true;
+                    setInitialLoadComplete(true);
+                    setCloudSyncStatus("synced");
+                  }
+                  return;
+                }
                 const dirty = hydratedRef.current && JSON.stringify(local) !== JSON.stringify(base);
                 if (dirty) {
                   baseDocRef.current = seeded;
