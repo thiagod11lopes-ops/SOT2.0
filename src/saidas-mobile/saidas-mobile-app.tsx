@@ -4,9 +4,19 @@ import { subscribeMobileDriverTrackingConfig } from "../lib/mobileDriverTracking
 import { ensureMobilePushServiceWorkerRegistered } from "../lib/mobilePushNotifications";
 import { cn } from "../lib/utils";
 import { SaidasLayout } from "./saidas-layout";
-import { SaidasMobileFilterDateProvider } from "./saidas-mobile-filter-date-context";
+import { SaidasMobileFilterDateProvider, useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SaidasPage } from "./saidas-page";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
+import { useDepartures } from "../context/departures-context";
+
+function MobileDepartureDaySync() {
+  const { filterDatePtBr } = useSaidasMobileFilterDate();
+  const { setMobileDepartureCloudDay } = useDepartures();
+  useEffect(() => {
+    setMobileDepartureCloudDay(filterDatePtBr);
+  }, [filterDatePtBr, setMobileDepartureCloudDay]);
+  return null;
+}
 
 function SaidasMobileRoutes() {
   const { overlayActive } = useMobileLoadingOverlay();
@@ -20,6 +30,7 @@ function SaidasMobileRoutes() {
     >
       <HashRouter>
         <SaidasMobileFilterDateProvider>
+          <MobileDepartureDaySync />
           <Routes>
             <Route path="/saidas" element={<SaidasLayout />}>
               <Route index element={<Navigate to="administrativas" replace />} />

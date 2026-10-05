@@ -26,7 +26,7 @@ import { stopMobileDriverTrackingSessionIfMatches } from "../lib/mobileDriverTra
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import { clearMotoristaActiveAssignmentIfDeparture } from "../lib/motoristaActiveAssignment";
 import { normalizeDepartureRows } from "../lib/normalizeDepartures";
-import { isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
+import { getCurrentDatePtBr, isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
 import {
   departureCompletionScore,
   mergeDeparturePatch,
@@ -77,6 +77,11 @@ type DeparturesContextValue = {
   /** Primeira carga local ou snapshot remoto concluída. */
   initialLoadComplete: boolean;
   forceCloudResync: () => void;
+  /**
+   * No app mobile, pede o download das saídas desta data (dd/mm/aaaa).
+   * No computador não faz nada: a coleção inteira continua sincronizada.
+   */
+  setMobileDepartureCloudDay: (datePtBr: string) => void;
 };
 
 const DeparturesContext = createContext<DeparturesContextValue | null>(null);
@@ -137,6 +142,57 @@ function compareDepartureFreshness(a: DepartureRecord, b: DepartureRecord): numb
   const bt = b.updatedAt ?? b.createdAt ?? 0;
   if (at !== bt) return at - bt;
   return (a.updatedBy ?? "").localeCompare(b.updatedBy ?? "");
+}
+
+const COMPLETE_DATE_PT_BR = /^\d{2}\/\d{2}\/\d{4}$/;
+
+/** Shell do PWA/celular (`mobile.html` e `saidas-mobile.html`). O index do computador não tem essa classe. */
+function isMobileSaidasShell(): boolean {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("saidas-mobile-shell");
+}
+
+/**
+ * Encaixa o snapshot de um único dia sem apagar saídas de outros dias já carregados.
+ * Um dia que sumiu do snapshot desse dia é removido, salvo mutação local recente.
+ */
+function mergeRemoteDayIntoDepartures(
+  prev: DepartureRecord[],
+  day: string,
+  remoteRows: DepartureRecord[],
+  recentTouched: Map<string, number>,
+  recentDeleted: Map<string, number>,
+): DepartureRecord[] {
+  const now = Date.now();
+  const remoteById = new Map(remoteRows.map((r) => [r.id, r]));
+  const mergedDay = new Map<string, DepartureRecord>();
+  for (const remote of remoteRows) mergedDay.set(remote.id, remote);
+
+  for (const local of prev) {
+    if (local.dataSaida !== day) continue;
+    const remote = remoteById.get(local.id);
+    if (!remote) {
+      if ((recentTouched.get(local.id) ?? 0) > now) mergedDay.set(local.id, local);
+      continue;
+    }
+    if (!departureRowsEqual(remote, local)) {
+      const keepLocalByFreshness = compareDepartureFreshness(local, remote) > 0;
+      const recentlyTouched = (recentTouched.get(local.id) ?? 0) > now;
+      const keepLocalByCompletion =
+        recentlyTouched && departureCompletionScore(local) > departureCompletionScore(remote);
+      if (keepLocalByFreshness || keepLocalByCompletion) mergedDay.set(local.id, local);
+    }
+  }
+
+  const keptOtherDays = prev.filter((r) => {
+    if ((recentDeleted.get(r.id) ?? 0) > now) return false;
+    if (r.dataSaida === day) return false;
+    return true;
+  });
+  const keptOtherIds = new Set(keptOtherDays.map((r) => r.id));
+  const dayRows = Array.from(mergedDay.values()).filter(
+    (r) => (recentDeleted.get(r.id) ?? 0) <= now && !keptOtherIds.has(r.id),
+  );
+  return [...dayRows, ...keptOtherDays];
 }
 
 function needsDepartureMetadataMigration(r: DepartureRecord): boolean {
@@ -220,6 +276,8 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
 
   const { firebaseOnlyEnabled } = useSyncPreference();
   const useCloud = isFirebaseConfigured() && firebaseOnlyEnabled;
+  const mobileDayScope = isMobileSaidasShell();
+  const [mobileCloudDay, setMobileCloudDay] = useState(() => (mobileDayScope ? getCurrentDatePtBr() : ""));
   const clientIdRef = useRef<string>(getSyncClientId());
   const writeQueueRef = useRef<Array<() => Promise<void>>>([]);
   const writeQueueProcessingRef = useRef(false);
@@ -321,12 +379,14 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
   }, [useCloud, markInitialLoadComplete]);
 
   useEffect(() => {
-    if (!useCloud) {
-      setCloudDeparturesSync({
-        enabled: false,
-        status: "idle",
-        conflictCountToday: readConflictCountToday(),
-      });
+    if (!useCloud || mobileDayScope) {
+      if (!useCloud) {
+        setCloudDeparturesSync({
+          enabled: false,
+          status: "idle",
+          conflictCountToday: readConflictCountToday(),
+        });
+      }
       return;
     }
 
@@ -448,7 +508,107 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsub?.();
     };
-  }, [useCloud, syncRefreshToken, sweepRecentMutationGuards, enqueueWrite, markInitialLoadComplete]);
+  }, [useCloud, mobileDayScope, syncRefreshToken, sweepRecentMutationGuards, enqueueWrite, markInitialLoadComplete]);
+
+  useEffect(() => {
+    if (!useCloud || !mobileDayScope) return;
+
+    const today = getCurrentDatePtBr();
+    const selected = COMPLETE_DATE_PT_BR.test(mobileCloudDay) ? mobileCloudDay : today;
+    const days = selected === today ? [today] : [today, selected];
+
+    let cancelled = false;
+    const unsubs: Array<() => void> = [];
+    initialRemoteSyncDoneRef.current = false;
+    migrationAttemptedRef.current = false;
+
+    setCloudDeparturesSync((prev) => ({
+      enabled: true,
+      status: prev.status === "live" ? "live" : "connecting",
+      message: prev.status === "live" ? undefined : prev.message,
+      lastSyncAt: prev.lastSyncAt,
+      lastErrorAt: prev.lastErrorAt,
+      conflictCountToday: readConflictCountToday(),
+    }));
+
+    for (const day of days) {
+      unsubs.push(
+        subscribeDepartures(
+          (rows) => {
+            if (cancelled) return;
+            if (Date.now() < suppressRemoteUntilRef.current) return;
+            sweepRecentMutationGuards();
+            let resolvedRows = rows;
+            const firstRemoteSync = !initialRemoteSyncDoneRef.current;
+            setDepartures((prev) => {
+              resolvedRows = mergeRemoteDayIntoDepartures(
+                prev,
+                day,
+                rows,
+                recentTouchedIdsRef.current,
+                recentDeletedIdsRef.current,
+              );
+              return resolvedRows;
+            });
+            if (firstRemoteSync) {
+              initialRemoteSyncDoneRef.current = true;
+              if (!migrationAttemptedRef.current) {
+                migrationAttemptedRef.current = true;
+                const docsToMigrate = rows.filter(needsDepartureMetadataMigration);
+                if (docsToMigrate.length > 0) {
+                  const now = Date.now();
+                  const migrated = docsToMigrate.map((r) => ({
+                    ...r,
+                    version: (r.version ?? 0) > 0 ? (r.version ?? 0) : 1,
+                    updatedAt: (r.updatedAt ?? 0) > 0 ? (r.updatedAt ?? 0) : now,
+                    updatedBy: (r.updatedBy ?? "").trim() || MIGRATION_UPDATED_BY,
+                  }));
+                  enqueueWrite(
+                    () => batchUpsertDepartures(migrated),
+                    { generic: "Falha ao migrar metadados de versão das saídas legadas." },
+                  );
+                }
+              }
+            }
+            markInitialLoadComplete();
+            setCloudDeparturesSync((prev) => ({
+              enabled: true,
+              status: "live",
+              message: undefined,
+              lastSyncAt: Date.now(),
+              lastErrorAt: prev.lastErrorAt,
+              conflictCountToday: readConflictCountToday(),
+            }));
+          },
+          (err) => {
+            console.error("[SOT] Firestore saídas do dia:", err);
+            setCloudDeparturesSync({
+              enabled: true,
+              status: "error",
+              message: err.message || "Erro ao sincronizar com a nuvem.",
+              lastErrorAt: Date.now(),
+              conflictCountToday: readConflictCountToday(),
+            });
+            markInitialLoadComplete();
+          },
+          { dataSaida: day },
+        ),
+      );
+    }
+
+    return () => {
+      cancelled = true;
+      for (const unsub of unsubs) unsub();
+    };
+  }, [
+    useCloud,
+    mobileDayScope,
+    mobileCloudDay,
+    syncRefreshToken,
+    sweepRecentMutationGuards,
+    enqueueWrite,
+    markInitialLoadComplete,
+  ]);
 
   useEffect(() => {
     if (useCloud) {
@@ -460,8 +620,9 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydratedRef.current) return;
+    if (mobileDayScope && useCloud) return;
     void idbSetJson(DEPARTURES_STORAGE_KEY, departures);
-  }, [departures]);
+  }, [departures, mobileDayScope, useCloud]);
 
   /** Notifica outras abas (mesmo navegador) para atualizar a lista em tempo real no modo local. */
   useEffect(() => {
@@ -789,6 +950,13 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
     setSyncRefreshToken((v) => v + 1);
   }, []);
 
+  const setMobileDepartureCloudDay = useCallback((datePtBr: string) => {
+    if (!mobileDayScope) return;
+    const next = datePtBr.trim();
+    if (!COMPLETE_DATE_PT_BR.test(next)) return;
+    setMobileCloudDay(next);
+  }, [mobileDayScope]);
+
   const value = useMemo(
     () => ({
       departures,
@@ -805,6 +973,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cloudDeparturesSync,
       initialLoadComplete,
       forceCloudResync,
+      setMobileDepartureCloudDay,
     }),
     [
       departures,
@@ -821,6 +990,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
       cloudDeparturesSync,
       initialLoadComplete,
       forceCloudResync,
+      setMobileDepartureCloudDay,
     ],
   );
 

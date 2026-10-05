@@ -9,6 +9,7 @@ import {
   onSnapshot,
   query,
   runTransaction,
+  where,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -156,6 +157,7 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
 export function subscribeDepartures(
   onData: (rows: DepartureRecord[]) => void,
   onError: (err: Error) => void,
+  options?: { dataSaida?: string },
 ): Unsubscribe {
   let unsub: Unsubscribe | undefined;
   let cancelled = false;
@@ -163,7 +165,10 @@ export function subscribeDepartures(
     .then(() => {
       if (cancelled) return;
       const db = getFirestore(getFirebaseApp());
-      const q = query(collection(db, COLLECTION));
+      const dataSaida = options?.dataSaida?.trim() ?? "";
+      const q = dataSaida
+        ? query(collection(db, COLLECTION), where("dataSaida", "==", dataSaida))
+        : query(collection(db, COLLECTION));
       unsub = onSnapshot(
         q,
         (snap) => {
