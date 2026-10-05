@@ -21,6 +21,7 @@ import { DepartureOccurrenceLine } from "./departure-occurrence-line";
 import { occurrenceEntriesFromRecords } from "../lib/departureOccurrenceEntries";
 import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
 import { UnlinkedOccurrencesBlock } from "./unlinked-occurrences-block";
+import { DepartureEditLoginModal } from "./departure-edit-login-modal";
 import { KmEditPasswordModal } from "./km-edit-password-modal";
 import {
   MergedDeparturePickRecordModal,
@@ -140,6 +141,8 @@ export function DeparturesDataTable({
     records: DepartureRecord[];
     action: MergedPickAction;
   } | null>(null);
+  const [editLoginOpen, setEditLoginOpen] = useState(false);
+  const [pendingEditGroup, setPendingEditGroup] = useState<{ records: DepartureRecord[] } | null>(null);
   const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
 
   useEffect(() => {
@@ -204,6 +207,18 @@ export function DeparturesDataTable({
     setPickModal({ records: recs, action });
   }
 
+  function requestEdit(group: { records: DepartureRecord[] }) {
+    setPendingEditGroup(group);
+    setEditLoginOpen(true);
+  }
+
+  function handleEditLoginSuccess() {
+    const group = pendingEditGroup;
+    setPendingEditGroup(null);
+    if (!group) return;
+    openActionOrPick(group, "edit");
+  }
+
   const detailRecord = useMemo(
     () => (detailId ? rows.find((r) => r.id === detailId) ?? null : null),
     [rows, detailId],
@@ -241,6 +256,14 @@ export function DeparturesDataTable({
           if (!o) setPendingKmPatch(null);
         }}
         onSuccess={handleKmPasswordSuccess}
+      />
+      <DepartureEditLoginModal
+        open={editLoginOpen}
+        onOpenChange={(o) => {
+          setEditLoginOpen(o);
+          if (!o) setPendingEditGroup(null);
+        }}
+        onSuccess={handleEditLoginSuccess}
       />
       {pickModal ? (
         <MergedDeparturePickRecordModal
@@ -478,7 +501,7 @@ export function DeparturesDataTable({
                         size="icon"
                         className="h-8 w-8 text-slate-500 hover:text-[hsl(var(--primary))]"
                         aria-label="Editar registro no cadastro"
-                        onClick={() => openActionOrPick(group, "edit")}
+                        onClick={() => requestEdit(group)}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
