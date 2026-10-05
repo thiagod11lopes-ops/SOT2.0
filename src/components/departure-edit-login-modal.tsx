@@ -1,13 +1,13 @@
 import { useEffect, useId, useState } from "react";
-import { verifyDepartureEditAccess } from "../lib/departureEditAccess";
-import { sotFormInputClass } from "../lib/sotFormFieldClasses";
+import { DEPARTURE_EDIT_LOGINS, resolveDepartureEditLogin } from "../lib/departureEditAccess";
+import { sotFormInputClass, sotFormSelectClass } from "../lib/sotFormFieldClasses";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
+  onSuccess: (login: string) => void;
 };
 
 export function DepartureEditLoginModal({ open, onOpenChange, onSuccess }: Props) {
@@ -34,14 +34,15 @@ export function DepartureEditLoginModal({ open, onOpenChange, onSuccess }: Props
 
   function handleConfirmar() {
     if (!login.trim() || !senha.trim()) {
-      setErro("Informe o login e a senha.");
+      setErro("Selecione o login e informe a senha.");
       return;
     }
-    if (!verifyDepartureEditAccess(login, senha)) {
+    const resolved = resolveDepartureEditLogin(login, senha);
+    if (!resolved) {
       setErro("Login ou senha incorretos.");
       return;
     }
-    onSuccess();
+    onSuccess(resolved);
     fechar();
   }
 
@@ -63,25 +64,27 @@ export function DepartureEditLoginModal({ open, onOpenChange, onSuccess }: Props
           Editar saída
         </h2>
         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-          Informe o login e a senha para abrir a edição.
+          Selecione o login e informe a senha para abrir a edição.
         </p>
         <label htmlFor={loginId} className="mt-4 block text-sm font-medium text-[hsl(var(--foreground))]">
           Login
         </label>
-        <input
+        <select
           id={loginId}
-          type="text"
-          autoComplete="username"
           value={login}
           onChange={(e) => {
             setLogin(e.target.value);
             setErro(null);
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleConfirmar();
-          }}
-          className={cn(sotFormInputClass, "mt-1.5")}
-        />
+          className={cn(sotFormSelectClass, "mt-1.5")}
+        >
+          <option value="">Selecione…</option>
+          {DEPARTURE_EDIT_LOGINS.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
         <label htmlFor={senhaId} className="mt-4 block text-sm font-medium text-[hsl(var(--foreground))]">
           Senha
         </label>

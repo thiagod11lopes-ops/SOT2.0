@@ -47,6 +47,8 @@ export interface DepartureRecord {
   ocorrencias: string;
   /** Rubrica desenhada associada à ocorrência (PNG data URL); ao lado do texto no PDF. */
   ocorrenciasRubrica: string;
+  /** Login que abriu a edição desta saída (Thiago, Fernando, Pacheco ou Silva). */
+  editadoPorLogin?: string;
 }
 
 const CAMPOS_CADASTRO_SAIDA: readonly Exclude<

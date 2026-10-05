@@ -68,6 +68,7 @@ function departureToDoc(r: DepartureRecord): Record<string, unknown> {
     cancelada: r.cancelada === true,
     ocorrencias: r.ocorrencias ?? "",
     ocorrenciasRubrica: r.ocorrenciasRubrica ?? "",
+    editadoPorLogin: r.editadoPorLogin?.trim() ?? "",
     createdAt: r.createdAt,
   };
 }
@@ -148,6 +149,7 @@ function docToDeparture(d: QueryDocumentSnapshot<DocumentData>): DepartureRecord
     cancelada: data.cancelada === true,
     ocorrencias: String(data.ocorrencias ?? ""),
     ocorrenciasRubrica: String(data.ocorrenciasRubrica ?? ""),
+    editadoPorLogin: String(data.editadoPorLogin ?? "").trim(),
   };
 }
 

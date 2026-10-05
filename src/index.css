@@ -35,6 +35,17 @@
   --sot-rubrica-nome-font-width-ratio: 0.055;
 }
 
+.sot-edit-login-inicial {
+  font-family: "Caveat", "Segoe Script", cursive;
+  font-size: 1.85rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: hsl(var(--foreground));
+  transform: rotate(-8deg);
+  user-select: none;
+}
+
 html[data-appearance="dark"] {
   color-scheme: dark;
   --background: 222 32% 7%;

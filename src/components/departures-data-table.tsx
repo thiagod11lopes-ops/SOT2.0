@@ -8,6 +8,7 @@ import {
 import type { DepartureRecord } from "../types/departure";
 import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
+import { departureEditLoginInitial } from "../lib/departureEditAccess";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
 import { isDepartureKmFieldsEditableByDate } from "../lib/dateFormat";
@@ -143,6 +144,7 @@ export function DeparturesDataTable({
   } | null>(null);
   const [editLoginOpen, setEditLoginOpen] = useState(false);
   const [pendingEditGroup, setPendingEditGroup] = useState<{ records: DepartureRecord[] } | null>(null);
+  const pendingEditLoginRef = useRef<string | null>(null);
   const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
 
   useEffect(() => {
@@ -189,9 +191,13 @@ export function DeparturesDataTable({
       case "ocorrencias":
         setOcorrenciasModalId(record.id);
         break;
-      case "edit":
+      case "edit": {
+        const login = pendingEditLoginRef.current;
+        pendingEditLoginRef.current = null;
+        if (login) updateDeparture(record.id, { editadoPorLogin: login });
         onEdit?.(record.id);
         break;
+      }
       case "trash":
         onTrashClick([record]);
         break;
@@ -212,7 +218,8 @@ export function DeparturesDataTable({
     setEditLoginOpen(true);
   }
 
-  function handleEditLoginSuccess() {
+  function handleEditLoginSuccess(login: string) {
+    pendingEditLoginRef.current = login;
     const group = pendingEditGroup;
     setPendingEditGroup(null);
     if (!group) return;
@@ -269,7 +276,10 @@ export function DeparturesDataTable({
         <MergedDeparturePickRecordModal
           open
           onOpenChange={(o) => {
-            if (!o) setPickModal(null);
+            if (!o) {
+              if (pickModal.action === "edit") pendingEditLoginRef.current = null;
+              setPickModal(null);
+            }
           }}
           records={pickModal.records}
           action={pickModal.action}
@@ -470,6 +480,22 @@ export function DeparturesDataTable({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-0.5">
+                    {(() => {
+                      const marcado = [...group.records]
+                        .filter((r) => (r.editadoPorLogin ?? "").trim())
+                        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
+                      const inicial = departureEditLoginInitial(marcado?.editadoPorLogin);
+                      if (!inicial) return null;
+                      return (
+                        <span
+                          className="sot-edit-login-inicial mr-1 inline-flex h-8 w-7 items-center justify-center"
+                          title={`Editado por ${marcado?.editadoPorLogin}`}
+                          aria-label={`Editado por ${marcado?.editadoPorLogin}`}
+                        >
+                          {inicial}
+                        </span>
+                      );
+                    })()}
                     <Button
                       type="button"
                       variant="ghost"
