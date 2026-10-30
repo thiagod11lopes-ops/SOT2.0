@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { DesktopAccessCountdown } from "./desktop-access-countdown";
 import { HEADER_INFO_CARD_CLASS } from "./header-info-card";
 import { cn } from "../lib/utils";
 
@@ -40,7 +39,6 @@ export function HeaderDateTime() {
       aria-live="polite"
       aria-atomic="true"
     >
-      <DesktopAccessCountdown />
       <time
         dateTime={now.toISOString()}
         className={cn(
