@@ -400,8 +400,17 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
 
     let unsub: (() => void) | undefined;
     let cancelled = false;
+    let releaseTimer: number | undefined;
     initialRemoteSyncDoneRef.current = false;
     migrationAttemptedRef.current = false;
+
+    const releaseAfterFullBar = () => {
+      setDayOpenProgress(100);
+      if (releaseTimer !== undefined) return;
+      releaseTimer = window.setTimeout(() => {
+        if (!cancelled) markInitialLoadComplete();
+      }, 500);
+    };
 
     void (async () => {
       try {
@@ -448,8 +457,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
                 }
               }
             }
-            setDayOpenProgress(100);
-            markInitialLoadComplete();
+            releaseAfterFullBar();
             void idbSetJson(DEPARTURES_STORAGE_KEY, resolvedRows);
             setCloudDeparturesSync((prev) => ({
               enabled: true,
@@ -469,8 +477,7 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
               lastErrorAt: Date.now(),
               conflictCountToday: readConflictCountToday(),
             });
-            setDayOpenProgress(100);
-            markInitialLoadComplete();
+            releaseAfterFullBar();
           },
           { dataSaida: today },
         );
@@ -489,13 +496,13 @@ export function DeparturesProvider({ children }: { children: ReactNode }) {
           lastErrorAt: Date.now(),
           conflictCountToday: readConflictCountToday(),
         });
-        setDayOpenProgress(100);
-        markInitialLoadComplete();
+        releaseAfterFullBar();
       }
     })();
 
     return () => {
       cancelled = true;
+      if (releaseTimer !== undefined) window.clearTimeout(releaseTimer);
       unsub?.();
     };
   }, [useCloud, mobileDayScope, syncRefreshToken, sweepRecentMutationGuards, enqueueWrite, markInitialLoadComplete]);
