@@ -1,3 +1,4 @@
+import { DesktopAccessCountdown } from "./desktop-access-countdown";
 import { HeaderDateTime } from "./header-datetime";
 import { MaterialControleHeaderButton } from "./material-controle-header-button";
 import { HeaderPaoMotorista } from "./header-pao-motorista";
@@ -36,6 +37,7 @@ export function Header({
       className="fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--background))/0.95] backdrop-blur"
     >
       <div className="relative mx-auto flex min-h-[5rem] max-w-[1600px] items-center justify-between gap-3 px-6 py-3 sm:min-h-[5.25rem] sm:gap-4">
+        <DesktopAccessCountdown />
         <div
           className={cn(
             "relative z-10 flex shrink-0 items-center gap-2 transform-gpu transition-[transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",

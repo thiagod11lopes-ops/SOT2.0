@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useAvisos } from "../context/avisos-context";
-import { DesktopAccessCountdown } from "./desktop-access-countdown";
 import { joinMarqueeAvisosGeraisLinhas } from "../lib/buildHomeTickerSegments";
 import { cn } from "../lib/utils";
 
@@ -30,7 +29,6 @@ export function HomeNewsTicker() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[150] w-full min-w-0 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
-      <DesktopAccessCountdown aboveTicker />
       <div className="pointer-events-auto w-full min-w-0 border-t border-slate-600/80">
         <div
           className={cn(
