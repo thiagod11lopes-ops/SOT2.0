@@ -20,14 +20,17 @@ export function DesktopAccessCountdown() {
   const remainingMs = Math.max(0, idleDeadlineRef.current - now);
 
   return (
-    <div
-      className="pointer-events-none relative z-20 flex max-w-[min(42vw,16rem)] shrink-0 items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))]/95 px-3 py-2 shadow-lg backdrop-blur-sm"
-      aria-live="polite"
-    >
-      <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">{session.nomeGuerra}</p>
-      <p className="shrink-0 font-mono text-sm tabular-nums text-[hsl(var(--muted-foreground))]">
-        {formatCountdown(remainingMs)}
-      </p>
-    </div>
+    <>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">{session.nomeGuerra}</span>
+        <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-[hsl(var(--primary))]">
+          {formatCountdown(remainingMs)}
+        </span>
+      </span>
+      <span
+        className="hidden h-6 w-px shrink-0 bg-gradient-to-b from-transparent via-[hsl(var(--primary))]/35 to-transparent sm:block"
+        aria-hidden
+      />
+    </>
   );
 }
