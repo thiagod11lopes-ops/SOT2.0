@@ -136,7 +136,7 @@ export function SotDesktopAccessGate() {
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 px-4">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 px-4 pb-28">
       <form
         onSubmit={onSubmit}
         className="w-full max-w-md rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-2xl"

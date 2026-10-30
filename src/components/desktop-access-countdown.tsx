@@ -23,13 +23,15 @@ export function DesktopAccessCountdown({ aboveTicker }: { aboveTicker?: boolean 
   return (
     <div
       className={cn(
-        "pointer-events-none fixed right-4 z-[130] max-w-[min(calc(100vw-2rem),16rem)] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))]/95 px-3 py-2 text-right shadow-lg backdrop-blur-sm",
-        aboveTicker ? "bottom-32 sm:bottom-36" : "bottom-12",
+        "pointer-events-none flex max-w-[min(calc(100vw-2rem),22rem)] items-center justify-end gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))]/95 px-3 py-2 shadow-lg backdrop-blur-sm",
+        aboveTicker ? "absolute bottom-full right-4 z-[1] mb-2" : "fixed bottom-12 right-4 z-[130]",
       )}
       aria-live="polite"
     >
       <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">{session.nomeGuerra}</p>
-      <p className="font-mono text-sm tabular-nums text-[hsl(var(--muted-foreground))]">{formatCountdown(remainingMs)}</p>
+      <p className="shrink-0 font-mono text-sm tabular-nums text-[hsl(var(--muted-foreground))]">
+        {formatCountdown(remainingMs)}
+      </p>
     </div>
   );
 }

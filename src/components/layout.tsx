@@ -109,7 +109,7 @@ export function Layout({
       </main>
       <DesktopRadarOverlay />
       <DesktopBrasaoWatermark />
-      <DesktopAccessCountdown aboveTicker={homeTickerActive} />
+      {homeTickerActive ? null : <DesktopAccessCountdown />}
       <DeveloperCreditBadge />
     </div>
   );
