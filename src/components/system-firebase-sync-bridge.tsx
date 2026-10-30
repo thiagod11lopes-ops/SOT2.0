@@ -14,7 +14,7 @@ const SYNC_DOMAINS = [
 
 /** Calcula progresso de bootstrap Firebase e liga o overlay de sincronização do sistema. */
 export function SystemFirebaseSyncBridge() {
-  const { cloudDeparturesSync, initialLoadComplete: departuresReady } = useDepartures();
+  const { cloudDeparturesSync, initialLoadComplete: departuresReady, dayOpenProgress } = useDepartures();
   const { initialLoadComplete: catalogReady } = useCatalogItems();
   const { initialLoadComplete: occurrencesReady } = useUnlinkedOccurrences();
   const { firebaseOnlyEnabled } = useSyncPreference();
@@ -32,6 +32,15 @@ export function SystemFirebaseSyncBridge() {
   );
 
   const { progress, label, active } = useMemo(() => {
+    if (dayOpenProgress !== null) {
+      if (departuresReady) return { progress: 100, label: "Sincronizado", active: false };
+      return {
+        progress: dayOpenProgress,
+        label: "A carregar saídas de hoje…",
+        active: true,
+      };
+    }
+
     const readyCount = SYNC_DOMAINS.filter((d) => domainReady[d.key]).length;
     const bootstrapProgress = Math.round((readyCount / SYNC_DOMAINS.length) * 100);
     const nextPending = SYNC_DOMAINS.find((d) => !domainReady[d.key]);
@@ -55,7 +64,7 @@ export function SystemFirebaseSyncBridge() {
       label: nextPending ? `A carregar ${nextPending.label.toLowerCase()}…` : "A sincronizar…",
       active: true,
     };
-  }, [cloudDeparturesSync.status, domainReady, useCloud]);
+  }, [cloudDeparturesSync.status, dayOpenProgress, departuresReady, domainReady, useCloud]);
 
   useEffect(() => {
     setSystemSync({ active, progress, label });
