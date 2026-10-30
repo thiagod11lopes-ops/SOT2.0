@@ -11,6 +11,7 @@ import {
 } from "../context/catalog-items-context";
 import { useAppTab } from "../context/app-tab-context";
 import { useDepartures } from "../context/departures-context";
+import { useSotDesktopAccess } from "../context/sot-desktop-access-context";
 import { useSyncPreference } from "../context/sync-preference-context";
 import {
   CUSTOM_LOCATIONS_STORAGE_KEY,
@@ -316,6 +317,7 @@ export function RegisterDeparturePage() {
     clearPendingEditDeparture,
     forceCloudResync,
   } = useDepartures();
+  const { nomeGuerraAtual } = useSotDesktopAccess();
   const {
     setActiveTab: setMainAppTab,
     setPendingDeparturesFilterDatePtBr,
@@ -1085,6 +1087,7 @@ export function RegisterDeparturePage() {
 
   function buildDeparturePayload(): Omit<DepartureRecord, "id" | "createdAt"> {
     const kmEditable = isDepartureKmFieldsEditableByDate(departureDate);
+    const marcaEditor = nomeGuerraAtual.trim();
     const base: Omit<DepartureRecord, "id" | "createdAt"> = {
       tipo: departureType as DepartureRecord["tipo"],
       dataPedido: requestDate,
@@ -1112,6 +1115,7 @@ export function RegisterDeparturePage() {
       cancelada: false,
       ocorrencias: "",
       ocorrenciasRubrica: "",
+      editadoPorLogin: marcaEditor,
     };
     if (editingId) {
       const prev = departures.find((d) => d.id === editingId);
@@ -1122,6 +1126,7 @@ export function RegisterDeparturePage() {
           cancelada: prev.cancelada,
           ocorrencias: prev.ocorrencias,
           ocorrenciasRubrica: prev.ocorrenciasRubrica,
+          editadoPorLogin: marcaEditor || prev.editadoPorLogin || "",
         };
       }
     }
@@ -1270,6 +1275,7 @@ export function RegisterDeparturePage() {
       cancelada: false,
       ocorrencias: "",
       ocorrenciasRubrica: "",
+      editadoPorLogin: nomeGuerraAtual.trim(),
     };
 
     for (const d of dates) {
@@ -1349,6 +1355,7 @@ export function RegisterDeparturePage() {
       cancelada: false,
       ocorrencias: "",
       ocorrenciasRubrica: "",
+      editadoPorLogin: nomeGuerraAtual.trim(),
     };
 
     for (const d of dates) {

@@ -8,6 +8,7 @@ import {
 import type { DepartureRecord } from "../types/departure";
 import type { PdfOccurrenceEntry } from "../types/pdfOccurrence";
 import { groupDeparturesForListDisplay, listRowFromRecord } from "../types/departure";
+import { useSotDesktopAccess } from "../context/sot-desktop-access-context";
 import { departureEditLoginInitial } from "../lib/departureEditAccess";
 import { formatKmThousandsPtBr } from "../lib/kmInput";
 import { formatKmSaidaPrefillFromKmAtualViatura } from "../lib/oilMaintenance";
@@ -22,7 +23,6 @@ import { DepartureOccurrenceLine } from "./departure-occurrence-line";
 import { occurrenceEntriesFromRecords } from "../lib/departureOccurrenceEntries";
 import { DepartureOcorrenciasModal } from "./departure-ocorrencias-modal";
 import { UnlinkedOccurrencesBlock } from "./unlinked-occurrences-block";
-import { DepartureEditLoginModal } from "./departure-edit-login-modal";
 import { KmEditPasswordModal } from "./km-edit-password-modal";
 import {
   MergedDeparturePickRecordModal,
@@ -130,6 +130,7 @@ export function DeparturesDataTable({
   unlinkedOccurrences = [],
 }: DeparturesDataTableProps) {
   const { departures, updateDeparture } = useDepartures();
+  const { nomeGuerraAtual } = useSotDesktopAccess();
   const [kmUnlocked, setKmUnlocked] = useState(() => isKmEditSessionUnlocked());
   const [kmPasswordOpen, setKmPasswordOpen] = useState(false);
   const [pendingKmPatch, setPendingKmPatch] = useState<{
@@ -142,8 +143,6 @@ export function DeparturesDataTable({
     records: DepartureRecord[];
     action: MergedPickAction;
   } | null>(null);
-  const [editLoginOpen, setEditLoginOpen] = useState(false);
-  const [pendingEditGroup, setPendingEditGroup] = useState<{ records: DepartureRecord[] } | null>(null);
   const pendingEditLoginRef = useRef<string | null>(null);
   const mergedGroups = useMemo(() => groupDeparturesForListDisplay(rows), [rows]);
 
@@ -214,15 +213,7 @@ export function DeparturesDataTable({
   }
 
   function requestEdit(group: { records: DepartureRecord[] }) {
-    setPendingEditGroup(group);
-    setEditLoginOpen(true);
-  }
-
-  function handleEditLoginSuccess(login: string) {
-    pendingEditLoginRef.current = login;
-    const group = pendingEditGroup;
-    setPendingEditGroup(null);
-    if (!group) return;
+    pendingEditLoginRef.current = nomeGuerraAtual.trim() || null;
     openActionOrPick(group, "edit");
   }
 
@@ -263,14 +254,6 @@ export function DeparturesDataTable({
           if (!o) setPendingKmPatch(null);
         }}
         onSuccess={handleKmPasswordSuccess}
-      />
-      <DepartureEditLoginModal
-        open={editLoginOpen}
-        onOpenChange={(o) => {
-          setEditLoginOpen(o);
-          if (!o) setPendingEditGroup(null);
-        }}
-        onSuccess={handleEditLoginSuccess}
       />
       {pickModal ? (
         <MergedDeparturePickRecordModal
@@ -489,8 +472,8 @@ export function DeparturesDataTable({
                       return (
                         <span
                           className="sot-edit-login-inicial mr-1 inline-flex h-8 w-7 items-center justify-center"
-                          title={`Editado por ${marcado?.editadoPorLogin}`}
-                          aria-label={`Editado por ${marcado?.editadoPorLogin}`}
+                          title={`Alterado por ${marcado?.editadoPorLogin}`}
+                          aria-label={`Alterado por ${marcado?.editadoPorLogin}`}
                         >
                           {inicial}
                         </span>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useDeparturesReportEmail } from "../context/departures-report-email-context";
 import { useDepartures } from "../context/departures-context";
 import { useSyncPreference } from "../context/sync-preference-context";
+import { useSotDesktopAccess } from "../context/sot-desktop-access-context";
 import { useCatalogItems, type CatalogItemsState } from "../context/catalog-items-context";
 import { useDetalheServico } from "../context/detalhe-servico-context";
 import { ensureFirebaseAuth } from "../lib/firebase/auth";
@@ -75,6 +76,7 @@ import { sotFormInputClass } from "../lib/sotFormFieldClasses";
 import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
 import { cn } from "../lib/utils";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
+import { SettingsGestorSection } from "./settings-gestor-section";
 import { SettingsVistoriaClearCalendarModal } from "./settings-vistoria-clear-calendar-modal";
 import { DesktopDriverLocationsMapHeaderButton } from "./desktop-driver-locations-map";
 import { Button } from "./ui/button";
@@ -306,6 +308,7 @@ export function SettingsPage() {
   const { items } = useCatalogItems();
   const { firebaseOnlyEnabled, setFirebaseOnlyEnabled } = useSyncPreference();
   const { email: reportEmailStored, setEmail: setReportEmailStored } = useDeparturesReportEmail();
+  const { isGestor } = useSotDesktopAccess();
   const [reportEmailDest, setReportEmailDest] = useState(reportEmailStored);
   useEffect(() => {
     setReportEmailDest(reportEmailStored);
@@ -333,6 +336,14 @@ export function SettingsPage() {
   const [kmSenhaNova, setKmSenhaNova] = useState("");
   const [kmSenhaConfirm, setKmSenhaConfirm] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string>(SETTINGS_SECTIONS[0].id);
+  const settingsSections = isGestor
+    ? [{ id: "settings-gestor", label: "Gestor" }, ...SETTINGS_SECTIONS]
+    : SETTINGS_SECTIONS;
+  useEffect(() => {
+    if (!isGestor && activeSectionId === "settings-gestor") {
+      setActiveSectionId(SETTINGS_SECTIONS[0].id);
+    }
+  }, [isGestor, activeSectionId]);
   const [alarmesConfig, setAlarmesConfig] = useState<AlarmesConfig>(() => loadAlarmesConfig());
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() => {
     if (!isNotificationSupported()) return "unsupported";
@@ -1005,7 +1016,7 @@ export function SettingsPage() {
                 Nesta página
               </p>
               <ul className="flex flex-wrap gap-1.5 lg:flex-col lg:gap-0.5">
-                {SETTINGS_SECTIONS.map(({ id, label }) => {
+                {settingsSections.map(({ id, label }) => {
                   const active = activeSectionId === id;
                   return (
                     <li key={id} className="lg:w-full">
@@ -1029,6 +1040,10 @@ export function SettingsPage() {
             </nav>
 
             <div className="min-h-[min(28rem,70vh)] min-w-0 flex-1 p-4 sm:p-6">
+              {activeSectionId === "settings-gestor" && isGestor ? (
+                <SettingsGestorSection panelClass={SETTINGS_PANEL_CLASS} />
+              ) : null}
+
               {activeSectionId === "settings-aparencia" ? (
                 <SettingsAppearanceSection panelClass={SETTINGS_PANEL_CLASS} />
               ) : null}

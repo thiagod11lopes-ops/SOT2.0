@@ -46,6 +46,8 @@ export const SOT_STATE_DOC = {
   siadDriverRequest: "siadDriverRequest",
   /** Controle de material por planilhas (localização / estoque). */
   materialControle: "materialControle",
+  /** E-mails autorizados a entrar no SOT do computador. Não é usado pelo aplicativo mobile. */
+  acessoSistema: "acessoSistema",
 } as const;
 
 export type SotStateDocId = (typeof SOT_STATE_DOC)[keyof typeof SOT_STATE_DOC];

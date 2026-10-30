@@ -32,6 +32,9 @@ import {
   DesktopDriverLocationsMapProvider,
 } from "./components/desktop-driver-locations-map";
 import { Button } from "./components/ui/button";
+import { SotDesktopAccessGate } from "./components/sot-desktop-access-gate";
+import { SotDesktopAccessProvider } from "./context/sot-desktop-access-context";
+import { isFirebaseConfigured } from "./lib/firebase/config";
 
 function useLocationHash() {
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
@@ -343,12 +346,15 @@ function App() {
 
   const showSiadDriverRequestModal = !isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute;
 
+  const desktopMain = !isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute;
+
   return (
-    <>
-      <DesktopDriverLocationsMapProvider enabled={!isMobileRoute && !isSiadSaidaRoute && !isMaterialControleRoute}>
+    <SotDesktopAccessProvider enabled={desktopMain && isFirebaseConfigured()}>
+      <DesktopDriverLocationsMapProvider enabled={desktopMain}>
         {appContent}
       </DesktopDriverLocationsMapProvider>
       {showSiadDriverRequestModal ? <SiadDriverRequestAlertModal /> : null}
+      {desktopMain && isFirebaseConfigured() && !shouldRequireDailyBackup ? <SotDesktopAccessGate /> : null}
       {shouldRequireDailyBackup ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
@@ -365,7 +371,7 @@ function App() {
           </div>
         </div>
       ) : null}
-    </>
+    </SotDesktopAccessProvider>
   );
 }
 
