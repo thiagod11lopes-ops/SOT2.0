@@ -20,10 +20,9 @@ import {
   emptyAcessoSistemaDoc,
   isPlausibleEmail,
   clearDesktopAccessSession,
-  loadDesktopAccessSession,
   normalizeAccessEmail,
   normalizeAcessoSistemaDoc,
-  saveDesktopAccessSession,
+  rememberDesktopEmail,
   suggestDesktopEmails,
   type AcessoSistemaDoc,
   type DesktopAccessSession,
@@ -36,7 +35,7 @@ type SotDesktopAccessContextValue = {
   loadError: string;
   doc: AcessoSistemaDoc;
   session: DesktopAccessSession | null;
-  locked: boolean;
+  idleDeadlineRef: { current: number };
   isGestor: boolean;
   nomeGuerraAtual: string;
   sugestoes: (typed: string) => string[];
@@ -76,12 +75,14 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
   const [doc, setDoc] = useState<AcessoSistemaDoc>(emptyAcessoSistemaDoc);
   const [ready, setReady] = useState(!enabled || !isFirebaseConfigured());
   const [loadError, setLoadError] = useState("");
-  const [session, setSession] = useState<DesktopAccessSession | null>(() =>
-    enabled ? loadDesktopAccessSession() : null,
-  );
-  const [locked, setLocked] = useState(false);
+  const [session, setSession] = useState<DesktopAccessSession | null>(null);
+  const idleDeadlineRef = useRef(0);
   const docRef = useRef(doc);
   docRef.current = doc;
+
+  useEffect(() => {
+    clearDesktopAccessSession();
+  }, []);
 
   useEffect(() => {
     if (!enabled || !isFirebaseConfigured()) {
@@ -101,13 +102,10 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
           if (!pessoa) {
             if (!next.gestorEmail) return current;
             clearDesktopAccessSession();
-            setLocked(false);
             return null;
           }
           if (pessoa.nomeGuerra === current.nomeGuerra) return current;
-          const updated = { email: current.email, nomeGuerra: pessoa.nomeGuerra };
-          saveDesktopAccessSession(updated);
-          return updated;
+          return { email: current.email, nomeGuerra: pessoa.nomeGuerra };
         });
       },
       (err) => {
@@ -118,19 +116,34 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled || !session || locked) return;
-    let timer = window.setTimeout(() => setLocked(true), IDLE_MS);
+    if (!enabled || !session) return;
+    idleDeadlineRef.current = Date.now() + IDLE_MS;
+    let ended = false;
+    const tick = window.setInterval(() => {
+      if (Date.now() < idleDeadlineRef.current || ended) return;
+      ended = true;
+      setSession(null);
+    }, 250);
     const bump = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setLocked(true), IDLE_MS);
+      if (ended) return;
+      idleDeadlineRef.current = Date.now() + IDLE_MS;
     };
-    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "scroll", "touchstart"];
+    let lastMove = 0;
+    const onMove = () => {
+      const now = Date.now();
+      if (now - lastMove < 400) return;
+      lastMove = now;
+      bump();
+    };
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "scroll", "touchstart", "wheel"];
     for (const eventName of events) window.addEventListener(eventName, bump, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
     return () => {
-      window.clearTimeout(timer);
+      window.clearInterval(tick);
       for (const eventName of events) window.removeEventListener(eventName, bump);
+      window.removeEventListener("pointermove", onMove);
     };
-  }, [enabled, session, locked]);
+  }, [enabled, session]);
 
   const persist = useCallback(async (next: AcessoSistemaDoc) => {
     await setSotStateDoc(SOT_STATE_DOC.acessoSistema, next);
@@ -139,9 +152,9 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
 
   const openSession = useCallback((email: string, nomeGuerra: string) => {
     const next = { email: normalizeAccessEmail(email), nomeGuerra: nomeGuerra.trim() };
-    saveDesktopAccessSession(next);
+    rememberDesktopEmail(next.email);
+    idleDeadlineRef.current = Date.now() + IDLE_MS;
     setSession(next);
-    setLocked(false);
   }, []);
 
   const registrarGestor = useCallback(
@@ -252,9 +265,9 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
       loadError,
       doc,
       session,
-      locked,
+      idleDeadlineRef,
       isGestor: Boolean(email && doc.gestorEmail && email === doc.gestorEmail),
-      nomeGuerraAtual: session && !locked ? session.nomeGuerra : "",
+      nomeGuerraAtual: session?.nomeGuerra ?? "",
       sugestoes,
       registrarGestor,
       cadastrarSenha,
@@ -268,7 +281,7 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
     loadError,
     doc,
     session,
-    locked,
+    idleDeadlineRef,
     sugestoes,
     registrarGestor,
     cadastrarSenha,

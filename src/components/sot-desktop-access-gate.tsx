@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSotDesktopAccess } from "../context/sot-desktop-access-context";
 import { isPlausibleEmail, normalizeAccessEmail } from "../lib/sotDesktopAccess";
 import { Button } from "./ui/button";
@@ -22,12 +22,21 @@ export function SotDesktopAccessGate() {
     [access.doc.pessoas, email],
   );
   const sugestoes = access.sugestoes(email);
+  const tinhaSessao = useRef(false);
   useEffect(() => {
-    if (access.locked && access.session?.email) setEmail(access.session.email);
-  }, [access.locked, access.session?.email]);
+    if (access.session) {
+      tinhaSessao.current = true;
+      return;
+    }
+    if (!tinhaSessao.current) return;
+    tinhaSessao.current = false;
+    setEmail("");
+    setSenha("");
+    setConfirma("");
+  }, [access.session]);
   const primeiroAcesso = !access.doc.gestorEmail;
-  const cadastrandoSenha = Boolean(pessoa && !pessoa.senhaCriada && !access.locked);
-  const pedindoSenha = access.locked || Boolean(pessoa?.senhaCriada);
+  const cadastrandoSenha = Boolean(pessoa && !pessoa.senhaCriada);
+  const pedindoSenha = Boolean(pessoa?.senhaCriada);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -103,7 +112,7 @@ export function SotDesktopAccessGate() {
     }
   }
 
-  if (access.session && !access.locked) return null;
+  if (access.session) return null;
   if (!access.ready) {
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 px-4">
@@ -133,16 +142,14 @@ export function SotDesktopAccessGate() {
         className="w-full max-w-md rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-2xl"
       >
         <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">
-          {access.locked ? "Sessão bloqueada" : primeiroAcesso ? "Cadastrar gestor" : "Acesso ao sistema"}
+          {primeiroAcesso ? "Cadastrar gestor" : "Acesso ao sistema"}
         </h2>
         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-          {access.locked
-            ? "O sistema ficou ocioso por mais de 10 minutos. Digite a senha para continuar. O e-mail permanece salvo."
-            : primeiroAcesso
-              ? "Ainda não há senha cadastrada. O primeiro e-mail criado será o gestor de todo o sistema."
-              : cadastrandoSenha
-                ? `E-mail autorizado. Cadastre a senha de ${pessoa?.nomeGuerra}. A primeira letra do nome de guerra identifica as alterações.`
-                : "Digite o e-mail. Depois de 3 caracteres, os e-mails já usados aparecem para completar."}
+          {primeiroAcesso
+            ? "Ainda não há senha cadastrada. O primeiro e-mail criado será o gestor de todo o sistema."
+            : cadastrandoSenha
+              ? `E-mail autorizado. Cadastre a senha de ${pessoa?.nomeGuerra}. A primeira letra do nome de guerra identifica as alterações.`
+              : "Digite o e-mail e a senha. Depois de 3 caracteres, os e-mails já usados aparecem para completar."}
         </p>
         {access.loadError ? <p className="mt-3 text-sm text-red-600">{access.loadError}</p> : null}
 

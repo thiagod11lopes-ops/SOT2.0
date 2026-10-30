@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { DesktopBrasaoWatermark } from "./desktop-brasao-watermark";
 import { DesktopRadarOverlay } from "./desktop-radar-overlay";
+import { DesktopAccessCountdown } from "./desktop-access-countdown";
 import { DeveloperCreditBadge } from "./developer-credit-badge";
 import { Header } from "./header";
 import { HomeViewportScale } from "./home-viewport-scale";
@@ -108,6 +109,7 @@ export function Layout({
       </main>
       <DesktopRadarOverlay />
       <DesktopBrasaoWatermark />
+      <DesktopAccessCountdown aboveTicker={homeTickerActive} />
       <DeveloperCreditBadge />
     </div>
   );
