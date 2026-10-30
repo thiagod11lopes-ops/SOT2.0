@@ -15,6 +15,7 @@ import {
   signInDesktopAccess,
 } from "../lib/firebase/sotDesktopAccessAuth";
 import { setSotStateDoc, SOT_STATE_DOC, subscribeSotStateDoc } from "../lib/firebase/sotStateFirestore";
+import { useMobileLoadingOverlay } from "../saidas-mobile/mobile-loading-context";
 import {
   accessAuthErrorMessage,
   emptyAcessoSistemaDoc,
@@ -82,7 +83,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
   const [loadError, setLoadError] = useState("");
   const [session, setSession] = useState<DesktopAccessSession | null>(null);
   const [loginPrompt, setLoginPrompt] = useState<LoginPrompt>("required");
-  const [awaitingActivity, setAwaitingActivity] = useState(false);
+  const [awaitingActivity, setAwaitingActivity] = useState(true);
+  const { overlayActive } = useMobileLoadingOverlay();
   const idleDeadlineRef = useRef(0);
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -109,7 +111,7 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
           if (!pessoa) {
             if (!next.gestorEmail) return current;
             clearDesktopAccessSession();
-            setAwaitingActivity(false);
+            setAwaitingActivity(true);
             setLoginPrompt("required");
             return null;
           }
@@ -176,10 +178,10 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
   }, [enabled, awaitingActivity, loginPrompt, session]);
 
   useEffect(() => {
-    if (loginPrompt !== "idle") return;
+    if (!enabled || !ready || session || !loginPrompt || overlayActive) return;
     const timer = window.setTimeout(() => setLoginPrompt(null), PROMPT_MS);
     return () => window.clearTimeout(timer);
-  }, [loginPrompt]);
+  }, [enabled, ready, session, loginPrompt, overlayActive]);
 
   const persist = useCallback(async (next: AcessoSistemaDoc) => {
     await setSotStateDoc(SOT_STATE_DOC.acessoSistema, next);

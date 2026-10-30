@@ -148,13 +148,13 @@ export function SotDesktopAccessGate() {
         <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">
           {primeiroAcesso ? "Cadastrar gestor" : "Acesso ao sistema"}
         </h2>
-        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-          {primeiroAcesso
-            ? "Ainda não há senha cadastrada. O primeiro e-mail criado será o gestor de todo o sistema."
-            : cadastrandoSenha
-              ? `E-mail autorizado. Cadastre a senha de ${pessoa?.nomeGuerra}. A primeira letra do nome de guerra identifica as alterações.`
-              : "Digite o e-mail e a senha. Depois de 3 caracteres, os e-mails já usados aparecem para completar."}
-        </p>
+        {primeiroAcesso || cadastrandoSenha ? (
+          <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+            {primeiroAcesso
+              ? "Ainda não há senha cadastrada. O primeiro e-mail criado será o gestor de todo o sistema."
+              : `E-mail autorizado. Cadastre a senha de ${pessoa?.nomeGuerra}. A primeira letra do nome de guerra identifica as alterações.`}
+          </p>
+        ) : null}
         {access.loadError ? <p className="mt-3 text-sm text-red-600">{access.loadError}</p> : null}
 
         <label className="mt-4 block text-sm font-medium text-[hsl(var(--foreground))]" htmlFor="sot-access-email">

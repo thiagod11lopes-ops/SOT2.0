@@ -33,7 +33,7 @@ import {
 } from "./components/desktop-driver-locations-map";
 import { Button } from "./components/ui/button";
 import { SotDesktopAccessGate } from "./components/sot-desktop-access-gate";
-import { SotDesktopAccessProvider } from "./context/sot-desktop-access-context";
+import { SotDesktopAccessProvider, useSotDesktopAccess } from "./context/sot-desktop-access-context";
 import { isFirebaseConfigured } from "./lib/firebase/config";
 
 function useLocationHash() {
@@ -103,6 +103,35 @@ function clearLegacyWhatsAppVistoriaStorage(): void {
   } catch {
     /* ignore */
   }
+}
+
+function DailyBackupAfterAccess({
+  required,
+  busy,
+  onBackup,
+}: {
+  required: boolean;
+  busy: boolean;
+  onBackup: () => void;
+}) {
+  const access = useSotDesktopAccess();
+  if (!required || !access.session) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
+      <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
+        <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">Backup diário obrigatório</h2>
+        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+          Sistema em modo online com Firebase. Antes de continuar, é obrigatório gerar um backup geral com todos os
+          dados preenchidos no sistema.
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Button type="button" onClick={onBackup} disabled={busy}>
+            {busy ? "Gerando backup..." : "Fazer Backup"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -354,23 +383,12 @@ function App() {
         {appContent}
       </DesktopDriverLocationsMapProvider>
       {showSiadDriverRequestModal ? <SiadDriverRequestAlertModal /> : null}
-      {desktopMain && isFirebaseConfigured() && !shouldRequireDailyBackup ? <SotDesktopAccessGate /> : null}
-      {shouldRequireDailyBackup ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-lg rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-2xl">
-            <h2 className="text-lg font-semibold text-[hsl(var(--foreground))]">Backup diário obrigatório</h2>
-            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-              Sistema em modo online com Firebase. Antes de continuar, é obrigatório gerar um backup geral com todos os
-              dados preenchidos no sistema.
-            </p>
-            <div className="mt-4 flex justify-end">
-              <Button type="button" onClick={handleDailyBackupNow} disabled={backupBusy}>
-                {backupBusy ? "Gerando backup..." : "Fazer Backup"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {desktopMain && isFirebaseConfigured() ? <SotDesktopAccessGate /> : null}
+      <DailyBackupAfterAccess
+        required={shouldRequireDailyBackup}
+        busy={backupBusy}
+        onBackup={handleDailyBackupNow}
+      />
     </SotDesktopAccessProvider>
   );
 }
