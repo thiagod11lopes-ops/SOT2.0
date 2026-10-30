@@ -29,12 +29,17 @@ import {
 } from "../lib/sotDesktopAccess";
 
 const IDLE_MS = 10 * 60 * 1000;
+const PROMPT_MS = 30 * 1000;
+
+type LoginPrompt = "required" | "idle" | null;
 
 type SotDesktopAccessContextValue = {
   ready: boolean;
   loadError: string;
   doc: AcessoSistemaDoc;
   session: DesktopAccessSession | null;
+  loginPrompt: LoginPrompt;
+  awaitingActivity: boolean;
   idleDeadlineRef: { current: number };
   isGestor: boolean;
   nomeGuerraAtual: string;
@@ -76,6 +81,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
   const [ready, setReady] = useState(!enabled || !isFirebaseConfigured());
   const [loadError, setLoadError] = useState("");
   const [session, setSession] = useState<DesktopAccessSession | null>(null);
+  const [loginPrompt, setLoginPrompt] = useState<LoginPrompt>("required");
+  const [awaitingActivity, setAwaitingActivity] = useState(false);
   const idleDeadlineRef = useRef(0);
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -102,6 +109,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
           if (!pessoa) {
             if (!next.gestorEmail) return current;
             clearDesktopAccessSession();
+            setAwaitingActivity(false);
+            setLoginPrompt("required");
             return null;
           }
           if (pessoa.nomeGuerra === current.nomeGuerra) return current;
@@ -123,6 +132,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
       if (Date.now() < idleDeadlineRef.current || ended) return;
       ended = true;
       setSession(null);
+      setAwaitingActivity(true);
+      setLoginPrompt(null);
     }, 250);
     const bump = () => {
       if (ended) return;
@@ -145,6 +156,31 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
     };
   }, [enabled, session]);
 
+  useEffect(() => {
+    if (!enabled || !awaitingActivity || loginPrompt !== null || session) return;
+    const open = () => setLoginPrompt("idle");
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "scroll", "touchstart", "wheel"];
+    for (const eventName of events) window.addEventListener(eventName, open, { passive: true });
+    let lastMove = 0;
+    const onMove = () => {
+      const now = Date.now();
+      if (now - lastMove < 400) return;
+      lastMove = now;
+      open();
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      for (const eventName of events) window.removeEventListener(eventName, open);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, [enabled, awaitingActivity, loginPrompt, session]);
+
+  useEffect(() => {
+    if (loginPrompt !== "idle") return;
+    const timer = window.setTimeout(() => setLoginPrompt(null), PROMPT_MS);
+    return () => window.clearTimeout(timer);
+  }, [loginPrompt]);
+
   const persist = useCallback(async (next: AcessoSistemaDoc) => {
     await setSotStateDoc(SOT_STATE_DOC.acessoSistema, next);
     setDoc(next);
@@ -154,6 +190,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
     const next = { email: normalizeAccessEmail(email), nomeGuerra: nomeGuerra.trim() };
     rememberDesktopEmail(next.email);
     idleDeadlineRef.current = Date.now() + IDLE_MS;
+    setAwaitingActivity(false);
+    setLoginPrompt(null);
     setSession(next);
   }, []);
 
@@ -265,6 +303,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
       loadError,
       doc,
       session,
+      loginPrompt,
+      awaitingActivity,
       idleDeadlineRef,
       isGestor: Boolean(email && doc.gestorEmail && email === doc.gestorEmail),
       nomeGuerraAtual: session?.nomeGuerra ?? "",
@@ -281,6 +321,8 @@ export function SotDesktopAccessProvider({ enabled, children }: { enabled: boole
     loadError,
     doc,
     session,
+    loginPrompt,
+    awaitingActivity,
     idleDeadlineRef,
     sugestoes,
     registrarGestor,

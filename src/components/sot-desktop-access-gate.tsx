@@ -113,6 +113,9 @@ export function SotDesktopAccessGate() {
   }
 
   if (access.session) return null;
+  if (access.awaitingActivity && access.loginPrompt === null) {
+    return <div className="fixed inset-0 z-[108]" aria-hidden />;
+  }
   if (!access.ready) {
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 px-4">
@@ -134,6 +137,7 @@ export function SotDesktopAccessGate() {
       </div>
     );
   }
+  if (access.loginPrompt === null) return null;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 px-4 pb-28">
