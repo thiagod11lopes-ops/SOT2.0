@@ -2020,73 +2020,164 @@ export function NavigationFullScreenModal({
         )}
       </div>
 
-      {/* Barra superior — DUAS variantes:
-          - Modo preview (`!navigating`): destino + cartão dist/tempo/chegada.
-          - Modo navegação activa: cartão da PRÓXIMA MANOBRA (seta + texto +
-            distância até à manobra), estilo Google Maps. */}
-      {navigating && nextManeuver ? (
-        <div
-          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
-          style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-        >
-          {rerouting ? (
-            <div className="pointer-events-auto mb-1 self-start rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-md">
-              A recalcular rota…
-            </div>
-          ) : null}
-          <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-lg backdrop-blur">
-            {/* Seta da manobra. */}
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-slate-900">
-              <svg
-                viewBox="0 0 24 24"
-                width="36"
-                height="36"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.25"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d={maneuverArrowPath(nextManeuver.step)} />
+      {/* Navegação activa — layout estilo Google Maps:
+          card verde no topo + FABs à direita + velocímetro em baixo à esquerda. */}
+      {navigating ? (
+        <>
+          <div
+            className="pointer-events-none absolute left-0 right-0 top-0 z-20 px-3"
+            style={{ paddingTop: "max(0.65rem, env(safe-area-inset-top))" }}
+          >
+            {rerouting ? (
+              <div className="pointer-events-auto mb-2 inline-flex rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-md">
+                A recalcular rota…
+              </div>
+            ) : null}
+            {nextManeuver ? (
+              <div className="pointer-events-auto flex items-center gap-4 rounded-2xl bg-[#0f6b5c] px-4 py-3.5 text-white shadow-[0_10px_28px_-10px_rgba(15,23,42,0.55)]">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center text-white" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="40"
+                    height="40"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d={maneuverArrowPath(nextManeuver.step)} />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[1.75rem] font-bold leading-none tracking-tight">
+                    {nextManeuver.distM < 50
+                      ? "Agora"
+                      : nextManeuver.distM < 1000
+                        ? `${Math.round(nextManeuver.distM / 10) * 10} m`
+                        : `${(nextManeuver.distM / 1000).toLocaleString("pt-BR", {
+                            maximumFractionDigits: 1,
+                          })} km`}
+                  </p>
+                  <p className="mt-1.5 truncate text-[0.95rem] font-medium leading-snug text-white/95">
+                    {nextManeuver.step.name?.trim() ||
+                      maneuverToPortuguese(nextManeuver.step) ||
+                      "Continue em frente"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Coluna de botões à direita (acima da barra inferior). */}
+          <div className="pointer-events-auto absolute bottom-3 right-3 z-20 flex flex-col gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!origin || !mapInstance) return;
+                const mapHeading = navigationCameraHeading;
+                if (mapHeading !== null) smoothMapHeadingRef.current = mapHeading;
+                const center =
+                  mapHeading !== null
+                    ? offsetAlongHeading(
+                        origin,
+                        mapHeading,
+                        view3D ? NAV_AHEAD_METERS_3D : NAV_AHEAD_METERS_2D,
+                      )
+                    : origin;
+                mapInstance.panTo(center);
+                mapInstance.setZoom(view3D ? NAV_ZOOM_3D : NAV_ZOOM_2D);
+                try {
+                  mapInstance.setTilt(view3D ? NAV_TILT_DEGREES : 0);
+                  if (mapHeading !== null) mapInstance.setHeading(mapHeading);
+                } catch {
+                  /* ignore */
+                }
+                setUserPanned(false);
+              }}
+              className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg active:scale-95 ${
+                userPanned ? "bg-blue-600 text-white" : "bg-white text-slate-700"
+              }`}
+              aria-label="Centralizar / bússola"
+              title="Centralizar"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 3l2.2 6.5L21 12l-6.8 2.5L12 21l-2.2-6.5L3 12l6.8-2.5z" fill="currentColor" stroke="none" />
               </svg>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-2xl font-bold leading-none">
-                {nextManeuver.distM < 50
-                  ? "Agora"
-                  : nextManeuver.distM < 1000
-                    ? `Em ${Math.round(nextManeuver.distM / 10) * 10} m`
-                    : `Em ${(nextManeuver.distM / 1000).toLocaleString("pt-PT", {
-                        maximumFractionDigits: 1,
-                      })} km`}
-              </p>
-              <p className="mt-1 truncate text-sm text-white/85">
-                {maneuverToPortuguese(nextManeuver.step) ||
-                  (nextManeuver.step.name
-                    ? `Continue na ${nextManeuver.step.name}`
-                    : "Continue em frente")}
-              </p>
-            </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setView3D((v) => !v)}
+              className={`flex h-12 w-12 items-center justify-center rounded-full text-xs font-bold shadow-lg active:scale-95 ${
+                view3D ? "bg-blue-600 text-white" : "bg-white text-slate-700"
+              }`}
+              aria-label={view3D ? "Vista 2D" : "Vista 3D"}
+              aria-pressed={view3D}
+            >
+              3D
+            </button>
             <button
               type="button"
               onClick={() => setVoiceEnabled((v) => !v)}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white"
+              className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg active:scale-95 ${
+                voiceEnabled ? "bg-white text-slate-700" : "bg-white text-red-500"
+              }`}
               aria-label={voiceEnabled ? "Desligar voz" : "Ligar voz"}
-              title={voiceEnabled ? "Desligar voz" : "Ligar voz"}
             >
               {voiceEnabled ? (
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06A7 7 0 0 1 14 18.7v2.07a9 9 0 0 0 0-17.54z" />
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12z" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.59 2L19 9.41 17.59 8 15 10.59 12.41 8 11 9.41 13.59 12 11 14.59 12.41 16 15 13.41 17.59 16 19 14.59z" />
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                  <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.22l2.45 2.45c.03-.2.05-.4.05-.64zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a9 9 0 0 0 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
                 </svg>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNavigating(false);
+                routeFittedRef.current = false;
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg active:scale-95"
+              aria-label="Visão geral da rota"
+              title="Visão geral"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M4 19l6-6 4 4 6-8" />
+                <circle cx="4" cy="19" r="1.5" fill="currentColor" />
+                <circle cx="20" cy="9" r="1.5" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                lastLockTapRef.current = 0;
+                setScreenLocked(true);
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg active:scale-95"
+              aria-label="Desligar tela"
+              title="Desligar tela"
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+                <line x1="12" y1="2" x2="12" y2="12" />
+              </svg>
+            </button>
           </div>
-        </div>
+
+          {/* Velocímetro — canto inferior esquerdo, acima da barra branca. */}
+          <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex h-[4.25rem] w-[4.25rem] flex-col items-center justify-center rounded-full bg-white shadow-lg">
+            <span className="text-2xl font-bold leading-none text-slate-900">
+              {Math.max(0, Math.round((gpsPosition?.speed ?? 0) * 3.6))}
+            </span>
+            <span className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">
+              km/h
+            </span>
+          </div>
+        </>
       ) : (
         <div
           className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-2 bg-gradient-to-b from-black/45 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white"
@@ -2366,214 +2457,96 @@ export function NavigationFullScreenModal({
       {/* Fecha a área flex-1 do mapa (overlays absolutos ficam só sobre o mapa). */}
       </div>
 
-      {/* Painel inferior em fluxo normal (não sobrepõe o mapa). */}
+      {/* Barra inferior estilo Google Maps (fora do mapa — não cobre FABs). */}
       {navigating && route && remainingNavStats ? (
         <div
-          className="relative z-30 flex w-full shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50/95 px-3 pt-2 shadow-[0_-8px_28px_-16px_rgba(15,23,42,0.35)] backdrop-blur"
-          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+          className="relative z-30 w-full shrink-0 rounded-t-[1.35rem] bg-white shadow-[0_-6px_28px_-10px_rgba(15,23,42,0.28)]"
+          style={{ paddingBottom: "max(0.55rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  stopNavigationSpeech();
-                  onClose();
-                }}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur active:bg-slate-900"
-                aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
-                title="Voltar"
+          <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
+          <div className="flex items-center gap-2 px-4 pb-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                stopNavigationSpeech();
+                onClose();
+              }}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-600 shadow-[0_2px_10px_rgba(15,23,42,0.12)] ring-1 ring-black/5 active:bg-slate-50"
+              aria-label="Sair da navegação (mantém o rastreamento activo)"
+              title="Sair"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                aria-hidden="true"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="24"
-                  height="24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.25"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="19" y1="12" x2="5" y2="12" />
-                  <polyline points="12 19 5 12 12 5" />
-                </svg>
-              </button>
-              {origin ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mapInstance) {
-                      const mapHeading = navigationCameraHeading;
-                      if (mapHeading !== null) {
-                        smoothMapHeadingRef.current = mapHeading;
-                      }
-                      const center =
-                        mapHeading !== null
-                          ? offsetAlongHeading(
-                              origin,
-                              mapHeading,
-                              view3D ? NAV_AHEAD_METERS_3D : NAV_AHEAD_METERS_2D,
-                            )
-                          : origin;
-                      mapInstance.panTo(center);
-                      mapInstance.setZoom(view3D ? NAV_ZOOM_3D : NAV_ZOOM_2D);
-                      try {
-                        mapInstance.setTilt(view3D ? NAV_TILT_DEGREES : 0);
-                        if (mapHeading !== null) {
-                          mapInstance.setHeading(mapHeading);
-                        }
-                      } catch {
-                        /* ignore */
-                      }
-                    }
-                    setUserPanned(false);
-                  }}
-                  className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
-                    userPanned ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
-                  }`}
-                  aria-label="Centralizar na minha posição"
-                  title="Centralizar"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="22"
-                    height="22"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="3" />
-                    <circle cx="12" cy="12" r="8" />
-                    <line x1="12" y1="2" x2="12" y2="5" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                    <line x1="2" y1="12" x2="5" y2="12" />
-                    <line x1="19" y1="12" x2="22" y2="12" />
-                  </svg>
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setView3D((v) => !v)}
-                className={`flex h-12 w-12 items-center justify-center rounded-full text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur active:scale-95 ${
-                  view3D ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
-                }`}
-                aria-label={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
-                title={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
-                aria-pressed={view3D}
-              >
-                3D
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              {otherPins.length > 0 ? (
-                <div
-                  className="flex h-12 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg"
-                  role="status"
-                  aria-label={`${otherPins.length} outras viaturas em curso`}
-                >
-                  <span className="text-sm font-bold leading-none">{otherPins.length}</span>
-                  <span className="text-[0.7rem] font-semibold leading-none">
-                    {otherPins.length === 1 ? "viatura" : "viaturas"}
-                  </span>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  lastLockTapRef.current = 0;
-                  setScreenLocked(true);
-                }}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur active:bg-slate-900"
-                aria-label="Desligar a tela (toque duas vezes para voltar)"
-                title="Desligar tela"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="22"
-                  height="22"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                  <line x1="12" y1="2" x2="12" y2="12" />
-                </svg>
-              </button>
-            </div>
-          </div>
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
 
-          <div className="rounded-2xl border border-black/5 bg-white px-4 py-3 text-slate-900 shadow-sm">
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Tempo restante
-                </p>
-                <p className="mt-0.5 text-3xl font-black leading-none tracking-tight text-slate-900">
-                  {formatDuration(remainingNavStats.durationSec)}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-end gap-4 text-right">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Distância
-                  </p>
-                  <p className="mt-0.5 text-lg font-bold leading-none text-slate-900">
-                    {formatDistance(remainingNavStats.distanceM)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Chegada
-                  </p>
-                  <p className="mt-0.5 text-lg font-bold leading-none text-blue-700">
-                    {formatEta(remainingNavStats.durationSec)}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-800">
-                  {destination?.shortLabel ||
-                    destination?.displayName ||
-                    destinationQuery ||
-                    "Destino"}
-                </p>
-                <p className="text-[11px] text-slate-500">Navegação no mapa do SOT</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setNavigating(false);
-                  routeFittedRef.current = false;
-                }}
-                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 text-xs font-bold uppercase tracking-wider text-slate-800 active:bg-slate-200"
-                aria-label="Voltar à visão geral da rota"
-              >
+            <div className="min-w-0 flex-1 text-center">
+              <p className="flex items-center justify-center gap-1.5 text-[1.7rem] font-bold leading-none tracking-tight text-[#e65100]">
+                <span>
+                  {(() => {
+                    const sec = remainingNavStats.durationSec;
+                    if (!Number.isFinite(sec) || sec <= 0) return "—";
+                    if (sec < 60) return "<1min";
+                    const min = Math.round(sec / 60);
+                    if (min < 60) return `${min}min`;
+                    const h = Math.floor(min / 60);
+                    const m = min % 60;
+                    return m === 0 ? `${h}h` : `${h}h ${m}min`;
+                  })()}
+                </span>
                 <svg
                   viewBox="0 0 24 24"
                   width="16"
                   height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                  fill="#16a34a"
                   aria-hidden="true"
+                  className="mt-0.5"
                 >
-                  <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-9-4z" />
-                  <line x1="3" y1="7" x2="21" y2="7" />
+                  <path d="M17 8C8 10 5.9 16.17 3.82 21.67l1.95.83C7.5 17.5 10 13 17 12V8z" />
+                  <path d="M17 8c0 0 4-1 5-5-5 1-5 5-5 5z" />
                 </svg>
-                Visão geral
-              </button>
+              </p>
+              <p className="mt-1.5 truncate text-sm font-medium text-slate-500">
+                {formatDistance(remainingNavStats.distanceM)}
+                {" · "}
+                {formatEta(remainingNavStats.durationSec)}
+                {otherPins.length > 0
+                  ? ` · ${otherPins.length} ${otherPins.length === 1 ? "viatura" : "viaturas"}`
+                  : ""}
+              </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!destination || !mapInstance) return;
+                mapInstance.panTo({ lat: destination.lat, lng: destination.lng });
+                mapInstance.setZoom(15);
+                setUserPanned(true);
+              }}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#1a73e8] shadow-[0_2px_10px_rgba(15,23,42,0.12)] ring-1 ring-black/5 active:bg-slate-50"
+              aria-label="Ver destino"
+              title={
+                destination?.shortLabel ||
+                destination?.displayName ||
+                destinationQuery ||
+                "Destino"
+              }
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                <path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2L12 16.8 5.7 20.8 8 13.6 2 9.2h7.6z" />
+              </svg>
+            </button>
           </div>
         </div>
       ) : null}
