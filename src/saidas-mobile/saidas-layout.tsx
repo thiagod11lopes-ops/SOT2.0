@@ -101,6 +101,16 @@ function parsePtBrDateAndTimeToLocal(datePtBr: string, timeHhMm: string): Date |
   return new Date(year, month, day, hour, minute, 0, 0);
 }
 
+async function ativarAvisoNoCelular(motorista: string): Promise<void> {
+  const nome = motorista.trim();
+  if (!nome) return;
+  const permission = await requestNotificationPermissionIfNeeded();
+  if (permission !== "granted") return;
+  const subscription = await ensurePushSubscription();
+  if (!subscription) return;
+  await saveMobilePushSubscriptionForMotorista(nome, subscription);
+}
+
 export function SaidasLayout() {
   const { runWithTrackedProgress } = useMobileLoadingOverlay();
   /**
@@ -128,6 +138,13 @@ export function SaidasLayout() {
   const [motoristaLogadoMobile, setMotoristaLogadoMobile] = useState<string | null>(
     () => loadActiveMobileMotorista(),
   );
+
+  useEffect(() => {
+    const nome = motoristaLogadoMobile?.trim();
+    if (!nome) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    void ativarAvisoNoCelular(nome);
+  }, [motoristaLogadoMobile]);
   const [alarmToast, setAlarmToast] = useState<{ title: string; body: string } | null>(null);
   const alarmesStateRef = useRef<{ lastDepartureKey: string; lastVistoriaKey: string }>({
     lastDepartureKey: "",
@@ -216,6 +233,7 @@ export function SaidasLayout() {
     }
     setActiveMobileMotorista(motorista);
     setMotoristaLogadoMobile(motorista);
+    void ativarAvisoNoCelular(motorista);
     window.alert(
       existing
         ? `Login efetuado como ${motorista}.`

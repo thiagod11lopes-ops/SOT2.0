@@ -1,10 +1,12 @@
+import { WEB_PUSH_VAPID_PUBLIC_KEY_FALLBACK } from "./webPushPublicKey";
+
 export type LocalAlarmNotificationOptions = {
   body: string;
   tag?: string;
   requireInteraction?: boolean;
 };
 
-export const MOBILE_PUSH_SW_URL = "/sw-mobile-push.js";
+export const MOBILE_PUSH_SW_URL = `${import.meta.env.BASE_URL}sw-mobile-push.js`;
 
 function base64UrlToArrayBuffer(base64Url: string): ArrayBuffer {
   const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
@@ -28,7 +30,7 @@ export async function ensureMobilePushServiceWorkerRegistered(): Promise<Service
   try {
     /** `updateViaCache: 'none'` — ao procurar nova versão do SW, não usar cache HTTP (útil no iOS/Safari). */
     const registration = await navigator.serviceWorker.register(MOBILE_PUSH_SW_URL, {
-      scope: "/",
+      scope: import.meta.env.BASE_URL || "/",
       updateViaCache: "none",
     });
     void registration.update();
@@ -51,7 +53,8 @@ export async function ensurePushSubscription(): Promise<PushSubscription | null>
   if (!registration) return null;
   const existing = await registration.pushManager.getSubscription();
   if (existing) return existing;
-  const vapidPublicKey = String(import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? "").trim();
+  const vapidPublicKey =
+    String(import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? "").trim() || WEB_PUSH_VAPID_PUBLIC_KEY_FALLBACK;
   if (!vapidPublicKey) return null;
   try {
     return await registration.pushManager.subscribe({
