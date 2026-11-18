@@ -8,8 +8,10 @@ import { useDepartures } from "../context/departures-context";
 import {
   findMobileMotoristaCredentialByName,
   loadActiveMobileMotorista,
+  MOBILE_OPEN_MOTORISTA_LOGIN_EVENT,
   setActiveMobileMotorista,
   upsertMobileMotoristaCredential,
+  type OpenMobileMotoristaLoginDetail,
 } from "../lib/mobileMotoristaCredentials";
 import { VISTORIA_ADMINISTRATIVA_SENHA_PADRAO } from "../lib/vistoriaAdminMobile";
 import { cn } from "../lib/utils";
@@ -135,9 +137,29 @@ export function SaidasLayout() {
   const [cadastroCredModalOpen, setCadastroCredModalOpen] = useState(false);
   const [cadastroMotorista, setCadastroMotorista] = useState("");
   const [cadastroSenha, setCadastroSenha] = useState("");
+  const [cadastroLoginHint, setCadastroLoginHint] = useState("");
   const [motoristaLogadoMobile, setMotoristaLogadoMobile] = useState<string | null>(
     () => loadActiveMobileMotorista(),
   );
+
+  useEffect(() => {
+    const onOpenLogin = (event: Event) => {
+      const detail = (event as CustomEvent<OpenMobileMotoristaLoginDetail>).detail;
+      const sugestao = String(detail?.motorista ?? "").trim();
+      const reason = String(detail?.reason ?? "").trim();
+      setCadastroMotorista(sugestao);
+      setCadastroSenha("");
+      setCadastroLoginHint(
+        reason === "iniciar-saida"
+          ? "Para iniciar a saída, entre com o seu nome e senha neste celular."
+          : "",
+      );
+      setCadastroCredModalOpen(true);
+    };
+    window.addEventListener(MOBILE_OPEN_MOTORISTA_LOGIN_EVENT, onOpenLogin as EventListener);
+    return () =>
+      window.removeEventListener(MOBILE_OPEN_MOTORISTA_LOGIN_EVENT, onOpenLogin as EventListener);
+  }, []);
 
   useEffect(() => {
     const nome = motoristaLogadoMobile?.trim();
@@ -209,6 +231,8 @@ export function SaidasLayout() {
     setCadastroCredModalOpen(false);
     setCadastroMotorista("");
     setCadastroSenha("");
+    setCadastroLoginHint("");
+    window.dispatchEvent(new Event("sot-mobile-motorista-login-cancelled"));
   }
 
   function handleSalvarCadastroCred() {
@@ -234,12 +258,18 @@ export function SaidasLayout() {
     setActiveMobileMotorista(motorista);
     setMotoristaLogadoMobile(motorista);
     void ativarAvisoNoCelular(motorista, true);
-    window.alert(
-      existing
-        ? `Login efetuado como ${motorista}.`
-        : `Senha criada e login efetuado como ${motorista}.`,
-    );
-    closeCadastroCredModal();
+    const fromIniciarSaida = cadastroLoginHint.length > 0;
+    setCadastroCredModalOpen(false);
+    setCadastroMotorista("");
+    setCadastroSenha("");
+    setCadastroLoginHint("");
+    if (!fromIniciarSaida) {
+      window.alert(
+        existing
+          ? `Login efetuado como ${motorista}.`
+          : `Senha criada e login efetuado como ${motorista}.`,
+      );
+    }
   }
 
   async function handlePermitirNotificacoesNoLogin() {
@@ -598,8 +628,8 @@ export function SaidasLayout() {
               Login do motorista (mobile)
             </h2>
             <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-              Selecione o seu nome e informe a senha para entrar. Se ainda não houver senha para esse motorista,
-              esta senha será criada e usada neste login.
+              {cadastroLoginHint ||
+                "Selecione o seu nome e informe a senha para entrar. Se ainda não houver senha para esse motorista, esta senha será criada e usada neste login."}
             </p>
             <div className="space-y-3">
               <label className="block text-sm font-medium text-[hsl(var(--foreground))]">Motorista</label>

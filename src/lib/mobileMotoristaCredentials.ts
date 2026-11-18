@@ -99,3 +99,33 @@ export function setActiveMobileMotorista(motorista: string | null): void {
     /* ignore */
   }
 }
+
+export const MOBILE_OPEN_MOTORISTA_LOGIN_EVENT = "sot-mobile-open-motorista-login";
+
+export type OpenMobileMotoristaLoginDetail = {
+  motorista?: string;
+  reason?: string;
+};
+
+/** Abre o modal de login do motorista (escutado em `SaidasLayout`). */
+export function openMobileMotoristaLogin(detail?: OpenMobileMotoristaLoginDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(MOBILE_OPEN_MOTORISTA_LOGIN_EVENT, {
+      detail: {
+        motorista: detail?.motorista?.trim() || "",
+        reason: detail?.reason?.trim() || "",
+      },
+    }),
+  );
+}
+
+/** Primeiro nome útil no campo «Motoristas» da saída (para pré-preencher o login). */
+export function firstMotoristaFromField(field: string): string {
+  return (
+    field
+      .split(/[;,/]+/)
+      .map((x) => x.trim())
+      .find((x) => x.length > 0) ?? ""
+  );
+}

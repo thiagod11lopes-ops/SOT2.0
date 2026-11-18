@@ -27,7 +27,11 @@ import {
 import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
 import { tripPermissionsReady } from "../lib/mobileTripPermissions";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
-import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
+import {
+  firstMotoristaFromField,
+  loadActiveMobileMotorista,
+  openMobileMotoristaLogin,
+} from "../lib/mobileMotoristaCredentials";
 import { TripPermissionsModal } from "./trip-permissions-modal";
 import {
   clearMotoristaActiveAssignmentIfDeparture,
@@ -71,6 +75,7 @@ export function DepartureCard({
   const [tripPermOpen, setTripPermOpen] = useState(false);
   const [tripPermBusy, setTripPermBusy] = useState(false);
   const [pendingStartPlaca, setPendingStartPlaca] = useState<string | null>(null);
+  const [awaitingLoginToStart, setAwaitingLoginToStart] = useState(false);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -216,6 +221,7 @@ export function DepartureCard({
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
       setTripPermOpen(false);
       setPendingStartPlaca(null);
+      setAwaitingLoginToStart(false);
       setTripPermBusy(false);
       setOpen(false);
       setBoaViagemOpen(true);
@@ -248,7 +254,12 @@ export function DepartureCard({
     }
     const motorista = loadActiveMobileMotorista();
     if (!motorista) {
-      window.alert("Entre com o motorista neste celular antes de iniciar a saída.");
+      setPendingStartPlaca(placa);
+      setAwaitingLoginToStart(true);
+      openMobileMotoristaLogin({
+        motorista: firstMotoristaFromField(record.motoristas),
+        reason: "iniciar-saida",
+      });
       return;
     }
     const ready = await tripPermissionsReady(motorista);
@@ -259,6 +270,36 @@ export function DepartureCard({
     setPendingStartPlaca(placa);
     setTripPermOpen(true);
   }
+
+  useEffect(() => {
+    if (!awaitingLoginToStart || !pendingStartPlaca) return;
+    const placa = pendingStartPlaca;
+    const onMotorista = () => {
+      const motorista = loadActiveMobileMotorista();
+      if (!motorista) return;
+      setAwaitingLoginToStart(false);
+      void (async () => {
+        const ready = await tripPermissionsReady(motorista);
+        if (ready) {
+          await concluirInicioSaida(placa);
+          return;
+        }
+        setPendingStartPlaca(placa);
+        setTripPermOpen(true);
+      })();
+    };
+    const onCancel = () => {
+      setAwaitingLoginToStart(false);
+      setPendingStartPlaca(null);
+    };
+    window.addEventListener("sot-mobile-motorista", onMotorista);
+    window.addEventListener("sot-mobile-motorista-login-cancelled", onCancel);
+    return () => {
+      window.removeEventListener("sot-mobile-motorista", onMotorista);
+      window.removeEventListener("sot-mobile-motorista-login-cancelled", onCancel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retoma só após login; concluirInicioSaida usa record atual
+  }, [awaitingLoginToStart, pendingStartPlaca]);
 
   function handleKmSaidaFieldTapPrefill(onApply: (km: string) => void): boolean {
     if (!kmEditavel) return false;
