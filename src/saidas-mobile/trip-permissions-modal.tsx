@@ -149,6 +149,11 @@ export function TripPermissionsModal({
           Marque e aceite as duas permissões abaixo. O botão de iniciar só fica ativo quando ambas estiverem
           aceites. Isto é pedido uma vez neste celular; nas próximas saídas não volta a perguntar.
         </p>
+        <p className="mt-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+          Com o celular bloqueado, a chamada aparece como notificação do sistema (toque / Atender). Nas definições
+          do Android, permita notificações deste site na tela de bloqueio e importância Alta/Alertas. No iPhone,
+          use o SOT adicionado à tela de início.
+        </p>
 
         <ul className="mt-4 space-y-3">
           <li>

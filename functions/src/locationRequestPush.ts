@@ -161,9 +161,9 @@ async function sendLocationCallPush(args: {
     return { sent: 0, failed: 0, targets: 0 };
   }
   const webpush = (await import("web-push")).default;
-  /** Vários toques no celular bloqueado, como uma chamada a tocar até atender. */
-  const RING_COUNT = 6;
-  const RING_GAP_MS = 3200;
+  /** Vários toques no celular bloqueado (notificação do sistema), como uma chamada a tocar. */
+  const RING_COUNT = 12;
+  const RING_GAP_MS = 2500;
   let sent = 0;
   let failed = 0;
   for (let i = 0; i < RING_COUNT; i += 1) {
@@ -177,13 +177,22 @@ async function sendLocationCallPush(args: {
     const payload = JSON.stringify({
       kind: "location-call",
       title: "Chamada do HNMD",
-      body: `Enviar localização para HNMD · ${args.placa}`,
+      body: `Toque para atender · ${args.placa} · enviar localização`,
       tag: `sot-location-call-${args.id}`,
       url: "mobile.html#/saidas/administrativas",
+      placa: args.placa,
+      id: args.id,
       ring: i + 1,
     });
     const results = await Promise.allSettled(
-      subs.map((sub) => webpush.sendNotification(sub, payload, { TTL: 60, urgency: "high" })),
+      subs.map((sub) =>
+        webpush.sendNotification(sub, payload, {
+          TTL: 120,
+          urgency: "high",
+          /** Substitui o toque anterior no mesmo pedido (renotify no SW). */
+          topic: `sot-call-${args.id}`.slice(0, 32),
+        }),
+      ),
     );
     for (const row of results) {
       if (row.status === "fulfilled") sent += 1;

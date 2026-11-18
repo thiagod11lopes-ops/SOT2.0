@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SotNativeLocationPostPlugin.class);
+        registerPlugin(SotIncomingCallPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
