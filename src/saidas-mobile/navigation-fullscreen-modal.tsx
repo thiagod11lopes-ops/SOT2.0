@@ -1,8 +1,8 @@
 /**
  * Modal de navegação em ecrã cheio.
  *
- * Após o motorista tocar em "Iniciar Saída" no SOT mobile, este componente abre
- * por cima da app e mostra:
+ * Após «Boa viagem», se o motorista aceitar a navegação no SOT, este componente
+ * abre por cima da app e mostra:
  *  - Mapa **Google Maps** a todo o ecrã com a rota desenhada (OSRM).
  *  - Marcadores de origem (chevron azul rotativo) e destino (pino vermelho).
  *  - Pinos laranjas das **outras viaturas listadas no card Saídas em Andamento**

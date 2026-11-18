@@ -33,6 +33,8 @@ import {
   openMobileMotoristaLogin,
 } from "../lib/mobileMotoristaCredentials";
 import { TripPermissionsModal } from "./trip-permissions-modal";
+import { NavigationOfferModal } from "./navigation-offer-modal";
+import { NavigationFullScreenModal } from "./navigation-fullscreen-modal";
 import {
   clearMotoristaActiveAssignmentIfDeparture,
   writeMotoristaActiveAssignment,
@@ -41,6 +43,17 @@ import { cn } from "../lib/utils";
 import { MOBILE_MODAL_OVERLAY_CLASS } from "./mobileModalOverlayClass";
 import { RubricaSignaturePad, type RubricaSignaturePadHandle } from "./rubrica-signature-pad";
 import { MobileEditableSelectField, MobileEditableTextField } from "./mobile-field-edit-modal";
+
+function navigationDestinationLabel(record: DepartureRecord): string {
+  const partes =
+    record.tipo === "Administrativa"
+      ? [record.bairro, record.cidade]
+      : [record.hospitalDestino, record.cidade];
+  return partes
+    .map((s) => (s || "").trim())
+    .filter((s) => s.length > 0 && s !== "—")
+    .join(", ");
+}
 
 export function DepartureCard({
   record,
@@ -72,6 +85,8 @@ export function DepartureCard({
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [boaViagemOpen, setBoaViagemOpen] = useState(false);
+  const [navOfferOpen, setNavOfferOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [tripPermOpen, setTripPermOpen] = useState(false);
   const [tripPermBusy, setTripPermBusy] = useState(false);
   const [pendingStartPlaca, setPendingStartPlaca] = useState<string | null>(null);
@@ -327,9 +342,14 @@ export function DepartureCard({
     return () => window.cancelAnimationFrame(id);
   }, [open]);
 
+  function followBoaViagemWithNavOffer() {
+    setBoaViagemOpen(false);
+    setNavOfferOpen(true);
+  }
+
   useEffect(() => {
     if (!boaViagemOpen) return;
-    const t = window.setTimeout(() => setBoaViagemOpen(false), 4000);
+    const t = window.setTimeout(() => followBoaViagemWithNavOffer(), 2800);
     return () => window.clearTimeout(t);
   }, [boaViagemOpen]);
 
@@ -972,7 +992,7 @@ export function DepartureCard({
             aria-labelledby="sot-boa-viagem-title"
             className="fixed inset-0 z-[580] flex items-center justify-center bg-gradient-to-br from-slate-950/80 via-slate-900/75 to-emerald-950/80 p-5 backdrop-blur-[20px]"
             style={{ animation: "sot-boa-viagem-backdrop 0.45s ease-out both" }}
-            onClick={() => setBoaViagemOpen(false)}
+            onClick={followBoaViagemWithNavOffer}
           >
             <div
               className="relative w-full max-w-sm"
@@ -1019,6 +1039,21 @@ export function DepartureCard({
             </div>
           </div>
         </>
+      ) : null}
+
+      {navOfferOpen ? (
+        <NavigationOfferModal
+          destinoLabel={navigationDestinationLabel(record)}
+          onDecline={() => setNavOfferOpen(false)}
+          onAccept={() => {
+            setNavOfferOpen(false);
+            setNavOpen(true);
+          }}
+        />
+      ) : null}
+
+      {navOpen ? (
+        <NavigationFullScreenModal open record={record} onClose={() => setNavOpen(false)} />
       ) : null}
     </article>
   );
