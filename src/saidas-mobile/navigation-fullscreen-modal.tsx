@@ -8,7 +8,8 @@
  *  - Pinos laranjas das **outras viaturas listadas no card Saídas em Andamento**
  *    da página principal (tempo real, via `useDriverActiveLocations`). A placa aparece como label permanente;
  *    o toque abre uma `InfoWindow` com o timestamp da última posição.
- *  - Barra superior com nome do destino, distância e tempo previsto.
+ *  - Barra superior com manobra (navegação) ou destino (preview).
+ *  - Barra inferior estilo Google Maps: tempo restante, km e hora de chegada.
  *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
  *    devolve o motorista ao quadro de saídas. **Não** cancela o
  *    rastreamento de localização da viatura.
@@ -1230,6 +1231,28 @@ export function NavigationFullScreenModal({
     return [origin, ...routePath.slice(trimmedFromIdx + 1)];
   }, [routePath, origin, trimmedFromIdx]);
 
+  /**
+   * Estatísticas restantes em navegação activa (estilo Google Maps):
+   * distância ainda a percorrer na polilinha, tempo proporcional e ETA.
+   */
+  const remainingNavStats = useMemo<{
+    distanceM: number;
+    durationSec: number;
+  } | null>(() => {
+    if (!route || route.distance <= 0) return null;
+    if (!navigating || displayRoutePath.length < 2) {
+      return { distanceM: route.distance, durationSec: route.duration };
+    }
+    let remainingM = 0;
+    for (let i = 0; i < displayRoutePath.length - 1; i += 1) {
+      remainingM += haversineMeters(displayRoutePath[i]!, displayRoutePath[i + 1]!);
+    }
+    remainingM = Math.max(0, Math.min(route.distance, remainingM));
+    const ratio = Math.max(0, Math.min(1, remainingM / route.distance));
+    const durationSec = Math.max(0, Math.round(route.duration * ratio));
+    return { distanceM: remainingM, durationSec };
+  }, [route, navigating, displayRoutePath]);
+
   // ---------------------------------------------------------------------------
   // 5b) Overlays de trânsito — só com Google Routes API. Cada intervalo
   //     `SLOW`/`TRAFFIC_JAM` vira uma `<Polyline>` por cima da base azul,
@@ -2174,24 +2197,78 @@ export function NavigationFullScreenModal({
         </div>
       )}
 
-      {/* Rodapé compacto (apenas em modo navegação): km restantes · ETA. */}
-      {navigating && route ? (
+      {/* Barra inferior estilo Google Maps (navegação activa):
+          tempo restante em destaque + km restantes + hora de chegada. */}
+      {navigating && route && remainingNavStats ? (
         <div
-          className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.25rem)" }}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
+          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         >
-          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-slate-900 shadow-md backdrop-blur">
-            <span className="text-sm font-bold leading-none">
-              {formatDistance(route.distance)}
-            </span>
-            <span className="h-4 w-px bg-slate-300" />
-            <span className="text-sm font-semibold leading-none">
-              {formatDuration(route.duration)}
-            </span>
-            <span className="h-4 w-px bg-slate-300" />
-            <span className="text-sm font-semibold leading-none text-slate-600">
-              {formatEta(route.duration)}
-            </span>
+          <div className="pointer-events-auto rounded-t-3xl border border-black/5 bg-white px-4 pb-3 pt-3 text-slate-900 shadow-[0_-12px_40px_-12px_rgba(15,23,42,0.45)]">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Tempo restante
+                </p>
+                <p className="mt-0.5 text-3xl font-black leading-none tracking-tight text-slate-900">
+                  {formatDuration(remainingNavStats.durationSec)}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-end gap-4 text-right">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Distância
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold leading-none text-slate-900">
+                    {formatDistance(remainingNavStats.distanceM)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Chegada
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold leading-none text-blue-700">
+                    {formatEta(remainingNavStats.durationSec)}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {destination?.shortLabel ||
+                    destination?.displayName ||
+                    destinationQuery ||
+                    "Destino"}
+                </p>
+                <p className="text-[11px] text-slate-500">Navegação no mapa do SOT</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNavigating(false);
+                  routeFittedRef.current = false;
+                }}
+                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 text-xs font-bold uppercase tracking-wider text-slate-800 active:bg-slate-200"
+                aria-label="Voltar à visão geral da rota"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-9-4z" />
+                  <line x1="3" y1="7" x2="21" y2="7" />
+                </svg>
+                Visão geral
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -2290,7 +2367,9 @@ export function NavigationFullScreenModal({
             view3D ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
           }`}
           style={{
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.75rem)",
+            bottom: navigating
+              ? "calc(env(safe-area-inset-bottom, 0px) + 14rem)"
+              : "calc(env(safe-area-inset-bottom, 0px) + 7.75rem)",
           }}
           aria-label={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
           title={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
@@ -2346,7 +2425,9 @@ export function NavigationFullScreenModal({
               : "bg-white/95 text-blue-600"
           }`}
           style={{
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)",
+            bottom: navigating
+              ? "calc(env(safe-area-inset-bottom, 0px) + 10.5rem)"
+              : "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)",
           }}
           aria-label="Centralizar na minha posição"
           title="Centralizar na minha posição"
@@ -2372,39 +2453,7 @@ export function NavigationFullScreenModal({
         </button>
       ) : null}
 
-      {/* Botão "Visão geral" — em modo navegação volta ao preview com fitBounds. */}
-      {navigating ? (
-        <button
-          type="button"
-          onClick={() => {
-            // Voltar ao preview: para a câmara seguir, e reaplica o fitBounds.
-            setNavigating(false);
-            routeFittedRef.current = false;
-          }}
-          className="pointer-events-auto absolute right-3 z-10 flex h-12 items-center gap-2 rounded-full bg-white/95 px-4 text-slate-900 shadow-lg backdrop-blur active:bg-slate-100"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
-          aria-label="Voltar à visão geral da rota"
-          title="Visão geral"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-9-4z" />
-            <line x1="3" y1="7" x2="21" y2="7" />
-          </svg>
-          <span className="text-xs font-bold uppercase tracking-wider">Visão geral</span>
-        </button>
-      ) : null}
-
-      {/* Botão "Voltar" discreto no canto inferior esquerdo. */}
+      {/* Botão "Voltar" — acima da barra inferior quando em navegação. */}
       <button
         type="button"
         onClick={() => {
@@ -2412,7 +2461,11 @@ export function NavigationFullScreenModal({
           onClose();
         }}
         className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
-        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+        style={{
+          bottom: navigating
+            ? "calc(env(safe-area-inset-bottom, 0px) + 7rem)"
+            : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+        }}
         aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
         title="Voltar"
       >
