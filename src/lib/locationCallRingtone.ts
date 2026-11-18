@@ -31,7 +31,6 @@ export function startLocationCallRingtone(): StopFn {
   if (!ctx) return () => undefined;
 
   let stopped = false;
-  let cycleTimer: number | undefined;
   const active: Array<OscillatorNode | GainNode> = [];
 
   const stopNodes = () => {
@@ -100,7 +99,7 @@ export function startLocationCallRingtone(): StopFn {
   };
 
   kick();
-  cycleTimer = window.setInterval(kick, 4000);
+  const cycleTimer = window.setInterval(kick, 4000);
 
   if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
     const vibratePulse = () => {
