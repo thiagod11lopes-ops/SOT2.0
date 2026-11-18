@@ -44,6 +44,29 @@ export function LocationRequestHost() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; action?: string } | null;
+      if (!data || data.type !== "sot-location-call") return;
+      setPedido((atual) => {
+        if (!atual || atual.status !== "pendente") return atual;
+        if (!pedidoEhDesteCelular(atual, loadActiveMobileMotorista() ?? "")) return atual;
+        if (data.action === "recusar") {
+          tratadoRef.current = atual.id;
+          setAberto(false);
+          void responderSolicitacaoLocalizacao(atual, "recusada").catch(() => undefined);
+          return atual;
+        }
+        setErro("");
+        setAberto(true);
+        return atual;
+      });
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
   useEffect(() => subscribeActiveTrackingChange(() => setTrackingTick((n) => n + 1)), []);
 
   useEffect(() => {

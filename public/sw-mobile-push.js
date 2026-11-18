@@ -6,6 +6,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+/** Padrão de vibração estilo chamada telefónica. */
+const CALL_VIBRATE = [400, 180, 400, 180, 400, 900, 400, 180, 400, 180, 400, 1400];
+
 self.addEventListener("push", (event) => {
   const payload = (() => {
     try {
@@ -14,23 +17,44 @@ self.addEventListener("push", (event) => {
       return {};
     }
   })();
-  const title = String(payload.title || "SOT 2.0 - Alarme");
-  const body = String(payload.body || "Você possui um novo alerta.");
-  const url = resolveAppUrl(String(payload.url || "mobile.html#/saidas/administrativas"));
   const locationCall = payload.kind === "location-call";
+  const title = String(
+    payload.title || (locationCall ? "Chamada do HNMD" : "SOT 2.0 - Alarme"),
+  );
+  const body = String(
+    payload.body || (locationCall ? "Enviar localização para HNMD" : "Você possui um novo alerta."),
+  );
+  const url = resolveAppUrl(String(payload.url || "mobile.html#/saidas/administrativas"));
   const icon = new URL("icons.svg", self.registration.scope).href;
+  const tag = String(payload.tag || (locationCall ? "sot-location-call" : "sot-alarm-push"));
+
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon,
-      badge: icon,
-      tag: String(payload.tag || "sot-alarm-push"),
-      data: { url },
-      renotify: true,
-      requireInteraction: true,
-      silent: false,
-      vibrate: locationCall ? [300, 120, 300, 120, 300, 400, 300, 120, 300] : [180, 80, 180],
-    }),
+    (async () => {
+      await self.registration.showNotification(title, {
+        body,
+        icon,
+        badge: icon,
+        tag,
+        data: { url, kind: locationCall ? "location-call" : "alarm" },
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+        vibrate: locationCall ? CALL_VIBRATE : [180, 80, 180],
+        actions: locationCall
+          ? [
+              { action: "enviar", title: "Enviar" },
+              { action: "recusar", title: "Recusar" },
+            ]
+          : undefined,
+      });
+
+      if (!locationCall) return;
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clients) {
+        if (String(client.url).includes("material.html")) continue;
+        client.postMessage({ type: "sot-location-call", url });
+      }
+    })(),
   );
 });
 
@@ -48,14 +72,18 @@ function resolveAppUrl(url) {
 }
 
 self.addEventListener("notificationclick", (event) => {
+  const action = event.action || "open";
+  const data = event.notification?.data || {};
   event.notification.close();
-  const targetUrl = resolveAppUrl(event.notification?.data?.url || "mobile.html#/saidas/administrativas");
+  const targetUrl = resolveAppUrl(data.url || "mobile.html#/saidas/administrativas");
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if (String(client.url).includes("material.html")) continue;
         if ("focus" in client) {
-          client.navigate(targetUrl);
+          client.postMessage({ type: "sot-location-call", action });
+          if ("navigate" in client) client.navigate(targetUrl);
           return client.focus();
         }
       }

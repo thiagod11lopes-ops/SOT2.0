@@ -129,6 +129,19 @@ async function subscriptionsForTargets(motoristaField: string, placa: string): P
   return out;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function solicitacaoAindaPendente(id: string): Promise<boolean> {
+  ensureAdminApp();
+  const db = getFirestore();
+  const snap = await db.collection("sot_state").doc("solicitacaoLocalizacao").get();
+  const payload = snap.exists ? (snap.data() as { payload?: SolicitacaoPayload }).payload : null;
+  if (!payload || typeof payload !== "object") return false;
+  return String(payload.id ?? "") === id && String(payload.status ?? "") === "pendente";
+}
+
 async function sendLocationCallPush(args: {
   id: string;
   placa: string;
@@ -148,27 +161,45 @@ async function sendLocationCallPush(args: {
     return { sent: 0, failed: 0, targets: 0 };
   }
   const webpush = (await import("web-push")).default;
-  const payload = JSON.stringify({
-    kind: "location-call",
-    title: "Enviar localização para HNMD",
-    body: `Viatura ${args.placa}. Toque para enviar ou recusar.`,
-    tag: `sot-location-call-${args.id}`,
-    url: "mobile.html#/saidas/administrativas",
-  });
-  const results = await Promise.allSettled(
-    subs.map((sub) => webpush.sendNotification(sub, payload, { TTL: 300, urgency: "high" })),
-  );
-  const failed = results.filter((row) => row.status === "rejected").length;
-  for (const row of results) {
-    if (row.status === "rejected") logger.warn("notifyLocationRequest push falhou", row.reason);
+  /** Vários toques no celular bloqueado, como uma chamada a tocar até atender. */
+  const RING_COUNT = 6;
+  const RING_GAP_MS = 3200;
+  let sent = 0;
+  let failed = 0;
+  for (let i = 0; i < RING_COUNT; i += 1) {
+    if (i > 0) {
+      await sleep(RING_GAP_MS);
+      if (!(await solicitacaoAindaPendente(args.id))) {
+        logger.info("notifyLocationRequest parou: pedido já respondido", { id: args.id, ring: i });
+        break;
+      }
+    }
+    const payload = JSON.stringify({
+      kind: "location-call",
+      title: "Chamada do HNMD",
+      body: `Enviar localização para HNMD · ${args.placa}`,
+      tag: `sot-location-call-${args.id}`,
+      url: "mobile.html#/saidas/administrativas",
+      ring: i + 1,
+    });
+    const results = await Promise.allSettled(
+      subs.map((sub) => webpush.sendNotification(sub, payload, { TTL: 60, urgency: "high" })),
+    );
+    for (const row of results) {
+      if (row.status === "fulfilled") sent += 1;
+      else {
+        failed += 1;
+        logger.warn("notifyLocationRequest push falhou", row.reason);
+      }
+    }
   }
   logger.info("notifyLocationRequest", {
     placa: args.placa,
     targets: subs.length,
-    sent: results.length - failed,
+    sent,
     failed,
   });
-  return { sent: results.length - failed, failed, targets: subs.length };
+  return { sent, failed, targets: subs.length };
 }
 
 export const notifyLocationRequest = onDocumentWritten(
