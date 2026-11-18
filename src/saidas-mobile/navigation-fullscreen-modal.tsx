@@ -10,6 +10,7 @@
  *    o toque abre uma `InfoWindow` com o timestamp da última posição.
  *  - Barra superior com manobra (navegação) ou destino (preview).
  *  - Barra inferior estilo Google Maps: tempo restante, km e hora de chegada.
+ *  - Recálculo automático da rota se o motorista sair do trajeto.
  *  - Botão "Voltar" discreto (canto inferior esquerdo) — fecha o modal e
  *    devolve o motorista ao quadro de saídas. **Não** cancela o
  *    rastreamento de localização da viatura.
@@ -334,6 +335,55 @@ function offsetAlongHeading(coord: Coord, headingDeg: number, metersAhead: numbe
   const dLng = cosLat > 1e-6 ? (metersAhead / (111_320 * cosLat)) * Math.sin(rad) : 0;
   return { lat: coord.lat + dLat, lng: coord.lng + dLng };
 }
+
+/**
+ * Distância mínima (m) de um ponto à polilinha + índice do segmento mais próximo.
+ * Usado para trimar a rota e detectar desvio (off-route → recálculo).
+ */
+function nearestPointOnRoute(
+  point: Coord,
+  path: Coord[],
+): { index: number; distanceM: number } {
+  if (path.length === 0) return { index: 0, distanceM: Infinity };
+  if (path.length === 1) {
+    return { index: 0, distanceM: haversineMeters(point, path[0]!) };
+  }
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < path.length - 1; i += 1) {
+    const a = path[i]!;
+    const b = path[i + 1]!;
+    const dx = b.lng - a.lng;
+    const dy = b.lat - a.lat;
+    const lenSq = dx * dx + dy * dy;
+    let projLng: number;
+    let projLat: number;
+    if (lenSq < 1e-12) {
+      projLng = a.lng;
+      projLat = a.lat;
+    } else {
+      const t = ((point.lng - a.lng) * dx + (point.lat - a.lat) * dy) / lenSq;
+      const tc = Math.max(0, Math.min(1, t));
+      projLng = a.lng + tc * dx;
+      projLat = a.lat + tc * dy;
+    }
+    const dist = haversineMeters(point, { lat: projLat, lng: projLng });
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return { index: bestIdx, distanceM: bestDist };
+}
+
+/** Distância à rota acima desta → candidato a off-route. */
+const OFF_ROUTE_THRESHOLD_M = 65;
+/** Tempo contínuo fora da rota antes de recalcular. */
+const OFF_ROUTE_CONFIRM_MS = 3500;
+/** Intervalo mínimo entre dois recálculos automáticos. */
+const REROUTE_COOLDOWN_MS = 12_000;
+/** Perto do destino não recalcula (já chegou / manobra final). */
+const REROUTE_SKIP_NEAR_DEST_M = 40;
 
 /** Opções do `<GoogleMap>` — UI minimalista, sem botões que distraem. */
 const MAP_OPTIONS: google.maps.MapOptions = {
@@ -691,6 +741,14 @@ export function NavigationFullScreenModal({
   const [view3D, setView3D] = useState(false);
   /** Heading suavizado aplicado a `map.setHeading` (evita tremor da bússola). */
   const smoothMapHeadingRef = useRef<number | null>(null);
+  /** Desde quando o GPS está fora da rota (0 = on-route). */
+  const offRouteSinceRef = useRef(0);
+  /** Timestamp do último recálculo automático (cooldown). */
+  const lastRerouteAtRef = useRef(0);
+  /** Evita pedidos de rota em paralelo no recálculo. */
+  const reroutingInFlightRef = useRef(false);
+  /** `true` enquanto um recálculo automático corre (chip no UI). */
+  const [rerouting, setRerouting] = useState(false);
   /** `true` após a primeira centragem em modo navegação (para fazer zoom só uma vez). */
   const navInitializedRef = useRef(false);
   /**
@@ -1188,36 +1246,13 @@ export function NavigationFullScreenModal({
   //     segmento. A polilinha exibida será [origin, routePath[idx+1],
   //     routePath[idx+2], …, destino].
   // ---------------------------------------------------------------------------
-  const trimmedFromIdx = useMemo<number>(() => {
-    if (!navigating || !origin || routePath.length < 2) return -1;
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < routePath.length - 1; i++) {
-      const a = routePath[i];
-      const b = routePath[i + 1];
-      const dx = b.lng - a.lng;
-      const dy = b.lat - a.lat;
-      const lenSq = dx * dx + dy * dy;
-      let projLng: number;
-      let projLat: number;
-      if (lenSq < 1e-12) {
-        projLng = a.lng;
-        projLat = a.lat;
-      } else {
-        const t =
-          ((origin.lng - a.lng) * dx + (origin.lat - a.lat) * dy) / lenSq;
-        const tc = Math.max(0, Math.min(1, t));
-        projLng = a.lng + tc * dx;
-        projLat = a.lat + tc * dy;
-      }
-      const dist = haversineMeters(origin, { lat: projLat, lng: projLng });
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-    return bestIdx;
+  const routeProximity = useMemo<{ index: number; distanceM: number } | null>(() => {
+    if (!navigating || !origin || routePath.length < 2) return null;
+    return nearestPointOnRoute(origin, routePath);
   }, [navigating, origin, routePath]);
+
+  const trimmedFromIdx = routeProximity?.index ?? -1;
+  const distanceFromRouteM = routeProximity?.distanceM ?? 0;
 
   /**
    * Polilinha azul efectivamente desenhada. Em navegação activa começa
@@ -1252,6 +1287,93 @@ export function NavigationFullScreenModal({
     const durationSec = Math.max(0, Math.round(route.duration * ratio));
     return { distanceM: remainingM, durationSec };
   }, [route, navigating, displayRoutePath]);
+
+  // ---------------------------------------------------------------------------
+  // 5a-bis) Recálculo automático se o motorista sair da rota (off-route).
+  //         Confirma desvio contínuo (~3,5 s), respeita cooldown e não
+  //         dispara perto do destino nem com GPS muito impreciso.
+  //         Lê origem/destino via refs para o pedido não ser cancelado a
+  //         cada tick do GPS.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!open || !navigating || !route) {
+      offRouteSinceRef.current = 0;
+      if (!navigating) {
+        reroutingInFlightRef.current = false;
+        setRerouting(false);
+      }
+      return;
+    }
+    if (reroutingInFlightRef.current) return;
+
+    const here = originRef.current;
+    const dest = destinationRef.current;
+    if (!here || !dest) return;
+
+    const accuracy = gpsPosition?.accuracy ?? null;
+    if (accuracy !== null && accuracy > OFF_ROUTE_THRESHOLD_M) {
+      offRouteSinceRef.current = 0;
+      return;
+    }
+
+    const nearDest =
+      haversineMeters(here, { lat: dest.lat, lng: dest.lng }) < REROUTE_SKIP_NEAR_DEST_M;
+    if (nearDest) {
+      offRouteSinceRef.current = 0;
+      return;
+    }
+
+    const offRoute = distanceFromRouteM > OFF_ROUTE_THRESHOLD_M;
+    const now = Date.now();
+    if (!offRoute) {
+      offRouteSinceRef.current = 0;
+      return;
+    }
+    if (offRouteSinceRef.current === 0) {
+      offRouteSinceRef.current = now;
+      return;
+    }
+    if (now - offRouteSinceRef.current < OFF_ROUTE_CONFIRM_MS) return;
+    if (now - lastRerouteAtRef.current < REROUTE_COOLDOWN_MS) return;
+
+    reroutingInFlightRef.current = true;
+    lastRerouteAtRef.current = now;
+    offRouteSinceRef.current = 0;
+    setRerouting(true);
+    console.info(
+      `[SOT] off-route (${Math.round(distanceFromRouteM)} m) — a recalcular rota`,
+    );
+
+    void fetchDrivingRoute(here, dest, { googleApiKey: apiKey }).then((r) => {
+      reroutingInFlightRef.current = false;
+      setRerouting(false);
+      if (!r) {
+        console.warn("[SOT] recálculo de rota falhou");
+        return;
+      }
+      setRoute(r);
+      spokenStepIdxRef.current = -1;
+      // Mantém routeFittedRef = true para não fazer fitBounds e tirar o zoom da navegação.
+      if (voiceEnabled && "speechSynthesis" in window) {
+        try {
+          const utter = new SpeechSynthesisUtterance("Rota recalculada");
+          utter.lang = "pt-BR";
+          utter.rate = 1.05;
+          window.speechSynthesis.speak(utter);
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  }, [
+    open,
+    navigating,
+    route,
+    distanceFromRouteM,
+    gpsPosition?.accuracy,
+    apiKey,
+    voiceEnabled,
+  ]);
 
   // ---------------------------------------------------------------------------
   // 5b) Overlays de trânsito — só com Google Routes API. Cada intervalo
@@ -1514,6 +1636,10 @@ export function NavigationFullScreenModal({
     setRoute(null);
     setError(null);
     setLoading("");
+    setRerouting(false);
+    offRouteSinceRef.current = 0;
+    lastRerouteAtRef.current = 0;
+    reroutingInFlightRef.current = false;
     setScreenLocked(false);
     setFarewellAnimating(false);
     setSelectedOtherPin(null);
@@ -1868,6 +1994,11 @@ export function NavigationFullScreenModal({
           className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col gap-1 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
           style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
         >
+          {rerouting ? (
+            <div className="pointer-events-auto mb-1 self-start rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-md">
+              A recalcular rota…
+            </div>
+          ) : null}
           <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-lg backdrop-blur">
             {/* Seta da manobra. */}
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-slate-900">
