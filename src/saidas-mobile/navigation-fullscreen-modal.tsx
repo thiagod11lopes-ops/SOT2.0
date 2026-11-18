@@ -17,8 +17,8 @@
  *  - Acompanhamento contínuo da posição via `useWatchUserLocation`.
  *  - Em modo navegação: câmara **heading-up** (mapa roda no rumo do carro,
  *    estilo Google Maps); em preview permanece north-up.
- *  - Anúncios de manobra por voz (Web Speech API) à medida que o motorista
- *    se aproxima de cada passo.
+ *  - Anúncios de manobra por voz estilo Google Maps (longe / perto / agora),
+ *    com a melhor voz pt-BR disponível no dispositivo.
  *  - Wake Lock (`useScreenWakeLock`) para o ecrã não apagar em viagem.
  *
  * Stack: Maps JavaScript API (Google) para renderização + OSRM (gratuito)
@@ -62,6 +62,14 @@ import {
   haversineMeters,
   maneuverToPortuguese,
 } from "../lib/navigationRouting";
+import {
+  buildNavigationGuidanceSpeech,
+  primeNavigationSpeech,
+  speakNavigation,
+  stopNavigationSpeech,
+  warmNavigationSpeechVoices,
+  type NavigationGuidanceStage,
+} from "../lib/navigationSpeech";
 
 /**
  * Bibliotecas adicionais carregadas com o Maps JS. Mantido fora do componente
@@ -656,6 +664,8 @@ export function NavigationFullScreenModal({
   /** Instância do mapa Google (definida no `onLoad`). Usada para `fitBounds`. */
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const spokenStepIdxRef = useRef<number>(-1);
+  /** Último estágio de voz anunciado por índice de passo (far → near → now). */
+  const spokenStageByStepRef = useRef<Record<number, NavigationGuidanceStage | undefined>>({});
   /**
    * Última heading válida (graus, 0 = norte). Mantida em state para forçar
    * re-render do ícone do motorista a cada actualização da bússola.
@@ -1353,17 +1363,9 @@ export function NavigationFullScreenModal({
       }
       setRoute(r);
       spokenStepIdxRef.current = -1;
+      spokenStageByStepRef.current = {};
       // Mantém routeFittedRef = true para não fazer fitBounds e tirar o zoom da navegação.
-      if (voiceEnabled && "speechSynthesis" in window) {
-        try {
-          const utter = new SpeechSynthesisUtterance("Rota recalculada");
-          utter.lang = "pt-BR";
-          utter.rate = 1.05;
-          window.speechSynthesis.speak(utter);
-        } catch {
-          /* ignore */
-        }
-      }
+      if (voiceEnabled) speakNavigation("Rota recalculada.");
     });
   }, [
     open,
@@ -1581,30 +1583,25 @@ export function NavigationFullScreenModal({
   }, [navigating, mapInstance]);
 
   // ---------------------------------------------------------------------------
-  // 7) Voz: anuncia a próxima manobra quando o motorista está a < 120 m do
-  //    início dela. Usa Web Speech API.
+  // 7) Voz estilo Google Maps: avisos em etapas (longe → perto → agora),
+  //    com melhor voz pt-BR disponível no dispositivo.
   // ---------------------------------------------------------------------------
-  const speak = useCallback(
-    (text: string) => {
-      if (!voiceEnabled) return;
-      if (!("speechSynthesis" in window)) return;
-      try {
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = "pt-BR";
-        utter.rate = 1.0;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utter);
-      } catch {
-        /* ignore */
-      }
-    },
-    [voiceEnabled],
-  );
+  useEffect(() => {
+    if (!open) return;
+    warmNavigationSpeechVoices();
+  }, [open]);
+
+  useEffect(() => {
+    if (!navigating || !voiceEnabled) return;
+    primeNavigationSpeech();
+    speakNavigation("Siga em frente.");
+  }, [navigating, voiceEnabled]);
 
   const maybeSpeakNextManeuver = useCallback(
     (here: Coord) => {
+      if (!voiceEnabled) return;
       const r = route;
-      if (!r) return;
+      if (!r || !navigating) return;
       const next = spokenStepIdxRef.current + 1;
       if (next >= r.steps.length) return;
       const step = r.steps[next];
@@ -1612,13 +1609,27 @@ export function NavigationFullScreenModal({
       if (!coords || coords.length === 0) return;
       const [lng, lat] = coords[0];
       const distM = haversineMeters(here, { lat, lng });
-      if (distM < 120) {
-        const phrase = maneuverToPortuguese(step);
-        if (phrase) speak(phrase);
+      const prevStage = spokenStageByStepRef.current[next];
+
+      let stage: NavigationGuidanceStage | null = null;
+      if (distM < 40) stage = "now";
+      else if (distM < 120) stage = "near";
+      else if (distM < 420) stage = "far";
+      if (!stage) return;
+
+      const rank = { far: 1, near: 2, now: 3 } as const;
+      if (prevStage && rank[prevStage] >= rank[stage]) return;
+
+      const phrase = buildNavigationGuidanceSpeech(step, distM, stage);
+      if (!phrase) return;
+      speakNavigation(phrase);
+      spokenStageByStepRef.current[next] = stage;
+      // Só avança o passo após o aviso final — senão perde o "agora".
+      if (stage === "now") {
         spokenStepIdxRef.current = next;
       }
     },
-    [route, speak],
+    [route, voiceEnabled, navigating],
   );
 
   // Dispara o `maybeSpeakNextManeuver` a cada nova posição GPS.
@@ -1644,6 +1655,8 @@ export function NavigationFullScreenModal({
     setFarewellAnimating(false);
     setSelectedOtherPin(null);
     spokenStepIdxRef.current = -1;
+    spokenStageByStepRef.current = {};
+    stopNavigationSpeech();
     routingStartedRef.current = false;
     routeFittedRef.current = false;
     centeredOnFirstFixRef.current = false;
@@ -2467,6 +2480,7 @@ export function NavigationFullScreenModal({
           onClick={() => {
             navInitializedRef.current = false;
             setUserPanned(false);
+            primeNavigationSpeech();
             setNavigating(true);
           }}
           className="pointer-events-auto absolute left-1/2 z-10 flex h-14 -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-6 text-white shadow-xl shadow-emerald-900/40 backdrop-blur active:bg-emerald-700"
@@ -2588,7 +2602,7 @@ export function NavigationFullScreenModal({
       <button
         type="button"
         onClick={() => {
-          window.speechSynthesis?.cancel?.();
+          stopNavigationSpeech();
           onClose();
         }}
         className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"

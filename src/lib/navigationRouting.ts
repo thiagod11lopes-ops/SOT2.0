@@ -773,16 +773,21 @@ export function haversineMeters(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/** Cláusula de via para frases de voz/UI (" na Rua X"). */
+function streetClause(name: string | undefined): string {
+  const n = (name || "").trim();
+  if (!n) return "";
+  return ` na ${n}`;
+}
+
 /**
- * Constrói uma frase em português para uma manobra OSRM (usada pelo Text-to-Speech).
- *
- * Cobre os tipos mais comuns (`turn`, `merge`, `roundabout`, `arrive`, `depart`, etc).
- * Tipos não cobertos devolvem string vazia (não falamos).
+ * Texto curto da manobra (cartão no ecrã e base das frases de voz).
+ * Estilo Google Maps: directo e falável.
  */
 export function maneuverToPortuguese(step: RouteStep): string {
   const m = step.maneuver;
   if (!m) return "";
-  const rua = step.name ? ` na ${step.name}` : "";
+  const rua = streetClause(step.name);
   const modifier = m.modifier ?? "";
   const direcao =
     modifier === "left"
@@ -790,42 +795,45 @@ export function maneuverToPortuguese(step: RouteStep): string {
       : modifier === "right"
         ? "à direita"
         : modifier === "slight left"
-          ? "ligeiramente à esquerda"
+          ? "à esquerda em diagonal"
           : modifier === "slight right"
-            ? "ligeiramente à direita"
+            ? "à direita em diagonal"
             : modifier === "sharp left"
-              ? "fortemente à esquerda"
+              ? "bem à esquerda"
               : modifier === "sharp right"
-                ? "fortemente à direita"
+                ? "bem à direita"
                 : modifier === "straight"
                   ? "em frente"
                   : modifier === "uturn"
-                    ? "inverter o sentido"
+                    ? "retorno"
                     : "";
 
   switch (m.type) {
     case "depart":
-      return "A iniciar a navegação.";
+      return "Siga em frente";
     case "arrive":
-      return "Chegou ao destino.";
+      return "Você chegou ao destino";
     case "turn":
     case "end of road":
-      return direcao ? `Vire ${direcao}${rua}.` : "";
+      if (modifier === "uturn") return `Faça o retorno${rua}`;
+      return direcao ? `Vire ${direcao}${rua}` : "";
     case "merge":
-      return direcao ? `Entre ${direcao}${rua}.` : `Entre${rua}.`;
+      return direcao ? `Entre ${direcao}${rua}` : `Entre na via${rua}`;
     case "fork":
-      return direcao ? `Mantenha-se ${direcao}${rua}.` : "";
+      return direcao ? `Mantenha-se ${direcao}${rua}` : "";
     case "roundabout":
     case "rotary":
-      return "Entre na rotunda.";
+      return "Entre na rotatória";
     case "exit roundabout":
     case "exit rotary":
-      return direcao ? `Saia da rotunda ${direcao}${rua}.` : `Saia da rotunda${rua}.`;
+      return direcao ? `Saia da rotatória ${direcao}${rua}` : `Saia da rotatória${rua}`;
     case "new name":
-      return step.name ? `Continue${rua}.` : "";
+      return step.name ? `Continue${rua}` : "Continue em frente";
     case "continue":
-      return direcao ? `Continue ${direcao}${rua}.` : `Continue${rua}.`;
+      if (direcao === "em frente" || !direcao) return `Continue em frente${rua}`;
+      return `Continue ${direcao}${rua}`;
     default:
       return "";
   }
 }
+
