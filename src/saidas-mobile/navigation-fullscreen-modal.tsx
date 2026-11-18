@@ -655,10 +655,17 @@ export function NavigationFullScreenModal({
       );
     }
   }, [open, mapId]);
-  const mapOptionsWithId = useMemo<google.maps.MapOptions>(
-    () => (mapId ? { ...MAP_OPTIONS, mapId } : MAP_OPTIONS),
-    [mapId],
-  );
+  const mapOptionsWithId = useMemo<google.maps.MapOptions>(() => {
+    const opts: google.maps.MapOptions = { ...MAP_OPTIONS };
+    if (mapId) opts.mapId = mapId;
+    // +/- no topo para não competir com o painel de ETA na base.
+    if (typeof google !== "undefined" && google.maps?.ControlPosition) {
+      opts.zoomControlOptions = {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      };
+    }
+    return opts;
+  }, [mapId]);
 
   // ─── Estado / refs ───────────────────────────────────────────────────────
   /** Instância do mapa Google (definida no `onLoad`). Usada para `fitBounds`. */
@@ -1767,6 +1774,20 @@ export function NavigationFullScreenModal({
     setMapInstance(null);
   }, []);
 
+  // Quando o painel inferior entra/sai, o contentor do mapa muda de tamanho —
+  // o Google Maps precisa de `resize` para redesenhar correctamente.
+  useEffect(() => {
+    if (!open || !mapInstance || typeof google === "undefined") return;
+    const id = window.setTimeout(() => {
+      try {
+        google.maps.event.trigger(mapInstance, "resize");
+      } catch {
+        /* ignore */
+      }
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [open, mapInstance, navigating, remainingNavStats]);
+
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
@@ -1779,7 +1800,8 @@ export function NavigationFullScreenModal({
    */
   return createPortal(
     <div className="saidas-mobile-scope fixed inset-0 z-[2000] flex min-h-0 w-full min-w-0 flex-col bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
-      {/* Mapa em fundo, ocupa o resto do ecrã. */}
+      {/* Área do mapa: cresce e encolhe; o painel de ETA fica FORA (fluxo normal). */}
+      <div className="relative min-h-0 w-full flex-1">
       <div
         className="absolute inset-0"
         style={{ zIndex: 0 }}
@@ -2341,14 +2363,16 @@ export function NavigationFullScreenModal({
         </div>
       )}
 
-      {/* Dock inferior em navegação: controlos SEMPRE acima do card de ETA
-          (nada fica oculto atrás do painel branco). */}
+      {/* Fecha a área flex-1 do mapa (overlays absolutos ficam só sobre o mapa). */}
+      </div>
+
+      {/* Painel inferior em fluxo normal (não sobrepõe o mapa). */}
       {navigating && route && remainingNavStats ? (
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col gap-2 px-3"
+          className="relative z-30 flex w-full shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50/95 px-3 pt-2 shadow-[0_-8px_28px_-16px_rgba(15,23,42,0.35)] backdrop-blur"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <div className="pointer-events-auto flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -2485,7 +2509,7 @@ export function NavigationFullScreenModal({
             </div>
           </div>
 
-          <div className="pointer-events-auto rounded-3xl border border-black/5 bg-white px-4 py-3 text-slate-900 shadow-[0_-12px_40px_-12px_rgba(15,23,42,0.45)]">
+          <div className="rounded-2xl border border-black/5 bg-white px-4 py-3 text-slate-900 shadow-sm">
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
