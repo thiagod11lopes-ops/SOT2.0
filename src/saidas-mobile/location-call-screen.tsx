@@ -57,7 +57,7 @@ export function LocationCallScreen({ busy, error, onEnviar, onRecusar }: Locatio
         <h2 id="sot-location-call-title" className="mt-10 max-w-xs text-center text-2xl font-semibold leading-snug">
           Enviar localização para HNMD
         </h2>
-        <p className="mt-3 text-sm text-white/60">A tocar…</p>
+        <p className="mt-3 text-sm text-white/60">A vibrar…</p>
         {error ? <p className="mt-4 max-w-xs text-center text-sm text-red-300">{error}</p> : null}
         {busy ? <p className="mt-4 text-sm text-white/70">A obter a localização...</p> : null}
       </div>

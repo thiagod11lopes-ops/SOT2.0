@@ -213,7 +213,7 @@ export function TripPermissionsModal({
                 <p className="text-sm font-semibold text-[hsl(var(--foreground))]">Receber chamadas do HNMD</p>
                 <p className="mt-0.5 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
                   O celular pode receber chamadas do SOT mesmo bloqueado, pedindo o envio da localização. O aviso
-                  aparece na tela de bloqueio com som e vibração.
+                  aparece na tela de bloqueio com vibração (sem som).
                 </p>
                 {itemBusy === "calls" ? (
                   <p className="mt-1 text-xs font-medium text-[hsl(var(--primary))]">A pedir permissão...</p>

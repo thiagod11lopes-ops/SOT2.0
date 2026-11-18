@@ -100,7 +100,8 @@ self.addEventListener("push", (event) => {
         },
         renotify: true,
         requireInteraction: true,
-        silent: false,
+        /** Chamada de localização: só vibração, sem som. */
+        silent: locationCall ? true : false,
         timestamp: Date.now(),
         vibrate: locationCall ? CALL_VIBRATE : [180, 80, 180],
         actions: locationCall
