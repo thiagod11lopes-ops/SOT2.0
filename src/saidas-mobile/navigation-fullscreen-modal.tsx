@@ -1898,27 +1898,26 @@ export function NavigationFullScreenModal({
               </AdvancedHTMLMarker>
             ) : null}
 
-            {/* Marcador do motorista.
-                Em navegação heading-up o mapa já roda com o rumo — a silhueta
-                aponta para cima no ecrã (sem rotateZ). Em preview (north-up)
-                a silhueta roda com o heading do GPS. Em 3D aplica-se só
-                rotateX para deitar no asfalto. */}
+            {/* Marcador do motorista — modelo 3D estilo Google Maps.
+                Em navegação heading-up o mapa já roda com o rumo (sem rotateZ).
+                Em preview (north-up) o modelo roda com o heading do GPS.
+                Com vista 3D, um rotateX leve alinha o volume ao tilt do mapa. */}
             {origin ? (
               <AdvancedHTMLMarker position={origin} zIndex={30}>
                 <div
                   style={{
                     transform: navigating
                       ? view3D
-                        ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg)`
+                        ? `perspective(700px) rotateX(${Math.min(NAV_TILT_DEGREES, 52)}deg)`
                         : "none"
                       : `rotate(${heading ?? 0}deg)`,
-                    transformOrigin: "center",
+                    transformOrigin: "center center",
                     transition: "transform 200ms ease-out",
-                    filter: "drop-shadow(0 4px 4px rgba(0,0,0,0.45))",
+                    filter: "drop-shadow(0 6px 8px rgba(0,0,0,0.4))",
                   }}
                   aria-hidden="true"
                 >
-                  <VehicleIcon variant={driverVehicleVariant} size={42} />
+                  <VehicleIcon variant={driverVehicleVariant} size={52} />
                 </div>
               </AdvancedHTMLMarker>
             ) : null}
@@ -1967,21 +1966,20 @@ export function NavigationFullScreenModal({
                     >
                       {p.placa}
                     </span>
-                    {/* Silhueta da viatura — em modo navegação activa,
-                        deita-se com o tilt do mapa (perspective 3D).
-                        Sem heading das outras viaturas, mostra sempre
-                        "para cima" (no sentido do movimento da câmara). */}
+                    {/* Modelo 3D da viatura — mesma família visual do Maps.
+                        Em vista 3D acompanha o tilt; sem heading próprio,
+                        aponta "para cima" com a câmara heading-up. */}
                     <div
                       style={{
                         transform:
                           navigating && view3D
-                            ? `perspective(600px) rotateX(${NAV_TILT_DEGREES}deg)`
+                            ? `perspective(700px) rotateX(${Math.min(NAV_TILT_DEGREES, 52)}deg)`
                             : "none",
-                        transformOrigin: "center top",
+                        transformOrigin: "center center",
                         transition: "transform 200ms ease-out",
                       }}
                     >
-                      <VehicleIcon variant={variant} size={28} />
+                      <VehicleIcon variant={variant} size={36} />
                     </div>
                   </div>
                 </AdvancedHTMLMarker>
