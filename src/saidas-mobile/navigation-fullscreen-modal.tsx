@@ -2341,14 +2341,151 @@ export function NavigationFullScreenModal({
         </div>
       )}
 
-      {/* Barra inferior estilo Google Maps (navegação activa):
-          tempo restante em destaque + km restantes + hora de chegada. */}
+      {/* Dock inferior em navegação: controlos SEMPRE acima do card de ETA
+          (nada fica oculto atrás do painel branco). */}
       {navigating && route && remainingNavStats ? (
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
-          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col gap-2 px-3"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <div className="pointer-events-auto rounded-t-3xl border border-black/5 bg-white px-4 pb-3 pt-3 text-slate-900 shadow-[0_-12px_40px_-12px_rgba(15,23,42,0.45)]">
+          <div className="pointer-events-auto flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  stopNavigationSpeech();
+                  onClose();
+                }}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur active:bg-slate-900"
+                aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
+                title="Voltar"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="24"
+                  height="24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.25"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+              </button>
+              {origin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mapInstance) {
+                      const mapHeading = navigationCameraHeading;
+                      if (mapHeading !== null) {
+                        smoothMapHeadingRef.current = mapHeading;
+                      }
+                      const center =
+                        mapHeading !== null
+                          ? offsetAlongHeading(
+                              origin,
+                              mapHeading,
+                              view3D ? NAV_AHEAD_METERS_3D : NAV_AHEAD_METERS_2D,
+                            )
+                          : origin;
+                      mapInstance.panTo(center);
+                      mapInstance.setZoom(view3D ? NAV_ZOOM_3D : NAV_ZOOM_2D);
+                      try {
+                        mapInstance.setTilt(view3D ? NAV_TILT_DEGREES : 0);
+                        if (mapHeading !== null) {
+                          mapInstance.setHeading(mapHeading);
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                    }
+                    setUserPanned(false);
+                  }}
+                  className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
+                    userPanned ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
+                  }`}
+                  aria-label="Centralizar na minha posição"
+                  title="Centralizar"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="22"
+                    height="22"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <circle cx="12" cy="12" r="8" />
+                    <line x1="12" y1="2" x2="12" y2="5" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                    <line x1="2" y1="12" x2="5" y2="12" />
+                    <line x1="19" y1="12" x2="22" y2="12" />
+                  </svg>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setView3D((v) => !v)}
+                className={`flex h-12 w-12 items-center justify-center rounded-full text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur active:scale-95 ${
+                  view3D ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
+                }`}
+                aria-label={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
+                title={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
+                aria-pressed={view3D}
+              >
+                3D
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {otherPins.length > 0 ? (
+                <div
+                  className="flex h-12 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg"
+                  role="status"
+                  aria-label={`${otherPins.length} outras viaturas em curso`}
+                >
+                  <span className="text-sm font-bold leading-none">{otherPins.length}</span>
+                  <span className="text-[0.7rem] font-semibold leading-none">
+                    {otherPins.length === 1 ? "viatura" : "viaturas"}
+                  </span>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  lastLockTapRef.current = 0;
+                  setScreenLocked(true);
+                }}
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur active:bg-slate-900"
+                aria-label="Desligar a tela (toque duas vezes para voltar)"
+                title="Desligar tela"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+                  <line x1="12" y1="2" x2="12" y2="12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="pointer-events-auto rounded-3xl border border-black/5 bg-white px-4 py-3 text-slate-900 shadow-[0_-12px_40px_-12px_rgba(15,23,42,0.45)]">
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -2417,218 +2554,139 @@ export function NavigationFullScreenModal({
         </div>
       ) : null}
 
-      {/* Botão flutuante: trancar tela (canto superior esquerdo). */}
-      <button
-        type="button"
-        onClick={() => {
-          lastLockTapRef.current = 0;
-          setScreenLocked(true);
-        }}
-        className="pointer-events-auto absolute left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
-        style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
-        aria-label="Desligar a tela (poupa brilho/bateria — toque duas vezes para voltar)"
-        title="Desligar tela"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="22"
-          height="22"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          {/* Símbolo universal de "power" — arco aberto no topo + traço vertical. */}
-          <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-          <line x1="12" y1="2" x2="12" y2="12" />
-        </svg>
-      </button>
-
-      {/* Chip flutuante: contagem de outras viaturas com saída em curso. */}
-      {otherPins.length > 0 ? (
-        <div
-          className="pointer-events-none absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg shadow-orange-900/40 backdrop-blur"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
-          role="status"
-          aria-label={`${otherPins.length} ${
-            otherPins.length === 1 ? "outra viatura" : "outras viaturas"
-          } com saída em curso`}
-          title={`${otherPins.length} ${
-            otherPins.length === 1 ? "outra viatura" : "outras viaturas"
-          } com saída em curso`}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-            <path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11h.5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 19.5 19H19v1.25A.75.75 0 0 1 18.25 21h-1.5a.75.75 0 0 1-.75-.75V19H8v1.25A.75.75 0 0 1 7.25 21h-1.5A.75.75 0 0 1 5 20.25V19h-.5A1.5 1.5 0 0 1 3 17.5v-5A1.5 1.5 0 0 1 4.5 11H5zm2.16-.5h9.68l-1-3.3a.5.5 0 0 0-.48-.37H8.64a.5.5 0 0 0-.48.37l-1 3.3zM7 16a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm10 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
-          </svg>
-          <span className="text-sm font-bold uppercase tracking-wider leading-none">
-            {otherPins.length}
-          </span>
-          <span className="text-[0.7rem] font-semibold leading-none">
-            {otherPins.length === 1 ? "viatura" : "viaturas"}
-          </span>
-        </div>
-      ) : null}
-
-      {/* Botão "Iniciar" — só aparece em modo preview (antes de navegar) e
-          quando há rota calculada. Estilo Google Maps: pílula verde grande
-          ao centro inferior, com seta de play. */}
-      {route && !navigating ? (
-        <button
-          type="button"
-          onClick={() => {
-            navInitializedRef.current = false;
-            setUserPanned(false);
-            primeNavigationSpeech();
-            setNavigating(true);
-          }}
-          className="pointer-events-auto absolute left-1/2 z-10 flex h-14 -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-6 text-white shadow-xl shadow-emerald-900/40 backdrop-blur active:bg-emerald-700"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
-          aria-label="Iniciar navegação"
-          title="Iniciar navegação"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="currentColor"
-            aria-hidden="true"
+      {/* Controlos do modo preview (fora da navegação activa). */}
+      {!navigating ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              lastLockTapRef.current = 0;
+              setScreenLocked(true);
+            }}
+            className="pointer-events-auto absolute left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
+            style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
+            aria-label="Desligar a tela (poupa brilho/bateria — toque duas vezes para voltar)"
+            title="Desligar tela"
           >
-            <path d="M6 4l16 8-16 8V4z" />
-          </svg>
-          <span className="text-base font-bold uppercase tracking-wider">Iniciar</span>
-        </button>
-      ) : null}
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+              <line x1="12" y1="2" x2="12" y2="12" />
+            </svg>
+          </button>
 
-      {/* Botão "3D" — toggle de vista inclinada (estilo Google Maps / Waze).
-          Empilhado acima do "Centralizar", à esquerda. Só faz sentido em
-          modo navegação activa (em preview o mapa fica em vista 2D). */}
-      {origin && navigating ? (
-        <button
-          type="button"
-          onClick={() => setView3D((v) => !v)}
-          className={`pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur active:scale-95 ${
-            view3D ? "bg-blue-600 text-white" : "bg-white/95 text-blue-600"
-          }`}
-          style={{
-            bottom: navigating
-              ? "calc(env(safe-area-inset-bottom, 0px) + 14rem)"
-              : "calc(env(safe-area-inset-bottom, 0px) + 7.75rem)",
-          }}
-          aria-label={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
-          title={view3D ? "Desligar vista 3D" : "Ligar vista 3D"}
-          aria-pressed={view3D}
-        >
-          3D
-        </button>
-      ) : null}
+          {otherPins.length > 0 ? (
+            <div
+              className="pointer-events-none absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-orange-500/95 px-3 text-white shadow-lg shadow-orange-900/40 backdrop-blur"
+              style={{ top: "calc(env(safe-area-inset-top, 0px) + 12rem)" }}
+              role="status"
+              aria-label={`${otherPins.length} ${
+                otherPins.length === 1 ? "outra viatura" : "outras viaturas"
+              } com saída em curso`}
+            >
+              <span className="text-sm font-bold uppercase tracking-wider leading-none">
+                {otherPins.length}
+              </span>
+              <span className="text-[0.7rem] font-semibold leading-none">
+                {otherPins.length === 1 ? "viatura" : "viaturas"}
+              </span>
+            </div>
+          ) : null}
 
-      {/* Botão "Centralizar" — pan + zoom + reactivar auto-follow.
-          Em navegação restaura tilt e heading-up (rumo do veículo). */}
-      {origin ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (mapInstance) {
-              const mapHeading = navigating ? navigationCameraHeading : null;
-              if (mapHeading !== null) {
-                smoothMapHeadingRef.current = mapHeading;
-              }
-              const center =
-                navigating && mapHeading !== null
-                  ? offsetAlongHeading(
-                      origin,
-                      mapHeading,
-                      view3D ? NAV_AHEAD_METERS_3D : NAV_AHEAD_METERS_2D,
-                    )
-                  : origin;
-              mapInstance.panTo(center);
-              mapInstance.setZoom(
-                navigating
-                  ? view3D
-                    ? NAV_ZOOM_3D
-                    : NAV_ZOOM_2D
-                  : PREVIEW_RECENTER_ZOOM,
-              );
-              if (navigating) {
-                try {
-                  mapInstance.setTilt(view3D ? NAV_TILT_DEGREES : 0);
-                  if (mapHeading !== null) {
-                    mapInstance.setHeading(mapHeading);
-                  }
-                } catch {
-                  // ignora se mapa raster
+          {route ? (
+            <button
+              type="button"
+              onClick={() => {
+                navInitializedRef.current = false;
+                setUserPanned(false);
+                primeNavigationSpeech();
+                setNavigating(true);
+              }}
+              className="pointer-events-auto absolute left-1/2 z-10 flex h-14 -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-6 text-white shadow-xl shadow-emerald-900/40 backdrop-blur active:bg-emerald-700"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}
+              aria-label="Iniciar navegação"
+              title="Iniciar navegação"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+                <path d="M6 4l16 8-16 8V4z" />
+              </svg>
+              <span className="text-base font-bold uppercase tracking-wider">Iniciar</span>
+            </button>
+          ) : null}
+
+          {origin ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (mapInstance) {
+                  mapInstance.panTo(origin);
+                  mapInstance.setZoom(PREVIEW_RECENTER_ZOOM);
                 }
-              }
-            }
-            setUserPanned(false);
-          }}
-          className={`pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur active:scale-95 ${
-            navigating && userPanned
-              ? "bg-blue-600 text-white"
-              : "bg-white/95 text-blue-600"
-          }`}
-          style={{
-            bottom: navigating
-              ? "calc(env(safe-area-inset-bottom, 0px) + 10.5rem)"
-              : "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)",
-          }}
-          aria-label="Centralizar na minha posição"
-          title="Centralizar na minha posição"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="22"
-            height="22"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <circle cx="12" cy="12" r="8" />
-            <line x1="12" y1="2" x2="12" y2="5" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="5" y2="12" />
-            <line x1="19" y1="12" x2="22" y2="12" />
-          </svg>
-        </button>
-      ) : null}
+                setUserPanned(false);
+              }}
+              className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-blue-600 shadow-lg backdrop-blur active:scale-95"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}
+              aria-label="Centralizar na minha posição"
+              title="Centralizar na minha posição"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <circle cx="12" cy="12" r="8" />
+                <line x1="12" y1="2" x2="12" y2="5" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="5" y2="12" />
+                <line x1="19" y1="12" x2="22" y2="12" />
+              </svg>
+            </button>
+          ) : null}
 
-      {/* Botão "Voltar" — acima da barra inferior quando em navegação. */}
-      <button
-        type="button"
-        onClick={() => {
-          stopNavigationSpeech();
-          onClose();
-        }}
-        className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
-        style={{
-          bottom: navigating
-            ? "calc(env(safe-area-inset-bottom, 0px) + 7rem)"
-            : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-        }}
-        aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
-        title="Voltar"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="24"
-          height="24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <line x1="19" y1="12" x2="5" y2="12" />
-          <polyline points="12 19 5 12 12 5" />
-        </svg>
-      </button>
+          <button
+            type="button"
+            onClick={() => {
+              stopNavigationSpeech();
+              onClose();
+            }}
+            className="pointer-events-auto absolute left-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/85 text-white shadow-lg backdrop-blur active:bg-slate-900"
+            style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+            aria-label="Voltar para o quadro de saídas (mantém o rastreamento activo)"
+            title="Voltar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+        </>
+      ) : null}
 
       {/* Animação de despedida: escurece gradualmente até preto enquanto uma mão
           acena no centro. Visível só durante ~2,2 s quando o motorista escolheu
