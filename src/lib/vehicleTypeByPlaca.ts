@@ -22,9 +22,9 @@ export const VEHICLE_TYPES: readonly VehicleType[] = ["car", "ambulance", "truck
 
 /** Rótulo PT-BR para a UI. */
 export const VEHICLE_TYPE_LABEL: Record<VehicleType, string> = {
-  car: "Carro (cinza)",
-  ambulance: "Ambulância (branca)",
-  truck: "Caminhão (cinza)",
+  car: "Carro",
+  ambulance: "Ambulância",
+  truck: "Caminhão",
 };
 
 /** Documento Firestore — mapa placa→tipo. */
