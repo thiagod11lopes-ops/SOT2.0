@@ -1898,26 +1898,23 @@ export function NavigationFullScreenModal({
               </AdvancedHTMLMarker>
             ) : null}
 
-            {/* Marcador do motorista — modelo 3D estilo Google Maps.
+            {/* Marcador do motorista — SVG 3D em perspectiva (estilo Maps).
                 Em navegação heading-up o mapa já roda com o rumo (sem rotateZ).
-                Em preview (north-up) o modelo roda com o heading do GPS.
-                Com vista 3D, um rotateX leve alinha o volume ao tilt do mapa. */}
+                Em preview o modelo roda com o heading do GPS.
+                Sem rotateX/filter no contentor: o volume já vem no desenho
+                e filter CSS achata o marcador no telemóvel. */}
             {origin ? (
               <AdvancedHTMLMarker position={origin} zIndex={30}>
                 <div
                   style={{
-                    transform: navigating
-                      ? view3D
-                        ? `perspective(700px) rotateX(${Math.min(NAV_TILT_DEGREES, 52)}deg)`
-                        : "none"
-                      : `rotate(${heading ?? 0}deg)`,
+                    transform: navigating ? "none" : `rotate(${heading ?? 0}deg)`,
                     transformOrigin: "center center",
                     transition: "transform 200ms ease-out",
-                    filter: "drop-shadow(0 6px 8px rgba(0,0,0,0.4))",
+                    lineHeight: 0,
                   }}
                   aria-hidden="true"
                 >
-                  <VehicleIcon variant={driverVehicleVariant} size={52} />
+                  <VehicleIcon variant={driverVehicleVariant} size={58} />
                 </div>
               </AdvancedHTMLMarker>
             ) : null}
@@ -1966,20 +1963,9 @@ export function NavigationFullScreenModal({
                     >
                       {p.placa}
                     </span>
-                    {/* Modelo 3D da viatura — mesma família visual do Maps.
-                        Em vista 3D acompanha o tilt; sem heading próprio,
-                        aponta "para cima" com a câmara heading-up. */}
-                    <div
-                      style={{
-                        transform:
-                          navigating && view3D
-                            ? `perspective(700px) rotateX(${Math.min(NAV_TILT_DEGREES, 52)}deg)`
-                            : "none",
-                        transformOrigin: "center center",
-                        transition: "transform 200ms ease-out",
-                      }}
-                    >
-                      <VehicleIcon variant={variant} size={36} />
+                    {/* Modelo 3D em perspectiva (mesmo do motorista). */}
+                    <div style={{ lineHeight: 0 }}>
+                      <VehicleIcon variant={variant} size={42} />
                     </div>
                   </div>
                 </AdvancedHTMLMarker>

@@ -524,9 +524,9 @@ export function DesktopDriverLocationsMapHeaderButton() {
  * chamar `renderToStaticMarkup` por pin a cada update.
  */
 const VEHICLE_ICON_HTML = {
-  car: renderToStaticMarkup(<VehicleIcon variant="car" size={32} />),
-  ambulance: renderToStaticMarkup(<VehicleIcon variant="ambulance" size={32} />),
-  truck: renderToStaticMarkup(<VehicleIcon variant="truck" size={32} />),
+  car: renderToStaticMarkup(<VehicleIcon variant="car" size={40} />),
+  ambulance: renderToStaticMarkup(<VehicleIcon variant="ambulance" size={40} />),
+  truck: renderToStaticMarkup(<VehicleIcon variant="truck" size={40} />),
 } as const;
 
 /**
@@ -548,10 +548,10 @@ function buildVehicleDivIcon(placa: string, variant: "car" | "ambulance" | "truc
   return L.divIcon({
     html,
     className: "sot-driver-vehicle-divicon",
-    iconSize: [40, 70],
-    iconAnchor: [20, 60],
-    popupAnchor: [0, -56],
-    tooltipAnchor: [0, -56],
+    iconSize: [48, 78],
+    iconAnchor: [24, 68],
+    popupAnchor: [0, -62],
+    tooltipAnchor: [0, -62],
   });
 }
 
