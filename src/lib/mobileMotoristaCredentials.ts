@@ -90,9 +90,11 @@ export function setActiveMobileMotorista(motorista: string | null): void {
   try {
     if (!motorista || !motorista.trim()) {
       localStorage.removeItem(ACTIVE_MOTORISTA_KEY);
+      window.dispatchEvent(new Event("sot-mobile-motorista"));
       return;
     }
     localStorage.setItem(ACTIVE_MOTORISTA_KEY, motorista.trim());
+    window.dispatchEvent(new Event("sot-mobile-motorista"));
   } catch {
     /* ignore */
   }

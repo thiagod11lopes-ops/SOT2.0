@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { SaidasLayout } from "./saidas-layout";
 import { SaidasMobileFilterDateProvider, useSaidasMobileFilterDate } from "./saidas-mobile-filter-date-context";
 import { SaidasPage } from "./saidas-page";
+import { LocationRequestHost } from "./location-request-host";
 import { useMobileLoadingOverlay } from "./mobile-loading-context";
 import { useDepartures } from "../context/departures-context";
 
@@ -66,5 +67,10 @@ export function SaidasMobileApp() {
     };
   }, []);
 
-  return <SaidasMobileRoutes />;
+  return (
+    <>
+      <SaidasMobileRoutes />
+      <LocationRequestHost />
+    </>
+  );
 }

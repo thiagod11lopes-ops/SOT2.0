@@ -44,6 +44,8 @@ export const SOT_STATE_DOC = {
   owntracks: "owntracks",
   /** Pedidos de motorista SIAD (alerta «SIAD SOLICITADO» em todos os dispositivos). */
   siadDriverRequest: "siadDriverRequest",
+  /** Pedido do mapa para o motorista da viatura enviar a localização. */
+  solicitacaoLocalizacao: "solicitacaoLocalizacao",
   /** Controle de material por planilhas (localização / estoque). */
   materialControle: "materialControle",
   /** E-mails autorizados a entrar no SOT do computador. Não é usado pelo aplicativo mobile. */

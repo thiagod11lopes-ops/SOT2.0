@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { Map as MapIcon, X } from "lucide-react";
 import { useCatalogItems } from "../context/catalog-items-context";
 import { useDepartures } from "../context/departures-context";
-import { useDriverActiveLocations } from "../hooks/useDriverActiveLocations";
+import { useDriverActiveLocations, type DriverActivePin } from "../hooks/useDriverActiveLocations";
 import { useVehicleTypeByPlaca } from "../hooks/useVehicleTypeByPlaca";
 import { filterDriverLocationPinsPorSaidaIniciada } from "../lib/departureDriverMapFilter";
 import { isFirebaseConfigured } from "../lib/firebase/config";
@@ -15,6 +15,7 @@ import {
   type VehicleTypeByPlaca,
 } from "../lib/vehicleTypeByPlaca";
 import { Button } from "./ui/button";
+import { DriverMapVehicleModal } from "./driver-map-vehicle-modal";
 import { VehicleIcon } from "./vehicle-icon";
 
 const OSM_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -326,26 +327,6 @@ function formatHmSs(ms: number): string {
   });
 }
 
-/** Devolve "11/05/2026 às 19:53" (com data + hora curtas), em pt-BR. */
-function formatDateTime(ms: number): string {
-  const d = new Date(ms);
-  const date = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return `${date} às ${time}`;
-}
-
-/** "agora", "há 3 min", "há 2 h", "há 1 dia" — útil para popup do mapa. */
-function formatRelative(ms: number, now: number = Date.now()): string {
-  const diffSec = Math.max(0, Math.floor((now - ms) / 1000));
-  if (diffSec < 60) return "agora mesmo";
-  const min = Math.floor(diffSec / 60);
-  if (min < 60) return `há ${min} min`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `há ${hr} h`;
-  const days = Math.floor(hr / 24);
-  return days === 1 ? "há 1 dia" : `há ${days} dias`;
-}
-
 /**
  * Envolve o layout desktop e expõe o botão do mapa no cabeçalho (ao lado do RDV).
  * Mantém um único listener Firestore + estado do modal.
@@ -358,6 +339,7 @@ export function DesktopDriverLocationsMapProvider({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedPin, setSelectedPin] = useState<DriverActivePin | null>(null);
   const [snapshotRetryNonce, setSnapshotRetryNonce] = useState(0);
   const [online, setOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -448,7 +430,10 @@ export function DesktopDriverLocationsMapProvider({
                   size="icon"
                   className="shrink-0"
                   aria-label="Fechar mapa"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setSelectedPin(null);
+                    setOpen(false);
+                  }}
                 >
                   <X className="h-5 w-5" />
                 </Button>
@@ -499,7 +484,9 @@ export function DesktopDriverLocationsMapProvider({
             pins={pinsVisiveis}
             vehicleTypeByPlaca={vehicleTypeByPlaca}
             catalogHint={catalogHint}
+            onPinClick={setSelectedPin}
           />
+          {selectedPin ? <DriverMapVehicleModal pin={selectedPin} onClose={() => setSelectedPin(null)} /> : null}
         </>
       ) : null}
     </DriverLocationsMapUiContext.Provider>
@@ -576,16 +563,20 @@ function MapLeafletHost({
   pins,
   vehicleTypeByPlaca,
   catalogHint,
+  onPinClick,
 }: {
   visible: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
   mapRef: React.RefObject<L.Map | null>;
   layerRef: React.RefObject<L.LayerGroup | null>;
-  pins: { placa: string; lat: number; lng: number; lastUpdateAtMs: number | null }[];
+  pins: DriverActivePin[];
   vehicleTypeByPlaca: VehicleTypeByPlaca;
   catalogHint: VehicleCatalogHint;
+  onPinClick: (pin: DriverActivePin) => void;
 }) {
   const prevPinCountRef = useRef<number | null>(null);
+  const onPinClickRef = useRef(onPinClick);
+  onPinClickRef.current = onPinClick;
   const linsCrossLatLngRef = useRef<L.LatLngTuple>(
     loadSavedLinsCrossLatLng() ?? DEFAULT_LINS_DE_VASCONCELOS_CRUZ_LATLNG,
   );
@@ -724,14 +715,7 @@ function MapLeafletHost({
       const variant = resolveVehicleType(p.placa, p.placa, vehicleTypeByPlaca, catalogHint);
       const icon = buildVehicleDivIcon(p.placa, variant);
       const m = L.marker([p.lat, p.lng], { icon, riseOnHover: true, draggable: false });
-      const label = escapePopupHtml(p.placa);
-      const popupHtml =
-        p.lastUpdateAtMs !== null
-          ? `<strong>${label}</strong><br /><span style="font-size:11px;color:#555">Última posição: ${escapePopupHtml(
-              formatDateTime(p.lastUpdateAtMs),
-            )} <span style="opacity:0.7">(${escapePopupHtml(formatRelative(p.lastUpdateAtMs))})</span></span>`
-          : `<strong>${label}</strong><br /><span style="font-size:11px;color:#888">Hora da última posição desconhecida.</span>`;
-      m.bindPopup(popupHtml, { className: "sot-driver-map-popup" });
+      m.on("click", () => onPinClickRef.current(p));
       m.addTo(group);
     }
 
