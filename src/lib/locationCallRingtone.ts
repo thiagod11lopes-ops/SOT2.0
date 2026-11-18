@@ -1,7 +1,14 @@
 /**
- * Toque de chamada (dois tons, estilo telefone / WhatsApp) enquanto a tela de ligação está aberta.
- * No celular bloqueado o sistema só toca o som da notificação; este áudio entra ao abrir o SOT.
+ * Toque da chamada de localização.
+ * No APK Android usa o toque padrão de ligações do celular.
+ * No navegador (PWA) o sistema não expõe esse toque — usa um ring sintético de fallback.
  */
+
+import {
+  canUseNativeIncomingCall,
+  startNativeIncomingCallRingtone,
+  stopNativeIncomingCallRingtone,
+} from "./nativeIncomingCall";
 
 type StopFn = () => void;
 
@@ -22,11 +29,26 @@ function createRingContext(): AudioContext | null {
 /** Padrão de vibração de chamada: toque-toque, pausa. */
 export const LOCATION_CALL_VIBRATE_PATTERN = [400, 180, 400, 180, 400, 900];
 
-/**
- * Inicia toque em loop até `stop` ser chamado.
- * Usa dois osciladores (440 Hz + 480 Hz), como o ring clássico de telefone.
- */
-export function startLocationCallRingtone(): StopFn {
+function startVibrateLoop(): StopFn {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return () => undefined;
+  }
+  let stopped = false;
+  const pulse = () => {
+    if (stopped) return;
+    navigator.vibrate(LOCATION_CALL_VIBRATE_PATTERN);
+  };
+  pulse();
+  const timer = window.setInterval(pulse, 4000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+    navigator.vibrate(0);
+  };
+}
+
+/** Fallback web: dois tons (não é o toque do sistema — o browser não permite). */
+function startSyntheticRingtone(): StopFn {
   const ctx = createRingContext();
   if (!ctx) return () => undefined;
 
@@ -100,28 +122,32 @@ export function startLocationCallRingtone(): StopFn {
 
   kick();
   const cycleTimer = window.setInterval(kick, 4000);
-
-  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-    const vibratePulse = () => {
-      if (stopped) return;
-      navigator.vibrate(LOCATION_CALL_VIBRATE_PATTERN);
-    };
-    vibratePulse();
-    const vibrateTimer = window.setInterval(vibratePulse, 4000);
-    return () => {
-      stopped = true;
-      window.clearInterval(cycleTimer);
-      window.clearInterval(vibrateTimer);
-      stopNodes();
-      navigator.vibrate(0);
-      void ctx.close().catch(() => undefined);
-    };
-  }
+  const stopVibrate = startVibrateLoop();
 
   return () => {
     stopped = true;
     window.clearInterval(cycleTimer);
     stopNodes();
+    stopVibrate();
     void ctx.close().catch(() => undefined);
   };
+}
+
+/**
+ * Inicia toque em loop até `stop` ser chamado.
+ * Preferência: toque padrão de ligações no APK Android.
+ */
+export function startLocationCallRingtone(): StopFn {
+  if (canUseNativeIncomingCall()) {
+    let stopped = false;
+    void startNativeIncomingCallRingtone();
+    const stopVibrate = startVibrateLoop();
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      stopVibrate();
+      void stopNativeIncomingCallRingtone();
+    };
+  }
+  return startSyntheticRingtone();
 }
