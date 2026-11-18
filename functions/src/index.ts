@@ -393,4 +393,4 @@ export const postOwntracksLocation = onRequest(
 );
 
 // export { processMobileAlarmPush } from "./alarmPush.js";
-export { notifyLocationRequest } from "./locationRequestPush.js";
+export { notifyLocationRequest, pushLocationRequest } from "./locationRequestPush.js";

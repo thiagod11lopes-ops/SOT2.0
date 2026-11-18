@@ -101,12 +101,12 @@ function parsePtBrDateAndTimeToLocal(datePtBr: string, timeHhMm: string): Date |
   return new Date(year, month, day, hour, minute, 0, 0);
 }
 
-async function ativarAvisoNoCelular(motorista: string): Promise<void> {
+async function ativarAvisoNoCelular(motorista: string, renew = false): Promise<void> {
   const nome = motorista.trim();
   if (!nome) return;
   const permission = await requestNotificationPermissionIfNeeded();
   if (permission !== "granted") return;
-  const subscription = await ensurePushSubscription();
+  const subscription = await ensurePushSubscription({ renew });
   if (!subscription) return;
   await saveMobilePushSubscriptionForMotorista(nome, subscription);
 }
@@ -233,7 +233,7 @@ export function SaidasLayout() {
     }
     setActiveMobileMotorista(motorista);
     setMotoristaLogadoMobile(motorista);
-    void ativarAvisoNoCelular(motorista);
+    void ativarAvisoNoCelular(motorista, true);
     window.alert(
       existing
         ? `Login efetuado como ${motorista}.`
@@ -257,7 +257,7 @@ export function SaidasLayout() {
       window.alert("Permissão concedida. Agora selecione o motorista e toque em Guardar para finalizar o login.");
       return;
     }
-    const subscription = await ensurePushSubscription();
+    const subscription = await ensurePushSubscription({ renew: true });
     if (!subscription) {
       window.alert("Permissão concedida, mas não foi possível registrar o dispositivo para push.");
       return;

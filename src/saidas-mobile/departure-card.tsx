@@ -25,6 +25,11 @@ import {
   stopMobileDriverTrackingSessionIfMatches,
 } from "../lib/mobileDriverTracking";
 import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { saveMobilePushSubscriptionForMotorista } from "../lib/firebase/mobilePushSubscriptions";
+import {
+  ensurePushSubscription,
+  requestNotificationPermissionIfNeeded,
+} from "../lib/mobilePushNotifications";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import {
@@ -225,6 +230,16 @@ export function DepartureCard({
     }
     try {
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
+      const motorista = loadActiveMobileMotorista();
+      if (motorista) {
+        void (async () => {
+          const permission = await requestNotificationPermissionIfNeeded();
+          if (permission !== "granted") return;
+          const subscription = await ensurePushSubscription({ renew: true });
+          if (!subscription) return;
+          await saveMobilePushSubscriptionForMotorista(motorista, subscription);
+        })();
+      }
       setOpen(false);
       setBoaViagemOpen(true);
     } catch (e) {

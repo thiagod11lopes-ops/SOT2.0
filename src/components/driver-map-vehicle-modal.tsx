@@ -64,7 +64,7 @@ export function DriverMapVehicleModal({ pin, onClose }: { pin: DriverActivePin; 
         departureId: saida.id,
         motorista,
       });
-      setAviso(`Chamada enviada para ${motorista}.`);
+      setAviso(`Chamada enviada para ${motorista}. Se o celular estiver bloqueado, o aviso aparece na tela de bloqueio.`);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível solicitar a localização.");
     } finally {

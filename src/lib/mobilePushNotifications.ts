@@ -47,15 +47,22 @@ export async function requestNotificationPermissionIfNeeded(): Promise<Notificat
   return Notification.requestPermission();
 }
 
-export async function ensurePushSubscription(): Promise<PushSubscription | null> {
+export async function ensurePushSubscription(options?: { renew?: boolean }): Promise<PushSubscription | null> {
   if (!("PushManager" in window)) return null;
   const registration = await ensureMobilePushServiceWorkerRegistered();
   if (!registration) return null;
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) return existing;
   const vapidPublicKey =
     String(import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? "").trim() || WEB_PUSH_VAPID_PUBLIC_KEY_FALLBACK;
   if (!vapidPublicKey) return null;
+  const existing = await registration.pushManager.getSubscription();
+  if (existing && !options?.renew) return existing;
+  if (existing && options?.renew) {
+    try {
+      await existing.unsubscribe();
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     return await registration.pushManager.subscribe({
       userVisibleOnly: true,

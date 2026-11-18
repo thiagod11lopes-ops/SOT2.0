@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { postDriverLocation } from "../lib/driverLocationPost";
-import { formatGeolocationBlockMessage, ensureGeolocationPermission } from "../lib/mobileDriverTracking";
+import {
+  formatGeolocationBlockMessage,
+  ensureGeolocationPermission,
+  getActiveTrackingInfo,
+  subscribeActiveTrackingChange,
+} from "../lib/mobileDriverTracking";
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
+import { normalizePlacaKeyDriverMap } from "../lib/departureDriverMapFilter";
 import {
   responderSolicitacaoLocalizacao,
   solicitacaoEhDesteMotorista,
@@ -12,12 +18,20 @@ import { LocationCallScreen } from "./location-call-screen";
 
 const MOTORISTA_EVENT = "sot-mobile-motorista";
 
+function pedidoEhDesteCelular(pedido: SolicitacaoLocalizacao, motoristaLogado: string): boolean {
+  if (solicitacaoEhDesteMotorista(pedido, motoristaLogado)) return true;
+  const tracking = getActiveTrackingInfo();
+  if (!tracking) return false;
+  return normalizePlacaKeyDriverMap(tracking.placa) === normalizePlacaKeyDriverMap(pedido.placa);
+}
+
 export function LocationRequestHost() {
   const [motorista, setMotorista] = useState(() => loadActiveMobileMotorista() ?? "");
   const [pedido, setPedido] = useState<SolicitacaoLocalizacao | null>(null);
   const [aberto, setAberto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
+  const [trackingTick, setTrackingTick] = useState(0);
   const tratadoRef = useRef("");
 
   useEffect(() => {
@@ -30,6 +44,8 @@ export function LocationRequestHost() {
     };
   }, []);
 
+  useEffect(() => subscribeActiveTrackingChange(() => setTrackingTick((n) => n + 1)), []);
+
   useEffect(() => {
     return subscribeSolicitacaoLocalizacao(
       (next) => {
@@ -39,7 +55,7 @@ export function LocationRequestHost() {
           return;
         }
         const logado = loadActiveMobileMotorista() ?? "";
-        if (!solicitacaoEhDesteMotorista(next, logado)) {
+        if (!pedidoEhDesteCelular(next, logado)) {
           setAberto(false);
           return;
         }
@@ -52,12 +68,12 @@ export function LocationRequestHost() {
 
   useEffect(() => {
     if (!pedido || pedido.status !== "pendente" || pedido.id === tratadoRef.current) return;
-    if (!solicitacaoEhDesteMotorista(pedido, motorista)) {
+    if (!pedidoEhDesteCelular(pedido, motorista)) {
       setAberto(false);
       return;
     }
     setAberto(true);
-  }, [pedido, motorista]);
+  }, [pedido, motorista, trackingTick]);
 
   function fecharSemEnviar() {
     if (!pedido) return;

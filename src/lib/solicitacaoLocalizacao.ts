@@ -1,5 +1,7 @@
+import { getFirebaseIdTokenForFunctions } from "./driverLocationPost";
+import { isFirebaseConfigured } from "./firebase/config";
 import { SOT_STATE_DOC, setSotStateDoc, subscribeSotStateDoc } from "./firebase/sotStateFirestore";
-import { slugifyMotoristaName } from "./owntracksConfig";
+import { nomesMotoristaVistoriaEquivalentes } from "./vistoriaInspectionShared";
 
 export type SolicitacaoLocalizacaoStatus = "pendente" | "enviada" | "recusada";
 
@@ -15,6 +17,14 @@ export type SolicitacaoLocalizacao = {
 function novoId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function resolvePushLocationRequestUrl(): string | null {
+  const fromEnv = String(import.meta.env.VITE_PUSH_LOCATION_REQUEST_URL ?? "").trim();
+  if (fromEnv) return fromEnv;
+  const pid = String(import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "").trim();
+  if (!pid) return null;
+  return `https://southamerica-east1-${pid}.cloudfunctions.net/pushLocationRequest`;
 }
 
 export function parseSolicitacaoLocalizacao(payload: unknown): SolicitacaoLocalizacao | null {
@@ -47,6 +57,32 @@ export function subscribeSolicitacaoLocalizacao(
   );
 }
 
+async function dispararAvisoNoCelular(pedido: SolicitacaoLocalizacao): Promise<void> {
+  const url = resolvePushLocationRequestUrl();
+  if (!url || !isFirebaseConfigured()) return;
+  try {
+    const token = await getFirebaseIdTokenForFunctions();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        id: pedido.id,
+        placa: pedido.placa,
+        motorista: pedido.motorista,
+      }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.warn("[SOT] pushLocationRequest:", res.status, txt.slice(0, 200));
+    }
+  } catch (e) {
+    console.warn("[SOT] pushLocationRequest falhou:", e);
+  }
+}
+
 export async function solicitarLocalizacao(args: {
   placa: string;
   departureId: string;
@@ -61,6 +97,7 @@ export async function solicitarLocalizacao(args: {
     status: "pendente",
   };
   await setSotStateDoc(SOT_STATE_DOC.solicitacaoLocalizacao, pedido);
+  await dispararAvisoNoCelular(pedido);
 }
 
 export async function responderSolicitacaoLocalizacao(
@@ -71,12 +108,12 @@ export async function responderSolicitacaoLocalizacao(
 }
 
 export function solicitacaoEhDesteMotorista(pedido: SolicitacaoLocalizacao, motoristaLogado: string): boolean {
-  const logado = slugifyMotoristaName(motoristaLogado);
+  const logado = motoristaLogado.trim();
   if (!logado) return false;
   const nomes = pedido.motorista
     .split(/[,;/]|\se\s/i)
-    .map((nome) => slugifyMotoristaName(nome))
+    .map((nome) => nome.trim())
     .filter(Boolean);
-  if (nomes.length === 0) nomes.push(slugifyMotoristaName(pedido.motorista));
-  return nomes.some((nome) => nome === logado);
+  if (nomes.length === 0) nomes.push(pedido.motorista.trim());
+  return nomes.some((nome) => nomesMotoristaVistoriaEquivalentes(nome, logado));
 }
