@@ -19,12 +19,14 @@ import {
   RDV_STORAGE_EVENT,
 } from "../lib/relatorioDiarioViaturasStorage";
 import {
+  ensureGeolocationPermission,
   formatGeolocationBlockMessage,
   geolocationUnavailableMessage,
   startMobileDriverTrackingSession,
   stopMobileDriverTrackingSessionIfMatches,
 } from "../lib/mobileDriverTracking";
-import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { clearDriverActiveLocation, postDriverLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
+import { LocationCallScreen } from "./location-call-screen";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
 import {
@@ -66,6 +68,9 @@ export function DepartureCard({
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [boaViagemOpen, setBoaViagemOpen] = useState(false);
+  const [locationCallPlaca, setLocationCallPlaca] = useState<string | null>(null);
+  const [locationCallBusy, setLocationCallBusy] = useState(false);
+  const [locationCallError, setLocationCallError] = useState("");
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -226,13 +231,49 @@ export function DepartureCard({
     try {
       await startMobileDriverTrackingSession({ recordId: record.id, placa });
       setOpen(false);
-      setBoaViagemOpen(true);
+      setLocationCallError("");
+      setLocationCallPlaca(placa);
     } catch (e) {
       if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
         window.alert(e.message);
         return;
       }
       window.alert(formatGeolocationBlockMessage(e));
+    }
+  }
+
+  function closeLocationCall() {
+    setLocationCallPlaca(null);
+    setLocationCallError("");
+    setLocationCallBusy(false);
+    setBoaViagemOpen(true);
+  }
+
+  async function handleEnviarLocalizacao() {
+    if (!locationCallPlaca || locationCallBusy) return;
+    setLocationCallBusy(true);
+    setLocationCallError("");
+    try {
+      await ensureGeolocationPermission();
+      const position = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          (err) => reject(err),
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 25_000 },
+        );
+      });
+      await postDriverLocation({
+        placa: locationCallPlaca,
+        latitude: position.lat,
+        longitude: position.lng,
+        departureId: record.id,
+      });
+      closeLocationCall();
+    } catch (e) {
+      const falhaDeGps =
+        typeof e === "object" && e !== null && "code" in e && typeof (e as { code: unknown }).code === "number";
+      setLocationCallError(falhaDeGps ? formatGeolocationBlockMessage(e) : e instanceof Error ? e.message : formatGeolocationBlockMessage(e));
+      setLocationCallBusy(false);
     }
   }
 
@@ -854,6 +895,15 @@ export function DepartureCard({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {locationCallPlaca ? (
+        <LocationCallScreen
+          busy={locationCallBusy}
+          error={locationCallError}
+          onEnviar={() => void handleEnviarLocalizacao()}
+          onRecusar={closeLocationCall}
+        />
       ) : null}
 
       {boaViagemOpen ? (
