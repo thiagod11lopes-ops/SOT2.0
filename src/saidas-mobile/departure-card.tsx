@@ -25,13 +25,10 @@ import {
   stopMobileDriverTrackingSessionIfMatches,
 } from "../lib/mobileDriverTracking";
 import { clearDriverActiveLocation, resolveDriverLocationPostUrl } from "../lib/driverLocationPost";
-import { saveMobilePushSubscriptionForMotorista } from "../lib/firebase/mobilePushSubscriptions";
-import {
-  ensurePushSubscription,
-  requestNotificationPermissionIfNeeded,
-} from "../lib/mobilePushNotifications";
+import { tripPermissionsReady } from "../lib/mobileTripPermissions";
 import { primaryPlacaFromViaturasField } from "../lib/viaturaPlaca";
 import { loadActiveMobileMotorista } from "../lib/mobileMotoristaCredentials";
+import { TripPermissionsModal } from "./trip-permissions-modal";
 import {
   clearMotoristaActiveAssignmentIfDeparture,
   writeMotoristaActiveAssignment,
@@ -71,6 +68,9 @@ export function DepartureCard({
   const expandContentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [boaViagemOpen, setBoaViagemOpen] = useState(false);
+  const [tripPermOpen, setTripPermOpen] = useState(false);
+  const [tripPermBusy, setTripPermBusy] = useState(false);
+  const [pendingStartPlaca, setPendingStartPlaca] = useState<string | null>(null);
   const [rubricaModalOpen, setRubricaModalOpen] = useState(false);
   const [oficinaConfirmModalOpen, setOficinaConfirmModalOpen] = useState(false);
   const [ocorrenciasModalOpen, setOcorrenciasModalOpen] = useState(false);
@@ -211,6 +211,24 @@ export function DepartureCard({
     setRubricaModalOpen(true);
   }
 
+  async function concluirInicioSaida(placa: string) {
+    try {
+      await startMobileDriverTrackingSession({ recordId: record.id, placa });
+      setTripPermOpen(false);
+      setPendingStartPlaca(null);
+      setTripPermBusy(false);
+      setOpen(false);
+      setBoaViagemOpen(true);
+    } catch (e) {
+      setTripPermBusy(false);
+      if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
+        window.alert(e.message);
+        return;
+      }
+      window.alert(formatGeolocationBlockMessage(e));
+    }
+  }
+
   async function handleIniciarSaida() {
     if (!kmEditavel) return;
     if (!record.kmSaida.trim()) {
@@ -228,27 +246,18 @@ export function DepartureCard({
       );
       return;
     }
-    try {
-      await startMobileDriverTrackingSession({ recordId: record.id, placa });
-      const motorista = loadActiveMobileMotorista();
-      if (motorista) {
-        void (async () => {
-          const permission = await requestNotificationPermissionIfNeeded();
-          if (permission !== "granted") return;
-          const subscription = await ensurePushSubscription({ renew: true });
-          if (!subscription) return;
-          await saveMobilePushSubscriptionForMotorista(motorista, subscription);
-        })();
-      }
-      setOpen(false);
-      setBoaViagemOpen(true);
-    } catch (e) {
-      if (e instanceof Error && e.message.includes(geolocationUnavailableMessage())) {
-        window.alert(e.message);
-        return;
-      }
-      window.alert(formatGeolocationBlockMessage(e));
+    const motorista = loadActiveMobileMotorista();
+    if (!motorista) {
+      window.alert("Entre com o motorista neste celular antes de iniciar a saída.");
+      return;
     }
+    const ready = await tripPermissionsReady(motorista);
+    if (ready) {
+      await concluirInicioSaida(placa);
+      return;
+    }
+    setPendingStartPlaca(placa);
+    setTripPermOpen(true);
   }
 
   function handleKmSaidaFieldTapPrefill(onApply: (km: string) => void): boolean {
@@ -869,6 +878,23 @@ export function DepartureCard({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {tripPermOpen && pendingStartPlaca ? (
+        <TripPermissionsModal
+          motorista={loadActiveMobileMotorista() ?? ""}
+          placa={pendingStartPlaca}
+          busy={tripPermBusy}
+          onBusyChange={setTripPermBusy}
+          onCancel={() => {
+            if (tripPermBusy) return;
+            setTripPermOpen(false);
+            setPendingStartPlaca(null);
+          }}
+          onAuthorized={() => {
+            void concluirInicioSaida(pendingStartPlaca);
+          }}
+        />
       ) : null}
 
       {boaViagemOpen ? (
