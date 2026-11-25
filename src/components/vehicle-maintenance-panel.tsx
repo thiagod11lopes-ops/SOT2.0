@@ -19,7 +19,13 @@ import {
 } from "./ui/table";
 
 export function VehicleMaintenancePanel() {
-  const { mapa, departures, placas, setTrocaOleoPlaca } = useVehicleMaintenance();
+  const {
+    mapa,
+    departures,
+    placas,
+    setTrocaOleoPlaca,
+    preencherTrocasComKmAtual,
+  } = useVehicleMaintenance();
   const [pdfBusy, setPdfBusy] = useState(false);
 
   if (placas.length === 0) {
@@ -30,37 +36,62 @@ export function VehicleMaintenancePanel() {
     );
   }
 
+  const semRegistro = placas.filter((p) => !getRegistroTrocaOleo(mapa, p)).length;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">
-        O KM atual é o maior valor de <strong>KM chegada</strong> registrado nas abas Saídas Administrativas e
-        Saídas de Ambulância. A troca de óleo é considerada devida a cada{" "}
-        <strong>10.000 km</strong> ou a cada <strong>6 meses</strong>, o que ocorrer primeiro após a última
-        troca registrada.
-      </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="default"
-          className="shrink-0"
-          disabled={pdfBusy}
-          onClick={() => {
-            if (pdfBusy) return;
-            setPdfBusy(true);
-            void downloadVehicleMaintenancePdf({
-              placas,
-              departures,
-              mapaTrocaOleo: mapa,
-            })
-              .catch(() => {
-                window.alert("Não foi possível gerar o PDF. Tente novamente.");
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+          O KM atual é o maior valor de <strong>KM chegada</strong> registrado nas abas Saídas Administrativas e
+          Saídas de Ambulância. A troca de óleo é considerada devida a cada{" "}
+          <strong>10.000 km</strong> ou a cada <strong>6 meses</strong>, o que ocorrer primeiro após a última
+          troca registrada. Use <strong>Troca de Óleo</strong> (e salve) ou{" "}
+          <strong>Preencher pelo KM atual</strong> para popular as colunas Última / Próxima / Troca por tempo.
+        </p>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {semRegistro > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const n = preencherTrocasComKmAtual();
+                if (n === 0) {
+                  window.alert(
+                    "Nenhuma viatura pôde ser preenchida. É preciso ter KM atual (chegada nas saídas).",
+                  );
+                  return;
+                }
+                window.alert(
+                  `${n} viatura(s) preenchida(s) na tabela com o mesmo cálculo do modal Troca de Óleo (KM atual + 10.000 km / +6 meses). Ajuste placa a placa se a data da última troca for outra.`,
+                );
+              }}
+            >
+              Preencher pelo KM atual
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            disabled={pdfBusy}
+            onClick={() => {
+              if (pdfBusy) return;
+              setPdfBusy(true);
+              void downloadVehicleMaintenancePdf({
+                placas,
+                departures,
+                mapaTrocaOleo: mapa,
               })
-              .finally(() => setPdfBusy(false));
-          }}
-        >
-          {pdfBusy ? "Gerando…" : "Gerar PDF"}
-        </Button>
+                .catch(() => {
+                  window.alert("Não foi possível gerar o PDF. Tente novamente.");
+                })
+                .finally(() => setPdfBusy(false));
+            }}
+          >
+            {pdfBusy ? "Gerando…" : "Gerar PDF"}
+          </Button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-[hsl(var(--border))]">
         <Table>
@@ -86,7 +117,6 @@ export function VehicleMaintenancePanel() {
                 statusLabel = "Sem registro de troca";
               } else if (st.atrasado) {
                 statusLabel = rotuloStatusAtrasoTrocaOleo(st.porKm, st.porPrazo);
-                // Atraso por prazo (6 meses): laranja; só por km: vermelho.
                 statusClass = st.porPrazo
                   ? "font-semibold text-orange-700 dark:text-orange-500"
                   : "font-medium text-red-600";
@@ -114,14 +144,14 @@ export function VehicleMaintenancePanel() {
                   <TableCell className="text-sm">
                     {st.temRegistro ? (
                       <div className="flex flex-col gap-0.5">
-                        <span className="tabular-nums font-medium text-[hsl(var(--foreground))]">{ultimaKm}</span>
+                        <span className="font-medium tabular-nums text-[hsl(var(--foreground))]">{ultimaKm}</span>
                         <span className="whitespace-nowrap text-[hsl(var(--muted-foreground))]">{ultimaData}</span>
                       </div>
                     ) : (
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-sm tabular-nums font-medium">{limiteKm}</TableCell>
+                  <TableCell className="text-sm font-medium tabular-nums">{limiteKm}</TableCell>
                   <TableCell className="text-sm whitespace-nowrap font-medium">{limiteData}</TableCell>
                   <TableCell className={`text-sm ${statusClass}`}>{statusLabel}</TableCell>
                   <TableCell className="text-right">

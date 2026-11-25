@@ -320,3 +320,15 @@ export function dataIsoHojeLocal(): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+/**
+ * Mesmos valores iniciais do modal «Troca de Óleo» quando ainda não há registo:
+ * última troca = KM atual (odômetro) + data de hoje → próxima = +10.000 km / +6 meses.
+ */
+export function registroTrocaOleoSugeridoDoKmAtual(kmAtual: number | null): TrocaOleoRegistro | undefined {
+  if (kmAtual === null || !Number.isFinite(kmAtual) || kmAtual < 0) return undefined;
+  return {
+    ultimaTrocaKm: Math.round(kmAtual),
+    ultimaTrocaData: dataIsoHojeLocal(),
+  };
+}
