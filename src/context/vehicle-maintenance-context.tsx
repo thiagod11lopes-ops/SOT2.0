@@ -33,6 +33,10 @@ function isMapaOleoEmpty(m: MapaOleo): boolean {
   return Object.keys(m).length === 0;
 }
 
+/** Em «Nuvem ativa» o IDB bloqueia leituras/escritas sem esta flag — o óleo precisa
+ *  de espelho local para não ficar só na nuvem (e poder promover se o doc zerar). */
+const OIL_IDB_OPTS = { allowWhenFirebaseOnlyOnline: true as const, maxAttempts: 6 };
+
 const SUPPRESS_REMOTE_MS = 5000;
 
 export type VehicleMaintenanceContextValue = {
@@ -70,7 +74,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
   // snapshot vazio do Firestore apaga a UI e pode sobrescrever o IDB local.
   useEffect(() => {
     let cancel = false;
-    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
+    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY, OIL_IDB_OPTS).then((raw) => {
       if (cancel) return;
       const normalized = normalizeMapaOleo(raw);
       if (!isMapaOleoEmpty(normalized)) {
@@ -92,7 +96,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
     let unsub: (() => void) | undefined;
 
     const promoteLocalIfRemoteEmpty = async (incoming: MapaOleo) => {
-      const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
+      const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY, OIL_IDB_OPTS);
       const local = normalizeMapaOleo(localRaw);
       const prev = mapaRef.current;
       const seed = !isMapaOleoEmpty(prev) ? prev : local;
@@ -103,7 +107,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
         applyingRemoteRef.current = true;
         setMapa(seed);
         hidratado.current = true;
-        void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, { maxAttempts: 6 });
+        void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, OIL_IDB_OPTS);
         return true;
       }
       return false;
@@ -119,7 +123,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
+                const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY, OIL_IDB_OPTS);
                 const normalized = normalizeMapaOleo(localRaw);
                 const seed = !isMapaOleoEmpty(mapaRef.current) ? mapaRef.current : normalized;
                 if (!isMapaOleoEmpty(seed)) {
@@ -130,7 +134,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
                 applyingRemoteRef.current = true;
                 setMapa(seed);
                 hidratado.current = true;
-                void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, { maxAttempts: 6 });
+                void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, OIL_IDB_OPTS);
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
@@ -154,7 +158,7 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
 
               setMapa(merged);
               hidratado.current = true;
-              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, { maxAttempts: 6 });
+              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, OIL_IDB_OPTS);
             })();
           },
           (err) => console.error("[SOT] Firestore troca de óleo:", err),
@@ -172,13 +176,13 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
 
   useEffect(() => {
     if (!hidratado.current) return;
-    void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapa, { maxAttempts: 6 });
+    void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapa, OIL_IDB_OPTS);
   }, [mapa]);
 
   useEffect(() => {
     const flush = () => {
       if (!hidratado.current) return;
-      void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapaRef.current, { maxAttempts: 6 });
+      void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, mapaRef.current, OIL_IDB_OPTS);
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") flush();

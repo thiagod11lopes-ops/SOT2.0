@@ -17,6 +17,8 @@ function isMapaOleoEmpty(m: MapaOleo): boolean {
   return Object.keys(m).length === 0;
 }
 
+const OIL_IDB_OPTS = { allowWhenFirebaseOnlyOnline: true as const, maxAttempts: 6 };
+
 /** Lê o mapa de trocas de óleo (somente leitura; painel Manutenções continua sendo a fonte de escrita). */
 export function useOilMaintenanceMap() {
   const [mapa, setMapa] = useState<MapaOleo>({});
@@ -25,7 +27,7 @@ export function useOilMaintenanceMap() {
 
   useEffect(() => {
     let cancel = false;
-    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
+    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY, OIL_IDB_OPTS).then((raw) => {
       if (cancel) return;
       setMapa(normalizeMapaOleo(raw));
     });
@@ -48,7 +50,7 @@ export function useOilMaintenanceMap() {
             if (cancelled) return;
             void (async () => {
               if (payload === null) {
-                const local = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
+                const local = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY, OIL_IDB_OPTS);
                 const normalized = normalizeMapaOleo(local);
                 if (!isMapaOleoEmpty(normalized)) {
                   await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized);
@@ -78,7 +80,7 @@ export function useOilMaintenanceMap() {
               }
 
               setMapa(merged);
-              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, { maxAttempts: 6 });
+              void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, merged, OIL_IDB_OPTS);
             })();
           },
           (err) => console.error("[SOT] Firestore óleo (mapa):", err),
