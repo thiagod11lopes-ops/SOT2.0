@@ -100,10 +100,10 @@ export function VehicleMaintenancePanel() {
               const limiteData =
                 (st.dataLimiteOleoIso !== null ? isoDateToPtBr(st.dataLimiteOleoIso) : "") || "—";
 
-              const ultima =
-                reg && st.temRegistro
-                  ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData) || "—"}`
-                  : "—";
+              const ultimaKm =
+                reg && st.temRegistro ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km` : "—";
+              const ultimaData =
+                reg && st.temRegistro ? isoDateToPtBr(reg.ultimaTrocaData) || "—" : "—";
 
               return (
                 <TableRow key={placa}>
@@ -111,9 +111,18 @@ export function VehicleMaintenancePanel() {
                   <TableCell className="tabular-nums">
                     {kmAtual !== null ? `${kmAtual.toLocaleString("pt-BR")} km` : "—"}
                   </TableCell>
-                  <TableCell className="text-sm">{ultima}</TableCell>
-                  <TableCell className="text-sm tabular-nums">{limiteKm}</TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{limiteData}</TableCell>
+                  <TableCell className="text-sm">
+                    {st.temRegistro ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="tabular-nums font-medium text-[hsl(var(--foreground))]">{ultimaKm}</span>
+                        <span className="whitespace-nowrap text-[hsl(var(--muted-foreground))]">{ultimaData}</span>
+                      </div>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums font-medium">{limiteKm}</TableCell>
+                  <TableCell className="text-sm whitespace-nowrap font-medium">{limiteData}</TableCell>
                   <TableCell className={`text-sm ${statusClass}`}>{statusLabel}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-wrap items-center justify-end gap-2">

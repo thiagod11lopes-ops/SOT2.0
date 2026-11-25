@@ -48,6 +48,8 @@ export type VehicleMaintenanceContextValue = {
   setTrocaOleoPlaca: (p: string | null) => void;
   kmSugeridoTrocaOleo: number | null;
   bumpLocalOleoMutation: () => void;
+  /** Grava registo na tabela + IndexedDB + Firestore de imediato (não depende do efeito). */
+  saveRegistroTrocaOleo: (placa: string, km: number, dataIso: string) => void;
 };
 
 const VehicleMaintenanceContext = createContext<VehicleMaintenanceContextValue | null>(null);
@@ -69,6 +71,43 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
     suppressRemoteUntilRef.current = Date.now() + SUPPRESS_REMOTE_MS;
     hidratado.current = true;
   }, []);
+
+  const persistMapaOleoNow = useCallback(
+    (next: MapaOleo) => {
+      hidratado.current = true;
+      mapaRef.current = next;
+      void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, next, OIL_IDB_OPTS);
+      if (!useCloud || isMapaOleoEmpty(next)) return;
+      // Evita que o efeito de sync trate este write como eco remoto e o ignore.
+      applyingRemoteRef.current = false;
+      void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, next).catch((e) => {
+        console.error("[SOT] Gravar troca de óleo na nuvem (imediato):", e);
+      });
+    },
+    [useCloud],
+  );
+
+  const saveRegistroTrocaOleo = useCallback(
+    (placa: string, km: number, dataIso: string) => {
+      const placaTrim = placa.trim();
+      if (!placaTrim) return;
+      bumpLocalOleoMutation();
+      setMapa((prev) => {
+        const existingKey =
+          Object.keys(prev).find((k) => k.trim().toLowerCase() === placaTrim.toLowerCase()) ?? placaTrim;
+        const next: MapaOleo = { ...prev };
+        for (const k of Object.keys(next)) {
+          if (k !== existingKey && k.trim().toLowerCase() === existingKey.trim().toLowerCase()) {
+            delete next[k];
+          }
+        }
+        next[existingKey] = { ultimaTrocaKm: km, ultimaTrocaData: dataIso };
+        persistMapaOleoNow(next);
+        return next;
+      });
+    },
+    [bumpLocalOleoMutation, persistMapaOleoNow],
+  );
 
   // Sempre hidrata IndexedDB primeiro (também em modo nuvem). Sem isto, um
   // snapshot vazio do Firestore apaga a UI e pode sobrescrever o IDB local.
@@ -203,6 +242,9 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
     }
     // Não publicar mapa vazio para a nuvem (evita apagar dados remotos por corrida de hidratação).
     if (isMapaOleoEmpty(mapa)) return;
+    // Se ainda estamos na janela de suppress após save local, o persistMapaOleoNow
+    // já enviou — evita corrida que publique um mapa intermédio.
+    if (Date.now() < suppressRemoteUntilRef.current) return;
     const t = window.setTimeout(() => {
       void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, mapa).catch((e) => {
         console.error("[SOT] Gravar troca de óleo na nuvem:", e);
@@ -229,8 +271,17 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
       setTrocaOleoPlaca,
       kmSugeridoTrocaOleo,
       bumpLocalOleoMutation,
+      saveRegistroTrocaOleo,
     }),
-    [mapa, departures, placas, trocaOleoPlaca, kmSugeridoTrocaOleo, bumpLocalOleoMutation],
+    [
+      mapa,
+      departures,
+      placas,
+      trocaOleoPlaca,
+      kmSugeridoTrocaOleo,
+      bumpLocalOleoMutation,
+      saveRegistroTrocaOleo,
+    ],
   );
 }
 

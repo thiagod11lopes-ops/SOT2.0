@@ -180,8 +180,8 @@ export function TrocaOleoModal({
         </h2>
         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
           Ajuste a <strong>última troca</strong> (km e data) ou edite <strong>próxima troca</strong> /{" "}
-          <strong>troca por tempo</strong> — os campos são recalculados entre si (regra: +10.000 km e +6 meses após a
-          última troca).
+          <strong>troca por tempo</strong> — os campos são recalculados entre si (regra: +10.000 km e +6 meses). Ao
+          salvar, os três valores passam a aparecer na tabela de Manutenções.
         </p>
 
         <div className="mt-4 space-y-4">
@@ -270,7 +270,7 @@ export function TrocaOleoModal({
             Cancelar
           </Button>
           <Button type="button" onClick={handleConfirmar}>
-            Salvar troca
+            Salvar na tabela
           </Button>
         </div>
       </div>

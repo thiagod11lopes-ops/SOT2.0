@@ -6,11 +6,10 @@ import { TrocaOleoModal } from "./troca-oleo-modal";
 export function VehicleMaintenanceModals() {
   const {
     mapa,
-    setMapa,
     trocaOleoPlaca,
     setTrocaOleoPlaca,
     kmSugeridoTrocaOleo,
-    bumpLocalOleoMutation,
+    saveRegistroTrocaOleo,
   } = useVehicleMaintenance();
 
   return (
@@ -20,21 +19,7 @@ export function VehicleMaintenanceModals() {
       registroAtual={trocaOleoPlaca ? getRegistroTrocaOleo(mapa, trocaOleoPlaca) : undefined}
       onConfirm={(km, dataIso) => {
         if (!trocaOleoPlaca) return;
-        bumpLocalOleoMutation();
-        setMapa((prev) => {
-          // Grava na chave já existente (casing) se houver; senão usa a do catálogo.
-          const existingKey =
-            Object.keys(prev).find((k) => k.trim().toLowerCase() === trocaOleoPlaca.trim().toLowerCase()) ??
-            trocaOleoPlaca;
-          const next = { ...prev };
-          for (const k of Object.keys(next)) {
-            if (k !== existingKey && k.trim().toLowerCase() === existingKey.trim().toLowerCase()) {
-              delete next[k];
-            }
-          }
-          next[existingKey] = { ultimaTrocaKm: km, ultimaTrocaData: dataIso };
-          return next;
-        });
+        saveRegistroTrocaOleo(trocaOleoPlaca, km, dataIso);
         setTrocaOleoPlaca(null);
       }}
       onClose={() => setTrocaOleoPlaca(null)}
