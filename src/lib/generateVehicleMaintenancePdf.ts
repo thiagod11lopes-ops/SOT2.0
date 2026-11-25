@@ -2,6 +2,7 @@ import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import { isoDateToPtBr } from "./dateFormat";
 import {
+  getRegistroTrocaOleo,
   maiorKmChegadaPorViatura,
   rotuloStatusAtrasoTrocaOleo,
   statusTrocaOleo,
@@ -34,7 +35,7 @@ export type VehicleMaintenancePdfParams = {
 export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfParams): VehicleMaintenancePdfRow[] {
   return params.placas.map((placa) => {
     const kmAtualNum = maiorKmChegadaPorViatura(params.departures, placa);
-    const reg = params.mapaTrocaOleo[placa];
+    const reg = getRegistroTrocaOleo(params.mapaTrocaOleo, placa);
     const st = statusTrocaOleo(kmAtualNum, reg);
 
     let statusLabel = "—";
@@ -47,10 +48,11 @@ export function buildVehicleMaintenancePdfRows(params: VehicleMaintenancePdfPara
     }
 
     const limiteKm = st.kmLimite !== null ? `${st.kmLimite.toLocaleString("pt-BR")} km` : "—";
-    const limiteData = st.dataLimiteOleoIso !== null ? isoDateToPtBr(st.dataLimiteOleoIso) : "—";
+    const limiteData =
+      (st.dataLimiteOleoIso !== null ? isoDateToPtBr(st.dataLimiteOleoIso) : "") || "—";
     const ultima =
       reg && st.temRegistro
-        ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData)}`
+        ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData) || "—"}`
         : "—";
 
     return {

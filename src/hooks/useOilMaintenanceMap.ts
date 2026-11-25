@@ -6,15 +6,12 @@ import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import {
   mapaTrocaOleoIgual,
   mergeMapaTrocaOleo,
+  normalizeMapaOleo,
   OIL_MAINTENANCE_STORAGE_KEY,
   type TrocaOleoRegistro,
 } from "../lib/oilMaintenance";
 
 type MapaOleo = Record<string, TrocaOleoRegistro>;
-
-function normalizeMapaOleo(raw: unknown): MapaOleo {
-  return raw && typeof raw === "object" ? (raw as MapaOleo) : {};
-}
 
 function isMapaOleoEmpty(m: MapaOleo): boolean {
   return Object.keys(m).length === 0;
@@ -28,7 +25,7 @@ export function useOilMaintenanceMap() {
 
   useEffect(() => {
     let cancel = false;
-    void idbGetJson<MapaOleo>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
+    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
       if (cancel) return;
       setMapa(normalizeMapaOleo(raw));
     });
@@ -72,7 +69,7 @@ export function useOilMaintenanceMap() {
 
               const merged = mergeMapaTrocaOleo(prev, incoming);
 
-              if (!mapaTrocaOleoIgual(merged, incoming)) {
+              if (!mapaTrocaOleoIgual(merged, incoming) && !isMapaOleoEmpty(merged)) {
                 queueMicrotask(() => {
                   void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, merged).catch((e) => {
                     console.error("[SOT] Reconciliar mapa óleo (hook):", e);

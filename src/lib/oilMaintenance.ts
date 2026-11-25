@@ -1,5 +1,5 @@
 import type { DepartureRecord } from "../types/departure";
-import { parseIsoDateToDate } from "./dateFormat";
+import { parseIsoDateToDate, parsePtBrToDate, ptBrToIsoDate } from "./dateFormat";
 import { formatKmThousandsPtBr } from "./kmInput";
 
 /** Troca de óleo a cada 10.000 km ou a cada 6 meses (o que ocorrer primeiro). */
@@ -21,20 +21,101 @@ export type TrocaOleoRegistro = {
   ultimaTrocaData: string;
 };
 
-/** União por placa: valor local prevalece se a chave existe em `local`. */
+/** Normaliza qualquer string de data (ISO ou dd/mm/aaaa) para yyyy-mm-dd. */
+export function normalizeTrocaOleoDataIso(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (!t) return null;
+  if (parseIsoDateToDate(t)) return t.slice(0, 10);
+  const fromPt = ptBrToIsoDate(t);
+  if (fromPt) return fromPt;
+  // Timestamps / ISO completos: "2025-03-15T00:00:00.000Z"
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m && parseIsoDateToDate(m[1])) return m[1];
+  return null;
+}
+
+/** Aceita registos antigos/malformados (km string, data em pt-BR, aliases). */
+export function normalizeTrocaOleoRegistro(raw: unknown): TrocaOleoRegistro | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const kmRaw = o.ultimaTrocaKm ?? o.kmUltimaTroca ?? o.km;
+  const dataRaw = o.ultimaTrocaData ?? o.dataUltimaTroca ?? o.data;
+  let km: number | null = null;
+  if (typeof kmRaw === "number" && Number.isFinite(kmRaw) && kmRaw >= 0) {
+    km = Math.round(kmRaw);
+  } else if (typeof kmRaw === "string") {
+    km = parseKmCampo(kmRaw);
+  }
+  const dataIso = normalizeTrocaOleoDataIso(dataRaw);
+  if (km === null || km < 0 || !dataIso) return null;
+  return { ultimaTrocaKm: km, ultimaTrocaData: dataIso };
+}
+
+/**
+ * Converte payload bruto (Firestore/IDB) num mapa placa→registo válido.
+ * Desembrulha `{ payload }` acidental e ignora entradas inválidas.
+ */
+export function normalizeMapaOleo(raw: unknown): Record<string, TrocaOleoRegistro> {
+  let src = raw;
+  if (src && typeof src === "object" && "payload" in (src as object)) {
+    const inner = (src as { payload: unknown }).payload;
+    if (inner && typeof inner === "object") src = inner;
+  }
+  if (!src || typeof src !== "object" || Array.isArray(src)) return {};
+  const out: Record<string, TrocaOleoRegistro> = {};
+  for (const [placaRaw, value] of Object.entries(src as Record<string, unknown>)) {
+    const placa = placaRaw.trim();
+    if (!placa) continue;
+    const reg = normalizeTrocaOleoRegistro(value);
+    if (!reg) continue;
+    // Preferir a chave já existente (preserva casing do catálogo se colidir).
+    const existingKey = Object.keys(out).find((k) => k.toLowerCase() === placa.toLowerCase());
+    out[existingKey ?? placa] = reg;
+  }
+  return out;
+}
+
+/** Lookup case-insensitive — evita “—” em próxima/tempo quando a placa difere só em maiúsculas. */
+export function getRegistroTrocaOleo(
+  mapa: Record<string, TrocaOleoRegistro | undefined>,
+  placa: string,
+): TrocaOleoRegistro | undefined {
+  const direct = mapa[placa];
+  if (direct) return direct;
+  const alvo = placa.trim().toLowerCase();
+  if (!alvo) return undefined;
+  for (const [k, v] of Object.entries(mapa)) {
+    if (v && k.trim().toLowerCase() === alvo) return v;
+  }
+  return undefined;
+}
+
+/** União por placa (case-insensitive): valor local prevalece se a chave existe em `local`. */
 export function mergeMapaTrocaOleo(
   local: Record<string, TrocaOleoRegistro>,
   remote: Record<string, TrocaOleoRegistro>,
 ): Record<string, TrocaOleoRegistro> {
-  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
   const out: Record<string, TrocaOleoRegistro> = {};
-  for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(local, k)) {
-      out[k] = local[k];
-    } else {
-      out[k] = remote[k];
+  const index = new Map<string, string>(); // lower → chave canónica
+
+  const put = (placa: string, reg: TrocaOleoRegistro, preferLocal: boolean) => {
+    const lower = placa.trim().toLowerCase();
+    if (!lower) return;
+    const existingKey = index.get(lower);
+    if (existingKey === undefined) {
+      out[placa] = reg;
+      index.set(lower, placa);
+      return;
     }
-  }
+    if (preferLocal) {
+      // Mantém a chave canónica; substitui o registo.
+      out[existingKey] = reg;
+    }
+  };
+
+  for (const [k, v] of Object.entries(remote)) put(k, v, false);
+  for (const [k, v] of Object.entries(local)) put(k, v, true);
   return out;
 }
 
@@ -87,9 +168,14 @@ export function formatKmSaidaPrefillFromKmAtualViatura(
   return formatKmThousandsPtBr(String(km));
 }
 
+function parseTrocaOleoDate(value: string): Date | undefined {
+  return parseIsoDateToDate(value) ?? parsePtBrToDate(value.trim());
+}
+
 export function adicionarMesesIso(dataIso: string, meses: number): string {
-  const base = parseIsoDateToDate(dataIso);
-  if (!base) return dataIso;
+  const normalized = normalizeTrocaOleoDataIso(dataIso) ?? dataIso;
+  const base = parseTrocaOleoDate(normalized);
+  if (!base) return normalized;
   const out = new Date(base.getFullYear(), base.getMonth() + meses, base.getDate());
   const y = out.getFullYear();
   const m = String(out.getMonth() + 1).padStart(2, "0");
@@ -99,8 +185,9 @@ export function adicionarMesesIso(dataIso: string, meses: number): string {
 
 /** Inverso de {@link adicionarMesesIso} — útil ao editar a data limite (troca por tempo) no modal. */
 export function subtrairMesesIso(dataIso: string, meses: number): string {
-  const base = parseIsoDateToDate(dataIso);
-  if (!base) return dataIso;
+  const normalized = normalizeTrocaOleoDataIso(dataIso) ?? dataIso;
+  const base = parseTrocaOleoDate(normalized);
+  if (!base) return normalized;
   const out = new Date(base.getFullYear(), base.getMonth() - meses, base.getDate());
   const y = out.getFullYear();
   const m = String(out.getMonth() + 1).padStart(2, "0");
@@ -143,7 +230,8 @@ export function statusTrocaOleo(
   registro: TrocaOleoRegistro | undefined,
   agora: Date = new Date(),
 ): StatusTrocaOleo {
-  if (!registro) {
+  const reg = registro ? normalizeTrocaOleoRegistro(registro) : null;
+  if (!reg) {
     return {
       temRegistro: false,
       atrasado: false,
@@ -156,12 +244,11 @@ export function statusTrocaOleo(
     };
   }
 
-  const kmLimite = registro.ultimaTrocaKm + OLEO_KM_INTERVALO;
-  const dataLimiteOleoIso = adicionarMesesIso(registro.ultimaTrocaData, OLEO_MESES_INTERVALO);
+  const kmLimite = reg.ultimaTrocaKm + OLEO_KM_INTERVALO;
+  const dataLimiteOleoIso = adicionarMesesIso(reg.ultimaTrocaData, OLEO_MESES_INTERVALO);
 
-  const porKm =
-    kmAtual !== null && kmAtual - registro.ultimaTrocaKm >= OLEO_KM_INTERVALO;
-  const fimPrazo = parseIsoDateToDate(dataLimiteOleoIso);
+  const porKm = kmAtual !== null && kmAtual - reg.ultimaTrocaKm >= OLEO_KM_INTERVALO;
+  const fimPrazo = parseTrocaOleoDate(dataLimiteOleoIso);
   const porPrazo = fimPrazo ? inicioDoDia(agora) >= inicioDoDia(fimPrazo) : false;
   const atrasado = porKm || porPrazo;
 
@@ -220,7 +307,7 @@ export function placasComAlertaTrocaOleo(
   return placas
     .filter((placa) => {
       const kmAtual = maiorKmChegadaPorViatura(departures, placa);
-      const st = statusTrocaOleo(kmAtual, mapa[placa], agora);
+      const st = statusTrocaOleo(kmAtual, getRegistroTrocaOleo(mapa, placa), agora);
       return alertaProximaTrocaOleo(st);
     })
     .sort((a, b) => a.localeCompare(b, "pt-BR"));

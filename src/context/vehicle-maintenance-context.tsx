@@ -17,19 +17,17 @@ import { SOT_STATE_DOC, setSotStateDocWithRetry, subscribeSotStateDoc } from "..
 import { idbGetJson, idbSetJson } from "../lib/indexedDb";
 import type { DepartureRecord } from "../types/departure";
 import {
+  getRegistroTrocaOleo,
   maiorKmChegadaPorViatura,
   mapaTrocaOleoIgual,
   mergeMapaTrocaOleo,
+  normalizeMapaOleo,
   OIL_MAINTENANCE_STORAGE_KEY,
   viaturasCatalogoUnicas,
   type TrocaOleoRegistro,
 } from "../lib/oilMaintenance";
 
 type MapaOleo = Record<string, TrocaOleoRegistro>;
-
-function normalizeMapaOleo(raw: unknown): MapaOleo {
-  return raw && typeof raw === "object" ? (raw as MapaOleo) : {};
-}
 
 function isMapaOleoEmpty(m: MapaOleo): boolean {
   return Object.keys(m).length === 0;
@@ -68,25 +66,49 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
     hidratado.current = true;
   }, []);
 
+  // Sempre hidrata IndexedDB primeiro (também em modo nuvem). Sem isto, um
+  // snapshot vazio do Firestore apaga a UI e pode sobrescrever o IDB local.
   useEffect(() => {
-    if (useCloud) {
-      return;
-    }
     let cancel = false;
-    void idbGetJson<MapaOleo>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
+    void idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY).then((raw) => {
       if (cancel) return;
-      setMapa(normalizeMapaOleo(raw));
+      const normalized = normalizeMapaOleo(raw);
+      if (!isMapaOleoEmpty(normalized)) {
+        setMapa((prev) => {
+          if (isMapaOleoEmpty(prev)) return normalized;
+          return mergeMapaTrocaOleo(normalized, prev);
+        });
+      }
       hidratado.current = true;
     });
     return () => {
       cancel = true;
     };
-  }, [useCloud]);
+  }, []);
 
   useEffect(() => {
     if (!useCloud) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
+
+    const promoteLocalIfRemoteEmpty = async (incoming: MapaOleo) => {
+      const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
+      const local = normalizeMapaOleo(localRaw);
+      const prev = mapaRef.current;
+      const seed = !isMapaOleoEmpty(prev) ? prev : local;
+      if (isMapaOleoEmpty(incoming) && !isMapaOleoEmpty(seed)) {
+        await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, seed).catch((e) => {
+          console.error("[SOT] Promover troca de óleo local → nuvem (remoto vazio):", e);
+        });
+        applyingRemoteRef.current = true;
+        setMapa(seed);
+        hidratado.current = true;
+        void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, { maxAttempts: 6 });
+        return true;
+      }
+      return false;
+    };
+
     void (async () => {
       try {
         await ensureFirebaseAuth();
@@ -99,31 +121,35 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
               if (payload === null) {
                 const localRaw = await idbGetJson<unknown>(OIL_MAINTENANCE_STORAGE_KEY);
                 const normalized = normalizeMapaOleo(localRaw);
-                if (!isMapaOleoEmpty(normalized)) {
-                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, normalized).catch((e) => {
+                const seed = !isMapaOleoEmpty(mapaRef.current) ? mapaRef.current : normalized;
+                if (!isMapaOleoEmpty(seed)) {
+                  await setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, seed).catch((e) => {
                     console.error("[SOT] Promover troca de óleo local → nuvem (doc ausente):", e);
                   });
                 }
-                setMapa(normalized);
+                applyingRemoteRef.current = true;
+                setMapa(seed);
                 hidratado.current = true;
-                void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, normalized, { maxAttempts: 6 });
+                void idbSetJson(OIL_MAINTENANCE_STORAGE_KEY, seed, { maxAttempts: 6 });
                 return;
               }
               if (Date.now() < suppressRemoteUntilRef.current) {
                 return;
               }
               const incoming = normalizeMapaOleo(payload);
-              const prev = mapaRef.current;
-
-              if (isMapaOleoEmpty(incoming) && !isMapaOleoEmpty(prev)) {
+              if (await promoteLocalIfRemoteEmpty(incoming)) {
                 return;
               }
 
+              const prev = mapaRef.current;
               applyingRemoteRef.current = true;
               const merged = mergeMapaTrocaOleo(prev, incoming);
 
-              if (!mapaTrocaOleoIgual(merged, incoming)) {
-                // merge divergiu do snapshot; mantém merged
+              if (!mapaTrocaOleoIgual(merged, incoming) && !isMapaOleoEmpty(merged)) {
+                // Snapshot remoto incompleto vs. local — reenvia o merge.
+                void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, merged).catch((e) => {
+                  console.error("[SOT] Reconciliar troca de óleo (merge → nuvem):", e);
+                });
               }
 
               setMapa(merged);
@@ -171,6 +197,8 @@ function useVehicleMaintenanceState(): VehicleMaintenanceContextValue {
       applyingRemoteRef.current = false;
       return;
     }
+    // Não publicar mapa vazio para a nuvem (evita apagar dados remotos por corrida de hidratação).
+    if (isMapaOleoEmpty(mapa)) return;
     const t = window.setTimeout(() => {
       void setSotStateDocWithRetry(SOT_STATE_DOC.oilMaintenance, mapa).catch((e) => {
         console.error("[SOT] Gravar troca de óleo na nuvem:", e);
@@ -218,4 +246,11 @@ export function useVehicleMaintenance(): VehicleMaintenanceContextValue {
 /** Mapa de trocas de óleo (mesma fonte que a aba Manutenções / modal da home). */
 export function useMapaOleoFromMaintenance(): MapaOleo {
   return useVehicleMaintenance().mapa;
+}
+
+/** Registo de uma placa (case-insensitive). */
+export function useRegistroTrocaOleo(placa: string | null | undefined): TrocaOleoRegistro | undefined {
+  const { mapa } = useVehicleMaintenance();
+  if (!placa) return undefined;
+  return getRegistroTrocaOleo(mapa, placa);
 }

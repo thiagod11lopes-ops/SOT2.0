@@ -40,6 +40,7 @@ import type { TrocaOleoRegistro } from "../lib/oilMaintenance";
 import { departuresTableShadowClass } from "../lib/uiShadows";
 import {
   alertaProximaTrocaOleo,
+  getRegistroTrocaOleo,
   maiorKmChegadaPorViatura,
   OLEO_ALERTA_DIAS_PRAZO,
   OLEO_ALERTA_KM_RESTANTES,
@@ -177,7 +178,7 @@ export function Dashboard({ mapaOleo }: { mapaOleo: Record<string, TrocaOleoRegi
     return placasCatalogo
       .map((placa) => {
         const kmAtual = maiorKmChegadaPorViatura(departuresAtivas, placa);
-        const st = statusTrocaOleo(kmAtual, mapaOleo[placa]);
+        const st = statusTrocaOleo(kmAtual, getRegistroTrocaOleo(mapaOleo, placa));
         return { placa, st };
       })
       .filter(({ st }) => alertaProximaTrocaOleo(st))

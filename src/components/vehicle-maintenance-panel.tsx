@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useVehicleMaintenance } from "../context/vehicle-maintenance-context";
 import { isoDateToPtBr } from "../lib/dateFormat";
 import { downloadVehicleMaintenancePdf } from "../lib/generateVehicleMaintenancePdf";
-import { maiorKmChegadaPorViatura, rotuloStatusAtrasoTrocaOleo, statusTrocaOleo } from "../lib/oilMaintenance";
+import {
+  getRegistroTrocaOleo,
+  maiorKmChegadaPorViatura,
+  rotuloStatusAtrasoTrocaOleo,
+  statusTrocaOleo,
+} from "../lib/oilMaintenance";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -73,7 +78,7 @@ export function VehicleMaintenancePanel() {
           <TableBody>
             {placas.map((placa) => {
               const kmAtual = maiorKmChegadaPorViatura(departures, placa);
-              const reg = mapa[placa];
+              const reg = getRegistroTrocaOleo(mapa, placa);
               const st = statusTrocaOleo(kmAtual, reg);
               let statusLabel = "—";
               let statusClass = "text-[hsl(var(--muted-foreground))]";
@@ -93,11 +98,11 @@ export function VehicleMaintenancePanel() {
               const limiteKm =
                 st.kmLimite !== null ? `${st.kmLimite.toLocaleString("pt-BR")} km` : "—";
               const limiteData =
-                st.dataLimiteOleoIso !== null ? isoDateToPtBr(st.dataLimiteOleoIso) : "—";
+                (st.dataLimiteOleoIso !== null ? isoDateToPtBr(st.dataLimiteOleoIso) : "") || "—";
 
               const ultima =
                 reg && st.temRegistro
-                  ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData)}`
+                  ? `${reg.ultimaTrocaKm.toLocaleString("pt-BR")} km · ${isoDateToPtBr(reg.ultimaTrocaData) || "—"}`
                   : "—";
 
               return (
